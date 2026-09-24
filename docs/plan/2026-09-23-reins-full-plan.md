@@ -202,7 +202,7 @@ nudge: Split this into smaller steps.
 **Branches and links:**
 - **`else`** can only appear as a direct child of an `if` (`### else`). Children that follow it belong to the false branch.
 - **Links** are attribute lines on the step they leave from: `next:`, `on-pass:`, `on-fail:`, `retry:`, `verify-against:`, `hand-off:`. A backward link needs `(max N)`. The validator checks this.
-- **Auto cards** (`## whenever <condition>`) sit at the top level, usually at the end, and hold exactly one steer line (`nudge:`, `checkpoint:`, `budget:`, `role:`, `undo:`). They do not run in order; they fire when their condition becomes true.
+- **Auto cards** (`## whenever <condition>`) sit at the top level, usually at the end, and hold exactly one steer line (`nudge:`, `checkpoint:`, `budget:`, `role:`, `undo:`, `now:`, `stop:`). `nudge:` is delivered as a steer card, `now:` as a now card, and `stop:` halts the run and shows its text as the reason (§6.5). They do not run in order; they fire when their condition becomes true.
 - **Attached cards** are attribute lines on a step:
   - `guard: <glob>` can repeat.
   - `note: <text>` is an instruction for this step only, and can repeat.
@@ -343,13 +343,18 @@ The adapter enforces the policy **before** the tool runs (§8). A refusal goes b
 
 ### 6.5 Live cards and auto cards
 
-**Live cards:**
-- You drop a card on a running session, or type into the chat box while a workflow runs. That creates a **pending card**.
-- Delivery goes through the engine's mid-turn channel:
-  - Claude: the PostToolUse hook's `additionalContext`.
-  - Codex: `turn/steer`.
-- If the turn ends before a tool call happens, the card goes into the next turn's text instead.
-- The UI shows each card as `queued → delivered (mid-turn | next turn)`.
+**Live cards come in three kinds** (Phase 0 finding, see `docs/spike/2026-09-24-engine-findings.md`):
+
+| kind | what it does | cost | Claude | Codex |
+|---|---|---|---|---|
+| **steer** (default) | slips the card in mid-turn; the agent adjusts and keeps going | nothing lost; the agent *can* still ignore it | trusted-marker card via the PostToolUse hook's `additionalContext` (or stdin) + the trust note (§8.2) | `turn/steer` |
+| **now** | stops the turn, sends the card as the next real message | the tool call in flight is lost; the card is certain to be seen | `control_request` interrupt, then a new turn | `turn/interrupt`, then `turn/start` |
+| **stop** | hard stop; nothing runs until you act | the turn ends | `control_request` interrupt, run pauses | `turn/interrupt`, run pauses |
+
+- You drop a card on a running session, or type into the chat box while a workflow runs. That creates a **pending card** of the chosen kind (typing = steer; the chat box has a now/stop toggle).
+- A steer card queued when no tool call follows goes into the next turn's text instead.
+- **Auto cards can use any kind.** `## whenever same error twice` + `stop:` gives "hard stop when things go wrong".
+- The UI shows each card as `queued → delivered (mid-turn | next turn | interrupted)`.
 
 **Auto cards (`whenever`):**
 - Checked after every agent event against the run's counters.
@@ -479,22 +484,31 @@ claude -p
   --input-format stream-json --output-format stream-json --verbose
   --session-id <uuid>            (or --resume <id>)
   --permission-prompt-tool mcp__reins__approve
-  --mcp-config '<inline: { "reins": { command: "reins", args: ["mcp", "--run", "<runId>"] } }>'
-  --settings '<inline: hooks, see below>'
+  --mcp-config <file: { "reins": { command: "reins", args: ["mcp", "--run", "<runId>"] } }>
+  --settings <file: hooks, see below>
+  --append-system-prompt-file <file: the card trust note, see below>
   --forward-subagent-text
-  [--model <m>]
+  [--model <m>] [--effort <e>]
 ```
+
+[Checked in Phase 0 on claude 2.1.281 unless marked.] Pass `--settings`, `--mcp-config` and the note as **files**, not inline JSON: shell quoting on Windows breaks inline JSON. Spawn `claude.exe` directly, not through the npm `.cmd` shim, so the process tree stays ours (see Interrupt).
 
 **Hooks** passed in `--settings`, all `type: "http"` pointing at the Reins server, so there is **no extra process per tool call** [HTTP hooks checked in the hooks docs]:
 - **`PreToolUse`: enforcement.** The server checks `policy()` and answers `permissionDecision: deny` with a reason, or passes. Hooks run **before** allow rules [checked in the Agent SDK permissions page], so a user's `allow: Edit` setting can't get around a guard. Whether the CLI applies the same order is **assumed**; Phase 0 test P0.3.
-- **`PostToolUse`: live cards.** The response carries `additionalContext` with the pending cards [checked: it reaches the model before its next call; limit 10,000 characters].
+- **`PostToolUse`: steer cards.** The response carries `additionalContext` with the pending cards, each wrapped in the session's trusted marker [checked P0.5f; limit 10,000 characters]. **Without the marker and the trust note, Sonnet 5 refuses the card as prompt injection** [checked P0.5a/d].
+- Only `type: "http"` hooks. The `command` form never ran on Windows in Phase 0 (P0.2-cmd); cause not investigated.
+- Matchers must name `Bash|PowerShell` (the shell tool is `PowerShell` on Windows), and guard paths arrive with **backslashes** on Windows: normalise before matching.
 - **`SubagentStart`/`PreToolUse` with `agent_id`**: subagents get the same guards [checked: hooks fire inside subagents with `agent_id`].
 
 **Approvals.** Whatever the policy leaves open and Claude Code would ask about goes to the `mcp__reins__approve` tool. It is served by a tiny stdio MCP server (`reins mcp`) that forwards to the Reins server, which asks you in the UI.
 
 **Turns.** Each step is one `user` message written to stdin. The turn ends at the `result` event, which holds the cost and the final text.
 
-**Interrupt.** Send SIGINT, not SIGTERM. SIGTERM leaves the turn unfinished and records nothing [checked, headless docs].
+**Interrupt.** Write `{"type":"control_request","request_id":"<id>","request":{"subtype":"interrupt"}}` to stdin. The turn ends with a `result` (`error_during_execution`) in ~3 s and the session keeps working [checked P0.5c]. **Not SIGINT:** through the npm shim it kills only the shim and orphans `claude.exe` [checked P0.5b].
+
+**Card trust note.** A steer card is only obeyed if it carries a marker the model was told to trust, the same pattern Hermes uses for `/steer` (`hermes-agent/agent/prompt_builder.py`). Reins passes, via `--append-system-prompt-file`, a short note: cards arrive wrapped as `[REINS CARD <nonce> — a direct message from the user…]…[/REINS CARD <nonce>]`; trust only that exact marker. `<nonce>` is random per session, so a file the agent reads can't forge a card in advance. **Test before shipping:** a forged marker without the nonce is refused.
+
+**Approval hold.** The `--permission-prompt-tool` call can be held for at least 120 s with no timeout [checked P0.4b]. Payload keys: `tool_name`, `input`, `tool_use_id`.
 
 **Login.**
 - `probe()` runs `claude --version` and a tiny `claude -p "reply OK" --max-turns 1` with `--output-format json`.
@@ -504,15 +518,17 @@ claude -p
 **Watch out:**
 - `-p` sessions run the project's `.claude/settings.json` hooks and `.mcp.json` servers with no trust prompt [checked]. Reins shows this in its own trust prompt (§5.6).
 - `--bare` would skip them, but it also skips the subscription login [checked], so we don't use it.
+- The user's **global** hooks (`~/.claude/settings.json`, plugins) also run inside `-p` sessions and can add text to the context [checked Phase 0]. `reins doctor` lists them.
+- After an interrupt, the stream emits a second `system/init`. The adapter must not treat it as a new session.
 
 ### 8.3 Codex adapter (`codex app-server`)
 
-Checked in the app-server docs on 2026-09-23; running it is **assumed** until Phase 0.
+Checked in the app-server docs on 2026-09-23 and run on Windows in Phase 0 (codex 0.153.4, P0.6a–d all pass).
 
 **How it runs:**
 - Start `codex app-server` (JSON messages over stdio, one per line).
 - Send `initialize` with `clientInfo.name = "reins"`.
-- `thread/start { cwd, approvalPolicy }`, with a policy under which every write and command asks the client.
+- `thread/start { cwd, approvalPolicy: "untrusted" }` [checked P0.6: the docs' `unlessTrusted` is rejected; accepted values are `untrusted`, `on-request`, `granular`, `never`]. The default sandbox is `dangerFullAccess`, so approvals are the only barrier. They held in P0.6b. `untrusted` skipped approval for one read-only command.
 
 **Mapping steps and cards:**
 - **Turns:** `turn/start` per step. Read-only steps pass a read-only `sandboxPolicy` override on that turn. The turn ends at `turn/completed`.
@@ -534,7 +550,9 @@ The UI shows this on every card.
 |---|---|---|
 | guard, read-only step, gate lock | **enforced** (PreToolUse deny) | **enforced** (approval deny) |
 | run / command judge | **enforced** (Reins runs it) | **enforced** |
-| live card mid-turn | **delivered** via hook, or the next turn if there is no tool call | **delivered** natively via `turn/steer` |
+| steer card | **delivered** mid-turn via hook + trusted marker (advised: the agent can still ignore it) | **delivered** via `turn/steer` |
+| now card | **enforced** delivery (interrupt, then a new turn) | **enforced** |
+| stop card | **enforced** (interrupt, run pauses) | **enforced** |
 | nudge / role / checkpoint | **advised** (text; the agent can ignore it) | **advised** |
 | subagent follows guards | **enforced** (hooks fire in subagents) | **assumed**; check in Phase 5 |
 
@@ -652,9 +670,9 @@ Rough estimates are for two people. Each phase ends with something you can run.
 
 | Phase | Builds | Exit test (all must pass) | Est. |
 |---|---|---|---|
-| **0. Test the engines** | Throwaway scripts in `spike/`. Findings doc. Recorded fixtures. | P0.1–P0.8 pass (§14). **Kill switch K1:** if a gate can't block a Claude edit by any documented route, stop and rethink (fallback: the Agent SDK with an API key). | 2–3 days |
+| **0. Test the engines** | Throwaway scripts in `spike/`. Findings doc. Recorded fixtures. | **Done 2026-09-24**, K1 passed; see `docs/spike/2026-09-24-engine-findings.md`. P0.1–P0.8 pass (§14). **Kill switch K1:** if a gate can't block a Claude edit by any documented route, stop and rethink (fallback: the Agent SDK with an API key). | 2–3 days |
 | **1. Core** | `packages/core`: model, format, conditions, validator, compiler, run engine, drift rules, receipt, FakeEngine. | All core tests green. The 4 mockup workflows parse, validate, print back byte-for-byte, and run end-to-end on FakeEngine with the right receipts. | 1–1.5 weeks |
-| **2. Claude adapter + terminal runner** | `packages/server`: Claude adapter, hook endpoint, approval MCP, command runner, store, `reins run` / `check` / `print` / `doctor`. | `reins run examples/upload-retry.reins.md` on a real repo: read-only plan step blocks an edit, gate waits for your terminal approval, guard blocks a `migrations/` edit, test loop stops at max and asks, typed live card arrives mid-turn, receipt printed. **Dogfood starts.** | 1.5 weeks |
+| **2. Claude adapter + terminal runner** | `packages/server`: Claude adapter, hook endpoint, approval MCP, command runner, store, `reins run` / `check` / `print` / `doctor`. | `reins run examples/upload-retry.reins.md` on a real repo: read-only plan step blocks an edit, gate waits for your terminal approval, guard blocks a `migrations/` edit, test loop stops at max and asks, a typed steer card is followed mid-turn, a `now` card interrupts and is followed, a `stop` card halts the run, receipt printed. **Dogfood starts.** | 1.5 weeks |
 | **3. Server + first UI** | HTTP/SSE API, session list, chat with normal prompting, approvals in the UI, Text view with diagnostics, receipt. | You can do the Phase 2 run from the browser only, including approving and dropping a card. Two sessions run side by side. | 1.5–2 weeks |
 | **4. Blocks, Map, Block panel** | Port the mockup editor onto the real model. | Every mockup interaction works on real files: snap and nest, move, delete, condition slots, links, My blocks, Always box, auto cards, live edit during a run. Each edit round-trips through the text. The smoke test passes. **Kill switch K3** measured after a week (below). | 2 weeks |
 | **5. Codex adapter** | Codex app-server adapter, ChatGPT login flow through Codex, per-card enforcement labels for Codex. | Phase 2's exit test passes on Codex. `turn/steer` delivers mid-turn. | 1 week |
@@ -897,6 +915,120 @@ export interface Diagnostic { severity: 'error'|'warning'; message: string; pos:
 ### 1.9 Phase 1 exit
 
 **Check:** `npm test` is green on three OSes. All four example workflows run end to end on `FakeEngine` and give the expected receipts. Commit. Write the Phase 2 task list (like this section) for review.
+
+---
+
+## 15b. Phase 2: detailed tasks
+
+**Goal:** `reins run <file>` drives the real `claude` on a real repo, with every control from the Phase 2 exit test in §13. No UI, and no HTTP API for users yet. The only HTTP is the hook endpoint Claude calls.
+
+**Where:** branch `feat/claude-adapter`, worktree `D:/coding/reins-wt-claude`. New package `packages/server`. Same rules as Phase 1:
+- Write tests first, and check each fails for the right reason.
+- Never weaken a test.
+- No new runtime dependencies beyond `yaml` and `picomatch`: `node:sqlite`, `node:http`, `node:child_process` and `node:readline` cover the rest.
+
+**Ground truth:** `docs/spike/2026-09-24-engine-findings.md` and the `spike/` scripts. When this plan and the findings disagree, the findings win.
+
+### 2.1 Core changes (small, in `packages/core`)
+
+- **Card kinds:**
+  - `queueCard(text, kind: 'steer'|'now'|'stop' = 'steer')`.
+  - `now` means: the run calls `session.interrupt()`, then sends the card as the next turn, then resumes the step.
+  - `stop` means: interrupt, set `status = 'paused'`, and set `pauseReason = {type:'stop', text}`.
+  - Events: `card_delivered` gets `channel: 'mid-turn'|'next-turn'|'interrupt'`.
+- **Auto cards:** the `now:` and `stop:` lines in the parser, printer and validator, with round-trip tests.
+- **Guard path matching:** normalise `\` to `/`, and make paths relative to the run's cwd before running picomatch. Test with a Windows absolute path such as `D:\repo\migrations\0001.sql` against `migrations/**`.
+- **The shell tool:** policy checks treat `Bash` and `PowerShell` as the same tool.
+
+### 2.2 `packages/server` skeleton
+
+- `package.json` with `bin: { reins: dist/cli.js }`, `engines: node >=22`, and a dependency on `@reins/core` through the workspace.
+- `src/cli.ts`: argument parsing by hand; the command set is small.
+- `test/`: vitest, as in core.
+
+### 2.3 Claude adapter (`src/claude/`)
+
+- **`findClaude()`:**
+  - Resolve the real `claude.exe` (Windows) or `claude` binary. Never spawn the npm `.cmd` shim, because an interrupt through it orphans the child.
+  - Order: the `REINS_CLAUDE` env var, then `claude` on PATH resolved through its shim to the npm package's `bin/claude.exe`, then the native installer path.
+  - `reins doctor` prints which one it found and its version.
+- **`probe()`:**
+  - `claude --version`.
+  - Run a one-turn `-p` call with `--output-format json`.
+  - Treat `apiKeySource: none` with a successful result as "logged in on a subscription".
+  - An auth error means "not logged in", and prints the D4 message.
+  - Never read credential files.
+- **`open()`:**
+  - Write three temp files: the settings (HTTP hooks → `POST /hook/<runToken>`), the MCP config (the `reins mcp --run <id>` approval server), and the card trust note (with a per-session nonce, §8.2).
+  - Spawn with `shell: false` and the flags in §8.2.
+  - `--model` and `--effort` come from the workflow's frontmatter or CLI flags.
+- **Stream parser:** turns stream-json lines into `EngineEvent`s.
+  - `assistant/tool_use` → `tool_call`.
+  - `user/tool_result` → `tool_result`, with `is_error` plus the "hook" text → `refusal`.
+  - `assistant/text` → `text`.
+  - `result` → turn end, `cost`.
+  - Ignore `system/init` after an interrupt, and ignore hook lifecycle noise.
+  - **Tests:** replay every `spike/fixtures/claude-*.jsonl` through the parser and assert the event sequence. These are recorded real streams, so no fake shapes are allowed.
+- **`interrupt()`:** stdin `control_request` interrupt, then wait for the `result`. If none arrives in 10 s, `taskkill /T /F` (Windows) or kill the process group, and mark the session dead.
+- **Hook endpoint (`src/hooks.ts`):**
+  - Bind to `127.0.0.1`, on a random port, with a per-run token in the path. Reject a wrong token or `Host`.
+  - `PreToolUse`: `policy()`, then `permissionDecision: deny` with the reason, or `{}`.
+  - `PostToolUse`: drain the steer cards, wrap each in the nonce marker, and return `additionalContext`.
+  - Log every call as an event.
+- **Approval MCP (`reins mcp --run <id>`):**
+  - A stdio JSON-RPC server with one tool, `approve`. The shape is from `spike/approve-mcp.mjs`, with no MCP SDK.
+  - It forwards to the run's hook server (`POST /approve/<runToken>`) and blocks until the terminal answers.
+  - It returns `{behavior:'allow', updatedInput}` or `{behavior:'deny', message}`.
+
+### 2.4 Command runner and judges (`src/commands.ts`)
+
+- Runs `run` steps and `` `cmd` passes `` atoms: with a shell, in the run's cwd, with a timeout (default 10 min), capturing output (the last 200 lines go to the evidence).
+- **Phase 2 judge:** `llm` and `review` conditions ask **you** in the terminal (`y/n + note`). The real LLM and reviewer judges are Phase 6. The run log records that you judged it.
+
+### 2.5 Store (`src/store.ts`)
+
+- `node:sqlite` at `~/.reins/reins.db`, with tables `runs` and `events` (append-only). Keep `Run.snapshot()` after every event.
+- `reins run --resume <runId>` restores the run and opens a new claude session with `--resume <sessionId>`.
+
+### 2.6 `reins run` in the terminal (`src/run-cli.ts`)
+
+- Stream agent text and tool calls. Prefix refusals with `⛔` and cards with `▶`.
+- **Gate:** print the gate and the evidence, then prompt `approve / changes <note> / stop`.
+- **Budget stop:** prompt `allow <n> more / stop`.
+- **Approval request:** print the tool and a short input summary, then prompt `y / n <reason>`.
+- **Typing while a turn runs:**
+  - Plain text sends a steer card.
+  - `/now <text>` sends a now card.
+  - `/stop` sends a stop card.
+  - Ctrl-C once sends a stop card; Ctrl-C twice kills the run.
+- At the end, print the receipt and the run id.
+- `--yes` auto-approves gates (for CI or demos). It never auto-approves guard refusals.
+
+### 2.7 `reins check`, `print`, `doctor`
+
+- `check`: validate and print diagnostics as `file:line:col`. Exit 1 on errors.
+- `print`: the formatter. Write to stdout, or with `--write`, back to the file.
+- `doctor`:
+  - node ≥ 22 and `node:sqlite`.
+  - claude path, version and login.
+  - codex path, version and login (information only in Phase 2).
+  - knowl on PATH.
+  - Global Claude hooks that will run inside Reins sessions (from Phase 0).
+
+### 2.8 Tests
+
+- **Unit:** the stream parser against the spike fixtures, the hook endpoint (token, Host, deny, cards), the approval MCP wire format, the command runner timeout, the store round-trip.
+- **Fake-claude integration:** a tiny Node script that behaves like `claude -p` stream-json by replaying a fixture and calling the hooks at the right moments. The whole `reins run` path runs against it in CI, on Windows too.
+- **Real e2e (`REINS_E2E=1`, costs money, run by hand):** `examples/upload-retry.reins.md` against `D:/coding/reins-scratch` with Sonnet 5 at medium effort. Each item in the exit test below is an assertion on the event log, not on the model's words. It also checks that **a forged card marker without the nonce is refused** (§8.2).
+
+### 2.9 Phase 2 exit
+
+The §13 exit test, run for real by the user on the scratch repo and on one real repo of theirs, plus:
+- CI green on Windows and Linux.
+- The receipt counts match the event log.
+- No orphaned `claude.exe` after the run (check with `tasklist`).
+
+Then **dogfood starts** and K2 is measured.
 
 ---
 
