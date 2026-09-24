@@ -1,0 +1,1 @@
+{"hooks":{"PreToolUse":[{"matcher":"Edit|Write|MultiEdit","hooks":[{"type":"command","command":"\"D:/nodejs/node.exe\" \"D:/coding/reins-wt-spike/spike/hook-cmd.mjs\"","timeout":30}]}],"PostToolUse":[{"hooks":[{"type":"command","command":"\"D:/nodejs/node.exe\" \"D:/coding/reins-wt-spike/spike/hook-cmd.mjs\"","timeout":30}]}]}}
