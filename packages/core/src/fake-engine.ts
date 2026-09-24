@@ -1,5 +1,5 @@
-import picomatch from 'picomatch';
 import type { Policy } from './compile.js';
+import { checkTool } from './policy.js';
 
 export interface EngineProbe {
   installed: boolean;
@@ -40,7 +40,9 @@ export type EngineEvent =
   | { type: 'refusal'; reason: string }
   | { type: 'card_delivered'; card: string; channel: 'mid-turn' | 'next-turn' }
   | { type: 'cost'; usd: number }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  // One adapter-side control call (a hook or an approval), so every call lands in the run log.
+  | { type: 'hook'; event: string; tool?: string; decision: string; reason?: string };
 
 export interface TurnResult {
   text: string;
@@ -130,27 +132,9 @@ export class FakeEngine implements Engine {
                 policy,
               });
 
-              // Check read-only policy
-              const isWriteTool = !['Read', 'Glob', 'Grep'].includes(ev.tool!);
-              if (policy.mode === 'read-only' && isWriteTool) {
-                const refusal: EngineEvent = {
-                  type: 'refusal',
-                  reason:
-                    'Blocked by Reins: step is read-only. Finish the plan; edits unlock after the gate.',
-                };
-                turnEvents.push(refusal);
-                continue;
-              }
-
-              // Check guards
-              const filePath = ev.input?.file_path || ev.input?.path || '';
-              const isGuarded = policy.guards.some((g) => picomatch(g)(filePath));
-              if (isGuarded) {
-                const refusal: EngineEvent = {
-                  type: 'refusal',
-                  reason: `Blocked by Reins: ${filePath} is guarded.`,
-                };
-                turnEvents.push(refusal);
+              const reason = checkTool(policy, ev.tool!, ev.input, opts.cwd ?? '');
+              if (reason) {
+                turnEvents.push({ type: 'refusal', reason });
                 continue;
               }
 

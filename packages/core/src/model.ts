@@ -1,5 +1,6 @@
 export type StepKind = 'phase' | 'say' | 'run' | 'gate' | 'repeat' | 'if' | 'verify' | 'use' | 'recall' | 'store' | 'handoff';
-export type CardKind = 'guard' | 'note' | 'nudge' | 'role' | 'checkpoint' | 'budget' | 'undo';
+// now and stop are delivery kinds, only valid in a `whenever` block (plan 6.5).
+export type CardKind = 'guard' | 'note' | 'nudge' | 'role' | 'checkpoint' | 'budget' | 'undo' | 'now' | 'stop';
 export type LinkKind = 'next' | 'on-pass' | 'on-fail' | 'retry' | 'verify-against' | 'hand-off';
 
 export interface Pos {

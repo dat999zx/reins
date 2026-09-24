@@ -4,6 +4,7 @@ export * from './format/parse.js';
 export * from './format/print.js';
 export * from './validate.js';
 export * from './compile.js';
+export * from './policy.js';
 export * from './fake-engine.js';
 export * from './run.js';
 export * from './drift.js';

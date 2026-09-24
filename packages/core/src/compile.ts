@@ -9,7 +9,8 @@ export interface Policy {
 
 export type Instr =
   | { op: 'RECALL'; step: string; topics: string[] }
-  | { op: 'TURN'; step: string; policy: Policy }
+  // src: the step as compiled (block steps prefixed), so a step inlined by `use` keeps its prompt.
+  | { op: 'TURN'; step: string; policy: Policy; src?: Step }
   | { op: 'GATE'; step: string; cond: Cond }
   | { op: 'LOOP_IN'; step: string; max: number }
   | {
@@ -165,6 +166,7 @@ export function compileProgram(
           guards,
           allowShell: true,
         },
+        src: step,
       });
     } else if (step.kind === 'gate') {
       instrs.push({

@@ -204,6 +204,16 @@ export function validate(
       }
     }
 
+    for (const card of step.cards) {
+      if (card.kind === 'now' || card.kind === 'stop') {
+        diagnostics.push({
+          severity: 'error',
+          message: `"${card.kind}:" is only allowed in a whenever block`,
+          pos: card.pos || pos,
+        });
+      }
+    }
+
     // Rule 8: glob that won't compile
     for (const card of step.cards) {
       if (card.kind === 'guard') {

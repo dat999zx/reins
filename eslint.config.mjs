@@ -5,7 +5,14 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    ignores: ['**/dist/**', '**/node_modules/**', 'docs/**'],
+    // spike/ is Phase 0's throwaway code, kept as recorded; it is not linted.
+    ignores: ['**/dist/**', '**/node_modules/**', 'docs/**', 'spike/**'],
+  },
+  {
+    files: ['**/*.mjs'],
+    languageOptions: {
+      globals: { process: 'readonly', console: 'readonly', setTimeout: 'readonly', clearTimeout: 'readonly', fetch: 'readonly', structuredClone: 'readonly' },
+    },
   },
   {
     rules: {

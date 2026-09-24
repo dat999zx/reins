@@ -31,6 +31,8 @@ const KNOWN_CARD_KINDS: Set<CardKind> = new Set([
   'checkpoint',
   'budget',
   'undo',
+  'now',
+  'stop',
 ]);
 
 const KNOWN_LINK_KINDS: Set<LinkKind> = new Set([

@@ -10,6 +10,7 @@
     "packages/*"
   ],
   "scripts": {
+    "build": "npm run build -w @reins/core && npm run build -w @reins/server",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run"

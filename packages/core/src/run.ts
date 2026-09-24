@@ -2,6 +2,7 @@ import picomatch from 'picomatch';
 import type { Workflow, Step, Cond } from './model.js';
 import { compileProgram, compileTurn, type Instr, type Policy } from './compile.js';
 import type { Engine, EngineSession, TurnResult } from './fake-engine.js';
+import { relPath } from './policy.js';
 import { repeatedAction, stagnation, editBeforePlan, sameError } from './drift.js';
 
 export type RunStatus = 'running' | 'paused' | 'done' | 'stopped';
@@ -13,12 +14,17 @@ export interface PauseReason {
     | 'link-budget-used'
     | 'run-turn-budget-used'
     | 'agent-blocked'
-    | 'step-deleted';
+    | 'step-deleted'
+    | 'stop';
   stepId?: string;
   cond?: Cond;
   limit?: number;
   reason?: string;
+  text?: string;
 }
+
+/** steer: slipped in mid-turn. now: interrupt, then sent as the next turn. stop: interrupt and pause. */
+export type LiveCardKind = 'steer' | 'now' | 'stop';
 
 export interface RunEventRecord {
   id: string;
@@ -46,7 +52,9 @@ export interface RunEventRecord {
     | 'store'
     | 'handoff'
     | 'budget_warning'
-    | 'engine_cost';
+    | 'engine_cost'
+    | 'hook'
+    | 'judge';
   data: any;
 }
 
@@ -66,9 +74,14 @@ export interface RunOptions {
   recall?: (topics: string[]) => Promise<string[]>;
   store?: (what: string, summary: string) => Promise<void>;
   diffLines?: () => Promise<number>;
+  /** The project folder: passed to the engine, and guard paths are matched relative to it. */
+  cwd?: string;
+  /** Called for every event as it is logged (the store persists them). */
+  onEvent?: (ev: RunEventRecord) => void;
 }
 
 export interface RunSnapshot {
+  sessionId?: string;
   workflow: Workflow;
   programCounter: number;
   status: RunStatus;
@@ -116,6 +129,11 @@ export class Run {
   private recall?: (topics: string[]) => Promise<string[]>;
   private storeFn?: (what: string, summary: string) => Promise<void>;
   private diffLines?: () => Promise<number>;
+  private cwd?: string;
+  private onEvent?: (ev: RunEventRecord) => void;
+  private resumeSessionId?: string;
+  private turnInFlight = false;
+  private interruptCard?: { text: string; kind: 'now' | 'stop' };
 
   constructor(opts: RunOptions) {
     this.workflow = opts.workflow;
@@ -128,6 +146,8 @@ export class Run {
     this.recall = opts.recall;
     this.storeFn = opts.store;
     this.diffLines = opts.diffLines;
+    this.cwd = opts.cwd;
+    this.onEvent = opts.onEvent;
 
     this.program = compileProgram(this.workflow, this.resolveBlock);
 
@@ -140,12 +160,14 @@ export class Run {
   }
 
   private logEvent(type: RunEventRecord['type'], data: any) {
-    this.events.push({
+    const ev: RunEventRecord = {
       id: `ev-${this.events.length + 1}`,
       timestamp: this.now(),
       type,
       data,
-    });
+    };
+    this.events.push(ev);
+    this.onEvent?.(ev);
   }
 
   getEvents(): RunEventRecord[] {
@@ -155,6 +177,8 @@ export class Run {
   private async ensureSession(): Promise<EngineSession> {
     if (!this.engineSession) {
       this.engineSession = await this.engine.open({
+        ...(this.cwd !== undefined ? { cwd: this.cwd } : {}),
+        ...(this.resumeSessionId ? { sessionId: this.resumeSessionId } : {}),
         policy: () => this.currentPolicy,
         pendingCards: () => {
           const cards = [...this.pendingCards];
@@ -177,6 +201,9 @@ export class Run {
           this.logEvent('tool_call', { tool: ev.tool, input: ev.input });
         } else if (ev.type === 'cost') {
           this.logEvent('engine_cost', { usd: ev.usd });
+        } else if (ev.type === 'hook') {
+          const { type: _t, ...data } = ev;
+          this.logEvent('hook', data);
         }
       }
     }
@@ -185,9 +212,99 @@ export class Run {
     }
   }
 
-  queueCard(cardText: string) {
-    this.pendingCards.push(cardText);
-    this.logEvent('card_queued', { card: cardText });
+  /**
+   * Queue a card (plan 6.5). steer waits for the next delivery chance (mid-turn, else the next
+   * turn's text). now and stop interrupt a running turn; with no turn running, now waits for the
+   * next turn and stop pauses before the next step.
+   */
+  queueCard(cardText: string, kind: LiveCardKind = 'steer', source: 'live' | 'auto' = 'live') {
+    this.logEvent('card_queued', { card: cardText, kind, source });
+    if (kind === 'steer') {
+      this.pendingCards.push(cardText);
+    } else if (this.turnInFlight && this.engineSession) {
+      this.interruptCard = { text: cardText, kind };
+      this.engineSession.interrupt().catch(() => {});
+    } else if (kind === 'now') {
+      this.pendingCards.push(cardText);
+    } else if (this.status === 'running') {
+      this.pauseForStop(cardText);
+    }
+  }
+
+  private pauseForStop(text: string) {
+    this.status = 'paused';
+    this.pauseReason = { type: 'stop', text };
+    this.logEvent('run_paused', { reason: 'stop', text });
+  }
+
+  /**
+   * "Request changes" at a gate (plan 7): send the note as a turn with every write locked
+   * (Policy.pendingGate), then stay paused so the gate asks again.
+   */
+  async requestChanges(note: string) {
+    if (this.status !== 'paused' || this.pauseReason?.type !== 'gate') return;
+    const gate = this.pauseReason;
+    const session = await this.ensureSession();
+    this.currentPolicy = { ...this.currentPolicy, pendingGate: gate.stepId ?? 'gate' };
+    this.logEvent('card_delivered', { card: note, channel: 'next-turn', source: 'gate-changes' });
+    const result = await this.runTurn(
+      session,
+      gate.stepId ?? 'gate',
+      `[Reins · workflow "${this.workflow.name}" · the user asked for changes before approving]\n\n${note}\n\n` +
+        'When you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n'
+    );
+    // A stop card during the turn replaced the gate pause; otherwise the gate still waits.
+    if (result) {
+      // The revised reply replaces the step's output, so verify quotes the plan as approved.
+      if (this.lastStepId) this.turnOutputs.set(this.lastStepId, result.text);
+      this.status = 'paused';
+      this.pauseReason = gate;
+    }
+  }
+
+  /** Go on after a stop card or an agent's `REINS: blocked`: the paused step runs again. */
+  resume() {
+    if (this.status === 'paused' && (this.pauseReason?.type === 'stop' || this.pauseReason?.type === 'agent-blocked')) {
+      this.status = 'running';
+      this.pauseReason = undefined;
+      this.logEvent('run_resumed', {});
+    }
+  }
+
+  /**
+   * Send one turn. A now card that interrupted it is sent as the next turn and the step goes
+   * on; a stop card pauses the run and returns undefined.
+   */
+  private async runTurn(session: EngineSession, stepId: string, text: string): Promise<TurnResult | undefined> {
+    let turnText = text;
+    for (;;) {
+      this.logEvent('turn_started', { step: stepId });
+      this.turnInFlight = true;
+      let result: TurnResult;
+      try {
+        result = await session.turn(turnText);
+      } finally {
+        this.turnInFlight = false;
+      }
+      this.totalTurns++;
+      this.lastTurnText = result.text;
+      this.handleTurnResult(result);
+      this.logEvent('turn_ended', { step: stepId, text: result.text, cost: result.cost });
+
+      const card = this.interruptCard;
+      if (!card) return result;
+      this.interruptCard = undefined;
+      this.logEvent('card_delivered', { card: card.text, kind: card.kind, channel: 'interrupt' });
+      if (card.kind === 'stop') {
+        this.pauseForStop(card.text);
+        return undefined;
+      }
+      const statusAt = text.lastIndexOf('When you finish this step');
+      turnText =
+        `[Reins · a card from the user, sent while you worked]\n\n${card.text}\n\n` +
+        'Then carry on with the step you were on.\n\n' +
+        (statusAt >= 0 ? text.slice(statusAt) : '');
+    }
   }
 
   approve() {
@@ -204,6 +321,10 @@ export class Run {
       const stepId = this.pauseReason.stepId!;
       const extra = this.loopLimitExtensions.get(stepId) || 0;
       this.loopLimitExtensions.set(stepId, extra + n);
+      // The attempt that used up the budget is already counted: go straight back into the loop
+      // body, or allowMore(1) would count it again and pause at once.
+      const instr = this.program[this.programCounter];
+      if (instr?.op === 'LOOP_BK') this.programCounter = instr.target;
       this.status = 'running';
       this.pauseReason = undefined;
       this.logEvent('run_resumed', { allowMore: n });
@@ -226,7 +347,8 @@ export class Run {
       const applyResult = (isCondTrue: boolean) => {
         const isArmed = this.autoArmed.get(auto.id) ?? true;
         if (isCondTrue && isArmed) {
-          this.queueCard(auto.card.text);
+          const k = auto.card.kind;
+          this.queueCard(auto.card.text, k === 'now' || k === 'stop' ? k : 'steer', 'auto');
           this.autoArmed.set(auto.id, false);
         } else if (!isCondTrue) {
           this.autoArmed.set(auto.id, true);
@@ -282,7 +404,7 @@ export class Run {
         return this.events.some((ev) => {
           if (ev.type !== 'tool_call') return false;
           const p = ev.data?.input?.file_path || ev.data?.input?.path;
-          return typeof p === 'string' && isMatch(p);
+          return typeof p === 'string' && isMatch(relPath(p, this.cwd ?? ''));
         });
       }
       case 'drift': {
@@ -365,7 +487,9 @@ export class Run {
       case 'review': {
         // Plan 7.3: no judge means "no", everywhere (gate, repeat, if). Never pass by default.
         if (!this.judge) return false;
-        return await this.judge(c, { lastText: this.lastTurnText ?? '' });
+        const answer = await this.judge(c, { lastText: this.lastTurnText ?? '' });
+        this.logEvent('judge', { cond: c, answer });
+        return answer;
       }
       case 'done': {
         if (!this.lastTurnText) return false;
@@ -395,7 +519,7 @@ export class Run {
         return this.events.some((ev) => {
           if (ev.type !== 'tool_call') return false;
           const p = ev.data?.input?.file_path || ev.data?.input?.path;
-          return typeof p === 'string' && isMatch(p);
+          return typeof p === 'string' && isMatch(relPath(p, this.cwd ?? ''));
         });
       }
       case 'drift': {
@@ -448,7 +572,9 @@ export class Run {
   }
 
   snapshot(): RunSnapshot {
+    const sessionId = this.engineSession?.sessionId ?? this.resumeSessionId;
     return {
+      ...(sessionId ? { sessionId } : {}),
       workflow: JSON.parse(JSON.stringify(this.workflow)),
       programCounter: this.programCounter,
       status: this.status,
@@ -478,8 +604,12 @@ export class Run {
       recall: opts.recall,
       store: opts.store,
       diffLines: opts.diffLines,
+      cwd: opts.cwd,
     });
 
+    // Set after construction so the constructor's own run_started is not reported again.
+    run.onEvent = opts.onEvent;
+    run.resumeSessionId = snapshot.sessionId;
     run.programCounter = snapshot.programCounter;
     run.status = snapshot.status;
     run.pauseReason = snapshot.pauseReason;
@@ -503,11 +633,20 @@ export class Run {
   }
 
   async stop(): Promise<void> {
-    if (this.engineSession) {
-      await this.engineSession.interrupt();
-    }
+    if (this.status === 'stopped') return;
+    // Stopped before the interrupt is awaited, so a second stop() meanwhile is a no-op.
     this.status = 'stopped';
     this.logEvent('run_stopped', {});
+    await this.engineSession?.interrupt();
+  }
+
+  /** End the engine session (the claude process). */
+  async close(): Promise<void> {
+    const s = this.engineSession;
+    this.engineSession = undefined;
+    // Keep the id: the snapshot needs it, and a later turn resumes this session.
+    if (s) this.resumeSessionId = s.sessionId;
+    await s?.close();
   }
 
   private findStepById(steps: Step[], id: string): Step | undefined {
@@ -588,7 +727,7 @@ export class Run {
         const session = await this.ensureSession();
 
         // Find step model
-        const rawStep = this.findStepById(this.workflow.steps, instr.step);
+        const rawStep = instr.src ?? this.findStepById(this.workflow.steps, instr.step);
         const stepModel: Step = rawStep || {
           id: instr.step,
           kind: 'phase',
@@ -625,13 +764,9 @@ export class Run {
           recallContext: recallCtx.length > 0 ? recallCtx : undefined,
         });
 
-        this.logEvent('turn_started', { step: instr.step });
-        const result = await session.turn(turnText);
-        this.totalTurns++;
+        const result = await this.runTurn(session, instr.step, turnText);
+        if (!result) return this.status;
         this.turnOutputs.set(instr.step, result.text);
-        this.lastTurnText = result.text;
-        this.handleTurnResult(result);
-        this.logEvent('turn_ended', { step: instr.step, text: result.text, cost: result.cost });
 
         await this.checkAutoCards();
 
@@ -698,6 +833,7 @@ export class Run {
 
         const attempts = (this.loopCounters.get(instr.step) || 0) + 1;
         this.loopCounters.set(instr.step, attempts);
+        this.logEvent('loop_iteration', { step: instr.step, attempts });
 
         // Find loop_in instruction for max
         const loopIn = this.program.find(
@@ -743,12 +879,8 @@ export class Run {
           always: this.workflow.always,
         });
 
-        this.logEvent('turn_started', { step: instr.step });
-        const result = await session.turn(turnText);
-        this.totalTurns++;
-        this.lastTurnText = result.text;
-        this.handleTurnResult(result);
-        this.logEvent('turn_ended', { step: instr.step, text: result.text, cost: result.cost });
+        const result = await this.runTurn(session, instr.step, turnText);
+        if (!result) return this.status;
 
         const isFail = result.text.includes('REINS: fail');
         this.logEvent('verify_result', { pass: !isFail });
@@ -795,12 +927,8 @@ export class Run {
           always: this.workflow.always,
         });
 
-        this.logEvent('turn_started', { step: instr.step });
-        const result = await session.turn(turnText);
-        this.totalTurns++;
-        this.lastTurnText = result.text;
-        this.handleTurnResult(result);
-        this.logEvent('turn_ended', { step: instr.step, text: result.text, cost: result.cost });
+        const result = await this.runTurn(session, instr.step, turnText);
+        if (!result) return this.status;
 
         const summary = result.text
           .split(/\r?\n/)
@@ -843,12 +971,8 @@ export class Run {
           always: this.workflow.always,
         });
 
-        this.logEvent('turn_started', { step: instr.step });
-        const result = await session.turn(turnText);
-        this.totalTurns++;
-        this.lastTurnText = result.text;
-        this.handleTurnResult(result);
-        this.logEvent('turn_ended', { step: instr.step, text: result.text, cost: result.cost });
+        const result = await this.runTurn(session, instr.step, turnText);
+        if (!result) return this.status;
 
         const summary = result.text
           .split(/\r?\n/)

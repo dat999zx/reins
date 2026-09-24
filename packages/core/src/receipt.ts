@@ -74,7 +74,7 @@ export function receipt(events: RunEventRecord[]): Receipt {
         loopAttempts++;
         break;
       case 'card_queued':
-        autoCardsFired++;
+        if (ev.data?.source !== 'live') autoCardsFired++;
         break;
       case 'card_delivered':
         liveCardsDelivered++;
