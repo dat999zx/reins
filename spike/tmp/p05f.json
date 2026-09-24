@@ -1,0 +1,1 @@
+{"hooks":{"PostToolUse":[{"hooks":[{"type":"http","url":"http://127.0.0.1:47123/hook","timeout":30}]}]}}
