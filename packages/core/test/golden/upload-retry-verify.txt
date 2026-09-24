@@ -1,0 +1,11 @@
+[Reins · workflow "upload-retry" · step 6 of 9: verify]
+
+Always:
+- No new dependencies.
+- Keep functions under 40 lines.
+
+Compare what you built against step "plan".
+List anything missing or extra.
+
+When you finish this step, end your reply with exactly one line:
+REINS: pass | fail: <what is missing>
