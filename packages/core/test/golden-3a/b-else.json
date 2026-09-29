@@ -1,0 +1,18 @@
+[
+  {
+    "message": "An else cannot appear outside an if",
+    "pos": {
+      "col": 1,
+      "line": 1
+    },
+    "severity": "error"
+  },
+  {
+    "message": "Unknown step kind \"else\"",
+    "pos": {
+      "col": 1,
+      "line": 1
+    },
+    "severity": "error"
+  }
+]

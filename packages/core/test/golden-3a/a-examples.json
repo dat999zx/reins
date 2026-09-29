@@ -1,0 +1,795 @@
+{
+  "bug-fix": {
+    "program": [
+      {
+        "op": "TURN",
+        "policy": {
+          "allowShell": true,
+          "guards": [],
+          "mode": "write"
+        },
+        "src": {
+          "attrs": {},
+          "cards": [
+            {
+              "kind": "note",
+              "pos": {
+                "col": 6,
+                "line": 11
+              },
+              "text": "write a failing test first"
+            }
+          ],
+          "id": "reproduce",
+          "kind": "phase",
+          "links": [],
+          "pos": {
+            "col": 1,
+            "line": 10
+          },
+          "prompt": "Write a test that reproduces the bug. It must fail for the right reason.",
+          "title": "reproduce"
+        },
+        "step": "reproduce",
+        "top": 0
+      },
+      {
+        "cond": {
+          "a": {
+            "t": "tests"
+          },
+          "t": "not"
+        },
+        "op": "GATE",
+        "step": "gate-1",
+        "top": 1
+      },
+      {
+        "max": 4,
+        "op": "LOOP_IN",
+        "step": "repeat-1",
+        "top": 2
+      },
+      {
+        "op": "TURN",
+        "policy": {
+          "allowShell": true,
+          "guards": [],
+          "mode": "write"
+        },
+        "src": {
+          "attrs": {},
+          "cards": [
+            {
+              "kind": "note",
+              "pos": {
+                "col": 6,
+                "line": 23
+              },
+              "text": "smallest change that works"
+            }
+          ],
+          "id": "fix",
+          "kind": "phase",
+          "links": [],
+          "pos": {
+            "col": 1,
+            "line": 22
+          },
+          "prompt": "Make the smallest change that makes the test pass.",
+          "title": "fix"
+        },
+        "step": "fix",
+        "top": 2
+      },
+      {
+        "cmd": "npm test",
+        "loopExit": 6,
+        "op": "RUN",
+        "repeatCond": {
+          "t": "tests"
+        },
+        "step": "run-1",
+        "top": 2
+      },
+      {
+        "op": "LOOP_BK",
+        "step": "repeat-1",
+        "target": 3,
+        "top": 2
+      },
+      {
+        "cond": {
+          "a": {
+            "n": 300,
+            "t": "diff"
+          },
+          "b": {
+            "glob": "src/core/**",
+            "t": "touches"
+          },
+          "t": "or"
+        },
+        "elseJump": 9,
+        "op": "IF",
+        "step": "if-1",
+        "top": 3
+      },
+      {
+        "cond": {
+          "t": "approve"
+        },
+        "op": "GATE",
+        "step": "gate-2",
+        "top": 3
+      },
+      {
+        "op": "JUMP",
+        "target": 10,
+        "top": 3
+      },
+      {
+        "op": "TURN",
+        "policy": {
+          "allowShell": true,
+          "guards": [],
+          "mode": "write"
+        },
+        "src": {
+          "attrs": {},
+          "cards": [],
+          "id": "say-1",
+          "kind": "say",
+          "links": [],
+          "pos": {
+            "col": 1,
+            "line": 35
+          },
+          "prompt": "Small fix. Explain the root cause in two sentences."
+        },
+        "step": "say-1",
+        "top": 3
+      },
+      {
+        "focus": "what broke and why",
+        "op": "HANDOFF",
+        "step": "handoff-1",
+        "to": "fresh session",
+        "top": 4
+      },
+      {
+        "op": "END"
+      }
+    ],
+    "turns": [
+      "[Reins · workflow \"bug-fix\" · step 1 of 5: reproduce]\n\nAlways:\n- Reproduce the bug before changing code.\n\nWrite a test that reproduces the bug. It must fail for the right reason.\n\nFor this step:\n- write a failing test first\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · workflow \"bug-fix\" · step 3 of 5: fix]\n\nAlways:\n- Reproduce the bug before changing code.\n\nMake the smallest change that makes the test pass.\n\nFor this step:\n- smallest change that works\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · workflow \"bug-fix\" · step 4 of 5: say]\n\nAlways:\n- Reproduce the bug before changing code.\n\nSmall fix. Explain the root cause in two sentences.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    ]
+  },
+  "safe-refactor": {
+    "program": [
+      {
+        "cmd": "npm test",
+        "op": "RUN",
+        "step": "run-1",
+        "top": 0
+      },
+      {
+        "op": "TURN",
+        "policy": {
+          "allowShell": true,
+          "guards": [],
+          "mode": "write"
+        },
+        "src": {
+          "attrs": {},
+          "cards": [
+            {
+              "kind": "note",
+              "pos": {
+                "col": 6,
+                "line": 14
+              },
+              "text": "list moves, no code"
+            }
+          ],
+          "id": "plan",
+          "kind": "phase",
+          "links": [],
+          "pos": {
+            "col": 1,
+            "line": 13
+          },
+          "prompt": "List every move you will make. No code yet.",
+          "title": "plan"
+        },
+        "step": "plan",
+        "top": 1
+      },
+      {
+        "cond": {
+          "t": "approve"
+        },
+        "op": "GATE",
+        "step": "gate-1",
+        "top": 2
+      },
+      {
+        "op": "TURN",
+        "policy": {
+          "allowShell": true,
+          "guards": [
+            "src/api/**"
+          ],
+          "mode": "write"
+        },
+        "src": {
+          "attrs": {},
+          "cards": [
+            {
+              "kind": "guard",
+              "pos": {
+                "col": 7,
+                "line": 21
+              },
+              "text": "src/api/**"
+            },
+            {
+              "kind": "note",
+              "pos": {
+                "col": 6,
+                "line": 22
+              },
+              "text": "move code, change nothing else"
+            }
+          ],
+          "id": "refactor",
+          "kind": "phase",
+          "links": [],
+          "pos": {
+            "col": 1,
+            "line": 20
+          },
+          "prompt": "Move code as planned. Do not change behaviour.",
+          "title": "refactor"
+        },
+        "step": "refactor",
+        "top": 3
+      },
+      {
+        "max": 3,
+        "op": "LOOP_IN",
+        "step": "repeat-1",
+        "top": 4
+      },
+      {
+        "cmd": "npm test",
+        "loopExit": 8,
+        "op": "RUN",
+        "repeatCond": {
+          "a": {
+            "t": "tests"
+          },
+          "b": {
+            "cmd": "npm run typecheck",
+            "t": "cmd"
+          },
+          "t": "and"
+        },
+        "step": "run-2",
+        "top": 4
+      },
+      {
+        "op": "TURN",
+        "policy": {
+          "allowShell": true,
+          "guards": [],
+          "mode": "write"
+        },
+        "src": {
+          "attrs": {},
+          "cards": [
+            {
+              "kind": "note",
+              "pos": {
+                "col": 6,
+                "line": 32
+              },
+              "text": "restore behaviour"
+            }
+          ],
+          "id": "fix",
+          "kind": "phase",
+          "links": [],
+          "pos": {
+            "col": 1,
+            "line": 31
+          },
+          "prompt": "Restore the old behaviour. Do not change the tests.",
+          "title": "fix"
+        },
+        "step": "fix",
+        "top": 4
+      },
+      {
+        "op": "LOOP_BK",
+        "step": "repeat-1",
+        "target": 5,
+        "top": 4
+      },
+      {
+        "against": "plan",
+        "op": "VERIFY",
+        "step": "verify-1",
+        "top": 5
+      },
+      {
+        "focus": "summary",
+        "op": "HANDOFF",
+        "step": "handoff-1",
+        "to": "fresh session",
+        "top": 6
+      },
+      {
+        "op": "END"
+      }
+    ],
+    "turns": [
+      "[Reins · workflow \"safe-refactor\" · step 2 of 7: plan]\n\nAlways:\n- Behaviour must not change.\n- No public API changes.\n\nList every move you will make. No code yet.\n\nFor this step:\n- list moves, no code\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · workflow \"safe-refactor\" · step 4 of 7: refactor]\n\nAlways:\n- Behaviour must not change.\n- No public API changes.\n\nMove code as planned. Do not change behaviour.\n\nFor this step:\n- Do not touch src/api/**. (Enforced: edits there are blocked.)\n- move code, change nothing else\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · workflow \"safe-refactor\" · step 5 of 7: fix]\n\nAlways:\n- Behaviour must not change.\n- No public API changes.\n\nRestore the old behaviour. Do not change the tests.\n\nFor this step:\n- restore behaviour\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    ]
+  },
+  "tdd-loop": {
+    "program": [
+      {
+        "op": "RECALL",
+        "step": "recall-1",
+        "top": 0,
+        "topics": [
+          "reports",
+          "csv"
+        ]
+      },
+      {
+        "max": 8,
+        "op": "LOOP_IN",
+        "step": "repeat-1",
+        "top": 1
+      },
+      {
+        "op": "TURN",
+        "policy": {
+          "allowShell": true,
+          "guards": [],
+          "mode": "write"
+        },
+        "src": {
+          "attrs": {},
+          "cards": [
+            {
+              "kind": "note",
+              "pos": {
+                "col": 6,
+                "line": 18
+              },
+              "text": "one failing test"
+            }
+          ],
+          "id": "red",
+          "kind": "phase",
+          "links": [],
+          "pos": {
+            "col": 1,
+            "line": 17
+          },
+          "prompt": "Write exactly one failing test for the next requirement.",
+          "title": "red"
+        },
+        "step": "red",
+        "top": 1
+      },
+      {
+        "cmd": "npm test",
+        "loopExit": 7,
+        "op": "RUN",
+        "repeatCond": {
+          "a": {
+            "q": "every requirement has a test",
+            "t": "llm"
+          },
+          "b": {
+            "t": "tests"
+          },
+          "t": "and"
+        },
+        "step": "run-1",
+        "top": 1
+      },
+      {
+        "op": "TURN",
+        "policy": {
+          "allowShell": true,
+          "guards": [],
+          "mode": "write"
+        },
+        "src": {
+          "attrs": {},
+          "cards": [
+            {
+              "kind": "note",
+              "pos": {
+                "col": 6,
+                "line": 24
+              },
+              "text": "make it pass"
+            }
+          ],
+          "id": "green",
+          "kind": "phase",
+          "links": [],
+          "pos": {
+            "col": 1,
+            "line": 23
+          },
+          "prompt": "Write the least code that makes the new test pass.",
+          "title": "green"
+        },
+        "step": "green",
+        "top": 1
+      },
+      {
+        "cmd": "npm test",
+        "loopExit": 7,
+        "op": "RUN",
+        "repeatCond": {
+          "a": {
+            "q": "every requirement has a test",
+            "t": "llm"
+          },
+          "b": {
+            "t": "tests"
+          },
+          "t": "and"
+        },
+        "step": "run-2",
+        "top": 1
+      },
+      {
+        "op": "LOOP_BK",
+        "step": "repeat-1",
+        "target": 2,
+        "top": 1
+      },
+      {
+        "op": "TURN",
+        "policy": {
+          "allowShell": true,
+          "guards": [],
+          "mode": "write"
+        },
+        "src": {
+          "attrs": {},
+          "cards": [
+            {
+              "kind": "note",
+              "pos": {
+                "col": 6,
+                "line": 7
+              },
+              "text": "as a harsh reviewer"
+            }
+          ],
+          "id": "review-pass/review",
+          "kind": "phase",
+          "links": [],
+          "pos": {
+            "col": 1,
+            "line": 6
+          },
+          "prompt": "Review the full diff as a harsh reviewer. List real problems only.",
+          "title": "review"
+        },
+        "step": "review-pass/review",
+        "top": 2
+      },
+      {
+        "op": "TURN",
+        "policy": {
+          "allowShell": true,
+          "guards": [],
+          "mode": "write"
+        },
+        "src": {
+          "attrs": {},
+          "cards": [
+            {
+              "kind": "note",
+              "pos": {
+                "col": 6,
+                "line": 11
+              },
+              "text": "only the real problems"
+            }
+          ],
+          "id": "review-pass/fix",
+          "kind": "phase",
+          "links": [],
+          "pos": {
+            "col": 1,
+            "line": 10
+          },
+          "prompt": "Fix the problems from the review. Nothing else.",
+          "title": "fix"
+        },
+        "step": "review-pass/fix",
+        "top": 2
+      },
+      {
+        "cond": {
+          "q": "no blocking issues left",
+          "t": "llm"
+        },
+        "op": "GATE",
+        "step": "review-pass/gate-1",
+        "top": 2
+      },
+      {
+        "focus": "summary",
+        "op": "HANDOFF",
+        "step": "handoff-1",
+        "to": "fresh session",
+        "top": 3
+      },
+      {
+        "op": "END"
+      }
+    ],
+    "turns": [
+      "[Reins · workflow \"tdd-loop\" · step 2 of 4: red]\n\nAlways:\n- One test at a time.\n\nWrite exactly one failing test for the next requirement.\n\nFor this step:\n- one failing test\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · workflow \"tdd-loop\" · step 2 of 4: green]\n\nAlways:\n- One test at a time.\n\nWrite the least code that makes the new test pass.\n\nFor this step:\n- make it pass\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · workflow \"tdd-loop\" · step 3 of 4: review]\n\nAlways:\n- One test at a time.\n\nReview the full diff as a harsh reviewer. List real problems only.\n\nFor this step:\n- as a harsh reviewer\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · workflow \"tdd-loop\" · step 3 of 4: fix]\n\nAlways:\n- One test at a time.\n\nFix the problems from the review. Nothing else.\n\nFor this step:\n- only the real problems\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    ]
+  },
+  "upload-retry": {
+    "program": [
+      {
+        "op": "RECALL",
+        "step": "recall-1",
+        "top": 0,
+        "topics": [
+          "upload",
+          "retry"
+        ]
+      },
+      {
+        "op": "TURN",
+        "policy": {
+          "allowShell": true,
+          "guards": [],
+          "mode": "read-only"
+        },
+        "src": {
+          "attrs": {
+            "mode": "read-only"
+          },
+          "cards": [],
+          "id": "plan",
+          "kind": "phase",
+          "links": [],
+          "pos": {
+            "col": 1,
+            "line": 15
+          },
+          "prompt": "Write a plan for adding retry to the upload endpoint.\nDo not write code. Output the plan as a numbered list, then stop.",
+          "title": "plan"
+        },
+        "step": "plan",
+        "top": 1
+      },
+      {
+        "cond": {
+          "t": "approve"
+        },
+        "op": "GATE",
+        "step": "gate-1",
+        "top": 2
+      },
+      {
+        "op": "TURN",
+        "policy": {
+          "allowShell": true,
+          "guards": [
+            "migrations/**"
+          ],
+          "mode": "write"
+        },
+        "src": {
+          "attrs": {},
+          "cards": [
+            {
+              "kind": "guard",
+              "pos": {
+                "col": 7,
+                "line": 24
+              },
+              "text": "migrations/**"
+            },
+            {
+              "kind": "note",
+              "pos": {
+                "col": 6,
+                "line": 25
+              },
+              "text": "Explain each change in one line."
+            }
+          ],
+          "id": "implement",
+          "kind": "phase",
+          "links": [],
+          "pos": {
+            "col": 1,
+            "line": 23
+          },
+          "prompt": "Implement the approved plan. Do not deviate; if you must, stop and say why.",
+          "title": "implement"
+        },
+        "step": "implement",
+        "top": 3
+      },
+      {
+        "max": 5,
+        "op": "LOOP_IN",
+        "step": "repeat-1",
+        "top": 4
+      },
+      {
+        "cmd": "npm test",
+        "loopExit": 8,
+        "onPassJump": 8,
+        "op": "RUN",
+        "repeatCond": {
+          "cmd": "npm test",
+          "t": "cmd"
+        },
+        "step": "run-1",
+        "top": 4
+      },
+      {
+        "op": "TURN",
+        "policy": {
+          "allowShell": true,
+          "guards": [],
+          "mode": "write"
+        },
+        "src": {
+          "attrs": {},
+          "cards": [],
+          "id": "fix",
+          "kind": "phase",
+          "links": [],
+          "pos": {
+            "col": 1,
+            "line": 34
+          },
+          "prompt": "Read the error output first. Fix the cause, not the symptom.",
+          "title": "fix"
+        },
+        "step": "fix",
+        "top": 4
+      },
+      {
+        "op": "LOOP_BK",
+        "step": "repeat-1",
+        "target": 5,
+        "top": 4
+      },
+      {
+        "against": "plan",
+        "linkMax": 2,
+        "onFailJump": 3,
+        "op": "VERIFY",
+        "step": "verify-1",
+        "top": 5
+      },
+      {
+        "op": "TURN",
+        "policy": {
+          "allowShell": true,
+          "guards": [],
+          "mode": "write"
+        },
+        "src": {
+          "attrs": {},
+          "cards": [
+            {
+              "kind": "note",
+              "pos": {
+                "col": 6,
+                "line": 7
+              },
+              "text": "as a harsh reviewer"
+            }
+          ],
+          "id": "review-pass/review",
+          "kind": "phase",
+          "links": [],
+          "pos": {
+            "col": 1,
+            "line": 6
+          },
+          "prompt": "Review the full diff as a harsh reviewer. List real problems only.",
+          "title": "review"
+        },
+        "step": "review-pass/review",
+        "top": 6
+      },
+      {
+        "op": "TURN",
+        "policy": {
+          "allowShell": true,
+          "guards": [],
+          "mode": "write"
+        },
+        "src": {
+          "attrs": {},
+          "cards": [
+            {
+              "kind": "note",
+              "pos": {
+                "col": 6,
+                "line": 11
+              },
+              "text": "only the real problems"
+            }
+          ],
+          "id": "review-pass/fix",
+          "kind": "phase",
+          "links": [],
+          "pos": {
+            "col": 1,
+            "line": 10
+          },
+          "prompt": "Fix the problems from the review. Nothing else.",
+          "title": "fix"
+        },
+        "step": "review-pass/fix",
+        "top": 6
+      },
+      {
+        "cond": {
+          "q": "no blocking issues left",
+          "t": "llm"
+        },
+        "op": "GATE",
+        "step": "review-pass/gate-1",
+        "top": 6
+      },
+      {
+        "op": "STORE",
+        "step": "store-1",
+        "top": 7,
+        "what": "decisions"
+      },
+      {
+        "focus": "summary for the next agent",
+        "op": "HANDOFF",
+        "step": "handoff-1",
+        "to": "fresh session",
+        "top": 8
+      },
+      {
+        "op": "END"
+      }
+    ],
+    "turns": [
+      "[Reins · workflow \"upload-retry\" · step 2 of 9: plan]\n\nAlways:\n- No new dependencies.\n- Keep functions under 40 lines.\n\nWrite a plan for adding retry to the upload endpoint.\nDo not write code. Output the plan as a numbered list, then stop.\n\nFor this step:\n- Step is read-only. (Enforced: no file edits or write commands are permitted.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · workflow \"upload-retry\" · step 4 of 9: implement]\n\nAlways:\n- No new dependencies.\n- Keep functions under 40 lines.\n\nImplement the approved plan. Do not deviate; if you must, stop and say why.\n\nFor this step:\n- Do not touch migrations/**. (Enforced: edits there are blocked.)\n- Explain each change in one line.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · workflow \"upload-retry\" · step 5 of 9: fix]\n\nAlways:\n- No new dependencies.\n- Keep functions under 40 lines.\n\nRead the error output first. Fix the cause, not the symptom.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · workflow \"upload-retry\" · step 7 of 9: review]\n\nAlways:\n- No new dependencies.\n- Keep functions under 40 lines.\n\nReview the full diff as a harsh reviewer. List real problems only.\n\nFor this step:\n- as a harsh reviewer\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · workflow \"upload-retry\" · step 7 of 9: fix]\n\nAlways:\n- No new dependencies.\n- Keep functions under 40 lines.\n\nFix the problems from the review. Nothing else.\n\nFor this step:\n- only the real problems\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    ]
+  }
+}
