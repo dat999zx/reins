@@ -276,7 +276,7 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
     say('\n── Receipt ──');
     say(`workflow ${r.workflow} · ${r.status} · ${r.totalTurns} turns · ${Math.round(r.totalTimeMs / 1000)} s · $${r.totalCostUsd.toFixed(4)}`);
     say(`gates held ${r.gatesHeld} · refusals ${r.totalRefusals} (guard ${r.guardRefusals}, read-only ${r.readOnlyRefusals}) · loop attempts ${r.loopAttempts}`);
-    say(`cards: live delivered ${r.liveCardsDelivered}, auto fired ${r.autoCardsFired} · verify ${r.verifyResults.passed} pass / ${r.verifyResults.failed} fail · Knowl ${r.knowlRecalls} recalls, ${r.knowlStores} stores`);
+    say(`cards: live delivered ${r.liveCardsDelivered}, auto fired ${r.autoCardsFired} · verify ${r.verifyResults.passed} pass / ${r.verifyResults.failed} fail · Knowl ${r.knowlRecalls} recalls, ${r.knowlStores} stores${r.knowlSkipped ? `, ${r.knowlSkipped} skipped` : ''}`);
     say(`run id ${runId}`);
   }
 

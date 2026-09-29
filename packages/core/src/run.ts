@@ -758,7 +758,7 @@ export class Run {
 
         const turnText = compileTurn(stepToCompile, {
           workflowName: this.workflow.name,
-          stepIndex: this.programCounter,
+          stepIndex: instr.top ?? 0,
           totalSteps: this.workflow.steps.length,
           always: this.workflow.always,
           recallContext: recallCtx.length > 0 ? recallCtx : undefined,
@@ -874,7 +874,7 @@ export class Run {
 
         const turnText = compileTurn(verifyStep, {
           workflowName: this.workflow.name,
-          stepIndex: this.programCounter,
+          stepIndex: instr.top ?? 0,
           totalSteps: this.workflow.steps.length,
           always: this.workflow.always,
         });
@@ -922,7 +922,7 @@ export class Run {
 
         const turnText = compileTurn(storeStep, {
           workflowName: this.workflow.name,
-          stepIndex: this.programCounter,
+          stepIndex: instr.top ?? 0,
           totalSteps: this.workflow.steps.length,
           always: this.workflow.always,
         });
@@ -966,7 +966,7 @@ export class Run {
 
         const turnText = compileTurn(handoffStep, {
           workflowName: this.workflow.name,
-          stepIndex: this.programCounter,
+          stepIndex: instr.top ?? 0,
           totalSteps: this.workflow.steps.length,
           always: this.workflow.always,
         });

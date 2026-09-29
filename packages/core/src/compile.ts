@@ -7,7 +7,9 @@ export interface Policy {
   pendingGate?: string;
 }
 
-export type Instr =
+// top: index of the top-level step this instruction belongs to (a repeat's inner steps and
+// steps inlined by `use` report their parent), so "step N of M" always counts the same things.
+export type Instr = (
   | { op: 'RECALL'; step: string; topics: string[] }
   // src: the step as compiled (block steps prefixed), so a step inlined by `use` keeps its prompt.
   | { op: 'TURN'; step: string; policy: Policy; src?: Step }
@@ -28,7 +30,7 @@ export type Instr =
   | { op: 'STORE'; step: string; what: string }
   | { op: 'HANDOFF'; step: string; to: string; focus?: string }
   | { op: 'JUMP'; target: number }
-  | { op: 'END' };
+  | { op: 'END' }) & { top?: number };
 
 export interface CompileTurnContext {
   workflowName: string;
@@ -301,9 +303,11 @@ export function compileProgram(
     }
   }
 
-  for (const step of w.steps) {
+  w.steps.forEach((step, top) => {
+    const from = instrs.length;
     compileStep(step);
-  }
+    for (let i = from; i < instrs.length; i++) instrs[i]!.top = top;
+  });
 
   instrs.push({ op: 'END' });
 

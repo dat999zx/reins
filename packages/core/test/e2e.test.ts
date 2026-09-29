@@ -110,8 +110,10 @@ describe('Task 1.9: End-to-End Workflow Runs against FakeEngine', () => {
     expect(r.status).toBe('done');
     expect(r.gatesHeld).toBe(2); // main gate until: you approve + review-pass gate until: llm says "no blocking issues left"
     expect(r.guardRefusals).toBe(1);
-    expect(r.knowlRecalls).toBe(1);
-    expect(r.knowlStores).toBe(1);
+    // No recall/store function is wired in here, so both are skips, not Knowl calls (decided in the Phase 2 review).
+    expect(r.knowlRecalls).toBe(0);
+    expect(r.knowlStores).toBe(0);
+    expect(r.knowlSkipped).toBe(2);
     expect(r.verifyResults.passed).toBe(1);
     expect(r.verifyResults.failed).toBe(0);
     // Turn 1: plan (mode: read-only)
@@ -219,7 +221,8 @@ describe('Task 1.9: End-to-End Workflow Runs against FakeEngine', () => {
     const r = receipt(run.getEvents());
     expect(r.workflow).toBe('tdd-loop');
     expect(r.status).toBe('done');
-    expect(r.knowlRecalls).toBe(1);
+    expect(r.knowlRecalls).toBe(0);
+    expect(r.knowlSkipped).toBe(1);
     expect(r.totalTurns).toBe(5); // red, green, review, fix, handoff
   });
 

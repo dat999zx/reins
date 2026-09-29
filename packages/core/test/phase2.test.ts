@@ -254,3 +254,31 @@ describe('what the terminal runner needs from Run', () => {
     expect(run.getEvents().find((e) => e.type === 'hook')?.data).toMatchObject({ event: 'PreToolUse', decision: 'deny' });
   });
 });
+
+describe('decisions after Phase 2 review', () => {
+  it('the turn header counts top-level steps, so nested and inlined steps never give "step 10 of 9"', async () => {
+    const eng = new FakeEngine([{ text: 'REINS: done' }, { text: 'REINS: done' }, { text: 'REINS: done' }]);
+    const run = new Run({
+      workflow: wf('## phase one\n> a\n\n## repeat\nmax: 3\nuntil: `npm test` passes\n\n### phase inner\n> b\n\n## phase last\n> c'),
+      engine: eng,
+      commandRunner: async () => ({ exitCode: 0, output: '' }),
+    } as any);
+    await drive(run);
+    for (const t of eng.receivedTexts) {
+      const m = /step (\d+) of (\d+)/.exec(t);
+      expect(m, t.slice(0, 120)).toBeTruthy();
+      expect(Number(m![1])).toBeLessThanOrEqual(Number(m![2]));
+    }
+    expect(eng.receivedTexts.some((t) => /step 2 of 3/.test(t))).toBe(true); // the inner step reports its repeat
+  });
+
+  it('a recall or store that could not run is a skip in the receipt, not a Knowl recall', async () => {
+    const eng = new FakeEngine([{ text: 'REINS: done' }, { text: 'decision text\nREINS: done' }]);
+    const run = new Run({ workflow: wf('## recall\nknowl: upload\n\n## store\nknowl: decision'), engine: eng });
+    await drive(run);
+    const r = receipt(run.getEvents());
+    expect(r.knowlRecalls).toBe(0);
+    expect(r.knowlStores).toBe(0);
+    expect(r.knowlSkipped).toBe(2);
+  });
+});

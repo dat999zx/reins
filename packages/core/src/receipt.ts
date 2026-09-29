@@ -16,6 +16,8 @@ export interface Receipt {
   verifyResults: { passed: number; failed: number };
   knowlRecalls: number;
   knowlStores: number;
+  /** recall or store steps that did nothing because no Knowl function was wired in */
+  knowlSkipped: number;
 }
 
 export function receipt(events: RunEventRecord[]): Receipt {
@@ -33,6 +35,7 @@ export function receipt(events: RunEventRecord[]): Receipt {
   const verifyResults = { passed: 0, failed: 0 };
   let knowlRecalls = 0;
   let knowlStores = 0;
+  let knowlSkipped = 0;
 
   const firstTimestamp = events[0]?.timestamp ?? 0;
   let lastTimestamp = firstTimestamp;
@@ -87,10 +90,12 @@ export function receipt(events: RunEventRecord[]): Receipt {
         }
         break;
       case 'recall':
-        knowlRecalls++;
+        if (ev.data?.skipped) knowlSkipped++;
+        else knowlRecalls++;
         break;
       case 'store':
-        knowlStores++;
+        if (ev.data?.skipped) knowlSkipped++;
+        else knowlStores++;
         break;
       case 'engine_cost':
         totalCostUsd += Number(ev.data?.usd || 0);
@@ -116,5 +121,6 @@ export function receipt(events: RunEventRecord[]): Receipt {
     verifyResults,
     knowlRecalls,
     knowlStores,
+    knowlSkipped,
   };
 }
