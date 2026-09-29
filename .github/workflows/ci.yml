@@ -20,5 +20,6 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
+      - run: npx tsc -p packages/server/tsconfig.dist-check.json
       - run: npm run lint
       - run: npm test

@@ -1,9 +1,8 @@
-import picomatch from 'picomatch';
 import type { Workflow, Step, Cond } from './model.js';
 import { compileProgram, compileTurn, type Instr, type Policy } from './compile.js';
 import type { Engine, EngineSession, TurnResult } from './fake-engine.js';
-import { relPath } from './policy.js';
-import { repeatedAction, stagnation, editBeforePlan, sameError } from './drift.js';
+import { CARDS } from './cards/index.js';
+import { evalCond, evalCondSync, type EvalCtx } from './cond.js';
 
 export type RunStatus = 'running' | 'paused' | 'done' | 'stopped';
 
@@ -348,7 +347,7 @@ export class Run {
         const isArmed = this.autoArmed.get(auto.id) ?? true;
         if (isCondTrue && isArmed) {
           const k = auto.card.kind;
-          this.queueCard(auto.card.text, k === 'now' || k === 'stop' ? k : 'steer', 'auto');
+          this.queueCard(auto.card.text, CARDS.get(k)?.delivery ?? 'steer', 'auto');
           this.autoArmed.set(auto.id, false);
         } else if (!isCondTrue) {
           this.autoArmed.set(auto.id, true);
@@ -371,180 +370,32 @@ export class Run {
     }
   }
 
-  private judgeAutoCondSync(c: Cond): boolean | null {
-    switch (c.t) {
-      case 'cmd':
-      case 'tests':
-      case 'approve':
-      case 'llm':
-      case 'review':
-        return false;
-      case 'done': {
-        if (!this.lastTurnText) return false;
-        const lastLine = this.lastTurnText.trim().split(/\r?\n/).pop()?.trim();
-        return lastLine === 'REINS: done';
-      }
-      case 'same': {
-        const len = this.commandResults.length;
-        if (len < 2) return false;
-        const last1 = this.commandResults[len - 1]!;
-        const last2 = this.commandResults[len - 2]!;
-        if (last1.exitCode === 0 || last2.exitCode === 0) return false;
-        const norm = (s: string) => s.replace(/\d+/g, '').replace(/\s+/g, ' ').trim();
-        return norm(last1.output) === norm(last2.output);
-      }
-      case 'attempts': {
-        const loopCount = [...this.loopCounters.values()].reduce((a, b) => a + b, 0);
-        return loopCount > c.n;
-      }
-      case 'diff':
-        return null;
-      case 'touches': {
-        const isMatch = picomatch(c.glob);
-        return this.events.some((ev) => {
-          if (ev.type !== 'tool_call') return false;
-          const p = ev.data?.input?.file_path || ev.data?.input?.path;
-          return typeof p === 'string' && isMatch(relPath(p, this.cwd ?? ''));
-        });
-      }
-      case 'drift': {
-        return (
-          repeatedAction(this.events) !== null ||
-          stagnation(this.events) !== null ||
-          editBeforePlan(this.events) !== null ||
-          sameError(this.events) !== null
-        );
-      }
-      case 'not': {
-        const res = this.judgeAutoCondSync(c.a);
-        return res === null ? null : !res;
-      }
-      case 'and': {
-        const a = this.judgeAutoCondSync(c.a);
-        if (a === false) return false;
-        if (a === null) return null;
-        const b = this.judgeAutoCondSync(c.b);
-        return b === null ? null : b;
-      }
-      case 'or': {
-        const a = this.judgeAutoCondSync(c.a);
-        if (a === true) return true;
-        if (a === null) return null;
-        const b = this.judgeAutoCondSync(c.b);
-        return b === null ? null : b;
-      }
-      default:
-        return false;
-    }
-  }
-
-  private async judgeCond(c: Cond, forAutoCard = false): Promise<boolean> {
-    if (forAutoCard) {
-      if (
-        c.t === 'cmd' ||
-        c.t === 'tests' ||
-        c.t === 'approve' ||
-        c.t === 'llm' ||
-        c.t === 'review'
-      ) {
-        return false;
-      }
-    }
-
-    switch (c.t) {
-      case 'approve':
-        return false;
-      case 'tests': {
-        const cmd = this.workflow.test ?? 'npm test';
-        const last = this.commandResults[this.commandResults.length - 1];
-        if (
-          last &&
-          last.cmd === cmd &&
-          last.exitCode === 0 &&
-          this.program[this.programCounter]?.op === 'RUN'
-        ) {
-          return true;
-        }
+  private evalCtx(): EvalCtx {
+    return {
+      lastTurnText: this.lastTurnText,
+      commandResults: this.commandResults,
+      runCommand: async (cmd) => {
         const res = await this.commandRunner(cmd);
         this.recordCommandResult(cmd, res.exitCode, res.stdout || res.stderr);
-        return res.exitCode === 0;
-      }
-      case 'cmd': {
-        const last = this.commandResults[this.commandResults.length - 1];
-        if (
-          last &&
-          last.cmd === c.cmd &&
-          last.exitCode === 0 &&
-          this.program[this.programCounter]?.op === 'RUN'
-        ) {
-          return true;
-        }
-        const res = await this.commandRunner(c.cmd);
-        this.recordCommandResult(c.cmd, res.exitCode, res.stdout || res.stderr);
-        return res.exitCode === 0;
-      }
-      case 'llm':
-      case 'review': {
-        // Plan 7.3: no judge means "no", everywhere (gate, repeat, if). Never pass by default.
-        if (!this.judge) return false;
-        const answer = await this.judge(c, { lastText: this.lastTurnText ?? '' });
-        this.logEvent('judge', { cond: c, answer });
-        return answer;
-      }
-      case 'done': {
-        if (!this.lastTurnText) return false;
-        const lastLine = this.lastTurnText.trim().split(/\r?\n/).pop()?.trim();
-        return lastLine === 'REINS: done';
-      }
-      case 'same': {
-        const len = this.commandResults.length;
-        if (len < 2) return false;
-        const last1 = this.commandResults[len - 1]!;
-        const last2 = this.commandResults[len - 2]!;
-        if (last1.exitCode === 0 || last2.exitCode === 0) return false;
-        const norm = (s: string) => s.replace(/\d+/g, '').replace(/\s+/g, ' ').trim();
-        return norm(last1.output) === norm(last2.output);
-      }
-      case 'attempts': {
-        const loopCount = [...this.loopCounters.values()].reduce((a, b) => a + b, 0);
-        return loopCount > c.n;
-      }
-      case 'diff': {
-        if (!this.diffLines) return false;
-        const lines = await this.diffLines();
-        return lines > c.n;
-      }
-      case 'touches': {
-        const isMatch = picomatch(c.glob);
-        return this.events.some((ev) => {
-          if (ev.type !== 'tool_call') return false;
-          const p = ev.data?.input?.file_path || ev.data?.input?.path;
-          return typeof p === 'string' && isMatch(relPath(p, this.cwd ?? ''));
-        });
-      }
-      case 'drift': {
-        return (
-          repeatedAction(this.events) !== null ||
-          stagnation(this.events) !== null ||
-          editBeforePlan(this.events) !== null ||
-          sameError(this.events) !== null
-        );
-      }
-      case 'not':
-        return !(await this.judgeCond(c.a, forAutoCard));
-      case 'and': {
-        const a = await this.judgeCond(c.a, forAutoCard);
-        if (!a) return false;
-        return await this.judgeCond(c.b, forAutoCard);
-      }
-      case 'or': {
-        const a = await this.judgeCond(c.a, forAutoCard);
-        if (a) return true;
-        return await this.judgeCond(c.b, forAutoCard);
-      }
-      default:
-        return false;
-    }
+        return res;
+      },
+      loopTotal: [...this.loopCounters.values()].reduce((a, b) => a + b, 0),
+      events: this.events,
+      cwd: this.cwd ?? '',
+      testCmd: this.workflow.test ?? 'npm test',
+      atRun: this.program[this.programCounter]?.op === 'RUN',
+      judge: this.judge,
+      logEvent: (type, data) => this.logEvent(type, data),
+      diffLines: this.diffLines,
+    };
+  }
+
+  private judgeAutoCondSync(c: Cond): boolean | null {
+    return evalCondSync(c, this.evalCtx());
+  }
+
+  private judgeCond(c: Cond, forAutoCard = false): Promise<boolean> {
+    return evalCond(c, this.evalCtx(), forAutoCard);
   }
 
   edit(newWorkflow: Workflow) {

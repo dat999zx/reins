@@ -1,39 +1,13 @@
 import YAML from 'yaml';
 import type { Workflow, Step, StepKind, Card, Link, AutoCard, Diagnostic, CardKind, LinkKind } from '../model.js';
 import { parseCond } from '../cond.js';
+import { CARDS } from '../cards/index.js';
+import { NODES, defaultId, nodeAttrs } from '../nodes/index.js';
 
 export interface ParseWorkflowResult {
   workflow?: Workflow;
   diagnostics: Diagnostic[];
 }
-
-const KNOWN_KINDS: Set<StepKind | 'else' | 'whenever'> = new Set([
-  'phase',
-  'say',
-  'run',
-  'gate',
-  'repeat',
-  'if',
-  'verify',
-  'use',
-  'recall',
-  'store',
-  'handoff',
-  'else',
-  'whenever',
-]);
-
-const KNOWN_CARD_KINDS: Set<CardKind> = new Set([
-  'guard',
-  'note',
-  'nudge',
-  'role',
-  'checkpoint',
-  'budget',
-  'undo',
-  'now',
-  'stop',
-]);
 
 const KNOWN_LINK_KINDS: Set<LinkKind> = new Set([
   'next',
@@ -44,26 +18,10 @@ const KNOWN_LINK_KINDS: Set<LinkKind> = new Set([
   'hand-off',
 ]);
 
-const KNOWN_ATTRS: Set<string> = new Set([
-  'id',
-  'mode',
-  'until',
-  'max',
-  'against',
-  'knowl',
-  'to',
-  'focus',
-  'cmd',
-  ...KNOWN_CARD_KINDS,
-  ...KNOWN_LINK_KINDS,
-]);
+const attrSet = () =>
+  new Set<string>(['id', 'until', ...nodeAttrs(), ...CARDS.keys(), ...KNOWN_LINK_KINDS]);
 
-export function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
-}
+export { slugify } from '../util.js';
 
 interface RawLine {
   text: string;
@@ -79,6 +37,7 @@ interface ParsedBlock {
 }
 
 export function parseWorkflow(input: string): ParseWorkflowResult {
+  const knownAttrs = attrSet();
   const diagnostics: Diagnostic[] = [];
   const lines = input.replace(/\r\n/g, '\n').split('\n');
 
@@ -152,14 +111,6 @@ export function parseWorkflow(input: string): ParseWorkflowResult {
 
   // Counters for default IDs
   const counters: Record<string, number> = {};
-  function nextId(kind: string, title?: string): string {
-    if (kind === 'phase' && title) {
-      const slug = slugify(title);
-      if (slug) return slug;
-    }
-    counters[kind] = (counters[kind] || 0) + 1;
-    return `${kind}-${counters[kind]}`;
-  }
 
   const autos: AutoCard[] = [];
 
@@ -192,7 +143,7 @@ export function parseWorkflow(input: string): ParseWorkflowResult {
         const key = text.slice(0, colonIdx).trim();
         const val = text.slice(colonIdx + 1).trim();
 
-        if (!KNOWN_ATTRS.has(key)) {
+        if (!knownAttrs.has(key)) {
           diagnostics.push({
             severity: 'error',
             message: `Unknown attribute "${key}"`,
@@ -203,7 +154,7 @@ export function parseWorkflow(input: string): ParseWorkflowResult {
 
         if (key === 'id') {
           customId = val;
-        } else if (KNOWN_CARD_KINDS.has(key as CardKind)) {
+        } else if (CARDS.has(key)) {
           cards.push({
             kind: key as CardKind,
             text: val,
@@ -239,48 +190,26 @@ export function parseWorkflow(input: string): ParseWorkflowResult {
     const kind = block.kindStr as StepKind;
     const { id: customId, promptLines, attrs, cards, links } = parseBlockLines(block);
 
-    let title: string | undefined;
-    if (kind === 'phase' && block.argStr) {
-      title = block.argStr;
-    } else if (kind === 'use' && block.argStr) {
-      title = block.argStr;
-      attrs.use = block.argStr;
-    } else if (kind === 'run' && block.argStr) {
-      let cmd = block.argStr;
-      if (cmd.startsWith('`') && cmd.endsWith('`')) {
-        cmd = cmd.slice(1, -1);
-      }
-      attrs.cmd = cmd;
+    const step: Step = { id: '', kind, attrs, cards, links, pos: { line: block.lineNum, col: 1 } };
+
+    const heading = NODES.get(kind)?.heading;
+    let tookCond = false;
+    if (heading && block.argStr) {
+      tookCond = heading.parse(block.argStr, step, {
+        line: block.lineNum,
+        col: block.kindStr.length + 4,
+        push: (d) => diagnostics.push(d),
+      });
     }
 
-    const id = customId || nextId(kind, title);
-
-    const step: Step = {
-      id,
-      kind,
-      attrs,
-      cards,
-      links,
-      pos: { line: block.lineNum, col: 1 },
-    };
-
-    if (title !== undefined) {
-      step.title = title;
-    }
+    step.id = customId || defaultId(step, counters);
 
     if (promptLines.length > 0) {
       step.prompt = promptLines.join('\n');
     }
 
     // Parse conditions on heading or attrs
-    if (kind === 'if' && block.argStr) {
-      const condRes = parseCond(block.argStr, {
-        line: block.lineNum,
-        col: block.kindStr.length + 4,
-      });
-      if (condRes.diag) diagnostics.push(condRes.diag);
-      if (condRes.cond) step.cond = condRes.cond;
-    } else if (attrs.until) {
+    if (!tookCond && attrs.until) {
       const condRes = parseCond(attrs.until, {
         line: block.lineNum,
         col: 1,
@@ -314,7 +243,7 @@ export function parseWorkflow(input: string): ParseWorkflowResult {
         const parsedLines = parseBlockLines(blk);
         const card = parsedLines.cards[0] || { kind: 'nudge', text: '' };
         autos.push({
-          id: nextId('auto'),
+          id: defaultId({ kind: 'auto' }, counters),
           cond: condRes.cond || { t: 'drift' },
           card,
         });
@@ -337,7 +266,7 @@ export function parseWorkflow(input: string): ParseWorkflowResult {
         break;
       }
 
-      if (!KNOWN_KINDS.has(blk.kindStr as any)) {
+      if (!NODES.has(blk.kindStr)) {
         diagnostics.push({
           severity: 'error',
           message: `Unknown step kind "${blk.kindStr}"`,
@@ -348,15 +277,16 @@ export function parseWorkflow(input: string): ParseWorkflowResult {
       blockIdx++;
       const step = convertBlockToStep(blk);
 
-      // If this block is a container (repeat or if), parse its children
-      if (step.kind === 'repeat' || step.kind === 'if') {
+      // A container node parses the blocks nested under it as its children
+      const container = NODES.get(step.kind)?.container;
+      if (container) {
         const kids = parseStepList(targetDepth + 1);
         if (kids.length > 0) {
           step.kids = kids;
         }
 
         if (
-          step.kind === 'if' &&
+          container === 'kids+else' &&
           blockIdx < blocks.length &&
           blocks[blockIdx]!.kindStr === 'else' &&
           blocks[blockIdx]!.depth === targetDepth + 1

@@ -1,99 +1,16 @@
-import picomatch from 'picomatch';
-import type { Workflow, Step, Diagnostic, Cond, StepKind } from './model.js';
-
-const KNOWN_KINDS: Set<StepKind> = new Set([
-  'phase',
-  'say',
-  'run',
-  'gate',
-  'repeat',
-  'if',
-  'verify',
-  'use',
-  'recall',
-  'store',
-  'handoff',
-]);
-
-const KNOWN_ATTRS: Set<string> = new Set([
-  'id',
-  'mode',
-  'until',
-  'max',
-  'against',
-  'knowl',
-  'to',
-  'focus',
-  'cmd',
-  'use',
-]);
-
-function isValidGlob(glob: string): boolean {
-  if (!glob || typeof glob !== 'string') return false;
-  let inBracket = false;
-  for (let i = 0; i < glob.length; i++) {
-    if (glob[i] === '\\') {
-      i++;
-      continue;
-    }
-    if (glob[i] === '[') {
-      if (inBracket) return false;
-      inBracket = true;
-    } else if (glob[i] === ']') {
-      if (!inBracket) return false;
-      inBracket = false;
-    }
-  }
-  if (inBracket) return false;
-  try {
-    const re = picomatch.makeRe(glob, { strictSlashes: true });
-    return re instanceof RegExp;
-  } catch {
-    return false;
-  }
-}
-
-function hasModelCond(cond?: Cond): string | null {
-  if (!cond) return null;
-  if (cond.t === 'llm') return 'llm says';
-  if (cond.t === 'review') return 'reviewer approves';
-  if (cond.t === 'and' || cond.t === 'or') {
-    return hasModelCond(cond.a) || hasModelCond(cond.b);
-  }
-  if (cond.t === 'not') {
-    return hasModelCond(cond.a);
-  }
-  return null;
-}
-
-function hasTestsCond(cond?: Cond): boolean {
-  if (!cond) return false;
-  if (cond.t === 'tests') return true;
-  if (cond.t === 'and' || cond.t === 'or') {
-    return hasTestsCond(cond.a) || hasTestsCond(cond.b);
-  }
-  if (cond.t === 'not') {
-    return hasTestsCond(cond.a);
-  }
-  return false;
-}
-
-function forEachGlobInCond(cond: Cond | undefined, fn: (glob: string) => void): void {
-  if (!cond) return;
-  if (cond.t === 'touches') {
-    fn(cond.glob);
-  } else if (cond.t === 'and' || cond.t === 'or') {
-    forEachGlobInCond(cond.a, fn);
-    forEachGlobInCond(cond.b, fn);
-  } else if (cond.t === 'not') {
-    forEachGlobInCond(cond.a, fn);
-  }
-}
+import type { Workflow, Step, Diagnostic, Pos } from './model.js';
+import { isValidGlob } from './util.js';
+import { CARDS } from './cards/index.js';
+import { CONDS } from './conds/index.js';
+import { NODES, nodeAttrs, headingOwns, type ValidateCtx } from './nodes/index.js';
+import { condAtoms } from './cond.js';
 
 export function validate(
   w: Workflow,
   resolveBlock?: (name: string) => Workflow | undefined
 ): Diagnostic[] {
+  // Read the registries once per call, never at import: a test may add a type before calling.
+  const accepted = new Set(['id', 'until', ...nodeAttrs(), ...headingOwns()]);
   const diagnostics: Diagnostic[] = [];
 
   // Rule 9: missing budget in frontmatter (for non-block workflow)
@@ -120,6 +37,7 @@ export function validate(
 
   const allIds = new Set<string>();
   const orderMap = new Map<string, number>();
+  const vctx = (pos: Pos): ValidateCtx => ({ push: (d) => diagnostics.push(d), pos, resolveBlock, allIds });
 
   // Check step kinds, attributes, duplicate IDs, and build order
   for (let i = 0; i < allSteps.length; i++) {
@@ -136,7 +54,7 @@ export function validate(
     }
 
     // Rule 1: unknown step kind
-    if (!KNOWN_KINDS.has(step.kind)) {
+    if (!NODES.has(step.kind)) {
       diagnostics.push({
         severity: 'error',
         message: `Unknown step kind "${step.kind}"`,
@@ -146,7 +64,7 @@ export function validate(
 
     // Rule 1: unknown attribute keys
     for (const key of Object.keys(step.attrs)) {
-      if (!KNOWN_ATTRS.has(key)) {
+      if (!accepted.has(key)) {
         diagnostics.push({
           severity: 'error',
           message: `Unknown attribute "${key}" on step "${step.id}"`,
@@ -167,45 +85,11 @@ export function validate(
       orderMap.set(step.id, i);
     }
 
-    // Rule 4: repeat without max
-    if (step.kind === 'repeat') {
-      if (!step.attrs.max || parseInt(step.attrs.max, 10) <= 0) {
-        diagnostics.push({
-          severity: 'error',
-          message: `repeat step "${step.id}" requires max`,
-          pos,
-        });
-      }
-    }
-
-    // Rule 5: gate without until
-    if (step.kind === 'gate') {
-      if (!step.cond) {
-        diagnostics.push({
-          severity: 'error',
-          message: `gate step "${step.id}" requires until: condition`,
-          pos,
-        });
-      }
-    }
-
-    // Rule 7: use naming a block that can't be found
-    if (step.kind === 'use') {
-      const blockName = step.title || step.attrs.use || step.id;
-      if (resolveBlock) {
-        const resolved = resolveBlock(blockName);
-        if (!resolved) {
-          diagnostics.push({
-            severity: 'error',
-            message: `Block "${blockName}" not found`,
-            pos,
-          });
-        }
-      }
-    }
+    // The node's own early rules
+    NODES.get(step.kind)?.validate?.early?.(step, vctx(pos));
 
     for (const card of step.cards) {
-      if (card.kind === 'now' || card.kind === 'stop') {
+      if (CARDS.get(card.kind)?.delivery) {
         diagnostics.push({
           severity: 'error',
           message: `"${card.kind}:" is only allowed in a whenever block`,
@@ -216,29 +100,23 @@ export function validate(
 
     // Rule 8: glob that won't compile
     for (const card of step.cards) {
-      if (card.kind === 'guard') {
-        if (!isValidGlob(card.text)) {
+      CARDS.get(card.kind)?.validate?.(card, { push: (d) => diagnostics.push(d), pos });
+    }
+
+    for (const a of condAtoms(step.cond)) {
+      for (const glob of CONDS.get(a.t)?.globs?.(a) ?? []) {
+        if (!isValidGlob(glob)) {
           diagnostics.push({
             severity: 'error',
-            message: `Invalid glob "${card.text}" in guard`,
-            pos: card.pos || pos,
+            message: `Invalid glob "${glob}" in touches condition`,
+            pos,
           });
         }
       }
     }
 
-    forEachGlobInCond(step.cond, (glob) => {
-      if (!isValidGlob(glob)) {
-        diagnostics.push({
-          severity: 'error',
-          message: `Invalid glob "${glob}" in touches condition`,
-          pos,
-        });
-      }
-    });
-
     // Warning 1: llm / reviewer model call warning
-    const modelAtom = hasModelCond(step.cond);
+    const modelAtom = condAtoms(step.cond).map((a) => CONDS.get(a.t)?.modelCall).find(Boolean);
     if (modelAtom) {
       diagnostics.push({
         severity: 'warning',
@@ -248,7 +126,7 @@ export function validate(
     }
 
     // Warning 2: tests pass without test in frontmatter
-    if (hasTestsCond(step.cond) && !w.test) {
+    if (condAtoms(step.cond).some((a) => CONDS.get(a.t)?.needsTestCmd) && !w.test) {
       diagnostics.push({
         severity: 'warning',
         message:
@@ -257,32 +135,15 @@ export function validate(
       });
     }
 
-    // Warning 3: phase step with no prompt
-    if (step.kind === 'phase') {
-      if (!step.prompt || step.prompt.trim() === '') {
-        diagnostics.push({
-          severity: 'warning',
-          message: `Phase step "${step.id}" has no prompt`,
-          pos,
-        });
-      }
-    }
+    // The node's own late rules
+    NODES.get(step.kind)?.validate?.late?.(step, vctx(pos));
   }
 
   // Rule 3 and Rule 4 (backward link): link targets and verify against
   for (const step of allSteps) {
     const pos = step.pos || { line: 1, col: 1 };
 
-    // verify against
-    if (step.kind === 'verify' && step.attrs.against) {
-      if (!allIds.has(step.attrs.against)) {
-        diagnostics.push({
-          severity: 'error',
-          message: `verify against target "${step.attrs.against}" not found`,
-          pos,
-        });
-      }
-    }
+    NODES.get(step.kind)?.validate?.links?.(step, vctx(pos));
 
     // links
     for (const link of step.links) {
@@ -316,7 +177,7 @@ export function validate(
 
   // Auto cards checks
   for (const auto of w.autos) {
-    const modelAtom = hasModelCond(auto.cond);
+    const modelAtom = condAtoms(auto.cond).map((a) => CONDS.get(a.t)?.modelCall).find(Boolean);
     if (modelAtom) {
       diagnostics.push({
         severity: 'warning',
@@ -325,15 +186,17 @@ export function validate(
       });
     }
 
-    forEachGlobInCond(auto.cond, (glob) => {
-      if (!isValidGlob(glob)) {
-        diagnostics.push({
-          severity: 'error',
-          message: `Invalid glob "${glob}" in touches condition`,
-          pos: { line: 1, col: 1 },
-        });
+    for (const a of condAtoms(auto.cond)) {
+      for (const glob of CONDS.get(a.t)?.globs?.(a) ?? []) {
+        if (!isValidGlob(glob)) {
+          diagnostics.push({
+            severity: 'error',
+            message: `Invalid glob "${glob}" in touches condition`,
+            pos: { line: 1, col: 1 },
+          });
+        }
       }
-    });
+    }
   }
 
   return diagnostics;
