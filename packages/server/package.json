@@ -1,0 +1,17 @@
+{
+  "name": "@reins/server",
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "reins": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@reins/core": "0.1.0"
+  }
+}

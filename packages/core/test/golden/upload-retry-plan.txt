@@ -1,0 +1,18 @@
+[Reins · workflow "upload-retry" · step 2 of 9: plan]
+
+Always:
+- No new dependencies.
+- Keep functions under 40 lines.
+
+Context from Knowl:
+- Uploads go through S3 multipart (src/s3.ts).
+- Decision a91: retries use exponential backoff; never retry 4xx.
+
+Write a plan for adding retry to the upload endpoint.
+Do not write code. Output the plan as a numbered list, then stop.
+
+For this step:
+- Step is read-only. (Enforced: no file edits or write commands are permitted.)
+
+When you finish this step, end your reply with exactly one line:
+REINS: done | blocked: <reason>

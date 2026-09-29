@@ -7,3 +7,6 @@ AGENTS.md
 CLAUDE.md
 CONTEXT.md
 KNOWL.md
+node_modules/
+dist/
+docs/

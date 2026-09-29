@@ -1,0 +1,10 @@
+[Reins · workflow "upload-retry" · step 5 of 9: fix]
+
+Always:
+- No new dependencies.
+- Keep functions under 40 lines.
+
+Read the error output first. Fix the cause, not the symptom.
+
+When you finish this step, end your reply with exactly one line:
+REINS: done | blocked: <reason>
