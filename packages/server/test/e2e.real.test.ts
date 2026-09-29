@@ -66,7 +66,7 @@ describe.skipIf(process.env.REINS_E2E !== '1')('Phase 2 exit test on the real cl
 
     const h = startRunCli({
       file: EXAMPLE, cwd: REPO, input, output, store,
-      makeEngine: ({ onApprove, onLive }) => claudeEngine({ bin: findClaude()!.path, model: 'sonnet', effort: 'medium', onApprove, onLive }),
+      makeEngine: ({ onApprove, onLive }) => claudeEngine({ bin: findClaude()!.path, model: process.env.REINS_E2E_MODEL ?? 'sonnet', effort: process.env.REINS_E2E_EFFORT ?? 'medium', onApprove, onLive }),
     });
 
     // React to the terminal the way a person would, keyed on what Reins prints.
