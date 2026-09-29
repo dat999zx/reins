@@ -6,7 +6,7 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     // spike/ is Phase 0's throwaway code, kept as recorded; it is not linted.
-    ignores: ['**/dist/**', '**/node_modules/**', 'docs/**', 'spike/**'],
+    ignores: ['**/dist/**', '**/node_modules/**', 'spike/**'],
   },
   {
     files: ['**/*.mjs'],
