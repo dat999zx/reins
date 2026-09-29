@@ -1,0 +1,1010 @@
+[
+  {
+    "autos": [],
+    "diags": [
+      {
+        "message": "Unknown step kind \"frobnicate\"",
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "severity": "error"
+      },
+      {
+        "message": "Unknown step kind \"frobnicate\"",
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "severity": "error"
+      }
+    ],
+    "steps": [
+      "frobnicate-1"
+    ],
+    "tree": [
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "frobnicate-1",
+        "kind": "frobnicate",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "prompt": "x"
+      }
+    ]
+  },
+  {
+    "autos": [],
+    "diags": [
+      {
+        "message": "Unknown attribute \"gaurd\"",
+        "pos": {
+          "col": 1,
+          "line": 8
+        },
+        "severity": "error"
+      }
+    ],
+    "steps": [
+      "a"
+    ],
+    "tree": [
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "a",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "prompt": "x",
+        "title": "a"
+      }
+    ]
+  },
+  {
+    "autos": [],
+    "diags": [],
+    "steps": [
+      "a"
+    ],
+    "tree": [
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "a",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "prompt": "a",
+        "title": "a"
+      }
+    ]
+  },
+  {
+    "autos": [
+      {
+        "card": {
+          "kind": "nudge",
+          "pos": {
+            "col": 7,
+            "line": 12
+          },
+          "text": "deep"
+        },
+        "cond": {
+          "t": "drift"
+        },
+        "id": "auto-1"
+      }
+    ],
+    "diags": [
+      {
+        "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "severity": "warning"
+      }
+    ],
+    "steps": [
+      "repeat-1"
+    ],
+    "tree": [
+      {
+        "attrs": {
+          "max": "2"
+        },
+        "cards": [],
+        "cond": {
+          "t": "tests"
+        },
+        "id": "repeat-1",
+        "kids": [
+          {
+            "attrs": {
+              "cmd": "npm test"
+            },
+            "cards": [],
+            "id": "run-1",
+            "kind": "run",
+            "links": [],
+            "pos": {
+              "col": 1,
+              "line": 14
+            }
+          }
+        ],
+        "kind": "repeat",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 7
+        }
+      }
+    ]
+  },
+  {
+    "autos": [],
+    "diags": [
+      {
+        "message": "\"now:\" is only allowed in a whenever block",
+        "pos": {
+          "col": 5,
+          "line": 8
+        },
+        "severity": "error"
+      },
+      {
+        "message": "\"stop:\" is only allowed in a whenever block",
+        "pos": {
+          "col": 6,
+          "line": 9
+        },
+        "severity": "error"
+      }
+    ],
+    "steps": [
+      "a"
+    ],
+    "tree": [
+      {
+        "attrs": {},
+        "cards": [
+          {
+            "kind": "now",
+            "pos": {
+              "col": 5,
+              "line": 8
+            },
+            "text": "go"
+          },
+          {
+            "kind": "stop",
+            "pos": {
+              "col": 6,
+              "line": 9
+            },
+            "text": "halt"
+          }
+        ],
+        "id": "a",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "prompt": "a",
+        "title": "a"
+      }
+    ]
+  },
+  {
+    "autos": [],
+    "diags": [
+      {
+        "message": "Invalid glob \"[oops\" in guard",
+        "pos": {
+          "col": 7,
+          "line": 8
+        },
+        "severity": "error"
+      },
+      {
+        "message": "Invalid glob \"[x\" in touches condition",
+        "pos": {
+          "col": 1,
+          "line": 11
+        },
+        "severity": "error"
+      }
+    ],
+    "steps": [
+      "a",
+      "gate-1"
+    ],
+    "tree": [
+      {
+        "attrs": {},
+        "cards": [
+          {
+            "kind": "guard",
+            "pos": {
+              "col": 7,
+              "line": 8
+            },
+            "text": "[oops"
+          }
+        ],
+        "id": "a",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "prompt": "a",
+        "title": "a"
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "cond": {
+          "glob": "[x",
+          "t": "touches"
+        },
+        "id": "gate-1",
+        "kind": "gate",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 11
+        }
+      }
+    ]
+  },
+  {
+    "autos": [],
+    "diags": [
+      {
+        "message": "repeat step \"repeat-1\" requires max",
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "severity": "error"
+      },
+      {
+        "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "severity": "warning"
+      },
+      {
+        "message": "gate step \"gate-1\" requires until: condition",
+        "pos": {
+          "col": 1,
+          "line": 13
+        },
+        "severity": "error"
+      }
+    ],
+    "steps": [
+      "repeat-1",
+      "gate-1"
+    ],
+    "tree": [
+      {
+        "attrs": {},
+        "cards": [],
+        "cond": {
+          "t": "tests"
+        },
+        "id": "repeat-1",
+        "kids": [
+          {
+            "attrs": {},
+            "cards": [],
+            "id": "say-1",
+            "kind": "say",
+            "links": [],
+            "pos": {
+              "col": 1,
+              "line": 10
+            },
+            "prompt": "s"
+          }
+        ],
+        "kind": "repeat",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 7
+        }
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "gate-1",
+        "kind": "gate",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 13
+        }
+      }
+    ]
+  },
+  {
+    "autos": [],
+    "diags": [
+      {
+        "message": "Block \"nope\" not found",
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "severity": "error"
+      }
+    ],
+    "steps": [
+      "use-1"
+    ],
+    "tree": [
+      {
+        "attrs": {
+          "use": "nope"
+        },
+        "cards": [],
+        "id": "use-1",
+        "kind": "use",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "title": "nope"
+      }
+    ]
+  },
+  {
+    "autos": [],
+    "diags": [
+      {
+        "message": "Phase step \"empty\" has no prompt",
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "severity": "warning"
+      }
+    ],
+    "steps": [
+      "empty"
+    ],
+    "tree": [
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "empty",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "title": "empty"
+      }
+    ]
+  },
+  {
+    "autos": [],
+    "diags": [
+      {
+        "message": "verify against target \"ghost\" not found",
+        "pos": {
+          "col": 1,
+          "line": 10
+        },
+        "severity": "error"
+      },
+      {
+        "message": "Backward link to \"a\" requires max",
+        "pos": {
+          "col": 7,
+          "line": 15
+        },
+        "severity": "error"
+      }
+    ],
+    "steps": [
+      "a",
+      "verify-1",
+      "c"
+    ],
+    "tree": [
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "a",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "prompt": "a",
+        "title": "a"
+      },
+      {
+        "attrs": {
+          "against": "ghost"
+        },
+        "cards": [],
+        "id": "verify-1",
+        "kind": "verify",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 10
+        }
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "c",
+        "kind": "phase",
+        "links": [
+          {
+            "kind": "retry",
+            "pos": {
+              "col": 7,
+              "line": 15
+            },
+            "to": "a"
+          }
+        ],
+        "pos": {
+          "col": 1,
+          "line": 13
+        },
+        "prompt": "c",
+        "title": "c"
+      }
+    ]
+  },
+  {
+    "autos": [],
+    "diags": [
+      {
+        "message": "Condition uses \"reviewer approves\" which costs extra model calls",
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "severity": "warning"
+      },
+      {
+        "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+        "pos": {
+          "col": 1,
+          "line": 10
+        },
+        "severity": "warning"
+      }
+    ],
+    "steps": [
+      "gate-1",
+      "repeat-1"
+    ],
+    "tree": [
+      {
+        "attrs": {},
+        "cards": [],
+        "cond": {
+          "a": {
+            "t": "review"
+          },
+          "b": {
+            "q": "ok?",
+            "t": "llm"
+          },
+          "t": "or"
+        },
+        "id": "gate-1",
+        "kind": "gate",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 7
+        }
+      },
+      {
+        "attrs": {
+          "max": "2"
+        },
+        "cards": [],
+        "cond": {
+          "t": "tests"
+        },
+        "id": "repeat-1",
+        "kids": [
+          {
+            "attrs": {
+              "cmd": "npm test"
+            },
+            "cards": [],
+            "id": "run-1",
+            "kind": "run",
+            "links": [],
+            "pos": {
+              "col": 1,
+              "line": 14
+            }
+          }
+        ],
+        "kind": "repeat",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 10
+        }
+      }
+    ]
+  },
+  {
+    "autos": [],
+    "diags": [
+      {
+        "message": "Condition uses \"reviewer approves\" which costs extra model calls",
+        "pos": {
+          "col": 1,
+          "line": 8
+        },
+        "severity": "warning"
+      }
+    ],
+    "steps": [
+      "gate-1",
+      "repeat-1"
+    ],
+    "tree": [
+      {
+        "attrs": {},
+        "cards": [],
+        "cond": {
+          "a": {
+            "t": "review"
+          },
+          "b": {
+            "q": "ok?",
+            "t": "llm"
+          },
+          "t": "or"
+        },
+        "id": "gate-1",
+        "kind": "gate",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 8
+        }
+      },
+      {
+        "attrs": {
+          "max": "2"
+        },
+        "cards": [],
+        "cond": {
+          "t": "tests"
+        },
+        "id": "repeat-1",
+        "kids": [
+          {
+            "attrs": {
+              "cmd": "npm test"
+            },
+            "cards": [],
+            "id": "run-1",
+            "kind": "run",
+            "links": [],
+            "pos": {
+              "col": 1,
+              "line": 15
+            }
+          }
+        ],
+        "kind": "repeat",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 11
+        }
+      }
+    ]
+  },
+  {
+    "autos": [],
+    "diags": [
+      {
+        "message": "Unexpected condition token at \"\"",
+        "pos": {
+          "col": 12,
+          "line": 7
+        },
+        "severity": "error"
+      }
+    ],
+    "steps": [
+      "if-1"
+    ],
+    "tree": [
+      {
+        "attrs": {
+          "until": "tests pass"
+        },
+        "cards": [],
+        "id": "if-1",
+        "kids": [
+          {
+            "attrs": {},
+            "cards": [],
+            "id": "say-1",
+            "kind": "say",
+            "links": [],
+            "pos": {
+              "col": 1,
+              "line": 10
+            },
+            "prompt": "s"
+          }
+        ],
+        "kind": "if",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 7
+        }
+      }
+    ]
+  },
+  {
+    "autos": [],
+    "diags": [],
+    "steps": [
+      "phase-1"
+    ],
+    "tree": [
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "phase-1",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "prompt": "p"
+      }
+    ]
+  },
+  {
+    "autos": [],
+    "diags": [],
+    "steps": [
+      "x"
+    ],
+    "tree": [
+      {
+        "attrs": {
+          "cmd": "foo"
+        },
+        "cards": [],
+        "id": "x",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "prompt": "p",
+        "title": "x"
+      }
+    ]
+  },
+  {
+    "autos": [],
+    "diags": [
+      {
+        "message": "Unknown attribute \"use\"",
+        "pos": {
+          "col": 1,
+          "line": 8
+        },
+        "severity": "error"
+      }
+    ],
+    "steps": [
+      "say-1"
+    ],
+    "tree": [
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "say-1",
+        "kind": "say",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "prompt": "s"
+      }
+    ]
+  },
+  {
+    "autos": [],
+    "diags": [],
+    "steps": [
+      "run-1"
+    ],
+    "tree": [
+      {
+        "attrs": {
+          "cmd": "a"
+        },
+        "cards": [],
+        "id": "run-1",
+        "kind": "run",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 7
+        }
+      }
+    ]
+  },
+  {
+    "autos": [
+      {
+        "card": {
+          "kind": "nudge",
+          "pos": {
+            "col": 7,
+            "line": 11
+          },
+          "text": "n"
+        },
+        "cond": {
+          "a": {
+            "q": "x",
+            "t": "llm"
+          },
+          "b": {
+            "glob": "[",
+            "t": "touches"
+          },
+          "t": "and"
+        },
+        "id": "auto-1"
+      }
+    ],
+    "diags": [
+      {
+        "message": "Condition uses \"llm says\" which costs extra model calls",
+        "pos": {
+          "col": 1,
+          "line": 1
+        },
+        "severity": "warning"
+      },
+      {
+        "message": "Invalid glob \"[\" in touches condition",
+        "pos": {
+          "col": 1,
+          "line": 1
+        },
+        "severity": "error"
+      }
+    ],
+    "steps": [
+      "say-1"
+    ],
+    "tree": [
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "say-1",
+        "kind": "say",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "prompt": "s"
+      }
+    ]
+  },
+  {
+    "autos": [],
+    "diags": [
+      {
+        "message": "\"now:\" is only allowed in a whenever block",
+        "pos": {
+          "col": 5,
+          "line": 8
+        },
+        "severity": "error"
+      },
+      {
+        "message": "Invalid glob \"[bad\" in guard",
+        "pos": {
+          "col": 7,
+          "line": 9
+        },
+        "severity": "error"
+      },
+      {
+        "message": "Condition uses \"llm says\" which costs extra model calls",
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "severity": "warning"
+      },
+      {
+        "message": "Phase step \"a\" has no prompt",
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "severity": "warning"
+      }
+    ],
+    "steps": [
+      "a"
+    ],
+    "tree": [
+      {
+        "attrs": {},
+        "cards": [
+          {
+            "kind": "now",
+            "pos": {
+              "col": 5,
+              "line": 8
+            },
+            "text": "go"
+          },
+          {
+            "kind": "guard",
+            "pos": {
+              "col": 7,
+              "line": 9
+            },
+            "text": "[bad"
+          }
+        ],
+        "cond": {
+          "q": "x",
+          "t": "llm"
+        },
+        "id": "a",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "title": "a"
+      }
+    ]
+  },
+  {
+    "autos": [],
+    "diags": [
+      {
+        "message": "verify against target \"ghost\" not found",
+        "pos": {
+          "col": 1,
+          "line": 10
+        },
+        "severity": "error"
+      },
+      {
+        "message": "Link target \"nowhere\" not found",
+        "pos": {
+          "col": 9,
+          "line": 12
+        },
+        "severity": "error"
+      },
+      {
+        "message": "Backward link to \"a\" requires max",
+        "pos": {
+          "col": 7,
+          "line": 16
+        },
+        "severity": "error"
+      }
+    ],
+    "steps": [
+      "a",
+      "verify-1",
+      "c"
+    ],
+    "tree": [
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "a",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "prompt": "a",
+        "title": "a"
+      },
+      {
+        "attrs": {
+          "against": "ghost"
+        },
+        "cards": [],
+        "id": "verify-1",
+        "kind": "verify",
+        "links": [
+          {
+            "kind": "on-fail",
+            "pos": {
+              "col": 9,
+              "line": 12
+            },
+            "to": "nowhere"
+          }
+        ],
+        "pos": {
+          "col": 1,
+          "line": 10
+        }
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "c",
+        "kind": "phase",
+        "links": [
+          {
+            "kind": "retry",
+            "pos": {
+              "col": 7,
+              "line": 16
+            },
+            "to": "a"
+          }
+        ],
+        "pos": {
+          "col": 1,
+          "line": 14
+        },
+        "prompt": "c",
+        "title": "c"
+      }
+    ]
+  }
+]

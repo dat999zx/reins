@@ -1,4 +1,6 @@
 import type { Workflow, Step, Cond } from './model.js';
+import { CARDS } from './cards/index.js';
+import { NODES, type CompileCtx } from './nodes/index.js';
 
 export interface Policy {
   mode: 'read-only' | 'write';
@@ -67,10 +69,7 @@ export function compileTurn(step: Step, ctx: CompileTurnContext): string {
 
   // 4. Prompt
   let promptText = step.prompt;
-  if (!promptText && step.kind === 'verify') {
-    const target = step.attrs.against || 'plan';
-    promptText = `Compare what you built against step "${target}".\nList anything missing or extra.`;
-  }
+  if (!promptText) promptText = NODES.get(step.kind)?.defaultPrompt?.(step);
   if (promptText) {
     sections.push(promptText);
   }
@@ -78,13 +77,7 @@ export function compileTurn(step: Step, ctx: CompileTurnContext): string {
   // 5. For this step
   const stepItems: string[] = [];
   for (const card of step.cards) {
-    if (card.kind === 'guard') {
-      stepItems.push(`Do not touch ${card.text}. (Enforced: edits there are blocked.)`);
-    } else if (card.kind === 'note') {
-      stepItems.push(card.text);
-    } else {
-      stepItems.push(`${card.kind}: ${card.text}`);
-    }
+    stepItems.push(CARDS.get(card.kind)?.turnLine?.(card) ?? `${card.kind}: ${card.text}`);
   }
   if (step.attrs.mode === 'read-only') {
     stepItems.push(
@@ -96,15 +89,8 @@ export function compileTurn(step: Step, ctx: CompileTurnContext): string {
   }
 
   // 6. Status line
-  if (step.kind === 'verify') {
-    sections.push(
-      'When you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>'
-    );
-  } else {
-    sections.push(
-      'When you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>'
-    );
-  }
+  const status = NODES.get(step.kind)?.statusLine ?? 'REINS: done | blocked: <reason>';
+  sections.push(`When you finish this step, end your reply with exactly one line:\n${status}`);
 
   return sections.join('\n\n') + '\n';
 }
@@ -115,192 +101,19 @@ export function compileProgram(
 ): Instr[] {
   const instrs: Instr[] = [];
   const stepToIndex = new Map<string, number>();
-  const linkPatches: Array<{
-    instrIdx: number;
-    targetStepId: string;
-    patchType: 'onFail' | 'onPass';
-  }> = [];
-
-  function prefixStep(step: Step, prefix: string): Step {
-    const copy: Step = {
-      ...step,
-      id: `${prefix}/${step.id}`,
-      links: step.links.map((l) => ({
-        ...l,
-        to: `${prefix}/${l.to}`,
-      })),
-    };
-    if (step.kids) {
-      copy.kids = step.kids.map((k) => prefixStep(k, prefix));
-    }
-    if (step.else) {
-      copy.else = step.else.map((k) => prefixStep(k, prefix));
-    }
-    return copy;
-  }
+  const links: Array<{ instr: { onFailJump?: number }; target: string }> = [];
+  const ctx: CompileCtx = {
+    at: () => instrs.length,
+    push: (i) => { instrs.push(i); return i; },
+    get: (i) => instrs[i],
+    compile: (steps) => { for (const s of steps) compileStep(s); },
+    linkLater: (instr, target) => links.push({ instr, target }),
+    resolveBlock,
+  };
 
   function compileStep(step: Step) {
-    const idx = instrs.length;
-    stepToIndex.set(step.id, idx);
-
-    if (step.kind === 'recall') {
-      const knowl = step.attrs.knowl || '';
-      const topics = knowl
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-      instrs.push({
-        op: 'RECALL',
-        step: step.id,
-        topics,
-      });
-    } else if (step.kind === 'phase' || step.kind === 'say') {
-      const guards = step.cards
-        .filter((c) => c.kind === 'guard')
-        .map((c) => c.text);
-      const mode: 'read-only' | 'write' =
-        step.attrs.mode === 'read-only' ? 'read-only' : 'write';
-      instrs.push({
-        op: 'TURN',
-        step: step.id,
-        policy: {
-          mode,
-          guards,
-          allowShell: true,
-        },
-        src: step,
-      });
-    } else if (step.kind === 'gate') {
-      instrs.push({
-        op: 'GATE',
-        step: step.id,
-        cond: step.cond || { t: 'approve' },
-      });
-    } else if (step.kind === 'run') {
-      instrs.push({
-        op: 'RUN',
-        step: step.id,
-        cmd: step.attrs.cmd || '',
-      });
-    } else if (step.kind === 'repeat') {
-      const max = parseInt(step.attrs.max || '1', 10);
-      instrs.push({
-        op: 'LOOP_IN',
-        step: step.id,
-        max,
-      });
-
-      const bodyStart = instrs.length;
-      if (step.kids) {
-        for (const kid of step.kids) {
-          compileStep(kid);
-        }
-      }
-
-      const loopExit = instrs.length + 1;
-      let hasRunInstr = false;
-
-      if (step.cond) {
-        for (let i = bodyStart; i < instrs.length; i++) {
-          const inst = instrs[i];
-          if (inst && inst.op === 'RUN') {
-            inst.repeatCond = step.cond;
-            inst.loopExit = loopExit;
-            hasRunInstr = true;
-          }
-        }
-      }
-
-      const firstKid = step.kids?.[0];
-      const isRunMatch =
-        firstKid?.kind === 'run' &&
-        step.cond !== undefined &&
-        ((step.cond.t === 'cmd' && step.cond.cmd === (firstKid.attrs.cmd || '')) ||
-          (step.cond.t === 'tests' &&
-            (firstKid.attrs.cmd === 'npm test' || !firstKid.attrs.cmd)));
-
-      if (isRunMatch) {
-        const runInstr = instrs[bodyStart];
-        if (runInstr && runInstr.op === 'RUN') {
-          runInstr.onPassJump = loopExit;
-        }
-      }
-
-      instrs.push({
-        op: 'LOOP_BK',
-        step: step.id,
-        target: bodyStart,
-        cond: hasRunInstr ? undefined : step.cond,
-      });
-    } else if (step.kind === 'if') {
-      const ifInstr: Instr = {
-        op: 'IF',
-        step: step.id,
-        cond: step.cond || { t: 'done' },
-        elseJump: 0,
-      };
-      instrs.push(ifInstr);
-
-      if (step.kids) {
-        for (const kid of step.kids) {
-          compileStep(kid);
-        }
-      }
-
-      if (step.else && step.else.length > 0) {
-        const jumpEndIdx = instrs.length;
-        instrs.push({ op: 'JUMP', target: 0 });
-        const elseStart = instrs.length;
-        ifInstr.elseJump = elseStart;
-        for (const elseKid of step.else) {
-          compileStep(elseKid);
-        }
-        const endIfIdx = instrs.length;
-        (instrs[jumpEndIdx] as { op: 'JUMP'; target: number }).target = endIfIdx;
-      } else {
-        const endIfIdx = instrs.length;
-        ifInstr.elseJump = endIfIdx;
-      }
-    } else if (step.kind === 'verify') {
-      const onFail = step.links.find((l) => l.kind === 'on-fail');
-      const verifyIdx = instrs.length;
-      instrs.push({
-        op: 'VERIFY',
-        step: step.id,
-        against: step.attrs.against || '',
-        linkMax: onFail?.max,
-      });
-
-      if (onFail) {
-        linkPatches.push({
-          instrIdx: verifyIdx,
-          targetStepId: onFail.to,
-          patchType: 'onFail',
-        });
-      }
-    } else if (step.kind === 'use') {
-      const blockName = step.title || step.attrs.use || step.id;
-      const block = resolveBlock ? resolveBlock(blockName) : undefined;
-      if (block) {
-        for (const bStep of block.steps) {
-          const prefixed = prefixStep(bStep, blockName);
-          compileStep(prefixed);
-        }
-      }
-    } else if (step.kind === 'store') {
-      instrs.push({
-        op: 'STORE',
-        step: step.id,
-        what: step.attrs.knowl || 'decisions',
-      });
-    } else if (step.kind === 'handoff') {
-      instrs.push({
-        op: 'HANDOFF',
-        step: step.id,
-        to: step.attrs.to || 'fresh session',
-        ...(step.attrs.focus ? { focus: step.attrs.focus } : {}),
-      });
-    }
+    stepToIndex.set(step.id, instrs.length);
+    NODES.get(step.kind)?.compile(step, ctx);
   }
 
   w.steps.forEach((step, top) => {
@@ -312,14 +125,9 @@ export function compileProgram(
   instrs.push({ op: 'END' });
 
   // Patch jumps
-  for (const patch of linkPatches) {
-    const targetIdx = stepToIndex.get(patch.targetStepId);
-    if (targetIdx !== undefined) {
-      const instr = instrs[patch.instrIdx];
-      if (instr && instr.op === 'VERIFY' && patch.patchType === 'onFail') {
-        instr.onFailJump = targetIdx;
-      }
-    }
+  for (const l of links) {
+    const t = stepToIndex.get(l.target);
+    if (t !== undefined) l.instr.onFailJump = t;
   }
 
   return instrs;

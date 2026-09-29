@@ -2,9 +2,9 @@ import picomatch from 'picomatch';
 import { posix } from 'node:path';
 import type { Policy } from './compile.js';
 
-const WRITE_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+export const WRITE_TOOLS: ReadonlySet<string> = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 // Windows calls its shell tool PowerShell; treat it exactly like Bash (Phase 0 finding 6).
-const SHELL_TOOLS = new Set(['Bash', 'PowerShell']);
+export const SHELL_TOOLS: ReadonlySet<string> = new Set(['Bash', 'PowerShell']);
 
 /** Normalise a tool path: `\` → `/`, `.`/`..` resolved, then relative to cwd when it lies inside it. */
 export function relPath(p: string, cwd: string): string {

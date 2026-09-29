@@ -1,0 +1,276 @@
+[
+  {
+    "judge": null,
+    "print": null,
+    "r": {
+      "diag": {
+        "message": "Unexpected trailing characters \"ing\"",
+        "pos": {
+          "col": 12,
+          "line": 3
+        },
+        "severity": "error"
+      }
+    },
+    "s": "drifting"
+  },
+  {
+    "judge": "deterministic",
+    "print": "diff > 3 lines",
+    "r": {
+      "cond": {
+        "n": 3,
+        "t": "diff"
+      }
+    },
+    "s": "diff>3lines"
+  },
+  {
+    "judge": null,
+    "print": null,
+    "r": {
+      "diag": {
+        "message": "Expected \"lines\" after diff count",
+        "pos": {
+          "col": 15,
+          "line": 3
+        },
+        "severity": "error"
+      }
+    },
+    "s": "diff > 3"
+  },
+  {
+    "judge": "deterministic",
+    "print": "diff > 3 lines",
+    "r": {
+      "cond": {
+        "n": 3,
+        "t": "diff"
+      }
+    },
+    "s": "diff > 3 lines"
+  },
+  {
+    "judge": "subagent",
+    "print": "reviewer approves",
+    "r": {
+      "cond": {
+        "t": "review"
+      }
+    },
+    "s": "reviewer approves"
+  },
+  {
+    "judge": "subagent",
+    "print": "reviewer approves \"x\"",
+    "r": {
+      "cond": {
+        "q": "x",
+        "t": "review"
+      }
+    },
+    "s": "reviewer approves 'x'"
+  },
+  {
+    "judge": "command",
+    "print": "not tests pass",
+    "r": {
+      "cond": {
+        "a": {
+          "t": "tests"
+        },
+        "t": "not"
+      }
+    },
+    "s": "not tests pass"
+  },
+  {
+    "judge": "deterministic",
+    "print": "not (drift and agent says done)",
+    "r": {
+      "cond": {
+        "a": {
+          "a": {
+            "t": "drift"
+          },
+          "b": {
+            "t": "done"
+          },
+          "t": "and"
+        },
+        "t": "not"
+      }
+    },
+    "s": "not (drift and agent says done)"
+  },
+  {
+    "judge": "deterministic",
+    "print": "drift or agent says done and same error twice",
+    "r": {
+      "cond": {
+        "a": {
+          "t": "drift"
+        },
+        "b": {
+          "a": {
+            "t": "done"
+          },
+          "b": {
+            "t": "same"
+          },
+          "t": "and"
+        },
+        "t": "or"
+      }
+    },
+    "s": "drift or agent says done and same error twice"
+  },
+  {
+    "judge": null,
+    "print": null,
+    "r": {
+      "diag": {
+        "message": "Unexpected trailing characters \"d\"",
+        "pos": {
+          "col": 18,
+          "line": 3
+        },
+        "severity": "error"
+      }
+    },
+    "s": "you approved"
+  },
+  {
+    "judge": null,
+    "print": null,
+    "r": {
+      "diag": {
+        "message": "Unexpected trailing characters \"ing\"",
+        "pos": {
+          "col": 17,
+          "line": 3
+        },
+        "severity": "error"
+      }
+    },
+    "s": "tests passing"
+  },
+  {
+    "judge": null,
+    "print": null,
+    "r": {
+      "diag": {
+        "message": "Expected quoted string",
+        "pos": {
+          "col": 15,
+          "line": 3
+        },
+        "severity": "error"
+      }
+    },
+    "s": "llm says"
+  },
+  {
+    "judge": null,
+    "print": null,
+    "r": {
+      "diag": {
+        "message": "Unterminated command",
+        "pos": {
+          "col": 16,
+          "line": 3
+        },
+        "severity": "error"
+      }
+    },
+    "s": "`npm test"
+  },
+  {
+    "judge": null,
+    "print": null,
+    "r": {
+      "diag": {
+        "message": "Unterminated quoted string",
+        "pos": {
+          "col": 21,
+          "line": 3
+        },
+        "severity": "error"
+      }
+    },
+    "s": "llm says \"open"
+  },
+  {
+    "judge": null,
+    "print": null,
+    "r": {
+      "diag": {
+        "message": "Expected integer after \"attempts >\"",
+        "pos": {
+          "col": 18,
+          "line": 3
+        },
+        "severity": "error"
+      }
+    },
+    "s": "attempts > x"
+  },
+  {
+    "judge": null,
+    "print": null,
+    "r": {
+      "diag": {
+        "message": "Expected glob pattern after \"touches\"",
+        "pos": {
+          "col": 14,
+          "line": 3
+        },
+        "severity": "error"
+      }
+    },
+    "s": "touches"
+  },
+  {
+    "judge": "deterministic",
+    "print": "touches src/**",
+    "r": {
+      "cond": {
+        "glob": "src/**",
+        "t": "touches"
+      }
+    },
+    "s": "touches src/**"
+  },
+  {
+    "judge": "command",
+    "print": "`npm run lint` passes",
+    "r": {
+      "cond": {
+        "cmd": "npm run lint",
+        "t": "cmd"
+      }
+    },
+    "s": "`npm run lint` passes"
+  },
+  {
+    "judge": "deterministic",
+    "print": "attempts > 2 and not same error twice",
+    "r": {
+      "cond": {
+        "a": {
+          "n": 2,
+          "t": "attempts"
+        },
+        "b": {
+          "a": {
+            "t": "same"
+          },
+          "t": "not"
+        },
+        "t": "and"
+      }
+    },
+    "s": "attempts > 2 and not same error twice"
+  }
+]

@@ -1,9 +1,10 @@
 import type { Workflow, Step } from '../model.js';
 import { printCond } from '../cond.js';
-import { slugify } from './parse.js';
+import { NODES, defaultId, headingOwns } from '../nodes/index.js';
 
 export function printWorkflow(w: Workflow): string {
   const parts: string[] = [];
+  const owned = headingOwns();
 
   // 1. Frontmatter
   const isBlock = !!w.block;
@@ -50,33 +51,16 @@ export function printWorkflow(w: Workflow): string {
 
   // 2. Steps
   const counters: Record<string, number> = {};
-  function defaultId(step: Step): string {
-    if (step.kind === 'phase' && step.title) {
-      const slug = slugify(step.title);
-      if (slug) return slug;
-    }
-    counters[step.kind] = (counters[step.kind] || 0) + 1;
-    return `${step.kind}-${counters[step.kind]}`;
-  }
 
   function printStep(step: Step, depth: number): string {
     const hashes = '#'.repeat(depth);
-    let headingText = step.kind as string;
-
-    if (step.kind === 'phase') {
-      headingText = step.title ? `phase ${step.title}` : 'phase';
-    } else if (step.kind === 'run') {
-      headingText = step.attrs.cmd ? `run \`${step.attrs.cmd}\`` : 'run';
-    } else if (step.kind === 'use') {
-      headingText = `use ${step.title || step.attrs.use || step.id}`;
-    } else if (step.kind === 'if' && step.cond) {
-      headingText = `if ${printCond(step.cond)}`;
-    }
+    const h = NODES.get(step.kind)?.heading?.print(step);
+    const headingText = h?.text ?? step.kind;
 
     const lines: string[] = [`${hashes} ${headingText}`];
 
     // Determine if custom id needs to be printed
-    const defId = defaultId(step);
+    const defId = defaultId(step, counters);
     if (step.id && step.id !== defId) {
       lines.push(`id: ${step.id}`);
     }
@@ -89,7 +73,7 @@ export function printWorkflow(w: Workflow): string {
       lines.push(`${card.kind}: ${card.text}`);
     }
 
-    if (step.kind !== 'if' && step.cond) {
+    if (!h?.condInHeading && step.cond) {
       lines.push(`until: ${printCond(step.cond)}`);
     }
 
@@ -101,20 +85,7 @@ export function printWorkflow(w: Workflow): string {
 
     // Extra attrs not handled
     for (const [k, v] of Object.entries(step.attrs)) {
-      if (
-        [
-          'id',
-          'mode',
-          'until',
-          'max',
-          'against',
-          'knowl',
-          'to',
-          'focus',
-          'cmd',
-          'use',
-        ].includes(k)
-      ) {
+      if (['id', 'mode', 'until', 'max', 'against', 'knowl', 'to', 'focus'].includes(k) || owned.has(k)) {
         continue;
       }
       lines.push(`${k}: ${v}`);

@@ -1,6 +1,10 @@
-export type StepKind = 'phase' | 'say' | 'run' | 'gate' | 'repeat' | 'if' | 'verify' | 'use' | 'recall' | 'store' | 'handoff';
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface NodeKinds {}
+export type StepKind = keyof NodeKinds;
 // now and stop are delivery kinds, only valid in a `whenever` block (plan 6.5).
-export type CardKind = 'guard' | 'note' | 'nudge' | 'role' | 'checkpoint' | 'budget' | 'undo' | 'now' | 'stop';
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface CardKinds {}
+export type CardKind = keyof CardKinds;
 export type LinkKind = 'next' | 'on-pass' | 'on-fail' | 'retry' | 'verify-against' | 'hand-off';
 
 export interface Pos {
@@ -35,20 +39,9 @@ export interface Step {
   pos?: Pos;
 }
 
-export type Cond =
-  | { t: 'approve' }
-  | { t: 'tests' }
-  | { t: 'cmd'; cmd: string }
-  | { t: 'llm'; q: string }
-  | { t: 'review'; q?: string }
-  | { t: 'done' }
-  | { t: 'diff'; n: number }
-  | { t: 'touches'; glob: string }
-  | { t: 'attempts'; n: number }
-  | { t: 'same' }
-  | { t: 'drift' }
-  | { t: 'and' | 'or'; a: Cond; b: Cond }
-  | { t: 'not'; a: Cond };
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface CondAtoms {}
+export type Cond = CondAtoms[keyof CondAtoms] | { t: 'and' | 'or'; a: Cond; b: Cond } | { t: 'not'; a: Cond };
 
 export interface AutoCard {
   id: string;

@@ -6,6 +6,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import type { Decision, Engine, EngineEvent, EngineProbe, EngineSession, OpenOptions, ToolRequest, TurnResult } from '@reins/core';
+import { SHELL_TOOLS, WRITE_TOOLS } from '@reins/core';
 import { startHookServer } from '../hooks.js';
 import { killTree } from '../proc.js';
 import { newNonce, trustNote } from './cards.js';
@@ -27,7 +28,7 @@ export interface ClaudeConfig {
 
 const CAPABILITIES = { midTurnSteer: 'hook', preToolDeny: true, resume: true } as const;
 // PreToolUse only needs the tools that write; Windows names its shell tool PowerShell.
-const GUARDED_TOOLS = 'Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell';
+const GUARDED_TOOLS = [...WRITE_TOOLS, ...SHELL_TOOLS].join('|');
 // Run mcp.ts from source under tests and mcp.js from dist; Node runs either directly.
 const MCP_SCRIPT = fileURLToPath(new URL(import.meta.url.endsWith('.ts') ? '../mcp.ts' : '../mcp.js', import.meta.url));
 
