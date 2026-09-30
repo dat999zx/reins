@@ -135,7 +135,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       }
       store.trust(cwd, FOLDER_PATH, f.hash);
     }
-    if (cancelOpen) return undefined;
+    if (cancelOpen || stopping) return undefined;
     const sid = store.getSession(id)!.engineSessionId;
     const s = await getEngine().open({
       cwd, ...(sid ? { sessionId: sid } : {}),
@@ -143,7 +143,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       pendingCards: () => (run ? run.takeCards() : queue.splice(0)),
     });
     live = s;
-    return cancelOpen ? undefined : s;
+    return cancelOpen || stopping ? undefined : s;
   }
   const ensureEngine = (): Promise<EngineSession | undefined> =>
     live ? Promise.resolve(live) : (opening ??= openEngine().finally(() => { opening = undefined; }));
@@ -172,7 +172,6 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     },
     async interrupt() {
       if (turnOpen && live) await live.interrupt();
-      else if (opening) cancelOpen = true;
     },
     events: { async *[Symbol.asyncIterator]() {} },
     async close() {},
@@ -184,7 +183,11 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   };
 
   // A stop replaces a pending now, and that now goes to the queue (plan 15d 1293-1297). Returns the interrupt in flight, if this call sent it.
+  // Only a stop cancels an engine that is still opening; a now card waits for the turn, so the text it interrupts is never dropped.
+  const stopOpening = () => { if (opening) cancelOpen = true; };
+
   function applyStop(): Promise<void> | undefined {
+    stopOpening();
     if (intent?.kind === 'stop') return undefined;
     const had = intent;
     if (had) queue.push(had.text);
@@ -193,6 +196,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   }
 
   function route(text: string, kind: 'steer' | 'now' | 'stop') {
+    if (kind === 'stop') stopOpening();
     if (run) {
       run.queueCard(text, kind);
       // The run logs card_queued before it stores the card, so its own snapshot save misses it (spec 1322).

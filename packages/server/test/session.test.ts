@@ -330,6 +330,30 @@ describe('folder trust (3b.4, exit check 11)', () => {
     await x.s.close();
   });
 
+  it('a now card typed while the engine waits on the trust question does not drop the text: it is sent first, the card after', async () => {
+    const x = setup([{ text: 'a' }, { text: 'b' }], { cwd: claudeFolder() });
+    x.s.message('typed');
+    const q = await x.question('trust');
+    expect(x.s.card('right now', 'now')).toEqual({ ok: true });
+    x.s.answer(q.id, 'y');
+    await x.s.idle();
+    expect(x.t.turns).toEqual(['typed', expect.stringContaining('right now')]);
+    expect(x.rows('turn_failed')).toEqual([]);
+    expect(x.rows('cards_unsent')).toEqual([]);
+  });
+
+  it('a now card typed while a run waits on the trust question: the step prompt is still sent, the card follows', async () => {
+    const x = setup([{ text: 'REINS: done' }, { text: 'REINS: done' }], { cwd: claudeFolder() });
+    x.s.message('go', [{ tag: 'read-only' }]);
+    const q = await x.question('trust');
+    expect(x.s.card('right now', 'now')).toEqual({ ok: true });
+    x.s.answer(q.id, 'y');
+    await x.s.idle();
+    expect(x.t.turns[0]).toContain('go');
+    expect(x.t.turns[0]).not.toContain('right now');
+    expect(x.t.turns.some((t) => t.includes('right now'))).toBe(true);
+  });
+
   it('n logs a note and turn_failed, and nothing is spawned', async () => {
     const x = setup([{ text: 'ok' }], { cwd: claudeFolder() });
     x.s.message('hi');
@@ -669,7 +693,9 @@ describe('/resume (3b.6, 3b.7)', () => {
     expect(x.s.resume('nope')).toMatchObject({ ok: false, code: 409 });
     x.store.createSession({ id: 's2', cwd: x.cwd, engine: 'claude' });
     x.store.appendLog('s2', { type: 'run_started', runId: 'r9' });
-    expect(x.s.resume('r9')).toMatchObject({ ok: false, code: 409, error: expect.stringContaining('r9') });
+    x.store.createRun({ id: 'r9', workflowPath: '', cwd: x.cwd });
+    x.store.saveSnapshot('r9', { events: [] } as any);
+    expect(x.s.resume('r9')).toMatchObject({ ok: false, code: 409, error: expect.stringMatching(/does not belong/) });
     x.s.message('go', [{ tag: 'read-only' }]);
     await x.s.idle();
     const runId = x.rows('run_started')[0]!.runId!;

@@ -43,11 +43,25 @@ export function takeLock(file: string, info: LockInfo, alive: (pid: number) => b
         held = undefined; // never a half-written lock (see above), so a corrupt file is stale
       }
       if (held && alive(held.pid)) return { ok: false, running: held };
-      if (fs.readFileSync(file, 'utf8') === raw) fs.rmSync(file, { force: true }); // only the lock we judged stale
+      try {
+        if (fs.readFileSync(file, 'utf8') === raw) fs.rmSync(file, { force: true }); // only the lock we judged stale
+      } catch {
+        // released meanwhile: the next attempt takes it
+      }
     }
     throw new Error(`cannot take ${file}`);
   } finally {
     fs.rmSync(tmp, { force: true });
+  }
+}
+
+/** The live instance holding `file`, if any. Read-only, so a second `reins serve` can refuse before it binds its port. */
+export function runningLock(file: string, alive: (pid: number) => boolean = pidAlive): LockInfo | undefined {
+  try {
+    const held = JSON.parse(fs.readFileSync(file, 'utf8')) as LockInfo;
+    return alive(held.pid) ? held : undefined;
+  } catch {
+    return undefined;
   }
 }
 

@@ -5,7 +5,7 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type { EngineProbe } from '@reins/core';
 import { sameToken } from './hooks.js';
-import { releaseLock, takeLock } from './lock.js';
+import { releaseLock, runningLock, takeLock } from './lock.js';
 import { recover } from './recover.js';
 import { loadWorkflow } from './run-cli.js';
 import { openSession, type Ack, type MakeEngine, type Session, type SessionDeps } from './session.js';
@@ -212,6 +212,10 @@ export async function startServer(o: ServerOptions): Promise<Server> {
       else send(res, fail(500, 'Internal error.'));
     }
   }
+
+  // Before listen: with a fixed --port the second instance would die on EADDRINUSE instead of naming the first.
+  const already = o.lockFile ? runningLock(o.lockFile) : undefined;
+  if (already) throw Object.assign(new Error(`Reins is already serving on port ${already.port}.`), { running: already });
 
   const server = http.createServer((req, res) => { void handle(req, res); });
   await new Promise<void>((resolve, reject) => {

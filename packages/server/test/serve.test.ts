@@ -68,6 +68,20 @@ describe('reins serve', () => {
     expect(fs.existsSync(lockFile)).toBe(true);
   });
 
+  it('a second instance on the same fixed port names the first instead of failing on EADDRINUSE', async () => {
+    const home = tmpDir();
+    const a = serve(['serve'], home);
+    await until(() => ADDRESS.test(a.out()));
+    const [, port, token] = ADDRESS.exec(a.out())!;
+    const b = serve(['serve', '--port', port!], home);
+    expect(await b.done).toBe(1);
+    expect(b.out()).toContain(`http://127.0.0.1:${port}/#token=${token}`);
+    expect(b.err()).toMatch(/already/i);
+    expect(b.err()).not.toMatch(/EADDRINUSE/);
+    a.stop();
+    expect(await a.done).toBe(0);
+  });
+
   it('--port must be a whole number from 0 to 65535, and nothing starts otherwise', async () => {
     const home = tmpDir();
     for (const bad of [['--port', 'abc'], ['--port', '-1'], ['--port', '1.5'], ['--port', '70000'], ['--port']]) {
