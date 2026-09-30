@@ -5,10 +5,11 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { Readable, Writable } from 'node:stream';
 import { printWorkflow } from '@reins/core';
-import { claudeEngine } from './claude/engine.js';
+import { claudeEngine, probeClaude } from './claude/engine.js';
 import { findClaude } from './claude/find.js';
 import { doctor } from './doctor.js';
 import { serveMcp } from './mcp.js';
+import { runServe } from './serve.js';
 import { formatDiagnostic, loadWorkflow, startRunCli } from './run-cli.js';
 import { defaultStorePath, openStore } from './store.js';
 
@@ -18,6 +19,7 @@ const USAGE = `usage:
   reins check <file>
   reins print <file> [--write]
   reins doctor
+  reins serve [--port <n>]   (the local server the UI talks to; prints its address)
   reins mcp            (internal: the approval MCP server Claude starts)`;
 
 interface Io {
@@ -25,6 +27,7 @@ interface Io {
   stderr: Writable;
   stdin: Readable;
   env: NodeJS.ProcessEnv;
+  stop?: Promise<void>;
 }
 
 /** Split argv into positionals and --flags; a flag takes the next word unless it is boolean. */
@@ -75,6 +78,27 @@ export async function main(argv: string[], io: Io): Promise<number> {
     serveMcp(io.stdin, io.stdout, io.env.REINS_APPROVE_URL ?? '');
     await new Promise((r) => io.stdin.on('end', r));
     return 0;
+  }
+
+  if (cmd === 'serve') {
+    const raw = flags.port === undefined ? undefined : String(flags.port);
+    if (raw !== undefined && !(/^\d+$/.test(raw) && Number(raw) <= 65535)) {
+      err(`--port must be a whole number from 0 to 65535, not "${raw}".`);
+      return 1;
+    }
+    const bin = findClaude(io.env)?.path ?? '';
+    return runServe({
+      home: io.env.REINS_HOME ?? os.homedir(),
+      ...(raw !== undefined ? { port: Number(raw) } : {}),
+      makeEngine: ({ model, effort, onApprove, onLive }) =>
+        claudeEngine({ bin, ...(model ? { model } : {}), ...(effort ? { effort } : {}), onApprove, onLive }),
+      probe: () => probeClaude(bin),
+      out, err,
+      stop: io.stop ?? new Promise<void>((resolve) => {
+        process.once('SIGINT', () => resolve());
+        process.once('SIGTERM', () => resolve());
+      }),
+    });
   }
 
   if (cmd === 'run' && (pos[0] || typeof flags.resume === 'string')) {
