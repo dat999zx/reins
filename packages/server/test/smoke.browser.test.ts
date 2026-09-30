@@ -1,0 +1,173 @@
+// The Phase 3c smoke test (plan 15e 3c.12): the built app in headless Chromium against a real server,
+// with fake-claude behind the real claudeEngine and a fake folder picker.
+import { describe, it, expect, afterAll } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium, type Browser, type Page } from 'playwright';
+import { claudeEngine } from '../src/claude/engine.js';
+import { startServer, type Server } from '../src/server.js';
+import { openStore, type Store } from '../src/store.js';
+import { FAKE_CLAUDE, fakeSetup } from './helpers.js';
+import { PROBE, tmpDir, cleanup } from './http-helpers.js';
+
+const APP = fileURLToPath(new URL('../../app/dist/', import.meta.url));
+const INDEX = path.join(APP, 'index.html');
+const skip = !fs.existsSync(INDEX) && !process.env.CI;
+
+const TURNS = { fixture: 'claude-2.1.281-turns.jsonl', turn: 0 };
+const APPROVAL = 'claude-2.1.281-approval-allow-hold.jsonl';
+const MARKER = 'claude-2.1.281-card-marker-hook.jsonl';
+const T = 120_000;
+const W = 15_000;
+
+describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
+  it('the build has no inline script body (the CSP depends on it)', () => {
+    const html = fs.readFileSync(INDEX, 'utf8');
+    const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
+    expect(scripts.length).toBeGreaterThan(0);
+    for (const s of scripts) expect(s[1]).toBe('');
+  });
+
+  let browser: Browser | undefined;
+  let srv: Server | undefined;
+  let store: Store | undefined;
+  afterAll(async () => {
+    await browser?.close();
+    await srv?.close();
+    store?.close();
+    await cleanup();
+  }, T);
+
+  it('drives the whole app in a browser', async () => {
+    const fake = fakeSetup([TURNS, { fixture: APPROVAL, approve: true }, TURNS, { fixture: MARKER, delayMs: 150 }]);
+    const folderA = fake.dir;
+    const folderB = tmpDir();
+    const folders = [folderA, folderB];
+    store = openStore(':memory:');
+    srv = await startServer({
+      store, dir: tmpDir(), appDir: APP,
+      probe: async () => PROBE,
+      pickFolder: async () => folders.shift() ?? null,
+      makeEngine: ({ model, effort, onApprove, onLive }) =>
+        claudeEngine({ bin: FAKE_CLAUDE, ...(model ? { model } : {}), ...(effort ? { effort } : {}), onApprove, onLive }),
+    });
+    browser = await chromium.launch();
+    const page: Page = await (await browser.newContext()).newPage();
+    page.setDefaultTimeout(W);
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+
+    const box = page.getByRole('textbox', { name: 'Message' });
+    const nameA = path.basename(folderA);
+    const nameB = path.basename(folderB);
+    const rail = page.getByRole('navigation', { name: 'Sessions' });
+    const sendText = async (text: string) => { await box.fill(text); await box.press('Enter'); };
+    const idle = () => page.locator('.chead .status.idle').waitFor();
+
+    // 1. the token is gone from the address bar
+    await page.goto(srv.url);
+    await rail.waitFor();
+    expect(page.url()).not.toContain('token');
+    expect(page.url()).not.toContain(srv.token);
+
+    // 2. Ctrl+O creates a session
+    await page.keyboard.press('ControlOrMeta+O');
+    await rail.getByText(nameA).waitFor();
+    await rail.getByRole('button', { name: /New chat/ }).waitFor();
+    await box.waitFor();
+    const firstUrl = page.url();
+    expect(firstUrl).toMatch(/#s=/);
+
+    // 3. a plain message shows the agent's text
+    await sendText('what does upload.mjs do?');
+    await page.locator('.msg.agent', { hasText: 'ONE' }).waitFor();
+    await idle();
+
+    // 4. a tool question: Deny with a reason
+    await sendText('change upload');
+    const tool = page.getByRole('region', { name: 'tool question' });
+    await tool.waitFor();
+    await tool.getByRole('textbox').fill('no way');
+    await tool.getByRole('button', { name: 'Deny' }).click();
+    await page.getByText('answered: n no way').waitFor();
+    const edit = page.locator('details.tool', { has: page.locator('summary b', { hasText: /^Edit$/ }) });
+    await edit.locator('summary').click();
+    await edit.locator('pre.result').getByText('The user said no: no way', { exact: false }).waitFor();
+    await idle();
+
+    // 5. #gate from the tag picker, then Approve; the receipt appears
+    await box.fill('#ga');
+    await page.getByRole('listbox', { name: 'Tags' }).getByRole('button', { name: /#gate/ }).waitFor();
+    await box.press('Enter');
+    await page.locator('.chip.tag', { hasText: '#gate' }).waitFor();
+    await sendText('ship it');
+    const gate = page.getByRole('region', { name: 'gate question' });
+    await gate.waitFor();
+    await gate.getByRole('button', { name: 'Approve' }).click();
+    await page.getByRole('region', { name: /^Receipt for/ }).first().waitFor();
+    await idle();
+
+    // 6. a steer card typed while busy is delivered mid-turn
+    const reads = page.locator('details.tool summary b', { hasText: /^Read$/ });
+    const readsBefore = await reads.count();
+    await sendText('read three files');
+    await expect.poll(() => reads.count(), { timeout: W }).toBeGreaterThan(readsBefore);
+    await sendText('End your answer with PINEAPPLE.');
+    await page.getByText('card delivered (mid-turn)').waitFor();
+    await idle();
+
+    // 7. a second session in another folder, with its own log
+    await page.keyboard.press('ControlOrMeta+O');
+    await rail.getByText(nameB).waitFor();
+    await expect.poll(() => page.url(), { timeout: W }).not.toBe(firstUrl);
+    const log = page.locator('.log');
+    expect(await log.getByText('what does upload.mjs do?').count()).toBe(0);
+    await sendText('hello from b');
+    await log.getByText('hello from b').waitFor();
+    await log.locator('.msg.agent', { hasText: 'ONE' }).waitFor();
+    await rail.locator(`section.group:has-text("${nameA}") button.item`).first().click();
+    await log.getByText('what does upload.mjs do?').waitFor();
+    expect(await log.getByText('hello from b').count()).toBe(0);
+
+    // 8. the Text tab: new workflow, an error shows on its line, fixed, saved, Run, Trust, the run finishes
+    const receipts = await page.getByRole('region', { name: /^Receipt for/ }).count();
+    await page.getByRole('tab', { name: 'Text' }).click();
+    await page.getByRole('textbox', { name: 'Workflow name' }).fill('smoke');
+    await page.getByRole('button', { name: 'New workflow' }).click();
+    const editor = page.getByRole('textbox', { name: 'Workflow text' });
+    await editor.waitFor();
+    const good = await editor.inputValue();
+    expect(good).toContain('## phase build');
+    const bad = good.replace('## phase build', '## bogus build');
+    const badLine = bad.split('\n').findIndex((l) => l.startsWith('## bogus')) + 1;
+    await editor.fill(bad);
+    const diags = page.getByRole('list', { name: 'Diagnostics' });
+    await diags.getByText(`line ${badLine}: Unknown step kind "bogus"`).first().waitFor();
+    await editor.fill(good);
+    await diags.getByText('No problems.').waitFor();
+    await editor.fill(`${good}\n`);
+    await editor.press('ControlOrMeta+S');
+    await page.getByRole('status').getByText('Saved.').waitFor();
+    await page.getByRole('button', { name: 'Run' }).click();
+    const trust = page.getByRole('region', { name: 'trust question' });
+    await trust.waitFor();
+    expect(await trust.locator('.qdetail').innerText()).toBe('npm test');
+    await trust.getByRole('button', { name: 'Trust', exact: true }).click();
+    await expect.poll(() => page.getByRole('region', { name: /^Receipt for/ }).count(), { timeout: W }).toBeGreaterThan(receipts);
+    await idle();
+
+    // 9. a reload brings the same session and its history back
+    const before = page.url();
+    await page.reload();
+    await rail.waitFor();
+    expect(page.url()).toBe(before);
+    await log.getByText('what does upload.mjs do?').waitFor();
+    await log.getByText('answered: n no way').waitFor();
+    await log.getByText('card delivered (mid-turn)').waitFor();
+    expect(page.url()).not.toContain('token');
+
+    expect(errors).toEqual([]);
+  }, T);
+});
