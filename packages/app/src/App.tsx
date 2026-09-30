@@ -39,9 +39,9 @@ export function App() {
     let es: EventSource | undefined;
     let stopped = false;
     const buffer: LogRow[] = [];
-    let raf = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const flush = () => {
-      raf = 0;
+      timer = undefined;
       const rows = buffer.splice(0);
       if (rows.length) commit(reduceAll(stRef.current, rows, loadedAt));
     };
@@ -65,7 +65,8 @@ export function App() {
       es.onopen = () => setReconnecting(false);
       es.onmessage = (m) => {
         buffer.push(JSON.parse(m.data));
-        raf ||= requestAnimationFrame(flush);
+        // A timer, not requestAnimationFrame: rAF never fires in a background tab, so a waiting badge would never show.
+        timer ??= setTimeout(flush, 16);
       };
       es.onerror = () => {
         es?.close();
@@ -75,7 +76,7 @@ export function App() {
     }
     void connect();
     get<{ tags: TagEntry[] }>('/api/tags').then((r) => setCatalogue(r.tags)).catch(() => {});
-    return () => { stopped = true; es?.close(); cancelAnimationFrame(raf); };
+    return () => { stopped = true; es?.close(); clearTimeout(timer); };
   }, [token]);
 
   const flash = (m: string) => { setNotice(m); setTimeout(() => setNotice(''), 4000); };
