@@ -7,7 +7,7 @@ import { findClaude } from '../src/claude/find.js';
 import { startServer } from '../src/server.js';
 import { openStore } from '../src/store.js';
 import { until } from './helpers.js';
-import { askedQuestion, cleanup, request, rowsOf, tmpDir } from './http-helpers.js';
+import { askedQuestion, cleanup, openQuestions, request, rowsOf, tmpDir } from './http-helpers.js';
 
 afterEach(cleanup);
 
@@ -38,8 +38,13 @@ describe.skipIf(process.env.REINS_E2E !== '1')('Phase 3b exit checks 1, 3, 5, 6 
 
       const three = await open();                                                                  // check 3
       await say(three, 'Use the Edit tool to add the line "// hi" at the top of src/upload.mjs.', [{ tag: 'read-only' }]);
-      await until(() => rowsOf(store, three, 'receipt').length === 1, 300_000);
-      expect(engine(three).some((e) => e.type === 'refusal')).toBe(true);
+      // A model that reads "read-only" in the turn may refuse before trying: then the run pauses at `resume` (REINS: blocked).
+      await until(() => rowsOf(store, three, 'receipt').length === 1 || openQuestions(store.readLog(three)).some((q) => q.kind === 'resume'), 300_000);
+      const blocked = openQuestions(store.readLog(three)).find((q) => q.kind === 'resume');
+      if (blocked) await request(srv, 'POST', `/api/sessions/${three}/answer`, { body: { questionId: blocked.id, answer: 'stop' } });
+      await until(() => rowsOf(store, three, 'receipt').length === 1, 60_000);
+      expect(!!blocked || engine(three).some((e) => e.type === 'refusal')).toBe(true);
+      expect(spawnSync('git', ['diff', '--quiet', '--', 'src/upload.mjs'], { cwd: REPO }).status).toBe(0);
 
       const five = await open();                                                                   // check 5
       await say(five, 'Reply with the single word done. Do not use any tool.', [{ tag: 'gate' }]);
