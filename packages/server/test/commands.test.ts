@@ -10,7 +10,7 @@ const node = `"${process.execPath}"`;
 beforeAll(() => {
   // A space in the folder name, as Windows user folders often have.
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reins cmd-'));
-  fs.writeFileSync(path.join(dir, 'lines.mjs'), 'for (let i = 1; i <= 500; i++) console.log("line " + i); console.error("boom"); process.exit(3);');
+  fs.writeFileSync(path.join(dir, 'lines.mjs'), 'for (let i = 1; i <= 500; i++) console.log("line " + i); console.error("boom"); process.exitCode = 3;');
   fs.writeFileSync(path.join(dir, 'hang.mjs'), 'setInterval(() => {}, 1000);');
   fs.writeFileSync(path.join(dir, 'cwd.mjs'), 'console.log(process.cwd());');
 });
