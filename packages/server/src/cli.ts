@@ -2,18 +2,22 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { spawn } from 'node:child_process';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Readable, Writable } from 'node:stream';
 import { printWorkflow } from '@reins/core';
 import { claudeEngine, probeClaude } from './claude/engine.js';
 import { findClaude } from './claude/find.js';
 import { doctor } from './doctor.js';
 import { serveMcp } from './mcp.js';
+import { openUrl } from './opener.js';
+import { pickFolder } from './picker.js';
 import { runServe } from './serve.js';
 import { formatDiagnostic, loadWorkflow, startRunCli } from './run-cli.js';
 import { defaultStorePath, openStore } from './store.js';
 
 const USAGE = `usage:
+  reins                  (opens the app: starts the server and your browser)
   reins run <file> [--engine claude] [--model <m>] [--effort <e>] [--yes]
   reins run --resume <runId>
   reins check <file>
@@ -28,6 +32,7 @@ interface Io {
   stdin: Readable;
   env: NodeJS.ProcessEnv;
   stop?: Promise<void>;
+  open?: (url: string) => void;
 }
 
 /** Split argv into positionals and --flags; a flag takes the next word unless it is boolean. */
@@ -80,16 +85,31 @@ export async function main(argv: string[], io: Io): Promise<number> {
     return 0;
   }
 
-  if (cmd === 'serve') {
+  if (cmd === 'serve' || cmd === undefined) {
     const raw = flags.port === undefined ? undefined : String(flags.port);
     if (raw !== undefined && !(/^\d+$/.test(raw) && Number(raw) <= 65535)) {
       err(`--port must be a whole number from 0 to 65535, not "${raw}".`);
       return 1;
     }
     const bin = findClaude(io.env)?.path ?? '';
+    const home = io.env.REINS_HOME ?? os.homedir();
+    const app = fileURLToPath(new URL('../../app/dist/', import.meta.url));
+    const appDir = fs.existsSync(path.join(app, 'index.html')) ? app : undefined;
+    if (!appDir) err('The UI is not built (run npm run build); serving the API only.');
+    const bare = cmd === undefined;
+    const open = io.open ?? ((url: string) => {
+      try {
+        openUrl(url, { platform: process.platform, dir: path.join(home, '.reins'), spawn, err });
+      } catch {
+        err(`Open this address in your browser: ${url}`);
+      }
+    });
     return runServe({
-      home: io.env.REINS_HOME ?? os.homedir(),
+      home,
       ...(raw !== undefined ? { port: Number(raw) } : {}),
+      ...(appDir ? { appDir } : {}),
+      pickFolder: (signal) => pickFolder(signal),
+      ...(bare ? { open } : {}),
       makeEngine: ({ model, effort, onApprove, onLive }) =>
         claudeEngine({ bin, ...(model ? { model } : {}), ...(effort ? { effort } : {}), onApprove, onLive }),
       probe: () => probeClaude(bin),

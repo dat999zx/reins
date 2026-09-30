@@ -8,9 +8,10 @@ import { sameToken } from './hooks.js';
 import { releaseLock, runningLock, takeLock } from './lock.js';
 import { recover } from './recover.js';
 import { loadWorkflow } from './run-cli.js';
-import { openSession, type Ack, type MakeEngine, type Session, type SessionDeps } from './session.js';
+import { openSession, under, type Ack, type MakeEngine, type Session, type SessionDeps } from './session.js';
 import type { LogRow, Store } from './store.js';
 import { tagCatalogue, type Tag } from './tags.js';
+import { previewWorkflow, readWorkflow, writeWorkflow } from './workflow-files.js';
 
 export interface ServerOptions {
   store: Store;
@@ -20,6 +21,8 @@ export interface ServerOptions {
   port?: number;
   lockFile?: string;
   heartbeatMs?: number;
+  appDir?: string;
+  pickFolder?: (signal: AbortSignal) => Promise<string | null>;
 }
 export interface Server { port: number; token: string; url: string; close(): Promise<void> }
 
@@ -27,7 +30,7 @@ const MAX_BODY = 1024 * 1024;
 type Reply = { status: number; body: unknown };
 interface Body {
   text?: unknown; tags?: unknown; kind?: unknown; questionId?: unknown; answer?: unknown; autoApprove?: unknown;
-  title?: unknown; path?: unknown; runId?: unknown; cwd?: unknown; engine?: unknown; model?: unknown; effort?: unknown;
+  title?: unknown; path?: unknown; create?: unknown; stepId?: unknown; runId?: unknown; cwd?: unknown; engine?: unknown; model?: unknown; effort?: unknown;
 }
 
 const ok = (body: unknown = {}): Reply => ({ status: 200, body });
@@ -91,6 +94,29 @@ async function parse(req: http.IncomingMessage): Promise<{ b: Body } | { fail: R
   return { b: v as Body };
 }
 
+const TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml',
+};
+const SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'Content-Security-Policy': "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+  'Referrer-Policy': 'no-referrer',
+};
+
+function serveStatic(appDir: string, pathname: string, res: http.ServerResponse) {
+  try {
+    const p = decodeURIComponent(pathname === '/' ? '/index.html' : pathname);
+    if (p.includes('\0')) return send(res, fail(404, 'Not found.'));
+    const file = path.resolve(appDir, '.' + p);
+    if (!under(file, path.resolve(appDir)) || !fs.statSync(file).isFile()) return send(res, fail(404, 'Not found.'));
+    const body = fs.readFileSync(file);
+    res.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream' });
+    res.end(body);
+  } catch {
+    send(res, fail(404, 'Not found.'));
+  }
+}
+
 function send(res: http.ServerResponse, r: Reply) {
   res.writeHead(r.status, { 'content-type': 'application/json' });
   res.end(JSON.stringify(r.body));
@@ -145,12 +171,30 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     return ok({ workflows: [...list(path.join(cwd, '.reins', 'workflows'), 'project'), ...list(path.join(o.dir, 'workflows'), 'user')] });
   }
 
-  async function dispatch(req: http.IncomingMessage, url: URL): Promise<Reply> {
+  let picking = false;
+  async function pick(res: http.ServerResponse): Promise<Reply> {
+    if (!o.pickFolder) return fail(501, 'This machine has no folder picker.');
+    if (picking) return fail(409, 'A folder dialog is already open.');
+    picking = true;
+    const ac = new AbortController();
+    res.on('close', () => { if (!res.writableEnded) ac.abort(); });
+    try {
+      const p = await o.pickFolder(ac.signal);
+      return p && path.isAbsolute(p) && fs.statSync(p, { throwIfNoEntry: false })?.isDirectory() ? ok({ path: p }) : ok({ cancelled: true });
+    } catch (e) {
+      return fail(501, e instanceof Error ? e.message : 'No folder picker is available.');
+    } finally {
+      picking = false;
+    }
+  }
+
+  async function dispatch(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<Reply> {
     const p = url.pathname;
     if (req.method === 'GET' && p === '/api/state') return ok({ sessions: [...sessions.values()].map(view), engines });
     if (req.method === 'POST' && p === '/api/state/probe') { engines = await probeNow(); return ok({ engines }); }
     if (req.method === 'GET' && p === '/api/tags') return ok({ tags: tagCatalogue() });
     if (req.method === 'GET' && p === '/api/workflows') return workflows(url.searchParams.get('cwd'));
+    if (req.method === 'POST' && p === '/api/pick-folder') return pick(res);
     if (req.method === 'POST' && p === '/api/sessions') {
       const r = await parse(req);
       return 'fail' in r ? r.fail : create(r.b);
@@ -163,6 +207,27 @@ export async function startServer(o: ServerOptions): Promise<Server> {
         const after = url.searchParams.get('after') ?? '0';
         if (!/^\d+$/.test(after)) return fail(400, 'after must be a sequence number.');
         return ok({ rows: o.store.readLog(s.id,Number(after)) });
+      }
+      const cwd = s.info().cwd;
+      if (req.method === 'GET' && m[2] === 'workflow') {
+        const p = url.searchParams.get('path');
+        return p ? readWorkflow(cwd, o.dir, p) : fail(400, 'path must be a non-empty string.');
+      }
+      if (req.method === 'PUT' && m[2] === 'workflow') {
+        const r = await parse(req);
+        if ('fail' in r) return r.fail;
+        const { path: p, text, create } = r.b;
+        if (!str(p) || !p || !str(text)) return fail(400, 'path and text must be strings.');
+        if (create !== undefined && typeof create !== 'boolean') return fail(400, 'create must be a boolean.');
+        return writeWorkflow(cwd, o.dir, p, text, create === true);
+      }
+      if (req.method === 'POST' && m[2] === 'preview') {
+        const r = await parse(req);
+        if ('fail' in r) return r.fail;
+        const { path: p, text, stepId } = r.b;
+        if (!str(p) || !p || !str(text)) return fail(400, 'path and text must be strings.');
+        if (stepId !== undefined && !str(stepId)) return fail(400, 'stepId must be a string.');
+        return previewWorkflow(cwd, o.dir, p, text, stepId);
       }
       if (req.method === 'POST' && Object.hasOwn(actions, m[2]!)) {
         const r = await parse(req);
@@ -190,7 +255,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
   }
 
   async function handle(req: http.IncomingMessage, res: http.ServerResponse) {
-    res.setHeader('Referrer-Policy', 'no-referrer');
+    for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
     try {
       if (req.headers.host !== host) return send(res, fail(403, 'Bad Host header.'));
       if (req.headers.origin !== undefined && req.headers.origin !== origin) return send(res, fail(403, 'Bad Origin header.'));
@@ -200,12 +265,14 @@ export async function startServer(o: ServerOptions): Promise<Server> {
       } catch {
         return send(res, fail(400, 'Bad URL.'));
       }
-      if (!url.pathname.startsWith('/api/')) return send(res, fail(404, 'Not found.'));
+      if (!url.pathname.startsWith('/api/')) {
+        return o.appDir && req.method === 'GET' ? serveStatic(o.appDir, url.pathname, res) : send(res, fail(404, 'Not found.'));
+      }
       const bearer = /^Bearer (.+)$/.exec(req.headers.authorization ?? '')?.[1];
       const given = bearer ?? (url.pathname === '/api/stream' ? url.searchParams.get('token') : null);
       if (given === null || given === undefined || !sameToken(given, token)) return send(res, fail(401, 'A valid token is required.'));
       if (req.method === 'GET' && url.pathname === '/api/stream') return stream(req, res, url);
-      send(res, await dispatch(req, url));
+      send(res, await dispatch(req, res, url));
     } catch {
       // A fixed message: the text of an error can carry paths. ponytail: nothing is logged; add a logger when there is one.
       if (res.headersSent) res.end();
