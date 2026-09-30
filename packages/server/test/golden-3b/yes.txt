@@ -1,0 +1,30 @@
+<CWD>/wf.reins.md:20:1: warning: Condition uses "llm says" which costs extra model calls
+Reins · run <ID> · workflow "golden-yes" · <CWD>
+Type a line to send a card (steer). /now <text> interrupts and sends it. /stop halts the run.
+
+── plan ──
+    ONE
+$ echo hello
+    hello
+✓ passed
+$ exit 3
+✗ failed (exit 3)
+⏸ gate gate-1: until you approve
+    ONE
+
+  approved (--yes)
+? You judge: llm says "looks fine"
+    ONE
+  yes (--yes)
+
+── fix ──
+    TWO
+$ echo tests-ok
+    tests-ok
+✓ passed
+
+── Receipt ──
+workflow golden-yes · done · 2 turns · <N> s · $<COST>
+gates held 1 · refusals 0 (guard 0, read-only 0) · loop attempts 0
+cards: live delivered 0, auto fired 0 · verify 0 pass / 0 fail · Knowl 0 recalls, 0 stores
+run id <ID>
