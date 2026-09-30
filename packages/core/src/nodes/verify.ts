@@ -8,6 +8,7 @@ declare module '../model.js' {
 const verify: NodeType = {
   kind: 'verify',
   attrs: ['against'],
+  tag: { place: 'after', lines: ['against: prompt'] },
   validate: {
     links(step, ctx) {
       if (step.attrs.against && !ctx.allIds.has(step.attrs.against)) {

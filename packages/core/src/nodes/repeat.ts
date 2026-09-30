@@ -7,6 +7,7 @@ declare module '../model.js' {
 const repeat: NodeType = {
   kind: 'repeat',
   attrs: ['max'],
+  tag: { place: 'wrap', arg: 'until', argRequired: true, lines: ['max: 5'] },
   container: 'kids',
   validate: {
     early(step, ctx) {

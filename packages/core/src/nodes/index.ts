@@ -46,6 +46,8 @@ export interface NodeType {
   compile(step: Step, ctx: CompileCtx): void;
   defaultPrompt?(step: Step): string | undefined;
   statusLine?: string;
+  /** How a chat tag of this kind builds a step (3b.5). `arg` names the attribute the tag's argument fills. */
+  tag?: { place: 'after' | 'wrap'; arg?: string; argRequired?: boolean; lines?: string[] };
 }
 
 export const NODES = new Map<string, NodeType>(
