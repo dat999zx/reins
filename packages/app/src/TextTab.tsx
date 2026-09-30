@@ -32,12 +32,12 @@ export function TextTab({ sess, onDirty, onRun }: { sess: Sess; onDirty: (dirty:
   useEffect(() => { onDirty(dirty); return () => onDirty(false); }, [dirty]);
 
   const leave = () => !dirty || window.confirm('Discard unsaved changes?');
-  const open = async (path: string) => {
-    if (!leave()) return;
+  const open = async (path: string, force = false) => {
+    if (!force && !leave()) return;
     try {
       const r = await get<{ path: string; text: string }>(`${base}/workflow?path=${encodeURIComponent(path)}`);
       const t = r.text.replace(/\r\n/g, '\n');
-      setFile(r.path); setText(t); setSaved(t); setStepId(undefined); setMsg('');
+      setFile(r.path); setText(t); setSaved(t); setStepId(undefined); setMsg(''); setPrev(null);
     } catch (e) {
       setMsg((e as Error).message);
     }
@@ -70,8 +70,7 @@ export function TextTab({ sess, onDirty, onRun }: { sess: Sess; onDirty: (dirty:
       await put(`${base}/workflow`, { path: rel, text: template(name), create: true });
       setName('');
       await refresh();
-      const at = await get<{ path: string; text: string }>(`${base}/workflow?path=${encodeURIComponent(rel)}`);
-      setFile(at.path); setText(at.text); setSaved(at.text); setStepId(undefined); setMsg('');
+      await open(rel, true);
     } catch (e) {
       setMsg(e instanceof ApiError && e.status === 409 ? 'A workflow with that name already exists.' : (e as Error).message);
     }

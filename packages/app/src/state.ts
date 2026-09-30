@@ -29,7 +29,8 @@ export function loadSessions(state: State, views: SessionView[]): State {
 }
 
 function apply(s: Sess, row: LogRow, loadedAt: number): Sess {
-  const n: Sess = { ...s, rows: [...s.rows, row], lastSeq: row.seq, lastTs: row.ts };
+  const n: Sess = { ...s, lastSeq: row.seq, lastTs: row.ts };
+  n.rows.push(row);
   const x = d(row);
   if (row.runId) {
     if (row.type === 'run_detached') n.detached = [...s.detached.filter((r) => r !== row.runId), row.runId];
@@ -81,10 +82,19 @@ function apply(s: Sess, row: LogRow, loadedAt: number): Sess {
   return n;
 }
 
-export function reduce(state: State, row: LogRow, loadedAt: number): State {
-  const s = state.sessions[row.sessionId] ?? blank(row.sessionId);
-  if (row.seq <= s.lastSeq) return state;
-  return { sessions: { ...state.sessions, [s.id]: apply(s, row, loadedAt) } };
+export const reduce = (state: State, row: LogRow, loadedAt: number): State => reduceAll(state, [row], loadedAt);
+
+/** One batch of rows: each touched session's `rows` is copied once, then appended to, so a long replay is linear. */
+export function reduceAll(state: State, rows: LogRow[], loadedAt: number): State {
+  const sessions = { ...state.sessions };
+  const copied = new Set<string>();
+  for (const row of rows) {
+    let s = sessions[row.sessionId] ?? blank(row.sessionId);
+    if (row.seq <= s.lastSeq) continue;
+    if (!copied.has(s.id)) { s = { ...s, rows: [...s.rows] }; copied.add(s.id); }
+    sessions[s.id] = apply(s, row, loadedAt);
+  }
+  return copied.size ? { sessions } : state;
 }
 
 export function takeRefill(state: State, id: string, input: string): { state: State; text: string } {

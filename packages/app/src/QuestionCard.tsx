@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import type { LogRow } from '@reins/server/store.js';
 import type { Question } from '@reins/server/drive.js';
 import { ApiError } from './api.js';
-import { actionsFor, type Action } from './questions.js';
+import { actionsFor, detailFor, type Action } from './questions.js';
 import type { Sess } from './state.js';
 
 const detailOf = (q: Question) => {
   if (q.detail === undefined) return null;
-  if (q.kind !== 'tool') return q.detail;
+  if (detailFor(q.kind) !== 'json') return q.detail;
   try {
     return JSON.stringify(JSON.parse(q.detail), null, 2);
   } catch {
@@ -41,7 +41,7 @@ export function QuestionCard({ row, sess, answer }: { row: LogRow; sess: Sess; a
   const detail = detailOf(q);
   const send = (a: string) => {
     setBusy(true);
-    answer(q.id, a).catch((e) => setErr(e instanceof ApiError && e.status === 409 ? 'already answered' : String(e.message ?? e))).finally(() => setBusy(false));
+    answer(q.id, a).catch((e) => { setBusy(false); setErr(e instanceof ApiError && e.status === 409 ? 'already answered' : String(e.message ?? e)); });
   };
   return (
     <section className={`qcard ${q.kind}`} ref={ref} aria-label={`${q.kind} question`}>

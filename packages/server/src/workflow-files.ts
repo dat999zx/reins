@@ -64,6 +64,7 @@ export function readWorkflow(cwd: string, dir: string, p: string): Reply {
 export function writeWorkflow(cwd: string, dir: string, p: string, text: string, create: boolean): Reply {
   const r = resolveWorkflowPath(cwd, dir, p, { forWrite: true });
   if ('error' in r) return reply(r);
+  // ponytail: a link swapped in between the check and this write is followed; local attackers only. O_NOFOLLOW if it matters.
   try {
     fs.writeFileSync(r.abs, text, create ? { flag: 'wx' } : {});
   } catch (e) {
