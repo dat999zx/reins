@@ -15,6 +15,13 @@ export interface HookServerOptions {
 // Claude's documented limit for a hook's additionalContext.
 const CONTEXT_LIMIT = 10_000;
 
+// Byte lengths, not string lengths: timingSafeEqual throws on buffers of different sizes, and a non-ASCII string can match a token's character count (plan 15d 3b.7).
+export function sameToken(a: string, b: string): boolean {
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+}
+
 /**
  * The endpoint Claude's HTTP hooks and the approval MCP call (plan 15b 2.3). Localhost only,
  * a per-run token in the path, and an exact Host check against DNS rebinding.
@@ -92,10 +99,6 @@ export async function startHookServer(o: HookServerOptions) {
     return d.behavior === 'allow'
       ? { behavior: 'allow', updatedInput: input }
       : { behavior: 'deny', message: d.message ?? 'Denied by the user in Reins.' };
-  }
-
-  function sameToken(a: string, b: string) {
-    return a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
   }
 
   await new Promise<void>((resolve, reject) => {

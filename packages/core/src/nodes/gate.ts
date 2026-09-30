@@ -7,6 +7,7 @@ declare module '../model.js' {
 const gate: NodeType = {
   kind: 'gate',
   attrs: [],
+  tag: { place: 'after', lines: ['until: you approve'] },
   validate: {
     early(step, ctx) {
       if (!step.cond) {

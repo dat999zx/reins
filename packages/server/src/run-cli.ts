@@ -2,14 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import { randomBytes } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
 import type { Readable, Writable } from 'node:stream';
 import {
-  Run, parseWorkflow, validate, printCond, receipt,
-  type Cond, type Decision, type Diagnostic, type Engine, type EngineEvent, type Receipt,
-  type RunEventRecord, type RunOptions, type RunStatus, type ToolRequest, type Workflow,
+  Run, parseWorkflow, validate, receipt,
+  type Decision, type Diagnostic, type Engine, type EngineEvent, type Receipt,
+  type RunEventRecord, type RunStatus, type ToolRequest, type Workflow,
 } from '@reins/core';
-import { runCommand } from './commands.js';
+import { askTool, driveRun, indent, runOptions, type DriveIo } from './drive.js';
 import type { Store } from './store.js';
 
 export interface RunCliOptions {
@@ -61,6 +60,16 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
     return answer;
   };
 
+  const io: DriveIo = {
+    ask: (q) => {
+      if (o.yes && q.kind === 'gate') { say('  approved (--yes)'); return Promise.resolve('approve'); }
+      if (o.yes && q.kind === 'judge') { say('  yes (--yes)'); return Promise.resolve('y'); }
+      return ask(q.prompt);
+    },
+    say,
+    write: (s) => o.output.write(indent(s)),
+  };
+
   let sigints = 0;
   let run: Run | undefined;
   const sigint = () => {
@@ -91,6 +100,11 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
     let file: string;
     let snapshot: ReturnType<Run['snapshot']> | undefined;
     if (o.resumeId) {
+      const sid = o.store.sessionOfRun(o.resumeId);
+      if (sid) {
+        say(`run ${o.resumeId} belongs to chat session ${sid}; resume it from the app`);
+        return { runId: o.resumeId, status: 'invalid', exitCode: 1 };
+      }
       const saved = o.store.loadRun(o.resumeId);
       if (!saved) {
         say(`No saved run ${o.resumeId}.`);
@@ -111,27 +125,15 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
     const workflow = loaded.workflow;
 
     const cwd = o.cwd;
-    const startCommit = git(cwd, ['rev-parse', 'HEAD']).trim();
-    const engine = o.makeEngine({ onApprove: askApproval, onLive: printLive, workflow });
-    const runOpts: RunOptions = {
-      workflow,
-      engine,
-      cwd,
-      resolveBlock: loaded.resolveBlock,
-      commandRunner: async (cmd) => {
-        say(`$ ${cmd}`);
-        const r = await runCommand(cmd, { cwd, onOutput: (s) => o.output.write(indent(s)) });
-        say(r.exitCode === 0 ? '✓ passed' : `✗ failed (exit ${r.exitCode})`);
-        return r;
-      },
-      judge: askJudge,
-      diffLines: async () => (startCommit ? diffLines(cwd, startCommit) : 0),
+    const engine = o.makeEngine({ onApprove: (r) => askTool(io, r), onLive: printLive, workflow });
+    const runOpts = runOptions(io, {
+      workflow, engine, cwd, resolveBlock: loaded.resolveBlock,
       onEvent: (ev) => {
         o.store.appendEvent(runId, ev);
         if (run) o.store.saveSnapshot(runId, run.snapshot());
         printEvent(ev);
       },
-    };
+    });
 
     if (snapshot) {
       run = Run.restore(snapshot, runOpts);
@@ -149,106 +151,15 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
       else run.queueCard(line, 'steer');
     };
 
-    let detached = false;
-    try {
-      while (!detached) {
-        if (run.status === 'running') {
-          await run.step();
-          o.store.saveSnapshot(runId, run.snapshot());
-          // Let typed lines land between steps.
-          await new Promise((r) => setImmediate(r));
-        } else if (run.status === 'paused') {
-          detached = !(await onPause(run));
-        } else {
-          break;
-        }
-      }
-    } catch (err: any) {
-      say(`✗ ${err?.message ?? err}`);
-      detached = true;
-    } finally {
-      await run.close().catch(() => {});
-    }
-    o.store.saveSnapshot(runId, run.snapshot());
-
-    if (detached && run.status !== 'done' && run.status !== 'stopped') {
+    const active = run;
+    const { result } = await driveRun(active, io, () => o.store.saveSnapshot(runId, active.snapshot()));
+    if (result === 'detached') {
       say(`The run is saved. Resume it with: reins run --resume ${runId}`);
-      return { runId, status: run.status, exitCode: 1 };
+      return { runId, status: active.status, exitCode: 1 };
     }
-    const r = receipt(run.getEvents());
+    const r = receipt(active.getEvents());
     printReceipt(r, runId);
-    return { runId, status: run.status, exitCode: run.status === 'done' ? 0 : 1, receipt: r };
-  }
-
-  /** Answer a pause. Returns false when the terminal went away (the run stays saved). */
-  async function onPause(run: Run): Promise<boolean> {
-    const p = run.pauseReason!;
-    if (p.type === 'gate') {
-      say(`⏸ gate ${p.stepId}: until ${p.cond ? printCond(p.cond) : 'you approve'}`);
-      const last = lastTurnText(run.getEvents());
-      if (last) say(indent(last.split('\n').slice(-15).join('\n')) + '\n');
-      if (o.yes) {
-        say('  approved (--yes)');
-        run.approve();
-        return true;
-      }
-      const a = await ask('approve / changes <note> / stop');
-      if (a === null) return false;
-      if (/^(approve|a|y|yes)$/i.test(a)) run.approve();
-      else if (/^changes\s+\S/i.test(a)) await run.requestChanges(a.replace(/^changes\s+/i, ''));
-      else if (a === 'stop') await run.stop();
-      else say('Type approve, changes <note>, or stop.');
-      return true;
-    }
-    if (p.type === 'budget-used' || p.type === 'link-budget-used') {
-      say(p.type === 'budget-used'
-        ? `⏸ loop ${p.stepId} used its ${p.limit} attempts`
-        : `⏸ link used its budget (max ${p.limit})`);
-      const a = await ask('allow <n> more / stop');
-      if (a === null) return false;
-      const n = /^allow\s+(\d+)/i.exec(a);
-      if (n) run.allowMore(Number(n[1]));
-      else if (a === 'stop') await run.stop();
-      else say('Type allow <n> more, or stop.');
-      return true;
-    }
-    if (p.type === 'agent-blocked' || p.type === 'stop') {
-      say(p.type === 'stop' ? `⏹ stopped by a card: ${p.text}` : `⏸ the agent is blocked: ${p.reason}`);
-      const a = await ask('resume [note] / stop');
-      if (a === null) return false;
-      if (/^resume\b/i.test(a)) {
-        const note = a.replace(/^resume\s*/i, '');
-        if (note) run.queueCard(note, 'steer');
-        run.resume();
-      } else if (a === 'stop') await run.stop();
-      else say('Type resume [note], or stop.');
-      return true;
-    }
-    // ponytail: the turn budget and a deleted step (live edit) can only be stopped from the terminal.
-    say(`⏸ ${p.type === 'run-turn-budget-used' ? `the run used its ${run.workflow.budget.turns} turns` : p.type}; stopping.`);
-    await run.stop();
-    return true;
-  }
-
-  async function askApproval(req: ToolRequest): Promise<Decision> {
-    const i = req.input ?? {};
-    const what = String(i.command ?? i.file_path ?? i.path ?? JSON.stringify(i)).slice(0, 200);
-    const a = await ask(`? Allow ${req.tool}: ${what}  [y / n <reason>]`);
-    if (a !== null && /^(y|yes)$/i.test(a)) return { behavior: 'allow' };
-    const reason = a?.replace(/^(n|no)\b\s*/i, '').trim();
-    return { behavior: 'deny', message: reason ? `The user said no: ${reason}` : 'The user said no.' };
-  }
-
-  async function askJudge(cond: Cond, ev: { lastText: string }): Promise<boolean> {
-    // Phase 2: llm and reviewer conditions are judged by you (the real judges are Phase 6).
-    say(`? You judge: ${printCond(cond)}`);
-    if (ev.lastText) say(indent(ev.lastText.split('\n').slice(-15).join('\n')));
-    if (o.yes) {
-      say('  yes (--yes)');
-      return true;
-    }
-    const a = await ask('y / n');
-    return a !== null && /^(y|yes)$/i.test(a);
+    return { runId, status: active.status, exitCode: active.status === 'done' ? 0 : 1, receipt: r };
   }
 
   function printLive(e: EngineEvent) {
@@ -308,30 +219,7 @@ export function formatDiagnostic(file: string, d: Diagnostic): string {
   return `${file}:${d.pos.line}:${d.pos.col}: ${d.severity}: ${d.message}`;
 }
 
-function git(cwd: string, args: string[]): string {
-  const r = spawnSync('git', args, { cwd, encoding: 'utf8', windowsHide: true });
-  return r.status === 0 ? r.stdout : '';
-}
-
-/** `git diff --numstat` against the run's start commit: added plus removed lines. */
-function diffLines(cwd: string, base: string): number {
-  // ponytail: untracked new files are not counted; add `git add -N` if that matters.
-  return git(cwd, ['diff', '--numstat', base]).split('\n').reduce((n, l) => {
-    const [a, r] = l.split('\t');
-    return n + (Number(a) || 0) + (Number(r) || 0);
-  }, 0);
-}
-
-function lastTurnText(evs: RunEventRecord[]): string {
-  for (let i = evs.length - 1; i >= 0; i--) if (evs[i]!.type === 'turn_ended') return String(evs[i]!.data.text ?? '');
-  return '';
-}
-
 function summary(input: any): string {
   if (!input || typeof input !== 'object') return '';
   return String(input.command ?? input.file_path ?? input.path ?? input.pattern ?? JSON.stringify(input)).slice(0, 160);
-}
-
-function indent(s: string): string {
-  return s.replace(/\r?\n$/, '').split(/\r?\n/).map((l) => `    ${l}`).join('\n') + (s.endsWith('\n') ? '\n' : '');
 }

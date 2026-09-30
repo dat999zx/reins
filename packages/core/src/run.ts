@@ -77,6 +77,8 @@ export interface RunOptions {
   cwd?: string;
   /** Called for every event as it is logged (the store persists them). */
   onEvent?: (ev: RunEventRecord) => void;
+  /** A session the caller owns: Run uses it and never opens or closes it (3b.1). */
+  session?: EngineSession;
 }
 
 export interface RunSnapshot {
@@ -120,6 +122,7 @@ export class Run {
   private loopLimitExtensions = new Map<string, number>();
 
   private engineSession?: EngineSession;
+  private borrowed?: EngineSession;
   private resolveBlock?: (name: string) => Workflow | undefined;
   private commandRunner: (cmd: string) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
   private now: () => number;
@@ -147,6 +150,8 @@ export class Run {
     this.diffLines = opts.diffLines;
     this.cwd = opts.cwd;
     this.onEvent = opts.onEvent;
+    this.borrowed = opts.session;
+    this.engineSession = opts.session;
 
     this.program = compileProgram(this.workflow, this.resolveBlock);
 
@@ -173,17 +178,24 @@ export class Run {
     return [...this.events];
   }
 
+  policy(): Policy {
+    return this.currentPolicy;
+  }
+
+  takeCards(): string[] {
+    const cards = [...this.pendingCards];
+    this.pendingCards = [];
+    return cards;
+  }
+
   private async ensureSession(): Promise<EngineSession> {
+    if (this.borrowed) return this.borrowed;
     if (!this.engineSession) {
       this.engineSession = await this.engine.open({
         ...(this.cwd !== undefined ? { cwd: this.cwd } : {}),
         ...(this.resumeSessionId ? { sessionId: this.resumeSessionId } : {}),
-        policy: () => this.currentPolicy,
-        pendingCards: () => {
-          const cards = [...this.pendingCards];
-          this.pendingCards = [];
-          return cards;
-        },
+        policy: () => this.policy(),
+        pendingCards: () => this.takeCards(),
       });
     }
     return this.engineSession;
@@ -213,16 +225,25 @@ export class Run {
 
   /**
    * Queue a card (plan 6.5). steer waits for the next delivery chance (mid-turn, else the next
-   * turn's text). now and stop interrupt a running turn; with no turn running, now waits for the
-   * next turn and stop pauses before the next step.
+   * turn's text). now and stop interrupt a running turn; a card held for the interrupt is never
+   * dropped (3b.1). With no turn running, now waits for the next turn and stop pauses before the
+   * next step.
    */
   queueCard(cardText: string, kind: LiveCardKind = 'steer', source: 'live' | 'auto' = 'live') {
     this.logEvent('card_queued', { card: cardText, kind, source });
     if (kind === 'steer') {
       this.pendingCards.push(cardText);
     } else if (this.turnInFlight && this.engineSession) {
-      this.interruptCard = { text: cardText, kind };
-      this.engineSession.interrupt().catch(() => {});
+      const held = this.interruptCard;
+      if (kind === 'now' && held) {
+        this.pendingCards.push(cardText);
+      } else if (kind === 'stop' && held?.kind === 'stop') {
+        // already stopping: the first stop's interrupt is in flight
+      } else {
+        if (held?.kind === 'now') this.pendingCards.push(held.text);
+        this.interruptCard = { text: cardText, kind };
+        if (!held) this.engineSession.interrupt().catch(() => {});
+      }
     } else if (kind === 'now') {
       this.pendingCards.push(cardText);
     } else if (this.status === 'running') {
@@ -290,6 +311,12 @@ export class Run {
       this.handleTurnResult(result);
       this.logEvent('turn_ended', { step: stepId, text: result.text, cost: result.cost });
 
+      if (this.status === 'stopped') {
+        const held = this.interruptCard;
+        this.interruptCard = undefined;
+        if (held?.kind === 'now') this.pendingCards.push(held.text);
+        return undefined;
+      }
       const card = this.interruptCard;
       if (!card) return result;
       this.interruptCard = undefined;
@@ -456,6 +483,7 @@ export class Run {
       store: opts.store,
       diffLines: opts.diffLines,
       cwd: opts.cwd,
+      session: opts.session,
     });
 
     // Set after construction so the constructor's own run_started is not reported again.
@@ -497,7 +525,7 @@ export class Run {
     this.engineSession = undefined;
     // Keep the id: the snapshot needs it, and a later turn resumes this session.
     if (s) this.resumeSessionId = s.sessionId;
-    await s?.close();
+    if (s !== this.borrowed) await s?.close();
   }
 
   private findStepById(steps: Step[], id: string): Step | undefined {
@@ -544,6 +572,7 @@ export class Run {
       case 'GATE': {
         if (instr.cond.t !== 'approve') {
           const passed = await this.judgeCond(instr.cond);
+          if (this.status !== 'running') return this.status;
           if (passed) {
             this.programCounter++;
             return this.status;
@@ -557,6 +586,7 @@ export class Run {
 
       case 'IF': {
         const passed = await this.judgeCond(instr.cond);
+        if (this.status !== 'running') return this.status;
         if (passed) {
           this.programCounter++;
         } else {
@@ -620,6 +650,7 @@ export class Run {
         this.turnOutputs.set(instr.step, result.text);
 
         await this.checkAutoCards();
+        if ((this.status as RunStatus) === 'stopped') return this.status;
 
         // Check if agent said blocked
         if (result.text.includes('REINS: blocked:')) {
@@ -656,6 +687,7 @@ export class Run {
         if (cmdRes.exitCode === 0) {
           if (instr.repeatCond && instr.loopExit !== undefined) {
             const passed = await this.judgeCond(instr.repeatCond);
+            if (this.status !== 'running') return this.status;
             if (passed) {
               this.programCounter = instr.loopExit;
               return this.status;
@@ -677,7 +709,9 @@ export class Run {
       }
 
       case 'LOOP_BK': {
-        if (instr.cond && (await this.judgeCond(instr.cond))) {
+        const passed = instr.cond ? await this.judgeCond(instr.cond) : false;
+        if (this.status !== 'running') return this.status;
+        if (passed) {
           this.programCounter++;
           return this.status;
         }
