@@ -16,9 +16,14 @@ export async function cleanup() {
   for (const f of undo.splice(0).reverse()) await f();
 }
 
+// On Windows a just-exited child can hold its folder for a moment; a leftover temp folder is harmless, a failed test is not.
+function rmTemp(d: string) {
+  try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* left for the OS temp cleaner */ }
+}
+
 export function tmpDir(): string {
   const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-http-')));
-  undo.push(() => fs.rmSync(d, { recursive: true, force: true, maxRetries: 5 }));
+  undo.push(() => rmTemp(d));
   return d;
 }
 
@@ -113,7 +118,7 @@ export async function boot(turns: FakeTurn[] = [], o: BootOptions = {}) {
   const fake = o.fake ?? fakeSetup(turns, o.delayMs);
   const dir = o.dir ?? tmpDir();
   const store = o.store ?? openStore(':memory:');
-  if (!o.fake) undo.push(() => fs.rmSync(fake.dir, { recursive: true, force: true, maxRetries: 5 }));
+  if (!o.fake) undo.push(() => rmTemp(fake.dir));
   undo.push(() => { try { store.close(); } catch { /* closed by the test */ } });
   let probes = 0;
   const srv: Server = await startServer({
