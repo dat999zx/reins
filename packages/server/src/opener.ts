@@ -18,6 +18,7 @@ export function openUrl(url: string, o: { platform: string; dir: string; spawn: 
   } else if (o.platform === 'darwin' || o.platform === 'linux') {
     const file = path.join(o.dir, 'open.html');
     fs.mkdirSync(o.dir, { recursive: true });
+    fs.rmSync(file, { force: true }); // mode applies only on create, so never reuse a looser file
     fs.writeFileSync(file, `<meta http-equiv="refresh" content="0;url=${url}">\n<a href="${url}">Open Reins</a>\n`, { mode: 0o600 });
     fs.chmodSync(file, 0o600);
     command = o.platform === 'darwin' ? 'open' : 'xdg-open';

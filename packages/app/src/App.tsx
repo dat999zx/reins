@@ -5,7 +5,7 @@ import type { TagEntry } from '@reins/server/tags.js';
 import { ApiError, get, initToken, post, stream } from './api.js';
 import { Chat } from './Chat.js';
 import { Rail } from './Rail.js';
-import { afterOf, initial, loadSessions, reduce, takeRefill, type SessionView, type State } from './state.js';
+import { afterOf, initial, loadSessions, reduceAll, takeRefill, type SessionView, type State } from './state.js';
 
 const loadedAt = Date.now();
 type Engines = Array<{ id: string } & EngineProbe>;
@@ -43,7 +43,7 @@ export function App() {
     const flush = () => {
       raf = 0;
       const rows = buffer.splice(0);
-      if (rows.length) commit(rows.reduce((s, r) => reduce(s, r, loadedAt), stRef.current));
+      if (rows.length) commit(reduceAll(stRef.current, rows, loadedAt));
     };
 
     async function connect() {

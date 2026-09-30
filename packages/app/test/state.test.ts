@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { LogRow } from '@reins/server/store.js';
 import {
-  afterOf, initial, loadSessions, mergeOutput, openQuestions, railGroups, reduce, takeRefill, title, type State,
+  afterOf, initial, loadSessions, mergeOutput, openQuestions, railGroups, reduce, reduceAll, takeRefill, title, type State,
 } from '../src/state.js';
 
 const S = 's1';
@@ -14,6 +14,18 @@ const eng = (data: object, o = {}) => row('engine', data, o);
 const created = (extra: object = {}) => row('session_created', { id: S, cwd: 'D:\\p\\one', engine: 'claude', autoApprove: false, ...extra });
 
 describe('reduce', () => {
+  it('reduceAll matches reduce row by row, dedupes inside a batch, and never mutates the state it was given', () => {
+    seq = 0;
+    const first = fold([created()]);
+    const before = first.sessions[S]!.rows;
+    const batch = [row('message', { text: 'a' }), row('message', { text: 'b' })];
+    const all = reduceAll(first, [...batch, batch[0]!], 0);
+    expect(all.sessions[S]!.rows.map((r) => r.seq)).toEqual([1, 2, 3]);
+    expect(all).toEqual(fold(batch, 0, first));
+    expect(before).toHaveLength(1);
+    expect(reduceAll(all, batch, 0)).toBe(all);
+  });
+
   it('creates a session from its session_created row', () => {
     seq = 0;
     const s = fold([created()]).sessions[S]!;

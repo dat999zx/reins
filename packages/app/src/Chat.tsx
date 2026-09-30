@@ -27,7 +27,7 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, onDirty, onError
     if (!el) return;
     if (stick.current) el.scrollTop = el.scrollHeight;
     else setFresh(true);
-  }, [rows.length, tab]);
+  }, [sess.rows.length, tab]);
 
   return (
     <main className="chat">

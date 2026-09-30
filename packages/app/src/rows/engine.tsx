@@ -6,6 +6,7 @@ import type { Ctx } from '../rows.js';
 
 type Render = (e: any, row: LogRow, ctx: Ctx) => ReactNode;
 
+export const chip = (e: { channel: string }) => <div className="row"><span className="chip">card delivered ({e.channel})</span></div>;
 const pretty = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v, null, 2));
 const summary = (i: any) => short(i?.command ?? i?.file_path ?? i?.path ?? i?.pattern ?? i?.description ?? i ?? '', 100);
 
@@ -23,7 +24,7 @@ export const engineEvents = new Map<EngineEvent['type'], Render>([
   }],
   ['tool_result', () => null],
   ['refusal', (e) => <div className="row bad">refused: {e.reason}</div>],
-  ['card_delivered', (e) => <div className="row"><span className="chip">card delivered ({e.channel})</span></div>],
+  ['card_delivered', (e) => chip(e)],
   ['error', (e) => <div className="row bad">{e.message}</div>],
   ['hook', () => null],
   ['cost', () => null],

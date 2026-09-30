@@ -74,7 +74,7 @@ export function Composer({ id, cwd, busy, catalogue, takeRefill }: { id: string;
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); setIdx((i) => (i + (e.key === 'ArrowDown' ? 1 : -1) + picker.matches.length) % picker.matches.length); return; }
       if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') {
         e.preventDefault();
-        if (busy) return;
+        if (busy) { void send(); return; }
         pick(picker.matches[idx % picker.matches.length]!);
         return;
       }
