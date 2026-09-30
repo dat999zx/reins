@@ -15,6 +15,13 @@ export default tseslint.config(
     },
   },
   {
+    files: ['packages/app/src/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': ['error', { patterns: [{ group: ['@reins/*'], allowTypeImports: true }] }],
+      'no-restricted-globals': ['error', 'process', 'Buffer'],
+    },
+  },
+  {
     rules: {
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       '@typescript-eslint/no-explicit-any': 'off',

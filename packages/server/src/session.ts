@@ -27,7 +27,7 @@ const OK: Ack = { ok: true };
 const conflict = (error: string): Ack => ({ ok: false, code: 409, error });
 const bad = (error: string, diagnostics?: Diagnostic[]): Ack => ({ ok: false, code: 400, error, ...(diagnostics ? { diagnostics } : {}) });
 const IGNORED = 'This workflow sets model: or engine:. A session ignores them and uses its own settings.';
-const under = (file: string, root: string) => {
+export const under = (file: string, root: string) => {
   const rel = path.relative(root, file);
   return rel !== '' && rel.split(path.sep)[0] !== '..' && !path.isAbsolute(rel); // a folder named "..foo" is fine
 };

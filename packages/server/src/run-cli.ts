@@ -194,7 +194,27 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
   return { done, sigint };
 }
 
-export function loadWorkflow(file: string): { workflow?: Workflow; diagnostics: Diagnostic[]; resolveBlock: (n: string) => Workflow | undefined } {
+type Loaded = { workflow?: Workflow; diagnostics: Diagnostic[]; resolveBlock: (n: string) => Workflow | undefined };
+
+export function loadWorkflow(file: string): Loaded {
+  let text: string;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch (e: any) {
+    return { diagnostics: [{ severity: 'error', message: `cannot read the file: ${e.message}`, pos: { line: 1, col: 1 } }], resolveBlock: blockResolver(file) };
+  }
+  return loadWorkflowText(text, file);
+}
+
+export function loadWorkflowText(text: string, file: string): Loaded {
+  const resolveBlock = blockResolver(file);
+  const parsed = parseWorkflow(text);
+  const diagnostics = [...parsed.diagnostics, ...(parsed.workflow ? validate(parsed.workflow, resolveBlock) : [])];
+  const ok = parsed.workflow && !diagnostics.some((d) => d.severity === 'error');
+  return { ...(ok ? { workflow: parsed.workflow } : {}), diagnostics, resolveBlock };
+}
+
+function blockResolver(file: string) {
   const blocks = new Map<string, Workflow | undefined>();
   const resolveBlock = (name: string) => {
     if (!blocks.has(name)) {
@@ -203,16 +223,7 @@ export function loadWorkflow(file: string): { workflow?: Workflow; diagnostics: 
     }
     return blocks.get(name);
   };
-  let text: string;
-  try {
-    text = fs.readFileSync(file, 'utf8');
-  } catch (e: any) {
-    return { diagnostics: [{ severity: 'error', message: `cannot read the file: ${e.message}`, pos: { line: 1, col: 1 } }], resolveBlock };
-  }
-  const parsed = parseWorkflow(text);
-  const diagnostics = [...parsed.diagnostics, ...(parsed.workflow ? validate(parsed.workflow, resolveBlock) : [])];
-  const ok = parsed.workflow && !diagnostics.some((d) => d.severity === 'error');
-  return { ...(ok ? { workflow: parsed.workflow } : {}), diagnostics, resolveBlock };
+  return resolveBlock;
 }
 
 export function formatDiagnostic(file: string, d: Diagnostic): string {
