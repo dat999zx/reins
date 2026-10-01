@@ -1,13 +1,65 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 
+// The Explorer-style dialog (IFileDialog): it has an address bar and a Folder: box you can paste a path into, unlike FolderBrowserDialog.
 const WINDOWS_SCRIPT = `try {
   Add-Type -AssemblyName System.Windows.Forms
+  Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class ReinsPick {
+  [ComImport, Guid("DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7")] class FileOpenDialog {}
+  [ComImport, Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IShellItem {
+    void BindToHandler(IntPtr pbc, ref Guid bhid, ref Guid riid, out IntPtr ppv);
+    void GetParent(out IShellItem ppsi);
+    void GetDisplayName(uint sigdn, [MarshalAs(UnmanagedType.LPWStr)] out string name);
+  }
+  [ComImport, Guid("42F85136-DB7E-439C-85F1-E4075D135FC8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IFileDialog {
+    [PreserveSig] int Show(IntPtr parent);
+    void SetFileTypes(uint c, IntPtr t);
+    void SetFileTypeIndex(uint i);
+    void GetFileTypeIndex(out uint i);
+    void Advise(IntPtr p, out uint c);
+    void Unadvise(uint c);
+    void SetOptions(uint o);
+    void GetOptions(out uint o);
+    void SetDefaultFolder(IShellItem i);
+    void SetFolder(IShellItem i);
+    void GetFolder(out IShellItem i);
+    void GetCurrentSelection(out IShellItem i);
+    void SetFileName([MarshalAs(UnmanagedType.LPWStr)] string n);
+    void GetFileName([MarshalAs(UnmanagedType.LPWStr)] out string n);
+    void SetTitle([MarshalAs(UnmanagedType.LPWStr)] string t);
+    void SetOkButtonLabel([MarshalAs(UnmanagedType.LPWStr)] string t);
+    void SetFileNameLabel([MarshalAs(UnmanagedType.LPWStr)] string t);
+    void GetResult(out IShellItem i);
+  }
+  // 0 = a folder was picked, 1 = cancelled, 2 = failed.
+  public static int Run(IntPtr owner, out string path) {
+    path = null;
+    IFileDialog d = (IFileDialog)new FileOpenDialog();
+    uint o; d.GetOptions(out o);
+    d.SetOptions(o | 0x20 | 0x40); // FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM
+    d.SetTitle("Choose a project folder");
+    int hr = d.Show(owner);
+    if (hr == unchecked((int)0x800704C7)) return 1; // ERROR_CANCELLED
+    if (hr != 0) return 2;
+    IShellItem item; d.GetResult(out item);
+    item.GetDisplayName(0x80058000, out path); // SIGDN_FILESYSPATH
+    return 0;
+  }
+}
+"@
   [Console]::OutputEncoding = New-Object Text.UTF8Encoding $false
   $owner = New-Object System.Windows.Forms.Form
-  $owner.TopMost = $true
-  $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-  if ($dialog.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dialog.SelectedPath) } else { exit 1 }
+  $owner.TopMost = $true; $owner.ShowInTaskbar = $false; $owner.Opacity = 0
+  $owner.Show(); $owner.Activate()
+  $path = $null
+  $code = [ReinsPick]::Run($owner.Handle, [ref]$path)
+  if ($code -eq 0) { [Console]::Out.Write($path) }
+  exit $code
 } catch { exit 2 }
 `;
 
