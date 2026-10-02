@@ -158,6 +158,23 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await expect.poll(() => page.getByRole('region', { name: /^Receipt for/ }).count(), { timeout: W }).toBeGreaterThan(receipts);
     await idle();
 
+    // 8b. Run switched to Chat; the Text tab comes back with the file open and every step's state shown, and a reload restores tab, file and step
+    const steps = page.locator('.receives li');
+    const states = page.locator('.receives .sstate[aria-label]');
+    await page.getByRole('tab', { name: 'Text' }).click();
+    await page.locator('.ebar b', { hasText: 'smoke.reins.md' }).waitFor();
+    await expect.poll(() => states.count(), { timeout: W }).toBe(await steps.count());
+    for (const label of await states.evaluateAll((els) => els.map((e) => e.getAttribute('aria-label') ?? ''))) expect(label).toMatch(/^done/);
+    await steps.nth(1).getByRole('button').click();
+    await page.waitForTimeout(700); // the editor state is saved 500 ms after a change
+    await page.reload();
+    await rail.waitFor();
+    await page.locator('.ebar b', { hasText: 'smoke.reins.md' }).waitFor();
+    expect(await page.getByRole('tab', { name: 'Text' }).getAttribute('aria-selected')).toBe('true');
+    await expect.poll(() => steps.nth(1).getByRole('button').getAttribute('aria-pressed'), { timeout: W }).toBe('true');
+    await page.getByRole('tab', { name: 'Chat' }).click();
+    await page.waitForTimeout(700);
+
     // 9. a reload brings the same session and its history back
     const before = page.url();
     await page.reload();
