@@ -27,7 +27,7 @@ export function App() {
   const [ready, setReady] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const [selected, setSelected] = useState<string | null>(fromHash);
-  const [tab, setTab] = useState<'chat' | 'text'>('chat');
+  const [tab, setTab] = useState<'chat' | 'canvas' | 'text'>('chat');
   const [notice, setNotice] = useState('');
   const [pathBox, setPathBox] = useState(false);
   const [path, setPath] = useState('');
@@ -103,7 +103,7 @@ export function App() {
       if (off) return;
       const same = view.current.selected === at.selected && view.current.tab === at.tab;
       const merged = same ? state : { ...state, tab: view.current.tab };
-      if (same && (state.tab === 'chat' || state.tab === 'text')) setTab(state.tab);
+      if (same && state.tab) setTab(state.tab);
       editorRef.current = { ...editorRef.current, [cwd]: merged };
       setEditor(editorRef.current);
       s.ready(merged);
@@ -186,7 +186,7 @@ export function App() {
         {sess ? (
           <Chat
             key={sess.id} sess={sess} catalogue={catalogue} tab={tab}
-            onTab={(t) => { if (t === tab || t === 'text' || leave()) { setTab(t); if (t !== tab) onState(sess.cwd, { tab: t }); } }}
+            onTab={(t) => { if (t === tab || t !== 'chat' || leave()) { setTab(t); if (t !== tab) onState(sess.cwd, { tab: t }); } }}
             restore={editor[sess.cwd]} onState={(p) => onState(sess.cwd, p)}
             onDirty={(d) => { dirty.current = d; }} onError={flash}
             takeRefill={(input) => {
