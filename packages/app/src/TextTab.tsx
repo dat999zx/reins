@@ -4,32 +4,12 @@ import { ApiError, get, post, put } from './api.js';
 import { restoreFile, restoreStep, type EditorState } from './editorState.js';
 import { highlight, lineOffset } from './highlight.js';
 import type { Sess } from './state.js';
-import { runRows, stepStatus, type StepInfo, type StepState } from './stepStatus.js';
+import { runRows, stepStatus } from './stepStatus.js';
+import { StepChips } from './StepChips.js';
 
 interface Listed { path: string; name: string; scope: 'project' | 'user'; diagnostics: Diagnostic[] }
 interface Step { id: string; kind: string; title?: string; depth: number }
 interface Preview { diagnostics: Diagnostic[]; steps: Step[]; turn?: string; name?: string }
-
-const STATE: Record<StepState, { text: string; words: string }> = {
-  active: { text: 'running', words: 'running' },
-  done: { text: '✓', words: 'done' },
-  waiting: { text: 'waiting for you', words: 'waiting for you' },
-  stuck: { text: 'out of attempts', words: 'out of attempts' },
-};
-
-function StepChips({ i }: { i: StepInfo }) {
-  const st = i.state && STATE[i.state];
-  const tries = i.attempts === undefined ? undefined : i.state === 'stuck' ? `${i.attempts} tries used` : `attempt ${i.attempts + 1}`;
-  const cost = i.cost > 0 ? `$${i.cost.toFixed(4)}` : undefined;
-  const text = [st && st.text, tries, cost].filter(Boolean);
-  const words = [st && st.words, tries, cost && `cost ${cost}`].filter(Boolean);
-  return (
-    <>
-      {text.length > 0 && <span className={`sstate ${i.state ?? ''}`} role="img" aria-label={words.join(', ')}>{text.join(' · ')}</span>}
-      {i.refusals > 0 && <span className="sstate bad" role="img" aria-label={`${i.refusals} blocked`}>{i.refusals} blocked</span>}
-    </>
-  );
-}
 
 const NAME = /^[a-z0-9][a-z0-9-]*$/;
 const template = (name: string) =>
