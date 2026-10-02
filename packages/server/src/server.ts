@@ -31,7 +31,15 @@ type Reply = { status: number; body: unknown };
 interface Body {
   text?: unknown; tags?: unknown; kind?: unknown; questionId?: unknown; answer?: unknown; autoApprove?: unknown;
   title?: unknown; path?: unknown; create?: unknown; stepId?: unknown; runId?: unknown; cwd?: unknown; engine?: unknown; model?: unknown; effort?: unknown;
+  state?: unknown;
 }
+const MAX_EDITOR_STATE = 64 * 1024;
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+const editorKey = (cwd: unknown): string | undefined => {
+  if (!str(cwd) || cwd.includes('\0') || !path.isAbsolute(cwd)) return undefined;
+  const k = path.resolve(cwd);
+  return process.platform === 'win32' ? k.toLowerCase() : k;
+};
 
 const ok = (body: unknown = {}): Reply => ({ status: 200, body });
 const fail = (status: number, error: string): Reply => ({ status, body: { error } });
@@ -194,6 +202,25 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     if (req.method === 'POST' && p === '/api/state/probe') { engines = await probeNow(); return ok({ engines }); }
     if (req.method === 'GET' && p === '/api/tags') return ok({ tags: tagCatalogue() });
     if (req.method === 'GET' && p === '/api/workflows') return workflows(url.searchParams.get('cwd'));
+    if (req.method === 'GET' && p === '/api/editor-state') {
+      const key = editorKey(url.searchParams.get('cwd'));
+      if (!key) return fail(400, 'cwd must be an absolute path.');
+      const raw = o.store.getEditorState(key);
+      let state: unknown = null;
+      try { if (raw !== undefined) state = JSON.parse(raw); } catch { /* a corrupt row reads as no state */ }
+      return ok({ state: isObject(state) ? state : null });
+    }
+    if (req.method === 'PUT' && p === '/api/editor-state') {
+      const r = await parse(req);
+      if ('fail' in r) return r.fail;
+      const key = editorKey(r.b.cwd);
+      if (!key) return fail(400, 'cwd must be an absolute path.');
+      if (!isObject(r.b.state)) return fail(400, 'state must be a JSON object.');
+      const json = JSON.stringify(r.b.state);
+      if (Buffer.byteLength(json) > MAX_EDITOR_STATE) return fail(413, 'The editor state is larger than 64 KB.');
+      o.store.putEditorState(key, json);
+      return ok();
+    }
     if (req.method === 'POST' && p === '/api/pick-folder') return pick(res);
     if (req.method === 'POST' && p === '/api/sessions') {
       const r = await parse(req);

@@ -35,7 +35,7 @@ export const PROBE: EngineProbe = {
 export interface Res { status: number; headers: http.IncomingHttpHeaders; json: any; text: string }
 export interface ReqOptions { body?: unknown; raw?: string; headers?: Record<string, string>; auth?: boolean }
 
-export function request(srv: { port: number; token: string }, method: 'GET' | 'POST', url: string, o: ReqOptions = {}): Promise<Res> {
+export function request(srv: { port: number; token: string }, method: 'GET' | 'POST' | 'PUT', url: string, o: ReqOptions = {}): Promise<Res> {
   const payload = o.raw ?? (o.body !== undefined ? JSON.stringify(o.body) : undefined);
   return new Promise((resolve, reject) => {
     const req = http.request({
@@ -129,7 +129,7 @@ export async function boot(turns: FakeTurn[] = [], o: BootOptions = {}) {
       claudeEngine({ bin: FAKE_CLAUDE, ...(model ? { model } : {}), ...(effort ? { effort } : {}), onApprove, onLive }),
   });
   undo.push(() => srv.close());
-  const api = (method: 'GET' | 'POST', url: string, r: ReqOptions = {}) => request(srv, method, url, r);
+  const api = (method: 'GET' | 'POST' | 'PUT', url: string, r: ReqOptions = {}) => request(srv, method, url, r);
   const cwd = fake.dir;
   return {
     srv, store, dir, cwd, fake, api, probes: () => probes,

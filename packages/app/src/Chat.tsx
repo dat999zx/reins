@@ -2,12 +2,14 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { TagEntry } from '@reins/server/tags.js';
 import { post } from './api.js';
 import { Composer } from './Composer.js';
+import type { EditorState } from './editorState.js';
 import { renderRow, type Actions } from './rows.js';
 import { TextTab } from './TextTab.js';
 import { mergeOutput, title, type Sess } from './state.js';
 
-export function Chat({ sess, catalogue, takeRefill, tab, onTab, onDirty, onError }: {
+export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState, onDirty, onError }: {
   sess: Sess; catalogue: TagEntry[]; takeRefill: (input: string) => string; tab: 'chat' | 'text'; onTab: (t: 'chat' | 'text') => void;
+  restore?: EditorState; onState: (patch: Partial<EditorState>) => void;
   onDirty: (dirty: boolean) => void; onError: (message: string) => void;
 }) {
   const base = `/api/sessions/${sess.id}`;
@@ -66,7 +68,7 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, onDirty, onError
           <Composer key={sess.id} id={sess.id} cwd={sess.cwd} busy={busy} catalogue={catalogue} takeRefill={takeRefill} />
         </>
       ) : (
-        <TextTab sess={sess} onDirty={onDirty} onRun={() => onTab('chat')} />
+        <TextTab sess={sess} restore={restore} onState={onState} onDirty={onDirty} onRun={() => onTab('chat')} />
       )}
     </main>
   );

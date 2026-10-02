@@ -64,6 +64,7 @@ export function openStore(file: string) {
       cwd text not null, path text not null, hash text not null, ts integer not null,
       primary key (cwd, path)
     );
+    create table if not exists editor_state (cwd text primary key, json text not null, ts integer not null);
     create index if not exists session_log_run on session_log(run_id);
   `);
   const insRun = db.prepare('insert into runs (id, workflow_path, cwd, created_at) values (?, ?, ?, ?)');
@@ -80,6 +81,8 @@ export function openStore(file: string) {
   const runOwner = db.prepare('select session_id from session_log where run_id = ? limit 1');
   const getTrust = db.prepare('select 1 as ok from trust where cwd = ? and path = ? and hash = ?');
   const putTrust = db.prepare('insert or replace into trust (cwd, path, hash, ts) values (?, ?, ?, ?)');
+  const getEditor = db.prepare('select json from editor_state where cwd = ?');
+  const putEditor = db.prepare('insert or replace into editor_state (cwd, json, ts) values (?, ?, ?)');
   const seqs = new Map<string, number>();
 
   return {
@@ -141,6 +144,12 @@ export function openStore(file: string) {
     },
     trust(cwd: string, p: string, hash: string) {
       putTrust.run(cwd, p, hash, Date.now());
+    },
+    getEditorState(cwd: string): string | undefined {
+      return (getEditor.get(cwd) as { json: string } | undefined)?.json;
+    },
+    putEditorState(cwd: string, json: string) {
+      putEditor.run(cwd, json, Date.now());
     },
     close() {
       db.close();
