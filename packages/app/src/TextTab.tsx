@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { Diagnostic } from '@reins/core';
 import { ApiError, get, post, put } from './api.js';
+import { restoreFile, restoreStep, type EditorState } from './editorState.js';
 import { highlight, lineOffset } from './highlight.js';
 import type { Sess } from './state.js';
 import { runRows, stepStatus, type StepInfo, type StepState } from './stepStatus.js';
@@ -34,7 +35,9 @@ const NAME = /^[a-z0-9][a-z0-9-]*$/;
 const template = (name: string) =>
   `---\nreins: 1\nname: ${name}\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n## phase plan\n> Plan the change.\n\n## phase build\n> Make the change.\n`;
 
-export function TextTab({ sess, onDirty, onRun }: { sess: Sess; onDirty: (dirty: boolean) => void; onRun: () => void }) {
+export function TextTab({ sess, restore, onState, onDirty, onRun }: {
+  sess: Sess; restore?: EditorState; onState: (patch: Partial<EditorState>) => void; onDirty: (dirty: boolean) => void; onRun: () => void;
+}) {
   const base = `/api/sessions/${sess.id}`;
   const [list, setList] = useState<Listed[]>([]);
   const [file, setFile] = useState<string | null>(null);
@@ -48,9 +51,31 @@ export function TextTab({ sess, onDirty, onRun }: { sess: Sess; onDirty: (dirty:
   const pre = useRef<HTMLPreElement>(null);
   const gutter = useRef<HTMLDivElement>(null);
   const dirty = file !== null && text !== saved;
+  // `restore` is read at mount only; later changes to it are our own reports coming back.
+  const first = useRef(restore);
+  const wantStep = useRef<string | undefined>(undefined);
+  // Hold back onState until the restore finished, so a half-restored view never overwrites the stored state.
+  const [restored, setRestored] = useState(!restore?.workflow);
 
-  const refresh = () => get<{ workflows: Listed[] }>(`/api/workflows?cwd=${encodeURIComponent(sess.cwd)}`).then((r) => setList(r.workflows)).catch((e) => setMsg(e.message));
-  useEffect(() => { void refresh(); }, [sess.id]);
+  const refresh = () => get<{ workflows: Listed[] }>(`/api/workflows?cwd=${encodeURIComponent(sess.cwd)}`).then((r) => { setList(r.workflows); return r.workflows; }).catch((e) => { setMsg(e.message); return undefined; });
+  useEffect(() => {
+    void refresh().then(async (l) => {
+      const want = first.current;
+      if (!want?.workflow) return;
+      if (!l) return setRestored(true);
+      const path = restoreFile(want.workflow, l);
+      if (path && await open(path, true)) {
+        wantStep.current = want.stepId;
+        if (want.stepId === undefined) setRestored(true);
+      } else {
+        onState({ workflow: undefined, stepId: undefined });
+        setRestored(true);
+      }
+    });
+  }, [sess.id]);
+  useEffect(() => {
+    if (restored && file !== null) onState({ workflow: file, stepId });
+  }, [file, stepId, restored]);
   useEffect(() => { onDirty(dirty); return () => onDirty(false); }, [dirty]);
 
   const leave = () => !dirty || window.confirm('Discard unsaved changes?');
@@ -60,8 +85,10 @@ export function TextTab({ sess, onDirty, onRun }: { sess: Sess; onDirty: (dirty:
       const r = await get<{ path: string; text: string }>(`${base}/workflow?path=${encodeURIComponent(path)}`);
       const t = r.text.replace(/\r\n/g, '\n');
       setFile(r.path); setText(t); setSaved(t); setStepId(undefined); setMsg(''); setPrev(null);
+      return true;
     } catch (e) {
       setMsg((e as Error).message);
+      return false;
     }
   };
 
@@ -69,7 +96,18 @@ export function TextTab({ sess, onDirty, onRun }: { sess: Sess; onDirty: (dirty:
     if (file === null) return;
     let stale = false;
     const t = setTimeout(() => {
-      post<Preview>(`${base}/preview`, { text, path: file, ...(stepId ? { stepId } : {}) }).then((p) => { if (!stale) setPrev(p); }).catch(() => {});
+      post<Preview>(`${base}/preview`, { text, path: file, ...(stepId ? { stepId } : {}) }).then((p) => {
+        if (stale) return;
+        setPrev(p);
+        if (wantStep.current !== undefined) {
+          const keep = restoreStep(wantStep.current, p.steps);
+          wantStep.current = undefined;
+          setStepId((cur) => cur ?? keep);
+          setRestored(true);
+        }
+      }).catch(() => {
+        if (!stale && wantStep.current !== undefined) { wantStep.current = undefined; setRestored(true); }
+      });
     }, 300);
     return () => { stale = true; clearTimeout(t); };
   }, [text, file, stepId]);

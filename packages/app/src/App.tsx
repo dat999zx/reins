@@ -4,6 +4,7 @@ import type { LogRow } from '@reins/server/store.js';
 import type { TagEntry } from '@reins/server/tags.js';
 import { ApiError, get, initToken, post, stream } from './api.js';
 import { Chat } from './Chat.js';
+import { loadEditorState, makeSaver, type EditorState } from './editorState.js';
 import { Rail } from './Rail.js';
 import { afterOf, initial, loadSessions, reduceAll, takeRefill, type SessionView, type State } from './state.js';
 
@@ -79,6 +80,45 @@ export function App() {
     return () => { stopped = true; es?.close(); clearTimeout(timer); };
   }, [token]);
 
+  // Editor state per cwd. The saver stays silent until the stored state has loaded, so an early change can't overwrite it.
+  // ponytail: a change made in the last 500 ms before a reload or close is lost; add a pagehide flush if that bites
+  const [editor, setEditor] = useState<Record<string, EditorState>>({});
+  const editorRef = useRef(editor);
+  editorRef.current = editor;
+  const saver = useRef<{ cwd: string; s: ReturnType<typeof makeSaver> } | undefined>(undefined);
+  const view = useRef({ selected, tab });
+  view.current = { selected, tab };
+  const cwd = selected ? st.sessions[selected]?.cwd : undefined;
+
+  useEffect(() => {
+    if (!cwd) return;
+    saver.current?.s.flush();
+    const s = makeSaver(cwd);
+    saver.current = { cwd, s };
+    const known = editorRef.current[cwd];
+    if (known) return s.ready(known);
+    const at = view.current;
+    let off = false;
+    void loadEditorState(cwd).then((state) => {
+      if (off) return;
+      const same = view.current.selected === at.selected && view.current.tab === at.tab;
+      const merged = same ? state : { ...state, tab: view.current.tab };
+      if (same && state.tab) setTab(state.tab);
+      editorRef.current = { ...editorRef.current, [cwd]: merged };
+      setEditor(editorRef.current);
+      s.ready(merged);
+    });
+    return () => { off = true; };
+  }, [cwd]);
+
+  const onState = (c: string, patch: Partial<EditorState>) => {
+    const cur = editorRef.current[c];
+    if (!cur) return;
+    editorRef.current = { ...editorRef.current, [c]: { ...cur, ...patch } };
+    setEditor(editorRef.current);
+    if (saver.current?.cwd === c) saver.current.s.set(patch);
+  };
+
   const flash = (m: string) => { setNotice(m); setTimeout(() => setNotice(''), 4000); };
   const leave = () => !dirty.current || window.confirm('Discard unsaved changes?');
   const select = (id: string) => {
@@ -146,7 +186,8 @@ export function App() {
         {sess ? (
           <Chat
             key={sess.id} sess={sess} catalogue={catalogue} tab={tab}
-            onTab={(t) => { if (t === tab || t === 'text' || leave()) setTab(t); }}
+            onTab={(t) => { if (t === tab || t === 'text' || leave()) { setTab(t); if (t !== tab) onState(sess.cwd, { tab: t }); } }}
+            restore={editor[sess.cwd]} onState={(p) => onState(sess.cwd, p)}
             onDirty={(d) => { dirty.current = d; }} onError={flash}
             takeRefill={(input) => {
               const r = takeRefill(stRef.current, sess.id, input);
