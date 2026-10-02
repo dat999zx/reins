@@ -1,0 +1,417 @@
+[
+  {
+    "sessionId": "922018448bf1",
+    "seq": 1,
+    "ts": 1790915500701,
+    "type": "session_created",
+    "data": {
+      "id": "922018448bf1",
+      "cwd": "C:\\p\\one",
+      "engine": "claude",
+      "autoApprove": false,
+      "createdAt": 1790915500700,
+      "updatedAt": 1790915500700
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 2,
+    "ts": 1790915500717,
+    "type": "status",
+    "data": {
+      "status": "running"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 3,
+    "ts": 1790915500717,
+    "type": "question",
+    "data": {
+      "id": "f17ef996ea80",
+      "kind": "trust",
+      "detail": "npm test",
+      "prompt": "This workflow runs the commands below on your machine. Trust it? [y / n]"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 4,
+    "ts": 1790915500717,
+    "type": "status",
+    "data": {
+      "status": "waiting"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 5,
+    "ts": 1790915500720,
+    "type": "answer",
+    "data": {
+      "questionId": "f17ef996ea80",
+      "answer": "y"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 6,
+    "ts": 1790915500720,
+    "type": "status",
+    "data": {
+      "status": "running"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 7,
+    "ts": 1790915500767,
+    "runId": "11123c77",
+    "type": "run_started",
+    "data": {
+      "workflow": "gated"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 8,
+    "ts": 1790915500769,
+    "runId": "11123c77",
+    "type": "turn_started",
+    "data": {
+      "step": "plan"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 9,
+    "ts": 1790915501117,
+    "runId": "11123c77",
+    "type": "engine",
+    "data": {
+      "type": "text",
+      "text": "ONE"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 10,
+    "ts": 1790915501149,
+    "runId": "11123c77",
+    "type": "turn_ended",
+    "data": {
+      "step": "plan",
+      "text": "REINS: done",
+      "cost": 0.0640898
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 11,
+    "ts": 1790915501149,
+    "runId": "11123c77",
+    "type": "gate_paused",
+    "data": {
+      "step": "gate-1",
+      "cond": {
+        "t": "approve"
+      }
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 12,
+    "ts": 1790915501149,
+    "runId": "11123c77",
+    "type": "say",
+    "data": {
+      "text": "⏸ gate gate-1: until you approve"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 13,
+    "ts": 1790915501149,
+    "runId": "11123c77",
+    "type": "say",
+    "data": {
+      "text": "    REINS: done\n"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 14,
+    "ts": 1790915501150,
+    "runId": "11123c77",
+    "type": "question",
+    "data": {
+      "id": "9a9edb97e7a6",
+      "kind": "gate",
+      "prompt": "approve / changes <note> / stop"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 15,
+    "ts": 1790915501150,
+    "type": "status",
+    "data": {
+      "status": "waiting"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 16,
+    "ts": 1790915501165,
+    "runId": "11123c77",
+    "type": "answer",
+    "data": {
+      "questionId": "9a9edb97e7a6",
+      "answer": "changes tighten it"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 17,
+    "ts": 1790915501165,
+    "type": "status",
+    "data": {
+      "status": "running"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 18,
+    "ts": 1790915501166,
+    "runId": "11123c77",
+    "type": "card_delivered",
+    "data": {
+      "card": "tighten it",
+      "channel": "next-turn",
+      "source": "gate-changes"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 19,
+    "ts": 1790915501166,
+    "runId": "11123c77",
+    "type": "turn_started",
+    "data": {
+      "step": "gate-1"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 20,
+    "ts": 1790915501285,
+    "runId": "11123c77",
+    "type": "engine",
+    "data": {
+      "type": "text",
+      "text": "ONE"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 21,
+    "ts": 1790915501316,
+    "runId": "11123c77",
+    "type": "turn_ended",
+    "data": {
+      "step": "gate-1",
+      "text": "REINS: done",
+      "cost": 0.0640898
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 22,
+    "ts": 1790915501317,
+    "runId": "11123c77",
+    "type": "say",
+    "data": {
+      "text": "⏸ gate gate-1: until you approve"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 23,
+    "ts": 1790915501317,
+    "runId": "11123c77",
+    "type": "say",
+    "data": {
+      "text": "    REINS: done\n"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 24,
+    "ts": 1790915501317,
+    "runId": "11123c77",
+    "type": "question",
+    "data": {
+      "id": "1b4c67e20f8e",
+      "kind": "gate",
+      "prompt": "approve / changes <note> / stop"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 25,
+    "ts": 1790915501317,
+    "type": "status",
+    "data": {
+      "status": "waiting"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 26,
+    "ts": 1790915501349,
+    "runId": "11123c77",
+    "type": "answer",
+    "data": {
+      "questionId": "1b4c67e20f8e",
+      "answer": "approve"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 27,
+    "ts": 1790915501349,
+    "type": "status",
+    "data": {
+      "status": "running"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 28,
+    "ts": 1790915501350,
+    "runId": "11123c77",
+    "type": "gate_approved",
+    "data": {}
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 29,
+    "ts": 1790915501350,
+    "runId": "11123c77",
+    "type": "turn_started",
+    "data": {
+      "step": "build"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 30,
+    "ts": 1790915501488,
+    "runId": "11123c77",
+    "type": "engine",
+    "data": {
+      "type": "text",
+      "text": "ONE"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 31,
+    "ts": 1790915501521,
+    "runId": "11123c77",
+    "type": "turn_ended",
+    "data": {
+      "step": "build",
+      "text": "REINS: done",
+      "cost": 0.0640898
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 32,
+    "ts": 1790915501521,
+    "runId": "11123c77",
+    "type": "turn_started",
+    "data": {
+      "step": "verify-1"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 33,
+    "ts": 1790915501645,
+    "runId": "11123c77",
+    "type": "engine",
+    "data": {
+      "type": "text",
+      "text": "ONE"
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 34,
+    "ts": 1790915501675,
+    "runId": "11123c77",
+    "type": "turn_ended",
+    "data": {
+      "step": "verify-1",
+      "text": "REINS: done",
+      "cost": 0.0640898
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 35,
+    "ts": 1790915501676,
+    "runId": "11123c77",
+    "type": "verify_result",
+    "data": {
+      "pass": true
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 36,
+    "ts": 1790915501676,
+    "runId": "11123c77",
+    "type": "run_finished",
+    "data": {}
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 37,
+    "ts": 1790915501676,
+    "runId": "11123c77",
+    "type": "receipt",
+    "data": {
+      "workflow": "gated",
+      "status": "done",
+      "totalTurns": 4,
+      "totalTimeMs": 909,
+      "totalCostUsd": 0.2564,
+      "gatesHeld": 1,
+      "guardRefusals": 0,
+      "readOnlyRefusals": 0,
+      "totalRefusals": 0,
+      "loopAttempts": 0,
+      "autoCardsFired": 0,
+      "liveCardsDelivered": 1,
+      "verifyResults": {
+        "passed": 1,
+        "failed": 0
+      },
+      "knowlRecalls": 0,
+      "knowlStores": 0,
+      "knowlSkipped": 0
+    }
+  },
+  {
+    "sessionId": "922018448bf1",
+    "seq": 38,
+    "ts": 1790915501676,
+    "type": "status",
+    "data": {
+      "status": "idle"
+    }
+  }
+]

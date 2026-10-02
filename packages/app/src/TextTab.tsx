@@ -3,10 +3,32 @@ import type { Diagnostic } from '@reins/core';
 import { ApiError, get, post, put } from './api.js';
 import { highlight, lineOffset } from './highlight.js';
 import type { Sess } from './state.js';
+import { runRows, stepStatus, type StepInfo, type StepState } from './stepStatus.js';
 
 interface Listed { path: string; name: string; scope: 'project' | 'user'; diagnostics: Diagnostic[] }
 interface Step { id: string; kind: string; title?: string; depth: number }
-interface Preview { diagnostics: Diagnostic[]; steps: Step[]; turn?: string }
+interface Preview { diagnostics: Diagnostic[]; steps: Step[]; turn?: string; name?: string }
+
+const STATE: Record<StepState, { text: string; words: string }> = {
+  active: { text: 'running', words: 'running' },
+  done: { text: '✓', words: 'done' },
+  waiting: { text: 'waiting for you', words: 'waiting for you' },
+  stuck: { text: 'out of attempts', words: 'out of attempts' },
+};
+
+function StepChips({ i }: { i: StepInfo }) {
+  const st = i.state && STATE[i.state];
+  const tries = i.attempts === undefined ? undefined : i.state === 'stuck' ? `${i.attempts} tries used` : `attempt ${i.attempts + 1}`;
+  const cost = i.cost > 0 ? `$${i.cost.toFixed(4)}` : undefined;
+  const text = [st && st.text, tries, cost].filter(Boolean);
+  const words = [st && st.words, tries, cost && `cost ${cost}`].filter(Boolean);
+  return (
+    <>
+      {text.length > 0 && <span className={`sstate ${i.state ?? ''}`} role="img" aria-label={words.join(', ')}>{text.join(' · ')}</span>}
+      {i.refusals > 0 && <span className="sstate bad" role="img" aria-label={`${i.refusals} blocked`}>{i.refusals} blocked</span>}
+    </>
+  );
+}
 
 const NAME = /^[a-z0-9][a-z0-9-]*$/;
 const template = (name: string) =>
@@ -83,6 +105,9 @@ export function TextTab({ sess, onDirty, onRun }: { sess: Sess; onDirty: (dirty:
     return m;
   }, [prev]);
   const lines = useMemo(() => highlight(text), [text]);
+  const latest = useMemo(() => runRows(sess.rows), [sess.rows]);
+  const status = useMemo(() => stepStatus(latest.rows), [latest]);
+  const showStatus = prev?.name !== undefined && prev.name === latest.workflow && !dirty;
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); }
@@ -159,6 +184,8 @@ export function TextTab({ sess, onDirty, onRun }: { sess: Sess; onDirty: (dirty:
                 {(prev?.steps ?? []).map((s) => (
                   <li key={s.id} style={{ paddingLeft: s.depth * 14 }}>
                     <button aria-pressed={s.id === stepId} onClick={() => setStepId(s.id)}>{s.kind}{s.title ? ` ${s.title}` : ''}</button>
+                    {/* ponytail: a use step gets no chip; its inlined steps run as block/id, which no listed id matches */}
+                    {showStatus && status[s.id] && <StepChips i={status[s.id]!} />}
                   </li>
                 ))}
               </ol>

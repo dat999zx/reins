@@ -141,3 +141,12 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .receives button[aria-pressed='true'] { background: var(--raised); border-color: var(--line2); }
 .turn { white-space: pre-wrap; background: #16171a; border: 1px solid var(--line); border-radius: 5px; padding: 8px; color: var(--mute); }
 .note { color: var(--mute); }
+.sstate { display: inline-block; font: 600 10.5px/1.6 var(--sans); padding: 0 7px; margin-left: 6px; border: 1px solid var(--line2); border-radius: 9px; color: var(--mute); }
+.sstate.active { border-color: var(--brand); color: var(--brand); }
+.sstate.waiting { border-color: var(--gate); color: var(--gate); padding: 0 7px; border-radius: 9px; }
+.sstate.done { border-color: var(--ok); color: var(--ok); }
+.sstate.stuck, .sstate.bad { border-color: var(--bad); color: var(--bad); }
+@media (prefers-reduced-motion: no-preference) {
+  .sstate.active { animation: sstate-pulse 1.6s ease-in-out infinite; }
+  @keyframes sstate-pulse { 50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 30%, transparent); } }
+}
