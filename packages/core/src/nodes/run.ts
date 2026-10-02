@@ -7,6 +7,7 @@ declare module '../model.js' {
 
 const run: NodeType = {
   kind: 'run',
+  fails: true,
   attrs: ['cmd'],
   heading: {
     owns: ['cmd'],

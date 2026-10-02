@@ -7,6 +7,7 @@ declare module '../model.js' {
 
 const verify: NodeType = {
   kind: 'verify',
+  fails: true,
   attrs: ['against'],
   tag: { place: 'after', lines: ['against: prompt'] },
   validate: {

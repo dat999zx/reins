@@ -32,6 +32,8 @@ export interface NodeType {
   kind: string;
   attrs: string[];
   container?: 'kids' | 'kids+else';
+  /** True when the step can fail, so an on-fail link on it can fire. */
+  fails?: true;
   heading?: {
     parse(arg: string, step: Step, ctx: HeadingCtx): boolean;
     print(step: Step): { text: string; condInHeading: boolean };

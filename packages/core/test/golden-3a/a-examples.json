@@ -64,7 +64,7 @@
               "kind": "note",
               "pos": {
                 "col": 6,
-                "line": 23
+                "line": 22
               },
               "text": "smallest change that works"
             }
@@ -74,7 +74,7 @@
           "links": [],
           "pos": {
             "col": 1,
-            "line": 22
+            "line": 21
           },
           "prompt": "Make the smallest change that makes the test pass.",
           "title": "fix"
@@ -143,7 +143,7 @@
           "links": [],
           "pos": {
             "col": 1,
-            "line": 35
+            "line": 34
           },
           "prompt": "Small fix. Explain the root cause in two sentences."
         },

@@ -422,6 +422,14 @@
         "severity": "error"
       },
       {
+        "message": "`retry` has no effect; use a backward `next` with `max`",
+        "pos": {
+          "col": 7,
+          "line": 15
+        },
+        "severity": "warning"
+      },
+      {
         "message": "Backward link to \"a\" requires max",
         "pos": {
           "col": 7,
@@ -932,6 +940,14 @@
           "line": 12
         },
         "severity": "error"
+      },
+      {
+        "message": "`retry` has no effect; use a backward `next` with `max`",
+        "pos": {
+          "col": 7,
+          "line": 16
+        },
+        "severity": "warning"
       },
       {
         "message": "Backward link to \"a\" requires max",

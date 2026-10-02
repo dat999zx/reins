@@ -3,6 +3,9 @@ import { Run } from '../src/run.js';
 import { FakeEngine } from '../src/fake-engine.js';
 import { parseWorkflow } from '../src/format/parse.js';
 import { printWorkflow } from '../src/format/print.js';
+import { validate } from '../src/validate.js';
+import { readFileSync, readdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import type { Link, Step, Workflow } from '../src/model.js';
 
 const phase = (id: string, links: Link[] = []): Step => ({
@@ -201,5 +204,132 @@ describe('Task 3: on-fail on a run step', () => {
     await drain(run);
     expect(turns(run).length).toBe(5);
     expect(run.pauseReason?.type).toBe('link-budget-used');
+  });
+});
+
+describe('Task 4: validator, wires that cannot work', () => {
+  const diags = (steps: Step[]) => validate(wf(steps));
+  const L = (kind: Link['kind'], to: string, max?: number): Link => ({ kind, to, ...(max !== undefined ? { max } : {}) });
+
+  it.each([
+    ['on-pass', '`on-pass` has no effect; use `next`'],
+    ['retry', '`retry` has no effect; use a backward `next` with `max`'],
+    ['verify-against', '`verify-against` has no effect; use `against:`'],
+    ['hand-off', '`hand-off` has no effect; use a handoff step'],
+  ] as const)('warns about the deprecated %s wire', (kind, msg) => {
+    const d = diags([phase('a'), phase('b', [L(kind, 'a', 1)])]);
+    expect(d.filter((x) => x.severity === 'error')).toEqual([]);
+    expect(d.map((x) => x.message)).toContain(msg);
+  });
+
+  it('warns about on-fail on a step that cannot fail, naming kinds from the registry and not the step', () => {
+    const d = diags([phase('a'), phase('step-b', [L('on-fail', 'a', 1)])]);
+    const w = d.filter((x) => x.message.startsWith('on-fail only applies to'));
+    expect(w).toHaveLength(1);
+    expect(w[0]!.severity).toBe('warning');
+    expect(w[0]!.message).toBe('on-fail only applies to run, verify');
+    expect(d.some((x) => x.message.includes('step-b'))).toBe(false);
+  });
+
+  it('does not warn about on-fail on run or verify', () => {
+    const d = diags([
+      phase('a'),
+      runStep('r', 'x', [L('on-fail', 'a', 1)]),
+      { id: 'v', kind: 'verify', attrs: { against: 'a' }, cards: [], links: [L('on-fail', 'a', 1)] },
+    ]);
+    expect(d.filter((x) => x.message.startsWith('on-fail only'))).toEqual([]);
+  });
+
+  it('errors on two next links, or two on-fail links, on one step', () => {
+    const next = diags([phase('a', [L('next', 'b'), L('next', 'c')]), phase('b'), phase('c')]);
+    expect(next.filter((x) => x.severity === 'error').map((x) => x.message)).toEqual(['a step can have only one `next` link']);
+    const fail = diags([phase('a'), runStep('r', 'x', [L('on-fail', 'a', 1), L('on-fail', 'a', 2)])]);
+    expect(fail.filter((x) => x.severity === 'error').map((x) => x.message)).toEqual(['a step can have only one `on-fail` link']);
+  });
+
+  const rep = (id: string, kids: Step[], links: Link[] = []): Step => ({
+    id, kind: 'repeat', attrs: { max: '2' }, cond: { t: 'tests' } as Step['cond'], cards: [], links, kids,
+  });
+
+  it('errors on a wire from outside a repeat into its body, including its first child', () => {
+    for (const target of ['k1', 'k2']) {
+      const d = diags([phase('a', [L('next', target)]), rep('loop', [phase('k1'), phase('k2')])]);
+      expect(d.filter((x) => x.severity === 'error').map((x) => x.message)).toEqual([
+        'wire jumps into the body of `loop`; point at the loop instead',
+      ]);
+    }
+  });
+
+  it('errors on the repeat own next into its child, but not on wires inside or to the loop', () => {
+    const own = diags([phase('z'), rep('loop', [phase('k1')], [L('next', 'k1', 1)])]);
+    expect(own.filter((x) => x.severity === 'error')).toHaveLength(1);
+    const ok = diags([
+      phase('a', [L('next', 'loop')]),
+      rep('loop', [phase('k1', [L('next', 'k2')]), phase('k2', [L('next', 'out')])]),
+      phase('out'),
+    ]);
+    expect(ok.filter((x) => x.severity === 'error')).toEqual([]);
+  });
+});
+
+describe('Task 5: unreachable steps', () => {
+  const never = (w: Workflow) => validate(w).filter((x) => x.message.includes('never reached'));
+  const rep = (id: string, kids: Step[], links: Link[] = []): Step => ({
+    id, kind: 'repeat', attrs: { max: '2' }, cond: { t: 'tests' } as Step['cond'], cards: [], links, kids,
+  });
+
+  it('warns once at a step that a next skips over', () => {
+    const w = wf([phase('a', [{ kind: 'next', to: 'c' }]), phase('b'), phase('c')]);
+    w.steps[1]!.pos = { line: 7, col: 1 };
+    const d = never(w);
+    expect(d).toHaveLength(1);
+    expect(d[0]).toMatchObject({ severity: 'warning', message: 'step `b` is never reached', pos: { line: 7, col: 1 } });
+  });
+
+  it('no never-reached warning on any shipped example', () => {
+    const dir = fileURLToPath(new URL('../../../examples/', import.meta.url));
+    const files = [...readdirSync(dir).filter((f) => f.endsWith('.reins.md')).map((f) => dir + f), dir + 'blocks/review-pass.reins.md'];
+    expect(files.length).toBeGreaterThan(3);
+    for (const f of files) {
+      const w = parseWorkflow(readFileSync(f, 'utf8')).workflow!;
+      expect(never(w)).toEqual([]);
+    }
+  });
+
+  it('no shipped example carries a wire warning (deprecated link, dead on-fail, jump into a loop)', () => {
+    const dir = fileURLToPath(new URL('../../../examples/', import.meta.url));
+    const files = [...readdirSync(dir).filter((f) => f.endsWith('.reins.md')).map((f) => dir + f), dir + 'blocks/review-pass.reins.md'];
+    for (const f of files) {
+      const { workflow } = parseWorkflow(readFileSync(f, 'utf8'));
+      const wire = validate(workflow!).filter((d) => /no effect|on-fail only|wire jumps|never reached/.test(d.message));
+      expect(wire, f).toEqual([]);
+    }
+  });
+
+  it('a loop whose last child has a next out of it does not flag the loop', () => {
+    const w = wf([rep('R', [phase('a'), phase('b', [{ kind: 'next', to: 'out' }])]), phase('out')]);
+    expect(never(w)).toEqual([]);
+  });
+
+  it('a run with onPassJump, on-fail and next flags nothing', () => {
+    const w = wf([
+      phase('fix'),
+      rep('R', [runStep('t', 'npm test', [{ kind: 'on-fail', to: 'fix', max: 2 }, { kind: 'next', to: 'out' }])]),
+      phase('skipped-by-nothing'),
+      phase('out'),
+    ]);
+    expect(never(w)).toEqual([]);
+  });
+
+  it('a backward next that loops is not flagged', () => {
+    const w = wf([phase('a'), phase('b'), phase('c', [{ kind: 'next', to: 'a', max: 1 }])]);
+    expect(never(w)).toEqual([]);
+  });
+
+  it('does not run when the workflow already has an error', () => {
+    const w = wf([phase('a', [{ kind: 'next', to: 'c' }]), phase('b'), phase('c'), phase('c')]);
+    const d = validate(w);
+    expect(d.some((x) => x.severity === 'error')).toBe(true);
+    expect(d.filter((x) => x.message.includes('never reached'))).toEqual([]);
   });
 });

@@ -60,7 +60,10 @@ export function printWorkflow(w: Workflow): string {
     const lines: string[] = [`${hashes} ${headingText}`];
 
     // Determine if custom id needs to be printed
-    const defId = defaultId(step, counters);
+    // Same rule as parse: a custom id does not advance the default-id counter.
+    const trial = { ...counters };
+    const defId = defaultId(step, trial);
+    if (step.id === defId) Object.assign(counters, trial);
     if (step.id && step.id !== defId) {
       lines.push(`id: ${step.id}`);
     }
