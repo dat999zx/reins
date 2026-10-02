@@ -164,7 +164,7 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await page.getByRole('tab', { name: 'Text' }).click();
     await page.locator('.ebar b', { hasText: 'smoke.reins.md' }).waitFor();
     await expect.poll(() => states.count(), { timeout: W }).toBe(await steps.count());
-    for (const label of await states.evaluateAll((els) => els.map((e) => e.getAttribute('aria-label') ?? ''))) expect(label).toMatch(/^done/);
+    for (let i = 0; i < await states.count(); i++) expect(await states.nth(i).getAttribute('aria-label')).toMatch(/^done/);
     await steps.nth(1).getByRole('button').click();
     await page.waitForTimeout(700); // the editor state is saved 500 ms after a change
     await page.reload();
