@@ -238,6 +238,15 @@ describe('preview (3c.9)', () => {
     expect(broken.json.turn).toBeUndefined();
   });
 
+  it('returns the frontmatter name, and omits it when the text does not parse', async () => {
+    const x = await world();
+    const file = path.join(x.project, 'other-file-name.reins.md');
+    expect((await x.preview(file, PREVIEW)).json.name).toBe('demo');
+    const bad = await x.preview(file, 'just words, no frontmatter');
+    expect(bad.status).toBe(200);
+    expect('name' in bad.json).toBe(false);
+  });
+
   it('400 for a bad path or body; the file need not exist', async () => {
     const x = await world();
     expect((await x.preview(path.join(x.project, 'sub', 'a.reins.md'), TEXT)).status).toBe(400);

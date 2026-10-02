@@ -95,5 +95,5 @@ export function previewWorkflow(cwd: string, dir: string, p: string, text: strin
     const step = instr?.op === 'TURN' ? instr.src ?? flat.find((f) => f.step.id === stepId)?.step : undefined;
     if (instr && step) turn = compileTurn(step, { workflowName: w.name, stepIndex: instr.top ?? 0, totalSteps: w.steps.length, always: w.always });
   }
-  return { status: 200, body: { diagnostics: loaded.diagnostics, steps, ...(turn !== undefined ? { turn } : {}) } };
+  return { status: 200, body: { diagnostics: loaded.diagnostics, steps, ...(w?.name !== undefined ? { name: w.name } : {}), ...(turn !== undefined ? { turn } : {}) } };
 }
