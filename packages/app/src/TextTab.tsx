@@ -5,6 +5,8 @@ import { prunePos, restoreFile, restoreStep, type CanvasView, type EditorState }
 import { highlight, lineOffset } from './highlight.js';
 import type { Sess } from './state.js';
 import { runRows, stepStatus } from './stepStatus.js';
+import { BlockPanel } from './BlockPanel.js';
+import { flatSteps } from './canvas.js';
 import { Canvas, StatusCtx } from './CanvasPane.js';
 import { StepChips } from './StepChips.js';
 
@@ -20,8 +22,8 @@ const NAME = /^[a-z0-9][a-z0-9-]*$/;
 const template = (name: string) =>
   `---\nreins: 1\nname: ${name}\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n## phase plan\n> Plan the change.\n\n## phase build\n> Make the change.\n`;
 
-export function TextTab({ view, sess, restore, onState, onDirty, onRun }: {
-  view: 'canvas' | 'text';
+export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }: {
+  view: 'canvas' | 'text'; onView: (t: 'text') => void;
   sess: Sess; restore?: EditorState; onState: (patch: Partial<EditorState>) => void; onDirty: (dirty: boolean) => void; onRun: () => void;
 }) {
   const base = `/api/sessions/${sess.id}`;
@@ -186,6 +188,13 @@ export function TextTab({ view, sess, restore, onState, onDirty, onRun }: {
     const o = lineOffset(text, line);
     el.setSelectionRange(o, o);
   };
+  const pendingLine = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (view !== 'text' || pendingLine.current === undefined) return;
+    jump(pendingLine.current);
+    pendingLine.current = undefined;
+  }, [view]);
+  const sel = stepId && prev?.workflow ? flatSteps(prev.workflow.steps).find((s) => s.id === stepId) : undefined;
 
   return (
     <div className="texttab">
@@ -222,7 +231,8 @@ export function TextTab({ view, sess, restore, onState, onDirty, onRun }: {
                   <Canvas w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} selected={stepId}
                     view={restore?.canvas?.[file] ?? {}} onView={setView} onEdit={edit} onSelect={setStepId} />
                 </StatusCtx.Provider>
-                {/* Block panel slot (Task 8) */}
+                {sel && <BlockPanel key={sel.id} step={sel} all={flatSteps(prev.workflow.steps)} cond={prev.steps.find((s) => s.id === sel.id)?.cond}
+                  turn={prev.turn} rev={prev} onEdit={edit} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />}
               </div>
             )}
             {view === 'text' && <div className="ed">

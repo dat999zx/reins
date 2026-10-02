@@ -239,6 +239,18 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await planNode.waitFor();
     expect(await canvasTab.getAttribute('aria-selected')).toBe('true');
     expect(await transform()).toBe(t1);
+
+    // 8c.7. the Block panel adds a `next` link to ship; Ctrl+S leaves the buffer clean
+    await page.locator('[data-id="build"]').click();
+    const panel = page.locator('aside[aria-label="Block panel"]');
+    await panel.getByLabel('Link kind').selectOption('next');
+    await panel.getByLabel('Link target').selectOption('ship');
+    await panel.getByRole('button', { name: 'Add link' }).click();
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('## phase build\nnext: ship\n');
+    await editor.focus();
+    await page.keyboard.press('ControlOrMeta+S');
+    await page.getByRole('status').getByText('Saved.').waitFor();
     await page.getByRole('tab', { name: 'Chat' }).click();
     await page.waitForTimeout(700);
 

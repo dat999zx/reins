@@ -151,7 +151,7 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
   @keyframes sstate-pulse { 50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 30%, transparent); } }
 }
 
-.canvaswrap { display: grid; grid-template-columns: minmax(0, 1fr) auto; flex: 1; min-height: 420px; border: 1px solid var(--line2); border-radius: 6px; overflow: hidden; }
+.canvaswrap { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr); flex: 1; min-height: 420px; border: 1px solid var(--line2); border-radius: 6px; overflow: hidden; }
 .canvaswrap:focus { outline: none; }
 .canvaswrap .react-flow { --xy-background-color: var(--bg); --xy-edge-stroke-default: var(--mute); --xy-edge-label-background-color-default: var(--bg); --xy-edge-label-color-default: var(--mute); }
 .react-flow .react-flow__node-group, .react-flow .react-flow__node-step { padding: 0; border: 0; background: none; border-radius: 0; text-align: left; width: auto; color: var(--ink); font-size: 12px; }
@@ -178,3 +178,16 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 @media (prefers-reduced-motion: no-preference) {
   .cbox.active { animation: sstate-pulse 1.6s ease-in-out infinite; }
 }
+.bpanel { width: 300px; box-sizing: border-box; overflow-y: auto; border-left: 1px solid var(--line2); background: var(--panel); padding: 10px 12px; display: grid; gap: 8px; align-content: start; font-size: 12px; }
+.bpanel h3 { margin: 0; font-size: 13px; }
+.bpanel h4 { margin: 4px 0; font-size: 12px; color: var(--mute); }
+.bpanel label { display: grid; gap: 2px; color: var(--mute); }
+.bpanel .bfield { display: grid; gap: 3px; color: var(--mute); }
+.bpanel .bfield code { color: var(--ink); white-space: pre-wrap; }
+.bpanel input, .bpanel select, .bpanel textarea { width: 100%; box-sizing: border-box; }
+.bpanel .mono { font-family: var(--mono); }
+.bpanel textarea { resize: vertical; }
+.bpanel .brow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 6px; align-items: end; margin-bottom: 6px; }
+.bpanel .brow > span { overflow-wrap: anywhere; color: var(--ink); }
+.bpanel .brow .bmax { grid-column: 1; }
+.bpanel .turn { max-height: 160px; overflow: auto; margin: 0; font: 11.5px/1.45 var(--mono); }
