@@ -103,7 +103,7 @@ export function App() {
       if (off) return;
       const same = view.current.selected === at.selected && view.current.tab === at.tab;
       const merged = same ? state : { ...state, tab: view.current.tab };
-      if (same && state.tab) setTab(state.tab);
+      if (same && (state.tab === 'chat' || state.tab === 'text')) setTab(state.tab);
       editorRef.current = { ...editorRef.current, [cwd]: merged };
       setEditor(editorRef.current);
       s.ready(merged);
