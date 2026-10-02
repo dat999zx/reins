@@ -20,6 +20,9 @@ export interface PauseReason {
   limit?: number;
   reason?: string;
   text?: string;
+  /** link-budget-used: the jump that was interrupted, and its counter key. */
+  to?: number;
+  linkKey?: string;
 }
 
 /** steer: slipped in mid-turn. now: interrupt, then sent as the next turn. stop: interrupt and pause. */
@@ -98,6 +101,7 @@ export interface RunSnapshot {
   lastRecallContext: string[];
   lastTurnText?: string;
   loopLimitExtensions?: Record<string, number>;
+  linkLimitExtensions?: Record<string, number>;
 }
 
 export class Run {
@@ -120,6 +124,8 @@ export class Run {
   private lastStepId?: string;
   private lastTurnText?: string;
   private loopLimitExtensions = new Map<string, number>();
+  // ponytail: keyed by instruction index, so a live edit() that recompiles loses the extra allowance; key by step ids if it matters
+  private linkLimitExtensions = new Map<string, number>();
 
   private engineSession?: EngineSession;
   private borrowed?: EngineSession;
@@ -355,10 +361,29 @@ export class Run {
       this.pauseReason = undefined;
       this.logEvent('run_resumed', { allowMore: n });
     } else if (this.status === 'paused' && this.pauseReason?.type === 'link-budget-used') {
+      const { linkKey, to } = this.pauseReason;
+      if (linkKey !== undefined) {
+        this.linkLimitExtensions.set(linkKey, (this.linkLimitExtensions.get(linkKey) ?? 0) + n);
+      }
+      // The interrupted jump is already counted: take it.
+      if (to !== undefined) this.programCounter = to;
       this.status = 'running';
       this.pauseReason = undefined;
       this.logEvent('run_resumed', { allowMore: n });
     }
+  }
+
+  /** Count a link jump. Returns false (and pauses, remembering the jump) when its budget is used up. */
+  private takeLink(key: string, to: number, max: number | undefined): boolean {
+    const jumps = (this.linkCounters.get(key) || 0) + 1;
+    this.linkCounters.set(key, jumps);
+    if (max === undefined) return true;
+    const limit = max + (this.linkLimitExtensions.get(key) ?? 0);
+    if (jumps <= limit) return true;
+    this.status = 'paused';
+    this.pauseReason = { type: 'link-budget-used', limit, linkKey: key, to };
+    this.logEvent('link_budget_exceeded', { linkKey: key, jumps, max });
+    return false;
   }
 
   recordCommandResult(cmd: string, exitCode: number, output: string) {
@@ -436,9 +461,13 @@ export class Run {
     if (currentStepId) {
       const stepExists = this.findStepById(newWorkflow.steps, currentStepId);
       if (stepExists) {
-        const newIdx = this.program.findIndex(
-          (i) => 'step' in i && i.step === currentStepId
+        // A step can own several instructions (TURN then JUMP): match the op we are sitting on.
+        let newIdx = this.program.findIndex(
+          (i) => 'step' in i && i.step === currentStepId && (!isAtStep || i.op === currentInstr!.op)
         );
+        if (newIdx === -1) {
+          newIdx = this.program.findIndex((i) => 'step' in i && i.step === currentStepId);
+        }
         if (newIdx !== -1) {
           this.programCounter = isAtStep ? newIdx : newIdx + 1;
         }
@@ -468,6 +497,7 @@ export class Run {
       lastRecallContext: [...this.lastRecallContext],
       lastTurnText: this.lastTurnText,
       loopLimitExtensions: Object.fromEntries(this.loopLimitExtensions),
+      linkLimitExtensions: Object.fromEntries(this.linkLimitExtensions),
     };
   }
 
@@ -506,6 +536,9 @@ export class Run {
     }
     if (snapshot.loopLimitExtensions) {
       run.loopLimitExtensions = new Map(Object.entries(snapshot.loopLimitExtensions));
+    }
+    if (snapshot.linkLimitExtensions) {
+      run.linkLimitExtensions = new Map(Object.entries(snapshot.linkLimitExtensions));
     }
 
     return run;
@@ -700,6 +733,9 @@ export class Run {
           }
         } else {
           if (instr.onFailJump !== undefined) {
+            if (!this.takeLink(`${instr.step}->${instr.onFailJump}`, instr.onFailJump, instr.linkMax)) {
+              return this.status;
+            }
             this.programCounter = instr.onFailJump;
           } else {
             this.programCounter++;
@@ -771,20 +807,9 @@ export class Run {
         this.logEvent('verify_result', { pass: !isFail });
 
         if (isFail && instr.onFailJump !== undefined) {
-          const linkKey = `${instr.step}->${instr.onFailJump}`;
-          const jumps = (this.linkCounters.get(linkKey) || 0) + 1;
-          this.linkCounters.set(linkKey, jumps);
-
-          if (instr.linkMax !== undefined && jumps > instr.linkMax) {
-            this.status = 'paused';
-            this.pauseReason = {
-              type: 'link-budget-used',
-              limit: instr.linkMax,
-            };
-            this.logEvent('link_budget_exceeded', { linkKey, jumps, max: instr.linkMax });
+          if (!this.takeLink(`${instr.step}->${instr.onFailJump}`, instr.onFailJump, instr.linkMax)) {
             return this.status;
           }
-
           this.programCounter = instr.onFailJump;
           return this.status;
         }
@@ -871,6 +896,11 @@ export class Run {
       }
 
       case 'JUMP': {
+        if (instr.step !== undefined) {
+          if (!this.takeLink(`${instr.step}~next->${instr.target}`, instr.target, instr.linkMax)) {
+            return this.status;
+          }
+        }
         this.programCounter = instr.target;
         return this.status;
       }

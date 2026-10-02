@@ -16,3 +16,9 @@
 14. Recall context single-turn lifetime: Retrieved recall context from injected `recall()` is scoped strictly to the next turn prompt and cleared immediately after compilation.
 15. Store and handoff turn semantics: STORE and HANDOFF compile and dispatch an agent turn to elicit decision or handoff summaries, stripping `REINS:` status headers prior to calling the injected store callback or emitting the handoff event.
 16. Loop limit extensions: Rather than decrementing attempt counters upon `allowMore(n)`, the loop limit is extended via a dedicated `loopLimitExtensions` map, ensuring receipt reporting reflects actual attempt history.
+17. `next` after a container: a `next` on a `repeat` means "when the whole group is done"; the jump is compiled after the container's last instruction.
+18. Link budgets: `verify`, `run` and `next` share one budget mechanism, keyed `${step}->${index}` (`on-fail`) and `${step}~next->${index}` (`next`). A link pause remembers its jump in `pauseReason.to`, and `allowMore` takes that jump.
+19. Deprecated wires: `retry`, `on-pass`, `verify-against` and the `hand-off` link are still parsed and printed, but the validator warns that they have no effect.
+20. Unresolved `next`: a `next` whose target id does not exist falls through to the next instruction instead of jumping.
+21. Unreachable steps: a step is unreachable when its entry instruction (the first instruction compiled for it) is never visited by walking the compiled program from the start.
+22. Rename gap: `renameStep` does not rewrite a `use` block's inner `against:`, which refers to the parent's id and is not prefixed when the block is inlined.

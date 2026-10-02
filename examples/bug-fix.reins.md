@@ -17,7 +17,6 @@ until: not tests pass
 ## repeat
 until: tests pass
 max: 4
-on-fail: reproduce (max 2)
 
 ### phase fix
 note: smallest change that works

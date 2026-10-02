@@ -23,6 +23,7 @@ export type Instr = (
       cmd: string;
       onPassJump?: number;
       onFailJump?: number;
+      linkMax?: number;
       repeatCond?: Cond;
       loopExit?: number;
     }
@@ -31,7 +32,7 @@ export type Instr = (
   | { op: 'VERIFY'; step: string; against: string; onFailJump?: number; linkMax?: number }
   | { op: 'STORE'; step: string; what: string }
   | { op: 'HANDOFF'; step: string; to: string; focus?: string }
-  | { op: 'JUMP'; target: number }
+  | { op: 'JUMP'; target: number; step?: string; linkMax?: number }
   | { op: 'END' }) & { top?: number };
 
 export interface CompileTurnContext {
@@ -101,19 +102,31 @@ export function compileProgram(
 ): Instr[] {
   const instrs: Instr[] = [];
   const stepToIndex = new Map<string, number>();
-  const links: Array<{ instr: { onFailJump?: number }; target: string }> = [];
+  // A missing target leaves a run/verify onFailJump unset (falls through) and sends a JUMP to `fallback`.
+  const links: Array<{ apply(index: number): void; target: string; fallback: number }> = [];
   const ctx: CompileCtx = {
     at: () => instrs.length,
     push: (i) => { instrs.push(i); return i; },
     get: (i) => instrs[i],
     compile: (steps) => { for (const s of steps) compileStep(s); },
-    linkLater: (instr, target) => links.push({ instr, target }),
+    linkLater: (instr, target) =>
+      links.push({ apply: (t) => { instr.onFailJump = t; }, target, fallback: -1 }),
     resolveBlock,
   };
 
   function compileStep(step: Step) {
     stepToIndex.set(step.id, instrs.length);
     NODES.get(step.kind)?.compile(step, ctx);
+    const next = step.links.find((l) => l.kind === 'next');
+    if (next) {
+      const jump = ctx.push<Extract<Instr, { op: 'JUMP' }>>({
+        op: 'JUMP',
+        target: -1,
+        step: step.id,
+        ...(next.max !== undefined ? { linkMax: next.max } : {}),
+      });
+      links.push({ apply: (t) => { jump.target = t; }, target: next.to, fallback: instrs.length });
+    }
   }
 
   w.steps.forEach((step, top) => {
@@ -127,7 +140,8 @@ export function compileProgram(
   // Patch jumps
   for (const l of links) {
     const t = stepToIndex.get(l.target);
-    if (t !== undefined) l.instr.onFailJump = t;
+    if (t !== undefined) l.apply(t);
+    else if (l.fallback >= 0) l.apply(l.fallback);
   }
 
   return instrs;

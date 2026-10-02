@@ -3,6 +3,7 @@ export * from './cond.js';
 export * from './format/parse.js';
 export * from './format/print.js';
 export * from './validate.js';
+export * from './rename.js';
 export * from './compile.js';
 export * from './policy.js';
 export * from './fake-engine.js';
