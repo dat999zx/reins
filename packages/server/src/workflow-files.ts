@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { compileProgram, compileTurn, parseWorkflow, type Step } from '@reins/core';
+import { compileProgram, compileTurn, parseWorkflow, printCond, printWorkflow, type Step } from '@reins/core';
 import { loadWorkflowText } from './run-cli.js';
 import { under } from './session.js';
 
@@ -85,8 +85,15 @@ export function previewWorkflow(cwd: string, dir: string, p: string, text: strin
       walk(step.else ?? [], depth + 1);
     }
   };
-  walk(parseWorkflow(text).workflow?.steps ?? [], 0);
-  const steps = flat.map(({ step, depth }) => ({ id: step.id, kind: step.kind, ...(step.title ? { title: step.title } : {}), depth }));
+  const raw = parseWorkflow(text).workflow;
+  walk(raw?.steps ?? [], 0);
+  const steps = flat.map(({ step, depth }) => ({ id: step.id, kind: step.kind, ...(step.title ? { title: step.title } : {}), ...(step.cond ? { cond: printCond(step.cond) } : {}), depth }));
+
+  let reformats: boolean | undefined;
+  if (raw) {
+    const norm = (s: string) => s.replace(/\r\n/g, '\n').split('\n').map((l) => l.trimEnd()).filter(Boolean).join('\n');
+    try { reformats = norm(printWorkflow(raw)) !== norm(text); } catch { reformats = true; }
+  }
 
   let turn: string | undefined;
   const w = loaded.workflow;
@@ -95,5 +102,5 @@ export function previewWorkflow(cwd: string, dir: string, p: string, text: strin
     const step = instr?.op === 'TURN' ? instr.src ?? flat.find((f) => f.step.id === stepId)?.step : undefined;
     if (instr && step) turn = compileTurn(step, { workflowName: w.name, stepIndex: instr.top ?? 0, totalSteps: w.steps.length, always: w.always });
   }
-  return { status: 200, body: { diagnostics: loaded.diagnostics, steps, ...(w?.name !== undefined ? { name: w.name } : {}), ...(turn !== undefined ? { turn } : {}) } };
+  return { status: 200, body: { diagnostics: loaded.diagnostics, steps, ...(w?.name !== undefined ? { name: w.name } : {}), ...(turn !== undefined ? { turn } : {}), ...(raw ? { workflow: raw } : {}), ...(reformats !== undefined ? { reformats } : {}) } };
 }

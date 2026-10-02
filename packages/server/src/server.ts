@@ -3,7 +3,7 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
-import type { EngineProbe } from '@reins/core';
+import { printWorkflow, type EngineProbe, type Workflow } from '@reins/core';
 import { sameToken } from './hooks.js';
 import { releaseLock, runningLock, takeLock } from './lock.js';
 import { recover } from './recover.js';
@@ -31,7 +31,7 @@ type Reply = { status: number; body: unknown };
 interface Body {
   text?: unknown; tags?: unknown; kind?: unknown; questionId?: unknown; answer?: unknown; autoApprove?: unknown;
   title?: unknown; path?: unknown; create?: unknown; stepId?: unknown; runId?: unknown; cwd?: unknown; engine?: unknown; model?: unknown; effort?: unknown;
-  state?: unknown;
+  state?: unknown; workflow?: unknown;
 }
 const MAX_EDITOR_STATE = 64 * 1024;
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -251,10 +251,18 @@ export async function startServer(o: ServerOptions): Promise<Server> {
       if (req.method === 'POST' && m[2] === 'preview') {
         const r = await parse(req);
         if ('fail' in r) return r.fail;
-        const { path: p, text, stepId } = r.b;
-        if (!str(p) || !p || !str(text)) return fail(400, 'path and text must be strings.');
+        const { path: p, text, stepId, workflow } = r.b;
         if (stepId !== undefined && !str(stepId)) return fail(400, 'stepId must be a string.');
-        return previewWorkflow(cwd, o.dir, p, text, stepId);
+        if (workflow === undefined) {
+          if (!str(p) || !p || !str(text)) return fail(400, 'path and text must be strings.');
+          return previewWorkflow(cwd, o.dir, p, text, stepId);
+        }
+        if (!str(p) || !p || text !== undefined) return fail(400, 'Send a path and either text or workflow.');
+        if (!isObject(workflow) || !Array.isArray(workflow.steps) || !Array.isArray(workflow.autos) || !Array.isArray(workflow.always) || !isObject(workflow.budget)) return fail(400, 'The workflow model is malformed.');
+        let printed: string;
+        try { printed = printWorkflow(workflow as unknown as Workflow); } catch { return fail(400, 'The workflow model is malformed.'); }
+        const out = previewWorkflow(cwd, o.dir, p, printed, stepId);
+        return out.status === 200 ? { ...out, body: { ...(out.body as object), text: printed } } : out;
       }
       if (req.method === 'POST' && Object.hasOwn(actions, m[2]!)) {
         const r = await parse(req);
