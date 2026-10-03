@@ -287,15 +287,34 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await expect.poll(() => editor.inputValue(), { timeout: W }).toBe(tidy);
 
     // 8d.3. an Always rule that YAML would misread is printed quoted, and reads back as typed
-    await page.waitForTimeout(700); // the 300 ms preview after the delete re-syncs the Always draft
-    await blocksTab.click();
     const always = page.getByRole('textbox', { name: 'Always' });
-    await always.fill('Never: touch prod');
-    await always.blur();
-    await textTab.click();
-    await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('always:\n  - "Never: touch prod"\n');
+    // retried inside the poll: a preview reply landing between fill and blur resets the draft; setAlways gives the same result every time
+    await expect.poll(async () => {
+      await blocksTab.click();
+      await always.fill('Never: touch prod');
+      await always.blur();
+      await textTab.click();
+      return editor.inputValue();
+    }, { timeout: W }).toContain('always:\n  - "Never: touch prod"\n');
     await blocksTab.click();
     await expect.poll(() => always.inputValue(), { timeout: W }).toBe('Never: touch prod');
+
+    // 8d.4. dragging a block's grip onto a drop line moves it
+    await blocksTab.click();
+    await row('build').locator('.grip').first().dragTo(page.locator('[data-drop="/kids/0"]'));
+    await expect.poll(() => page.locator('.blk').evaluateAll((els) => els.map((e) => (e as unknown as { dataset: { id: string } }).dataset.id)), { timeout: W }).toEqual(['build', 'plan', 'ship']);
+    await textTab.click();
+    await expect.poll(async () => { const t = await editor.inputValue(); return t.includes('## phase build') && t.indexOf('## phase build') < t.indexOf('## phase plan'); }, { timeout: W }).toBe(true);
+
+    // 8d.5. a block dropped on a container's empty drop line goes inside it
+    await blocksTab.click();
+    await page.getByRole('toolbar', { name: 'Add a step' }).getByRole('button', { name: 'repeat', exact: true }).click();
+    await row('repeat-1').waitFor();
+    await page.getByRole('toolbar', { name: 'Add a step' }).getByRole('button', { name: 'run', exact: true }).click();
+    await row('run-1').waitFor();
+    await row('run-1').locator('.grip').first().dragTo(page.locator('[data-drop="repeat-1/kids/0"]'));
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('## repeat\nuntil: you approve\nmax: 3\n\n### run `npm test`\n');
 
     // 8d.z. save, so the buffer is clean before Chat (Playwright dismisses the leave confirm)
     await textTab.click();

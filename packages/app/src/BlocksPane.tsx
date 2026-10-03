@@ -1,4 +1,4 @@
-import { useContext, useMemo } from 'react';
+import { Fragment, useContext, useMemo, useRef, useState, type DragEvent } from 'react';
 import type { Diagnostic, Step, StepKind, Workflow } from '@reins/core';
 import { KINDS } from './canvasKinds.js';
 import { marksOf } from './canvas.js';
@@ -8,6 +8,7 @@ import { cx, StatusCtx } from './CanvasPane.js';
 import { StepChips } from './StepChips.js';
 
 // ponytail: the arrows move a step only within its list; leaving a container needs a drag
+// ponytail: native HTML5 drag; no touch, no keyboard drag (the arrows instead), no auto-scroll near the edge. Upgrade: dnd-kit, moveStep unchanged
 export function BlocksPane({ w, steps, diags, text, selected, rev, onEdit, onSelect, onAdd }: {
   w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; selected?: string; rev: unknown;
   onEdit: (fn: (w: Workflow) => Workflow) => void; onSelect: (id: string | undefined) => void; onAdd?: (kind: StepKind) => void;
@@ -16,18 +17,38 @@ export function BlocksPane({ w, steps, diags, text, selected, rev, onEdit, onSel
   const marks = useMemo(() => marksOf(w, diags, text).steps, [w, diags, text]);
   const { status, show } = useContext(StatusCtx);
   const move = (id: string, to: Parameters<typeof moveStep>[2]) => onEdit((m) => moveStep(m, id, to));
+  const dragged = useRef<string | undefined>(undefined);
+  const [over, setOver] = useState<string | undefined>();
+
+  // A leaf li per slot, so a nested container never handles a drop twice. The dragged id is in a ref: dataTransfer is unreadable during dragover.
+  // A custom type, not text/plain: a drag that misses a drop line must not paste the id into a text field. The type list is readable during dragover, the data is not.
+  const MIME = 'application/x-reins-step';
+  const ours = (e: DragEvent<HTMLElement>) => !!dragged.current && e.dataTransfer.types.includes(MIME);
+  const drop = (place: Parameters<typeof moveStep>[2]) => {
+    const key = `${place.parent ?? ''}/${place.branch}/${place.index}`;
+    return (
+      <li className={cx('drop', over === key && 'over')} data-drop={key} onDragEnter={(e) => ours(e) && setOver(key)} onDragLeave={() => setOver((o) => (o === key ? undefined : o))}
+        onDragOver={(e) => { if (ours(e)) e.preventDefault(); }}
+        onDrop={(e) => { if (!ours(e)) return; e.preventDefault(); const id = dragged.current; dragged.current = undefined; setOver(undefined); if (id) move(id, place); }} />
+    );
+  };
 
   // A plain function, not a component: a component declared here would remount every row on each render.
   const list = (items: Step[], parent: string | undefined, branch: 'kids' | 'else') => (
     <ol>
       {items.map((s, n) => {
+        const key = items.findIndex((x) => x.id === s.id) === n ? s.id : `${n}/${s.id}`; // a duplicate id is a validator error; keep the keys unique anyway
         const info = show ? status[s.id] : undefined;
         const mark = marks.get(s.id);
         const group = KINDS[s.kind].group;
         return (
-          <li className="blk" key={`${n}/${s.id}`} data-id={s.id}>
+          <Fragment key={key}>
+          {drop({ parent, branch, index: n })}
+          <li className="blk" data-id={s.id}>
             <div className={cx('cbox', 'bhead', s.id === selected && 'selected', info?.state, mark && `mark-${mark}`)} tabIndex={0} onClick={() => onSelect(s.id)}
               onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onSelect(s.id); } }}>
+              <span className="grip" draggable aria-hidden onDragStart={(e) => { dragged.current = s.id; e.dataTransfer.setData(MIME, s.id); e.dataTransfer.effectAllowed = 'move'; }}
+                onDragEnd={() => { dragged.current = undefined; setOver(undefined); }}>⠿</span>
               <span className="ckind">{s.kind}</span>
               <span className={cx('csub', s.kind === 'run' && 'mono')}>{KINDS[s.kind].sub(s, conds[s.id])}</span>
               {info && <StepChips i={info} />}
@@ -37,8 +58,10 @@ export function BlocksPane({ w, steps, diags, text, selected, rev, onEdit, onSel
             {group && list(s.kids ?? [], s.id, 'kids')}
             {group === 'kids+else' && <><div className="belse">else</div>{list(s.else ?? [], s.id, 'else')}</>}
           </li>
+          </Fragment>
         );
       })}
+      {drop({ parent, branch, index: items.length })}
     </ol>
   );
 
