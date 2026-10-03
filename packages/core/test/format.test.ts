@@ -29,6 +29,17 @@ describe('Task 1.4: Parser and Printer', () => {
     }
   });
 
+  it('always rules round-trip, quoted only when needed', () => {
+    const RULES = ['Keep tests green', "don't touch prod", 'Never: touch prod', '#x', '~', '1e3', 'true', '[wip] fix', '*x', '- x', ': x', 'a #b', '@x', '`npm test` must pass', ',x'];
+    const w = parseWorkflow('---\nreins: 1\nname: t\nbudget: { turns: 1, minutes: 1 }\nalways: []\n---\n').workflow!;
+    const text = printWorkflow({ ...w, always: RULES });
+    expect(text).toContain('\n  - Keep tests green\n');
+    expect(text).toContain('\n  - "Never: touch prod"\n');
+    const back = parseWorkflow(text);
+    expect(back.diagnostics).toEqual([]);
+    expect(back.workflow!.always).toEqual(RULES);
+  });
+
   it('handles \\r\\n input and prints with \\n', () => {
     const fullPath = path.join(examplesDir, 'upload-retry.reins.md');
     const content = fs.readFileSync(fullPath, 'utf8').replace(/\r\n/g, '\n');

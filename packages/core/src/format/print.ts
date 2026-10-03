@@ -1,6 +1,10 @@
+import YAML from 'yaml';
 import type { Workflow, Step } from '../model.js';
 import { printCond } from '../cond.js';
 import { NODES, defaultId, headingOwns } from '../nodes/index.js';
+
+// An always rule is printed bare only when YAML reads it back as the same string; else as a JSON string (valid YAML).
+const plain = (s: string) => { try { return YAML.parse(s, { logLevel: 'error' }) === s; } catch { return false; } };
 
 export function printWorkflow(w: Workflow): string {
   const parts: string[] = [];
@@ -12,6 +16,7 @@ export function printWorkflow(w: Workflow): string {
     parts.push(`---\nreins: 1\nblock: ${w.block}\n---`);
   } else {
     const fm: string[] = ['---', 'reins: 1', `name: ${w.name}`];
+    // ponytail: `task:` keeps this weaker check (a task starting with @, `, ! or % still breaks the file); use `plain` there too if it bites
     const quoteYaml = (s: string) => {
       if (s.includes(':') || s.includes('#') || s.startsWith('"') || s.startsWith("'")) {
         return JSON.stringify(s);
@@ -34,7 +39,7 @@ export function printWorkflow(w: Workflow): string {
     } else {
       fm.push('always:');
       for (const item of w.always) {
-        fm.push(`  - ${item}`);
+        fm.push(`  - ${plain(item) ? item : JSON.stringify(item)}`);
       }
     }
 
