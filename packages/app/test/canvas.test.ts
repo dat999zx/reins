@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseWorkflow, printWorkflow, type Diagnostic, type Workflow } from '@reins/core';
-import { edgeId, editStep, flatSteps, removeLinks, setLink, toGraph } from '../src/canvas.js';
+import { edgeId, editStep, flatSteps, marksOf, removeLinks, setLink, toGraph } from '../src/canvas.js';
 import { layout } from '../src/layout.js';
 
 const TEXT = `---
@@ -184,5 +184,24 @@ describe('diagnostic marks', () => {
       expect(g.nodes.every((n) => n.data.mark === undefined), `line ${line}`).toBe(true);
       expect(g.edges.every((e) => e.data!.mark === undefined), `line ${line}`).toBe(true);
     }
+  });
+});
+
+describe('marksOf', () => {
+  const text = withPlanLink('next: build');
+  const marks = (d: Diagnostic[]) => marksOf(parse(text), d, text);
+  it('marks a step on its heading line', () => {
+    const m = marks([diag(lineOf(text, '## phase plan'))]);
+    expect(m.steps.get('plan')).toBe('error');
+    expect(m.wires.size).toBe(0);
+  });
+  it('marks a wire, not the step, on a link line', () => {
+    const m = marks([diag(lineOf(text, 'next: build'), 'warning')]);
+    expect(m.wires.get('plan>0>build')).toBe('warning');
+    expect(m.steps.size).toBe(0);
+  });
+  it('marks nothing at line 1', () => {
+    const m = marks([diag(1)]);
+    expect([m.steps.size, m.wires.size]).toEqual([0, 0]);
   });
 });

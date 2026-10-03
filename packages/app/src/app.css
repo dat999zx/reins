@@ -191,3 +191,15 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .bpanel .brow > span { overflow-wrap: anywhere; color: var(--ink); }
 .bpanel .brow .bmax { grid-column: 1; }
 .bpanel .turn { max-height: 160px; overflow: auto; margin: 0; font: 11.5px/1.45 var(--mono); }
+.blocks { overflow-y: auto; min-height: 0; padding: 10px; display: grid; gap: 8px; align-content: start; }
+.blocks ol ol { padding-left: 18px; }
+.blk .bhead { height: auto; display: flex; gap: 8px; align-items: center; cursor: pointer; margin: 0; }
+.blk .bhead .csub { flex: 1; }
+.belse { color: var(--faint); font-size: 10.5px; padding-left: 18px; }
+.bpal { display: flex; flex-wrap: wrap; gap: 4px; }
+.bhead button { padding: 0 6px; }
+.drop { height: 10px; padding: 2px 0; background-clip: content-box; border-radius: 3px; }
+.drop.over { background: var(--brand); }
+.grip { cursor: grab; color: var(--faint); user-select: none; }
+.always { display: grid; gap: 3px; color: var(--mute); }
+.always textarea { resize: vertical; font-family: var(--mono); font-size: 11.5px; }

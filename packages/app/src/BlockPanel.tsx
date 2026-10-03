@@ -8,7 +8,7 @@ type InputProps = { label: string; value: string; ids: string[]; rev: unknown; c
 
 // A field shows a draft while typing and commits on blur / Enter. It re-syncs from the model after every
 // preview (`rev`), so a commit the editor dropped never leaves a value the model does not have.
-function useDraft(value: string, rev: unknown) {
+export function useDraft(value: string, rev: unknown) {
   const [v, setV] = useState(value);
   useEffect(() => setV(value), [value, rev]);
   return [v, setV] as const;
@@ -53,9 +53,9 @@ const INPUTS: Record<Field['input'], (p: InputProps) => JSX.Element> = {
   ),
 };
 
-export function BlockPanel({ step, all, cond, turn, rev, onEdit, onEditInText }: {
+export function BlockPanel({ step, all, cond, turn, rev, onEdit, onEditInText, onDelete }: {
   step: Step; all: Step[]; cond?: string; turn?: string; rev: unknown;
-  onEdit: (fn: (w: Workflow) => Workflow) => void; onEditInText: () => void;
+  onEdit: (fn: (w: Workflow) => Workflow) => void; onEditInText: () => void; onDelete?: () => void;
 }) {
   const k = KINDS[step.kind];
   const id = step.id;
@@ -69,6 +69,7 @@ export function BlockPanel({ step, all, cond, turn, rev, onEdit, onEditInText }:
   return (
     <aside className="bpanel" aria-label="Block panel">
       <h3>{step.kind} <span className="faint">{id}</span></h3>
+      {onDelete && <button className="danger" onClick={onDelete}>Delete</button>}
 
       {k.fields.map((f) => {
         const Input = INPUTS[f.input];

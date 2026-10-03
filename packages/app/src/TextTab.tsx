@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import type { Diagnostic, Workflow } from '@reins/core';
+import type { Diagnostic, StepKind, Workflow } from '@reins/core';
+import { addStep, deleteStep, newId } from './blocks.js';
 import { ApiError, get, post, put } from './api.js';
-import { prunePos, restoreFile, restoreStep, type CanvasView, type EditorState } from './editorState.js';
+import { prunePos, restoreFile, restoreStep, type CanvasView, type EditorState, type Tab } from './editorState.js';
 import { highlight, lineOffset } from './highlight.js';
 import type { Sess } from './state.js';
 import { runRows, stepStatus } from './stepStatus.js';
 import { BlockPanel } from './BlockPanel.js';
 import { flatSteps } from './canvas.js';
+import { KINDS } from './canvasKinds.js';
 import { Canvas, StatusCtx } from './CanvasPane.js';
+import { BlocksPane } from './BlocksPane.js';
 import { StepChips } from './StepChips.js';
 
 interface Listed { path: string; name: string; scope: 'project' | 'user'; diagnostics: Diagnostic[] }
@@ -23,7 +26,7 @@ const template = (name: string) =>
   `---\nreins: 1\nname: ${name}\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n## phase plan\n> Plan the change.\n\n## phase build\n> Make the change.\n`;
 
 export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }: {
-  view: 'canvas' | 'text'; onView: (t: 'text') => void;
+  view: Exclude<Tab, 'chat'>; onView: (t: 'text') => void;
   sess: Sess; restore?: EditorState; onState: (patch: Partial<EditorState>) => void; onDirty: (dirty: boolean) => void; onRun: () => void;
 }) {
   const base = `/api/sessions/${sess.id}`;
@@ -107,16 +110,18 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   const busy = useRef(false);
   const confirmed = useRef(new Set<string>());
   // Canvas edits go model -> server print -> this same buffer. One at a time; a reply for another file or text is dropped.
-  // ponytail: the 300 ms text preview fires once more for the new text; redundant, harmless
+  // ponytail: the 300 ms text preview fires once more for the new text and re-syncs every draft field, so text typed within ~300 ms of an edit is lost; debounce it away if it bites
   const edit = (fn: (w: Workflow) => Workflow) => {
-    if (busy.current || file === null || !prev?.workflow || prev.for !== text) return;
+    if (busy.current || file === null || !prev?.workflow || prev.for !== text) return false;
     if (prev.reformats && !confirmed.current.has(file)) {
-      if (!window.confirm('Canvas edits rewrite this file in the standard form. Comments, unknown lines, frontmatter comments and unknown keys, and custom order are not kept. Continue?')) return;
+      if (!window.confirm('Editing here rewrites this file in the standard form. Comments, unknown lines, frontmatter comments and unknown keys, and custom order are not kept. Continue?')) return false;
       confirmed.current.add(file);
     }
+    const next = fn(prev.workflow);
+    if (next === prev.workflow) return false; // a no-op edit sends nothing
     busy.current = true;
     const at = { file, text };
-    post<Preview>(`${base}/preview`, { path: file, workflow: fn(prev.workflow), ...(stepId ? { stepId } : {}) })
+    post<Preview>(`${base}/preview`, { path: file, workflow: next, ...(stepId ? { stepId } : {}) })
       .then((r) => {
         if (fileRef.current !== at.file || textRef.current !== at.text || r.text === undefined) return;
         setText(r.text);
@@ -124,7 +129,12 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
       })
       .catch((e) => setMsg((e as Error).message))
       .finally(() => { busy.current = false; });
+    return true;
   };
+  // ponytail: a step is added as a sibling after the selection; into a container only by dragging
+  const add = (kind: StepKind) => { if (prev?.workflow && edit((w) => addStep(w, kind, stepId))) setStepId(newId(prev.workflow, kind)); };
+  // ponytail: no confirm, no undo; nothing is written until Save
+  const del = () => { if (sel && edit((w) => deleteStep(w, sel.id))) setStepId(undefined); };
   // Read live from `restore`, never copied: a late editor-state load must not be overwritten by an early drag.
   const setView = (patch: CanvasView) => {
     if (!restored || file === null) return;
@@ -194,6 +204,9 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
     jump(pendingLine.current);
     pendingLine.current = undefined;
   }, [view]);
+  const visual = view !== 'text';
+  // a step of a kind the app has no entry for (a stray `## Notes` heading) would crash the visual tabs
+  const known = !prev?.workflow || flatSteps(prev.workflow.steps).every((s) => s.kind in KINDS);
   const sel = stepId && prev?.workflow ? flatSteps(prev.workflow.steps).find((s) => s.id === stepId) : undefined;
 
   return (
@@ -223,16 +236,19 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
               <button onClick={() => void save()} disabled={!dirty}>Save</button>
               <button className="primary" onClick={() => void run()} disabled={dirty}>Run</button>
             </div>
-            {view === 'canvas' && prev && !prev.workflow && <p className="hint">This file does not parse. Fix it in the Text tab.</p>}
-            {view === 'canvas' && prev?.workflow && (
+            {visual && prev && !(prev.workflow && known) && <p className="hint">This file does not parse. Fix it in the Text tab.</p>}
+            {visual && prev?.workflow && known && (
               <div className="canvaswrap" tabIndex={-1}
                 onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); } }}>
                 <StatusCtx.Provider value={{ status, show: showStatus }}>
-                  <Canvas w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} selected={stepId}
-                    view={restore?.canvas?.[file] ?? {}} onView={setView} onEdit={edit} onSelect={setStepId} />
+                  {view === 'canvas'
+                    ? <Canvas w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} selected={stepId}
+                      view={restore?.canvas?.[file] ?? {}} onView={setView} onEdit={edit} onSelect={setStepId} />
+                    : <BlocksPane w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} selected={stepId}
+                      rev={prev} onEdit={edit} onSelect={setStepId} onAdd={add} />}
                 </StatusCtx.Provider>
                 {sel && <BlockPanel key={sel.id} step={sel} all={flatSteps(prev.workflow.steps)} cond={prev.steps.find((s) => s.id === sel.id)?.cond}
-                  turn={prev.turn} rev={prev} onEdit={edit} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />}
+                  turn={prev.turn} rev={prev} onEdit={edit} onDelete={view === 'blocks' ? del : undefined} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />}
               </div>
             )}
             {view === 'text' && <div className="ed">
