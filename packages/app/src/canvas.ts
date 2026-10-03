@@ -4,8 +4,8 @@ import { KINDS } from './canvasKinds.js';
 import type { Box } from './layout.js';
 
 export type WireKind = 'next' | 'on-fail';
-export type BoxData = { step: Step; cond?: string; mark?: 'error' | 'warning'; elseX?: number };
-export type WireData = { kind: LinkKind | 'order'; index?: number; mark?: 'error' | 'warning' };
+export type BoxData = { step: Step; cond?: string; mark?: Mark; elseX?: number };
+export type WireData = { kind: LinkKind | 'order'; index?: number; mark?: Mark };
 
 export const edgeId = (from: string, index: number | 'order', to: string): string => `${from}>${index}>${to}`;
 
@@ -13,28 +13,34 @@ export function flatSteps(steps: Step[]): Step[] {
   return steps.flatMap((s) => [s, ...flatSteps(s.kids ?? []), ...flatSteps(s.else ?? [])]);
 }
 
-const worse = (a?: 'error' | 'warning', b?: 'error' | 'warning') => (a === 'error' || b === 'error' ? 'error' : a ?? b);
+export type Mark = 'error' | 'warning';
 
-export function toGraph(w: Workflow, boxes: Record<string, Box>, o: {
-  conds: Record<string, string>; diags: Diagnostic[]; text: string; selected?: string;
-}): { nodes: Node<BoxData>[]; edges: Edge<WireData>[] } {
+const worse = (a?: Mark, b?: Mark) => (a === 'error' || b === 'error' ? 'error' : a ?? b);
+
+export function marksOf(w: Workflow, diags: Diagnostic[], text: string): { steps: Map<string, Mark>; wires: Map<string, Mark> } {
   const all = flatSteps(w.steps);
-  const ids = new Set(all.map((s) => s.id));
-
   // A diagnostic belongs to the heading it falls under; only a step's heading gets a mark.
-  const headings = o.text.split('\n').flatMap((l, i) => (/^#{2,6}\s/.test(l) ? [i + 1] : []));
+  const headings = text.split('\n').flatMap((l, i) => (/^#{2,6}\s/.test(l) ? [i + 1] : []));
   const byLine = new Map(all.flatMap((s) => (s.pos ? [[s.pos.line, s] as const] : [])));
-  const nodeMark = new Map<string, 'error' | 'warning'>();
-  const wireMark = new Map<string, 'error' | 'warning'>();
-  for (const d of o.diags) {
+  const steps = new Map<string, Mark>();
+  const wires = new Map<string, Mark>();
+  for (const d of diags) {
     const h = headings.filter((l) => l <= d.pos.line).pop();
     const st = h === undefined ? undefined : byLine.get(h);
     if (!st) continue;
     const i = st.links.findIndex((l) => l.pos?.line === d.pos.line);
-    const marks = i === -1 ? nodeMark : wireMark;
+    const marks = i === -1 ? steps : wires;
     const key = i === -1 ? st.id : edgeId(st.id, i, st.links[i]!.to);
     marks.set(key, worse(marks.get(key), d.severity)!);
   }
+  return { steps, wires };
+}
+
+export function toGraph(w: Workflow, boxes: Record<string, Box>, o: {
+  conds: Record<string, string>; diags: Diagnostic[]; text: string; selected?: string;
+}): { nodes: Node<BoxData>[]; edges: Edge<WireData>[] } {
+  const ids = new Set(flatSteps(w.steps).map((s) => s.id));
+  const { steps: nodeMark, wires: wireMark } = marksOf(w, o.diags, o.text);
 
   const nodes: Node<BoxData>[] = [];
   const edges: Edge<WireData>[] = [];

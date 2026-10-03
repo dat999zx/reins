@@ -8,6 +8,9 @@ describe('cleanEditorState', () => {
   it('drops wrong types, keeps the rest', () => {
     expect(cleanEditorState({ workflow: 5, tab: 'zzz', stepId: 'x' })).toEqual({ stepId: 'x' });
   });
+  it('keeps tab blocks', () => {
+    expect(cleanEditorState({ tab: 'blocks' })).toEqual({ tab: 'blocks' });
+  });
   it('gives {} for arrays, null, strings and undefined', () => {
     for (const raw of [[], null, 'text', 3, undefined]) expect(cleanEditorState(raw)).toEqual({});
   });

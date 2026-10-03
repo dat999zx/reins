@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { Diagnostic, Workflow } from '@reins/core';
 import { ApiError, get, post, put } from './api.js';
-import { prunePos, restoreFile, restoreStep, type CanvasView, type EditorState } from './editorState.js';
+import { prunePos, restoreFile, restoreStep, type CanvasView, type EditorState, type Tab } from './editorState.js';
 import { highlight, lineOffset } from './highlight.js';
 import type { Sess } from './state.js';
 import { runRows, stepStatus } from './stepStatus.js';
@@ -23,7 +23,7 @@ const template = (name: string) =>
   `---\nreins: 1\nname: ${name}\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n## phase plan\n> Plan the change.\n\n## phase build\n> Make the change.\n`;
 
 export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }: {
-  view: 'canvas' | 'text'; onView: (t: 'text') => void;
+  view: Exclude<Tab, 'chat'>; onView: (t: 'text') => void;
   sess: Sess; restore?: EditorState; onState: (patch: Partial<EditorState>) => void; onDirty: (dirty: boolean) => void; onRun: () => void;
 }) {
   const base = `/api/sessions/${sess.id}`;

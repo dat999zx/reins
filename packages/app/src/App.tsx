@@ -4,7 +4,7 @@ import type { LogRow } from '@reins/server/store.js';
 import type { TagEntry } from '@reins/server/tags.js';
 import { ApiError, get, initToken, post, stream } from './api.js';
 import { Chat } from './Chat.js';
-import { loadEditorState, makeSaver, type EditorState } from './editorState.js';
+import { loadEditorState, makeSaver, type EditorState, type Tab } from './editorState.js';
 import { Rail } from './Rail.js';
 import { afterOf, initial, loadSessions, reduceAll, takeRefill, type SessionView, type State } from './state.js';
 
@@ -27,7 +27,7 @@ export function App() {
   const [ready, setReady] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const [selected, setSelected] = useState<string | null>(fromHash);
-  const [tab, setTab] = useState<'chat' | 'canvas' | 'text'>('chat');
+  const [tab, setTab] = useState<Tab>('chat');
   const [notice, setNotice] = useState('');
   const [pathBox, setPathBox] = useState(false);
   const [path, setPath] = useState('');
