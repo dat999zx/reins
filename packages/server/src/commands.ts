@@ -18,10 +18,7 @@ const KEEP_CHARS = 256 * 1024;
 export function runCommand(cmd: string, o: CommandOptions): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const timeoutMs = o.timeoutMs ?? 10 * 60_000;
   return new Promise((resolve) => {
-    // One pipe for both streams, so the order is the order written (two pipes arrive in any order).
-    // ponytail: Windows keeps two pipes (cmd has no `exec 2>&1`); stderr can land out of order there.
-    const child = spawn(process.platform === 'win32' ? cmd : `exec 2>&1
-${cmd}`, {
+    const child = spawn(cmd, {
       cwd: o.cwd,
       shell: true,
       windowsHide: true,
