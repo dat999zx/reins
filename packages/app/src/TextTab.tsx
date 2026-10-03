@@ -1,41 +1,29 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import type { Diagnostic } from '@reins/core';
+import type { Diagnostic, Workflow } from '@reins/core';
 import { ApiError, get, post, put } from './api.js';
-import { restoreFile, restoreStep, type EditorState } from './editorState.js';
+import { prunePos, restoreFile, restoreStep, type CanvasView, type EditorState } from './editorState.js';
 import { highlight, lineOffset } from './highlight.js';
 import type { Sess } from './state.js';
-import { runRows, stepStatus, type StepInfo, type StepState } from './stepStatus.js';
+import { runRows, stepStatus } from './stepStatus.js';
+import { BlockPanel } from './BlockPanel.js';
+import { flatSteps } from './canvas.js';
+import { Canvas, StatusCtx } from './CanvasPane.js';
+import { StepChips } from './StepChips.js';
 
 interface Listed { path: string; name: string; scope: 'project' | 'user'; diagnostics: Diagnostic[] }
-interface Step { id: string; kind: string; title?: string; depth: number }
-interface Preview { diagnostics: Diagnostic[]; steps: Step[]; turn?: string; name?: string }
-
-const STATE: Record<StepState, { text: string; words: string }> = {
-  active: { text: 'running', words: 'running' },
-  done: { text: '✓', words: 'done' },
-  waiting: { text: 'waiting for you', words: 'waiting for you' },
-  stuck: { text: 'out of attempts', words: 'out of attempts' },
-};
-
-function StepChips({ i }: { i: StepInfo }) {
-  const st = i.state && STATE[i.state];
-  const tries = i.attempts === undefined ? undefined : i.state === 'stuck' ? `${i.attempts} tries used` : `attempt ${i.attempts + 1}`;
-  const cost = i.cost > 0 ? `$${i.cost.toFixed(4)}` : undefined;
-  const text = [st && st.text, tries, cost].filter(Boolean);
-  const words = [st && st.words, tries, cost && `cost ${cost}`].filter(Boolean);
-  return (
-    <>
-      {text.length > 0 && <span className={`sstate ${i.state ?? ''}`} role="img" aria-label={words.join(', ')}>{text.join(' · ')}</span>}
-      {i.refusals > 0 && <span className="sstate bad" role="img" aria-label={`${i.refusals} blocked`}>{i.refusals} blocked</span>}
-    </>
-  );
+interface Step { id: string; kind: string; title?: string; depth: number; cond?: string }
+interface Preview {
+  diagnostics: Diagnostic[]; steps: Step[]; turn?: string; name?: string;
+  workflow?: Workflow; reformats?: boolean; text?: string;
+  for?: string; // the text this preview was made for
 }
 
 const NAME = /^[a-z0-9][a-z0-9-]*$/;
 const template = (name: string) =>
   `---\nreins: 1\nname: ${name}\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n## phase plan\n> Plan the change.\n\n## phase build\n> Make the change.\n`;
 
-export function TextTab({ sess, restore, onState, onDirty, onRun }: {
+export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }: {
+  view: 'canvas' | 'text'; onView: (t: 'text') => void;
   sess: Sess; restore?: EditorState; onState: (patch: Partial<EditorState>) => void; onDirty: (dirty: boolean) => void; onRun: () => void;
 }) {
   const base = `/api/sessions/${sess.id}`;
@@ -98,7 +86,7 @@ export function TextTab({ sess, restore, onState, onDirty, onRun }: {
     const t = setTimeout(() => {
       post<Preview>(`${base}/preview`, { text, path: file, ...(stepId ? { stepId } : {}) }).then((p) => {
         if (stale) return;
-        setPrev(p);
+        setPrev({ ...p, for: text });
         if (wantStep.current !== undefined) {
           const keep = restoreStep(wantStep.current, p.steps);
           wantStep.current = undefined;
@@ -111,6 +99,39 @@ export function TextTab({ sess, restore, onState, onDirty, onRun }: {
     }, 300);
     return () => { stale = true; clearTimeout(t); };
   }, [text, file, stepId]);
+
+  const fileRef = useRef(file);
+  const textRef = useRef(text);
+  fileRef.current = file;
+  textRef.current = text;
+  const busy = useRef(false);
+  const confirmed = useRef(new Set<string>());
+  // Canvas edits go model -> server print -> this same buffer. One at a time; a reply for another file or text is dropped.
+  // ponytail: the 300 ms text preview fires once more for the new text; redundant, harmless
+  const edit = (fn: (w: Workflow) => Workflow) => {
+    if (busy.current || file === null || !prev?.workflow || prev.for !== text) return;
+    if (prev.reformats && !confirmed.current.has(file)) {
+      if (!window.confirm('Canvas edits rewrite this file in the standard form. Comments, unknown lines, frontmatter comments and unknown keys, and custom order are not kept. Continue?')) return;
+      confirmed.current.add(file);
+    }
+    busy.current = true;
+    const at = { file, text };
+    post<Preview>(`${base}/preview`, { path: file, workflow: fn(prev.workflow), ...(stepId ? { stepId } : {}) })
+      .then((r) => {
+        if (fileRef.current !== at.file || textRef.current !== at.text || r.text === undefined) return;
+        setText(r.text);
+        setPrev({ ...r, for: r.text });
+      })
+      .catch((e) => setMsg((e as Error).message))
+      .finally(() => { busy.current = false; });
+  };
+  // Read live from `restore`, never copied: a late editor-state load must not be overwritten by an early drag.
+  const setView = (patch: CanvasView) => {
+    if (!restored || file === null) return;
+    const next = { ...restore?.canvas?.[file], ...patch };
+    if (next.pos) next.pos = prunePos(next.pos, new Set((prev?.steps ?? []).map((s) => s.id)));
+    onState({ canvas: { ...restore?.canvas, [file]: next } });
+  };
 
   const save = async () => {
     if (file === null) return;
@@ -161,11 +182,19 @@ export function TextTab({ sess, restore, onState, onDirty, onRun }: {
     for (const el of [pre.current, gutter.current]) if (el) { el.scrollTop = ta.current.scrollTop; el.scrollLeft = ta.current.scrollLeft; }
   };
   const jump = (line: number) => {
-    const el = ta.current!;
+    const el = ta.current;
+    if (!el) return;
     el.focus();
     const o = lineOffset(text, line);
     el.setSelectionRange(o, o);
   };
+  const pendingLine = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (view !== 'text' || pendingLine.current === undefined) return;
+    jump(pendingLine.current);
+    pendingLine.current = undefined;
+  }, [view]);
+  const sel = stepId && prev?.workflow ? flatSteps(prev.workflow.steps).find((s) => s.id === stepId) : undefined;
 
   return (
     <div className="texttab">
@@ -194,7 +223,19 @@ export function TextTab({ sess, restore, onState, onDirty, onRun }: {
               <button onClick={() => void save()} disabled={!dirty}>Save</button>
               <button className="primary" onClick={() => void run()} disabled={dirty}>Run</button>
             </div>
-            <div className="ed">
+            {view === 'canvas' && prev && !prev.workflow && <p className="hint">This file does not parse. Fix it in the Text tab.</p>}
+            {view === 'canvas' && prev?.workflow && (
+              <div className="canvaswrap" tabIndex={-1}
+                onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); } }}>
+                <StatusCtx.Provider value={{ status, show: showStatus }}>
+                  <Canvas w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} selected={stepId}
+                    view={restore?.canvas?.[file] ?? {}} onView={setView} onEdit={edit} onSelect={setStepId} />
+                </StatusCtx.Provider>
+                {sel && <BlockPanel key={sel.id} step={sel} all={flatSteps(prev.workflow.steps)} cond={prev.steps.find((s) => s.id === sel.id)?.cond}
+                  turn={prev.turn} rev={prev} onEdit={edit} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />}
+              </div>
+            )}
+            {view === 'text' && <div className="ed">
               <div className="gutter" ref={gutter} aria-hidden>
                 {lines.map((l) => <div key={l.line} className={`ln ${marks.get(l.line) ?? ''}`}>{marks.has(l.line) ? '●' : l.line}</div>)}
               </div>
@@ -209,14 +250,14 @@ export function TextTab({ sess, restore, onState, onDirty, onRun }: {
                 <textarea ref={ta} aria-label="Workflow text" spellCheck={false} wrap="off" value={text}
                   onChange={(e) => setText(e.target.value)} onKeyDown={onKey} onScroll={mirror} />
               </div>
-            </div>
+            </div>}
             <ul className="diags" aria-label="Diagnostics">
               {(prev?.diagnostics ?? []).map((d, i) => (
                 <li key={i}><button className={d.severity === 'error' ? 'bad' : 'warn'} onClick={() => jump(d.pos.line)}>line {d.pos.line}: {d.message}</button></li>
               ))}
               {prev && prev.diagnostics.length === 0 && <li className="ok">No problems.</li>}
             </ul>
-            <div className="receives">
+            {view === 'text' && <div className="receives">
               <h3>What the agent receives</h3>
               <ol>
                 {(prev?.steps ?? []).map((s) => (
@@ -228,7 +269,7 @@ export function TextTab({ sess, restore, onState, onDirty, onRun }: {
                 ))}
               </ol>
               {stepId && <pre className="turn">{prev?.turn ?? 'This step sends no turn.'}</pre>}
-            </div>
+            </div>}
           </>
         )}
         {msg && <div className="note" role="status">{msg}</div>}

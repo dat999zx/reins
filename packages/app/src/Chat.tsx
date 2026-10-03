@@ -8,7 +8,7 @@ import { TextTab } from './TextTab.js';
 import { mergeOutput, title, type Sess } from './state.js';
 
 export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState, onDirty, onError }: {
-  sess: Sess; catalogue: TagEntry[]; takeRefill: (input: string) => string; tab: 'chat' | 'text'; onTab: (t: 'chat' | 'text') => void;
+  sess: Sess; catalogue: TagEntry[]; takeRefill: (input: string) => string; tab: 'chat' | 'canvas' | 'text'; onTab: (t: 'chat' | 'canvas' | 'text') => void;
   restore?: EditorState; onState: (patch: Partial<EditorState>) => void;
   onDirty: (dirty: boolean) => void; onError: (message: string) => void;
 }) {
@@ -47,8 +47,8 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
         <button disabled={sess.status === 'closed'} onClick={() => { if (window.confirm('Close this session?')) post(`${base}/close`).catch((e) => onError(e.message)); }}>Close</button>
       </header>
       <div className="tabs" role="tablist">
-        {(['chat', 'text'] as const).map((t) => (
-          <button key={t} role="tab" aria-selected={tab === t} onClick={() => onTab(t)}>{t === 'chat' ? 'Chat' : 'Text'}</button>
+        {(['chat', 'canvas', 'text'] as const).map((t) => (
+          <button key={t} role="tab" aria-selected={tab === t} onClick={() => onTab(t)}>{{ chat: 'Chat', canvas: 'Canvas', text: 'Text' }[t]}</button>
         ))}
       </div>
       {tab === 'chat' ? (
@@ -68,7 +68,7 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
           <Composer key={sess.id} id={sess.id} cwd={sess.cwd} busy={busy} catalogue={catalogue} takeRefill={takeRefill} />
         </>
       ) : (
-        <TextTab sess={sess} restore={restore} onState={onState} onDirty={onDirty} onRun={() => onTab('chat')} />
+        <TextTab view={tab} onView={onTab} sess={sess} restore={restore} onState={onState} onDirty={onDirty} onRun={() => onTab('chat')} />
       )}
     </main>
   );

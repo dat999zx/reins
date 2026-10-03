@@ -1,8 +1,9 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { FakeEngine, Run, parseWorkflow } from '@reins/core';
+import { FakeEngine, Run, parseWorkflow, printCond } from '@reins/core';
 import { driveRun } from '../src/drive.js';
 import { boot, cleanup, tmpDir, type World } from './http-helpers.js';
 
@@ -34,9 +35,10 @@ async function world() {
   const get = (p: string) => call(w.srv, 'GET', `${base}/workflow?path=${encodeURIComponent(p)}`);
   const put = (p: string, text: string, create?: boolean) => call(w.srv, 'PUT', `${base}/workflow`, { path: p, text, ...(create !== undefined ? { create } : {}) });
   const preview = (p: string, text: string, stepId?: string) => call(w.srv, 'POST', `${base}/preview`, { path: p, text, ...(stepId ? { stepId } : {}) });
+  const previewModel = (p: string, workflow: unknown, stepId?: string) => call(w.srv, 'POST', `${base}/preview`, { path: p, workflow, ...(stepId ? { stepId } : {}) });
   const project = path.join(w.cwd, '.reins', 'workflows');
   const user = path.join(w.dir, 'workflows');
-  return { w, get, put, preview, project, user };
+  return { w, base, get, put, preview, previewModel, project, user };
 }
 
 function tryLink(target: string, at: string, type: 'file' | 'junction'): boolean {
@@ -253,4 +255,103 @@ describe('preview (3c.9)', () => {
     expect((await call(x.w.srv, 'POST', `/api/sessions/${(await x.w.api('GET', '/api/state')).json.sessions[0].id}/preview`, { path: path.join(x.project, 'a.reins.md') })).status).toBe(400);
     expect((await x.preview(path.join(x.project, 'a.reins.md'), TEXT)).status).toBe(200);
   });
-});
+
+  it('returns the raw model, cond on repeat/if, and reformats false for a clean file', async () => {
+    const x = await world();
+    const file = path.join(x.project, 'demo.reins.md');
+    const r = await x.preview(file, PREVIEW);
+    expect(r.status).toBe(200);
+    const flat = (steps: any[]): any[] => steps.flatMap((s) => [s, ...flat(s.kids ?? []), ...flat(s.else ?? [])]);
+    expect(flat(r.json.workflow.steps).map((s) => s.id)).toEqual(r.json.steps.map((s: any) => s.id));
+    const model = parseWorkflow(PREVIEW).workflow!;
+    const conds = Object.fromEntries(flat(model.steps).filter((s) => s.cond).map((s) => [s.id, printCond(s.cond!)]));
+    expect(Object.keys(conds)).toHaveLength(2);
+    for (const s of r.json.steps) {
+      if (s.kind === 'repeat' || s.kind === 'if') expect(s.cond).toBe(conds[s.id]);
+      else expect('cond' in s).toBe(false);
+    }
+    expect(r.json.reformats).toBe(false);
+    expect((await x.preview(file, TEXT)).json.reformats).toBe(false);
+    expect('text' in r.json).toBe(false);
+  });
+
+  it('reformats is true when printing drops a line, false for blank lines and trailing spaces only', async () => {
+    const x = await world();
+    const file = path.join(x.project, 'demo.reins.md');
+    const note = TEXT.replace('## phase plan\n', '## phase plan\njust a note\n');
+    expect((await x.preview(file, note)).json.reformats).toBe(true);
+    const before = TEXT.replace('---\n\n## phase plan', '---\nstray line\n\n## phase plan');
+    expect((await x.preview(file, before)).json.reformats).toBe(true);
+    expect((await x.preview(file, TEXT + '\n')).json.reformats).toBe(false);
+    expect((await x.preview(file, TEXT.replace('## phase plan\n', '## phase plan  \n'))).json.reformats).toBe(false);
+    expect((await x.preview(file, TEXT + '   \n')).json.reformats).toBe(false);
+  });
+
+  it('round trip over the examples: text -> model -> same text and diagnostics', async () => {
+    const x = await world();
+    const dir = fileURLToPath(new URL('../../../examples/', import.meta.url));
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.reins.md'));
+    expect(files.length).toBeGreaterThan(0);
+    for (const f of files) {
+      const text = fs.readFileSync(path.join(dir, f), 'utf8').replace(/\r\n/g, '\n');
+      const file = path.join(x.project, f);
+      const first = await x.preview(file, text);
+      expect(first.status).toBe(200);
+      const second = await x.previewModel(file, first.json.workflow);
+      expect(second.status).toBe(200);
+      expect(second.json.text).toBe(text);
+      expect(second.json.diagnostics).toEqual(first.json.diagnostics);
+    }
+  });
+
+  it('an edit through the model comes back as printed text', async () => {
+    const x = await world();
+    const file = path.join(x.project, 'demo.reins.md');
+    const w = (await x.preview(file, TEXT)).json.workflow;
+    w.steps[0].links.push({ kind: 'next', to: 'build' });
+    const r = await x.previewModel(file, w);
+    expect(r.status).toBe(200);
+    expect(r.json.text).toContain('\n## phase plan\nnext: build\n> Plan the change.');
+    expect(r.json.diagnostics.filter((d: any) => d.severity === 'error')).toEqual([]);
+    expect(r.json.steps.map((s: any) => s.id)).toEqual(['plan', 'build']);
+  });
+
+  it('with validation errors the model is still returned; without frontmatter it is not', async () => {
+    const x = await world();
+    const file = path.join(x.project, 'demo.reins.md');
+    const bad = await x.preview(file, TEXT.replace('> Plan the change.', 'next: nowhere\n> Plan the change.'));
+    expect(bad.json.diagnostics.some((d: any) => d.severity === 'error')).toBe(true);
+    expect(bad.json.workflow.steps).toHaveLength(2);
+    const none = await x.preview(file, 'just words, no frontmatter');
+    expect('workflow' in none.json).toBe(false);
+    expect('name' in none.json).toBe(false);
+    expect('reformats' in none.json).toBe(false);
+  });
+
+  it('400 for a model request that is malformed; the existing text request is unchanged', async () => {
+    const x = await world();
+    const file = path.join(x.project, 'demo.reins.md');
+    const model = (await x.preview(file, TEXT)).json.workflow;
+    const send = (b: Record<string, unknown>) => call(x.w.srv, 'POST', `${x.base}/preview`, { path: file, ...b });
+    expect((await send({ text: TEXT, workflow: model })).status).toBe(400);
+    expect((await send({ workflow: 'x' })).status).toBe(400);
+    expect((await send({ workflow: [] })).status).toBe(400);
+    expect((await send({ workflow: { ...model, steps: 'x' } })).status).toBe(400);
+    expect((await send({ workflow: { ...model, budget: null } })).status).toBe(400);
+    const broken = await send({ workflow: { ...model, steps: [{ id: 'a', kind: 'phase', links: 5, attrs: {} }] } });
+    expect(broken.status).toBe(400);
+    expect(broken.json.error).toBe('The workflow model is malformed.');
+    expect((await send({ workflow: model, stepId: 5 })).status).toBe(400);
+    expect((await send({ text: TEXT, stepId: 5 })).status).toBe(400);
+    expect((await send({ workflow: model })).status).toBe(200);
+  });
+
+  it('a model request writes nothing to disk', async () => {
+    const x = await world();
+    const file = path.join(x.project, 'demo.reins.md');
+    const model = (await x.preview(file, TEXT)).json.workflow;
+    const before = fs.readdirSync(x.w.cwd, { recursive: true }).sort();
+    expect((await x.previewModel(file, model)).status).toBe(200);
+    expect(fs.readdirSync(x.w.cwd, { recursive: true }).sort()).toEqual(before);
+    expect(fs.existsSync(path.join(x.w.cwd, '.reins'))).toBe(false);
+  });});
