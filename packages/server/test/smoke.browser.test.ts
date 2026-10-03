@@ -203,8 +203,12 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
       await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 10 });
       await page.mouse.up();
     };
-    await drag('[data-id="plan"] .react-flow__handle[data-handleid="next"]', '[data-id="build"] .react-flow__handle[data-handleid="in"]');
-    await page.locator('[data-testid="rf__edge-plan>0>build"]').waitFor({ state: 'attached' });
+    // retried: the first drag can land before react-flow has laid the handles out (macOS CI)
+    const wire = page.locator('[data-testid="rf__edge-plan>0>build"]');
+    await expect.poll(async () => {
+      if (!(await wire.count())) await drag('[data-id="plan"] .react-flow__handle[data-handleid="next"]', '[data-id="build"] .react-flow__handle[data-handleid="in"]');
+      return wire.count();
+    }, { timeout: W }).toBe(1);
 
     // 8c.3. the wire is `next:` in the Text tab, with no confirm (the file prints back as it is)
     await textTab.click();
