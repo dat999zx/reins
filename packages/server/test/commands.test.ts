@@ -27,7 +27,7 @@ describe('runCommand', () => {
     expect(r.exitCode).toBe(3);
     const lines = r.stdout.trimEnd().split(/\r?\n/);
     expect(lines).toHaveLength(200);
-    expect(lines).toContain('boom');
+    expect(lines, JSON.stringify([lines.slice(0, 3), lines.slice(-3), r.stdout.length])).toContain('boom');
     expect(lines).toContain('line 500');
     expect(lines).not.toContain('line 250');
   });
