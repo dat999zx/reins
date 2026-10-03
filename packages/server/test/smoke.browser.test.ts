@@ -251,6 +251,58 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await editor.focus();
     await page.keyboard.press('ControlOrMeta+S');
     await page.getByRole('status').getByText('Saved.').waitFor();
+
+    // 8d.0. Blocks is a fourth tab: the steps as a list, with the finished run's state on the rows
+    const blocksTab = page.getByRole('tab', { name: 'Blocks' });
+    const row = (id: string) => page.locator(`.blk[data-id="${id}"]`);
+    await blocksTab.click();
+    expect(await blocksTab.getAttribute('aria-selected')).toBe('true');
+    await page.locator('.ebar b', { hasText: 'smoke.reins.md' }).waitFor();
+    await row('ship').waitFor();
+    expect(await page.locator('.blk').evaluateAll((els) => els.map((e) => (e as unknown as { dataset: { id: string } }).dataset.id))).toEqual(['plan', 'build', 'ship']);
+    await expect.poll(() => page.locator('.blk .sstate[aria-label^="done"]').count(), { timeout: W }).toBe(2);
+    await row('plan').locator('.bhead').first().click();
+    await panel.locator('h3', { hasText: 'plan' }).waitFor();
+
+    // 8d.1. the arrows move a block within its list; down undoes up
+    await textTab.click();
+    const tidy = await editor.inputValue();
+    await blocksTab.click();
+    await page.getByRole('button', { name: 'Move build up' }).click();
+    await textTab.click();
+    await expect.poll(async () => { const t = await editor.inputValue(); return t.indexOf('## phase build') < t.indexOf('## phase plan'); }, { timeout: W }).toBe(true);
+    await blocksTab.click();
+    await page.getByRole('button', { name: 'Move build down' }).click();
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toBe(tidy);
+
+    // 8d.2. the palette adds a step after the selection and selects it; Delete in the panel removes it, byte for byte
+    await blocksTab.click();
+    await page.getByRole('toolbar', { name: 'Add a step' }).getByRole('button', { name: 'phase', exact: true }).click();
+    await row('phase-1').waitFor();
+    await panel.locator('h3', { hasText: 'phase-1' }).waitFor();
+    await panel.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect.poll(() => row('phase-1').count(), { timeout: W }).toBe(0);
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toBe(tidy);
+
+    // 8d.3. an Always rule that YAML would misread is printed quoted, and reads back as typed
+    await page.waitForTimeout(700); // the 300 ms preview after the delete re-syncs the Always draft
+    await blocksTab.click();
+    const always = page.getByRole('textbox', { name: 'Always' });
+    await always.fill('Never: touch prod');
+    await always.blur();
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('always:\n  - "Never: touch prod"\n');
+    await blocksTab.click();
+    await expect.poll(() => always.inputValue(), { timeout: W }).toBe('Never: touch prod');
+
+    // 8d.z. save, so the buffer is clean before Chat (Playwright dismisses the leave confirm)
+    await textTab.click();
+    await editor.focus();
+    await page.keyboard.press('ControlOrMeta+S');
+    await page.getByRole('button', { name: 'Save', exact: true }).and(page.locator(':disabled')).waitFor();
+
     await page.getByRole('tab', { name: 'Chat' }).click();
     await page.waitForTimeout(700);
 

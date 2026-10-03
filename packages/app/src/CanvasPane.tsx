@@ -15,7 +15,7 @@ import type { StepMap } from './stepStatus.js';
 // Status comes through a context, not the graph: a streamed row must not rebuild the nodes mid-drag.
 export const StatusCtx = createContext<{ status: StepMap; show: boolean }>({ status: {}, show: false });
 
-const cx = (...c: Array<string | false | undefined>) => c.filter(Boolean).join(' ');
+export const cx = (...c: Array<string | false | undefined>) => c.filter(Boolean).join(' ');
 
 function StepBox({ data, selected }: NodeProps<Node<BoxData>>) {
   const { status, show } = useContext(StatusCtx);

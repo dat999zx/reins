@@ -47,8 +47,8 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
         <button disabled={sess.status === 'closed'} onClick={() => { if (window.confirm('Close this session?')) post(`${base}/close`).catch((e) => onError(e.message)); }}>Close</button>
       </header>
       <div className="tabs" role="tablist">
-        {(['chat', 'canvas', 'text'] as const).map((t) => (
-          <button key={t} role="tab" aria-selected={tab === t} onClick={() => onTab(t)}>{{ chat: 'Chat', canvas: 'Canvas', text: 'Text' }[t]}</button>
+        {(['chat', 'canvas', 'blocks', 'text'] as const).map((t) => (
+          <button key={t} role="tab" aria-selected={tab === t} onClick={() => onTab(t)}>{{ chat: 'Chat', canvas: 'Canvas', blocks: 'Blocks', text: 'Text' }[t]}</button>
         ))}
       </div>
       {tab === 'chat' ? (
