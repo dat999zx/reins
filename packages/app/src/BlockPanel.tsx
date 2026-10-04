@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX } from 'react';
+import { useEffect, useState, type JSX, type KeyboardEvent } from 'react';
 import type { CardKind, Step, Workflow } from '@reins/core';
 import { CARD_KINDS, KINDS, type Field } from './canvasKinds.js';
 import { editStep, removeLinks, setLink } from './canvas.js';
@@ -8,19 +8,31 @@ type InputProps = { label: string; value: string; ids: string[]; rev: unknown; c
 
 // A field shows a draft while typing and commits on blur / Enter. It re-syncs from the model after every
 // preview (`rev`), so a commit the editor dropped never leaves a value the model does not have.
-export function useDraft(value: string, rev: unknown) {
+// `hold` keeps the reset back while it returns true (a pill being typed in).
+export function useDraft(value: string, rev: unknown, hold?: () => boolean) {
   const [v, setV] = useState(value);
-  useEffect(() => setV(value), [value, rev]);
+  useEffect(() => { if (!hold?.()) setV(value); }, [value, rev]);
   return [v, setV] as const;
 }
 
-const line = (type: 'text' | 'number', mono?: boolean) => function LineInput({ label, value, rev, commit }: InputProps) {
-  const [v, setV] = useDraft(value, rev);
+// The draft + commit-when-changed + Enter-commits of a one-line field.
+export function useLine(value: string, rev: unknown, commit: (v: string) => void, hold?: () => boolean) {
+  const [v, setV] = useDraft(value, rev, hold);
   const done = () => { if (v !== value) commit(v); };
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') done(); };
+  return { v, setV, done, onKeyDown };
+}
+
+export function StepOptions({ value, ids }: { value: string; ids: string[] }) {
+  return <>{[...new Set(['', value, ...ids])].map((id) => <option key={id} value={id}>{id || '(none)'}</option>)}</>;
+}
+
+const line = (type: 'text' | 'number', mono?: boolean) => function LineInput({ label, value, rev, commit }: InputProps) {
+  const { v, setV, done, onKeyDown } = useLine(value, rev, commit);
   return (
     <label className="bfield">{label}
       <input type={type} min={type === 'number' ? 1 : undefined} className={mono ? 'mono' : undefined} value={v}
-        onChange={(e) => setV(e.target.value)} onBlur={done} onKeyDown={(e) => { if (e.key === 'Enter') done(); }} />
+        onChange={(e) => setV(e.target.value)} onBlur={done} onKeyDown={onKeyDown} />
     </label>
   );
 };
@@ -47,7 +59,7 @@ const INPUTS: Record<Field['input'], (p: InputProps) => JSX.Element> = {
   step: ({ label, value, ids, commit }) => (
     <label className="bfield">{label}
       <select value={value} onChange={(e) => commit(e.target.value)}>
-        {[...new Set(['', value, ...ids])].map((id) => <option key={id} value={id}>{id || '(none)'}</option>)}
+        <StepOptions value={value} ids={ids} />
       </select>
     </label>
   ),

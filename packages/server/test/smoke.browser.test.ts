@@ -323,6 +323,29 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await blocksTab.click();
     await expect.poll(() => always.inputValue(), { timeout: W }).toBe('Never: touch prod');
 
+    // 8d.5. a value typed in a pill on the block lands in the file
+    await blocksTab.click();
+    await card('run command').click();
+    await row('run-1').waitFor();
+    const cmd = page.getByRole('textbox', { name: 'Command of run-1' });
+    // retried inside the poll: the palette add selects run-1 and its preview can land after the first fill (the pill holds its draft only while focused)
+    await expect.poll(async () => {
+      await blocksTab.click();
+      await cmd.fill('npm run lint');
+      await cmd.press('Enter');
+      await textTab.click();
+      return editor.inputValue();
+    }, { timeout: W }).toContain('## run `npm run lint`');
+    // Escape reverts the draft and sends nothing
+    await blocksTab.click();
+    await cmd.focus();
+    await cmd.fill('discard me');
+    await cmd.press('Escape');
+    expect(await cmd.inputValue()).toBe('npm run lint');
+    await cmd.blur();
+    await textTab.click();
+    expect(await editor.inputValue()).not.toContain('discard me');
+
     // 8d.z. save, so the buffer is clean before Chat (Playwright dismisses the leave confirm)
     await textTab.click();
     await editor.focus();

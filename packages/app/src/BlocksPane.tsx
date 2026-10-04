@@ -1,10 +1,11 @@
 import { useContext, useEffect, useMemo, useRef, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import type { Diagnostic, Step, Workflow } from '@reins/core';
 import { KINDS, type Token } from './canvasKinds.js';
-import { marksOf } from './canvas.js';
+import { editStep, marksOf } from './canvas.js';
 import { moveStep, nestPlace, placeOf, setAlways, type Place } from './blocks.js';
-import { fieldValue } from './panelEdit.js';
+import { applyField, fieldValue } from './panelEdit.js';
 import { useDraft } from './BlockPanel.js';
+import { Pill, StepPick } from './Pill.js';
 import { cx, StatusCtx } from './CanvasPane.js';
 import { StepChips } from './StepChips.js';
 
@@ -57,8 +58,13 @@ export function BlocksPane({ w, steps, diags, text, selected, rev, onEdit, onSel
     const f = KINDS[s.kind].fields.find((x) => x.key === t.field);
     const v = fieldValue(s, t.field);
     if (f?.input === 'textarea') return v ? <span key={i} className="sx-faint">{v.split('\n')[0]}</span> : null;
-    const look = t.field === 'title' ? 'sx-bold' : f?.input === 'mono' ? 'sx-code' : f?.input === 'number' ? 'sx-pill sx-num' : 'sx-pill';
-    return <span key={i} className={look}>{v}</span>;
+    const label = `${f?.label} of ${s.id}`;
+    if (f?.input === 'step') {
+      const ids = steps.filter((x) => x.id !== s.id).map((x) => x.id);
+      return <StepPick key={i} label={label} value={v} ids={ids} commit={(nv) => onEdit((m) => editStep(m, s.id, (x) => applyField(x, t.field, nv)))} />;
+    }
+    const look = t.field === 'title' ? 'bold' : f?.input === 'mono' ? 'code' : f?.input === 'number' ? 'num' : 'pill';
+    return <Pill key={i} label={label} value={v} look={look} rev={rev} commit={(nv) => onEdit((m) => editStep(m, s.id, (x) => applyField(x, t.field, nv)))} />;
   };
 
   const head = (s: Step) => {

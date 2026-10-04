@@ -232,6 +232,15 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .sx-code { font-family: var(--mono); background: #15161a; color: #d7f0e6; border-radius: 5px; }
 .sx-num { font-family: var(--mono); }
 .sx-bold { font-weight: 600; }
+input.sx-pill, input.sx-code, input.sx-bold, select.sx-pill { box-sizing: border-box; max-width: 100%; min-width: 3ch; border: 0; margin: 0; font: inherit; font-size: 12px; line-height: 1.5; outline: none; cursor: text; }
+input.sx-pill, select.sx-pill { background: rgb(255 255 255 / 0.94); color: #232428; }
+input.sx-code { background: #15161a; color: #d7f0e6; font-family: var(--mono); }
+input.sx-num { font-family: var(--mono); }
+input.sx-bold { background: transparent; color: inherit; font-weight: 600; font-size: 12.5px; padding: 0 2px; border-radius: 3px; }
+input.sx-bold:hover { box-shadow: 0 0 0 1px rgb(255 255 255 / 0.55); }
+input.sx-bold:focus { background: rgb(0 0 0 / 0.25); }
+input.sx-pill:focus, input.sx-code:focus, select.sx-pill:focus { box-shadow: 0 0 0 2px #fff; }
+select.sx-pill { cursor: pointer; }
 .sx-faint { opacity: 0.85; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sx-hex { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 5px; min-height: 22px; padding: 1px 13px; font-size: 12px; line-height: 1.5; background: rgb(0 0 0 / 0.24); color: #fff; clip-path: polygon(9px 0, calc(100% - 9px) 0, 100% 50%, calc(100% - 9px) 100%, 9px 100%, 0 50%); }
 .sx-hex .sx-hex { background: rgb(0 0 0 / 0.22); }
