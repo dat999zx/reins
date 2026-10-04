@@ -63,8 +63,9 @@ export function BlocksPane({ w, steps, diags, text, selected, rev, dragging, onE
     };
     return {
       onDragOver: (e: DragEvent<HTMLElement>) => {
-        e.stopPropagation();
         const z = zone(e);
+        if (z.hex && !e.dataTransfer.types.includes(COND)) return; // a step over a hexagon falls through to its block
+        e.stopPropagation();
         if (drag.current.zone !== z.el + z.cls) {
           drag.current.zone = z.el + z.cls;
           drag.current.over = legal(z, e.dataTransfer.types);
@@ -75,8 +76,10 @@ export function BlocksPane({ w, steps, diags, text, selected, rev, dragging, onE
         e.dataTransfer.dropEffect = e.dataTransfer.types.includes(STEP) ? 'move' : 'copy';
       },
       onDrop: (e: DragEvent<HTMLElement>) => {
+        const z = zone(e);
+        if (z.hex && !e.dataTransfer.types.includes(COND)) return;
         e.stopPropagation();
-        const o = legal(zone(e), e.dataTransfer.types);
+        const o = legal(z, e.dataTransfer.types);
         const dt = e.dataTransfer;
         endDrag();
         if (!o) return;
@@ -110,12 +113,11 @@ export function BlocksPane({ w, steps, diags, text, selected, rev, dragging, onE
         if (e.target !== e.currentTarget) return;
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(s.id); return; }
         if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); onDelete(s.id); return; }
-        if (!e.altKey) return;
+        if (!e.altKey || !e.key.startsWith('Arrow')) return;
+        e.preventDefault(); // Alt+Left / Alt+Right are the browser's Back / Forward: always swallow them on a block
         const at = placeOf(w, s.id);
         const dest = { ArrowUp: at && at.index > 0 && { ...at, index: at.index - 1 }, ArrowDown: at && !last && { ...at, index: at.index + 2 },
           ArrowRight: nestPlace(w, s.id, 'in'), ArrowLeft: nestPlace(w, s.id, 'out') }[e.key];
-        if (dest === undefined) return;
-        e.preventDefault();
         if (dest) move(s.id, dest);
       },
     };
@@ -130,7 +132,7 @@ export function BlocksPane({ w, steps, diags, text, selected, rev, dragging, onE
     if (c && 'a' in c) {
       const b = 'b' in c ? c.b : undefined;
       return (
-        <span key={key} className={own} data-hex={key} {...drop}>
+        <span key={key} className={own} data-hex={key}>
           {c.t === 'not' && <b>not</b>}{hex(s, c.a, [...p, 'a'])}{b && <><b>{c.t}</b>{hex(s, b, [...p, 'b'])}</>}
         </span>
       );

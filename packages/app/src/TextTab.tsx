@@ -214,6 +214,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   // The slot is checked before edit(): a declined rewrite confirm or a busy editor must not show this note.
   const cond = (t: string) => {
     if (!sel || !KINDS[sel.kind].line.includes('cond')) return setMsg('Select a wait until, repeat until or if block first.');
+    if (sel.cond && 'a' in sel.cond) return setMsg('This condition has and / or / not: drop a card on one part of it, or edit it in Text.');
     edit((w) => setCond(w, sel.id, [], COND_KINDS[t]!.fresh()));
   };
 

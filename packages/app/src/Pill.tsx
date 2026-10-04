@@ -9,11 +9,12 @@ export function Pill({ label, value, look, rev, commit }: {
 }) {
   const ref = useRef<HTMLInputElement>(null);
   const dirty = useRef(false);
+  const ph = label.split(' of ')[0]!.toLowerCase(); // the empty pill names its field
   // Held while focused: a click on a pill selects its block, which re-runs the preview, and a reset would wipe the typing.
   const line = useLine(value, rev, (v) => { if (!commit(v)) line.setV(value); }, () => document.activeElement === ref.current);
   const send = () => { if (dirty.current) line.done(); dirty.current = false; };
   return (
-    <input ref={ref} className={LOOKS[look]} aria-label={label} size={Math.max(3, line.v.length)} value={line.v}
+    <input ref={ref} className={LOOKS[look]} aria-label={label} placeholder={ph} size={Math.max(3, (line.v || ph).length)} value={line.v}
       onChange={(e) => { dirty.current = true; line.setV(e.target.value); }}
       onBlur={() => { if (dirty.current) send(); else line.setV(value); }}
       onKeyDown={(e) => {
