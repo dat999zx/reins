@@ -1,0 +1,26 @@
+# Changelog
+
+Format: [Keep a Changelog](https://keepachangelog.com). Versions: [SemVer](https://semver.org).
+
+## 0.1.0
+
+First release.
+
+### Workflows
+- `.reins.md` format: frontmatter (name, task, budget, `always` rules) and steps `phase`, `say`, `turn`, `run`, `gate`, `verify`, `if` / `else`, `repeat`, `recall`, `store`, `handoff`, `use`.
+- Conditions: `tests`, `cmd`, `diff`, `touches`, `same`, `attempts`, `drift`, `done`, `approve`, `llm`, `review`.
+- Wires: `next` is a real jump; `on-fail` retries with a budget; a paused link resumes with `allowMore`.
+- `whenever <condition>` auto cards and nine live cards (`nudge`, `role`, `guard`, `checkpoint`, `budget`, `stop`, `undo`, `note`, `now`).
+- Validator: unknown steps, bad globs, dead wires, unreachable steps. A printer that round-trips the parser.
+- Mandatory loop and run budgets; a receipt for every run.
+
+### CLI
+- `reins`, `run`, `check`, `print`, `doctor`, `serve`. Claude Code engine, with enforced guards, a trust prompt for commands, and run resume.
+
+### App
+- Chat, Canvas, Blocks and Text views of one file, with a Block panel, saved layout, live step state, and the open file and tab restored per folder.
+- Native folder picker; two sessions side by side.
+
+### Not yet
+- Codex and other engines (Claude Code only).
+- Desktop installer.

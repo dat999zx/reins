@@ -4,7 +4,7 @@
   "description": "Scratch for agent loops: workflows with gates, loops and live cards for Claude Code.",
   "license": "MIT",
   "repository": "github:dat999zx/reins",
-  "files": ["dist", "app"],
+  "files": ["dist", "app", "CHANGELOG.md"],
   "bundleDependencies": ["@reins/core"],
   "type": "module",
   "engines": {
