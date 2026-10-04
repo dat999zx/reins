@@ -23,6 +23,7 @@ const USAGE = `usage:
   reins check <file>
   reins print <file> [--write]
   reins doctor
+  reins --version
   reins serve [--port <n>]   (the local server the UI talks to; prints its address)
   reins mcp            (internal: the approval MCP server Claude starts)`;
 
@@ -53,6 +54,12 @@ export async function main(argv: string[], io: Io): Promise<number> {
   const err = (s: string) => io.stderr.write(s + '\n');
   const [cmd, ...rest] = argv;
   const { pos, flags } = parseArgs(rest, ['yes', 'write']);
+
+  if (cmd === '--version' || cmd === '-v') {
+    // src/ and dist/ both sit one level under the package root
+    out(JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
+    return 0;
+  }
 
   if (cmd === 'check' && pos[0]) {
     const file = path.resolve(pos[0]);
