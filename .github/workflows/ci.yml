@@ -25,5 +25,5 @@ jobs:
       - run: npm run lint
       - run: npm test
       # the real install route: pack the published package, install it clean, run it
-      - run: npm pack --pack-destination "$RUNNER_TEMP" -w reins && cd "$RUNNER_TEMP" && npm init -y && npm i ./reins-*.tgz && npx reins check "$GITHUB_WORKSPACE/examples/bug-fix.reins.md"
+      - run: npm pack --pack-destination "$RUNNER_TEMP" -w packages/server && cd "$RUNNER_TEMP" && npm init -y && npm i ./dat999zx-reins-*.tgz && npx reins check "$GITHUB_WORKSPACE/examples/bug-fix.reins.md"
         shell: bash
