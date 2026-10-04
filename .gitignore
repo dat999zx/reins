@@ -10,3 +10,4 @@ KNOWL.md
 node_modules/
 dist/
 docs/
+packages/server/app/

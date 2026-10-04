@@ -1,5 +1,5 @@
 {
-  "name": "reins",
+  "name": "reins-workspace",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w @reins/core && npm run build -w @reins/server && npm run build -w @reins/app",
+    "build": "npm run build -w @reins/core && npm run build -w reins && npm run build -w @reins/app",
     "typecheck": "tsc --noEmit && tsc --noEmit -p packages/app",
     "lint": "eslint .",
     "test": "vitest run"
