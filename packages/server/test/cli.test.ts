@@ -20,6 +20,14 @@ async function cli(argv: string[], env: NodeJS.ProcessEnv = {}) {
   return { code, out, err };
 }
 
+describe('reins --version', () => {
+  it('prints the package version', async () => {
+    const r = await cli(['--version']);
+    expect(r.code).toBe(0);
+    expect(r.out.trim()).toBe(JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf8')).version);
+  });
+});
+
 describe('reins check', () => {
   it('passes every example', async () => {
     for (const f of ['upload-retry', 'bug-fix', 'tdd-loop', 'safe-refactor']) {
