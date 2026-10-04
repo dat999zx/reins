@@ -253,6 +253,15 @@ select.sx-pill { cursor: pointer; }
 .sx-condcard { clip-path: polygon(7px 0, calc(100% - 7px) 0, 100% 50%, calc(100% - 7px) 100%, 7px 100%, 0 50%); padding: 3px 12px; border: 0; background: rgb(255 255 255 / 0.1); border-radius: 0; }
 .sx-condcard:hover { background: rgb(255 255 255 / 0.2); }
 .sx-hole { min-width: 44px; justify-content: center; background: rgb(255 255 255 / 0.2); color: rgb(255 255 255 / 0.75); }
+.sx-grip:hover { opacity: 0.9; }
+.sx-dragsrc { opacity: 0.45; }
+.sx-stack, .sx-cbody { position: relative; }
+.sx-before::before, .sx-after::before, .sx-end::before, .sx-into::before { content: ''; position: absolute; left: 0; right: 0; height: 4px; border-radius: 2px; background: #fff; box-shadow: 0 0 0 1px rgb(0 0 0 / 0.55), 0 0 10px 2px var(--brand); z-index: 6; pointer-events: none; }
+.sx-before::before, .sx-into::before { top: -2px; }
+.sx-after::before, .sx-end::before { bottom: -2px; }
+.sx-cbody.sx-into { background: rgb(217 160 91 / 0.14); }
+.sx-drag-cond .sx-hex { background: rgb(255 255 255 / 0.32); }
+.sx-hex.sx-hexover { background: #fff !important; color: #1b1408; box-shadow: 0 0 0 2px var(--brand), 0 0 10px 2px var(--brand); }
 .sx-mods { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; pointer-events: none; }
 .sx-mod { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 1px 7px; border-radius: 4px; background: var(--c); border: 1px solid rgb(255 255 255 / 0.4); color: #fff; }
 .sx-mod.sx-link { background: rgb(0 0 0 / 0.28); border: 1px dashed #9aa3b3; }

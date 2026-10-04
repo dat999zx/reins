@@ -38,6 +38,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   const [saved, setSaved] = useState('');
   const [prev, setPrev] = useState<Preview | null>(null);
   const [stepId, setStepId] = useState<string | undefined>();
+  const [dragging, setDragging] = useState<'step' | 'cond'>();
   const [name, setName] = useState('');
   const [msg, setMsg] = useState('');
   const ta = useRef<HTMLTextAreaElement>(null);
@@ -233,7 +234,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
           ))}
           {list.length === 0 && <li className="hint">No workflows yet.</li>}
         </ul>
-        {view === 'blocks' && prev?.workflow && known && <Palette onAdd={add} onCond={cond} />}
+        {view === 'blocks' && prev?.workflow && known && <Palette onAdd={add} onCond={cond} onDrag={setDragging} />}
       </aside>
       <section className="editor">
         {file === null ? <p className="hint">Pick a workflow, or make a new one.</p> : (
@@ -253,7 +254,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
                     ? <Canvas w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} selected={stepId}
                       view={restore?.canvas?.[file] ?? {}} onView={setView} onSelect={setStepId} />
                     : <BlocksPane w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} selected={stepId}
-                      rev={prev} onEdit={edit} onSelect={setStepId} onDelete={del} />}
+                      rev={prev} dragging={dragging} onEdit={edit} onSelect={setStepId} onDelete={del} />}
                 </StatusCtx.Provider>
                 {sel && <BlockPanel key={sel.id} step={sel} all={flatSteps(prev.workflow.steps)} cond={prev.steps.find((s) => s.id === sel.id)?.cond}
                   turn={prev.turn} rev={prev} onEdit={edit} onDelete={() => del(sel.id)} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />}

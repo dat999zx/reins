@@ -330,6 +330,14 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await blocksTab.click();
     await expect.poll(() => always.inputValue(), { timeout: W }).toBe('Never: touch prod');
 
+    // 8d.4. a block's grip dragged onto the top half of another block moves it before that block
+    await blocksTab.click();
+    await row('build').locator('.sx-grip').first().dragTo(row('plan').locator('.sx-row').first(), { targetPosition: { x: 30, y: 3 } });
+    await expect.poll(order, { timeout: W }).toEqual(['build', 'plan', 'ship']);
+    await textTab.click();
+    await expect.poll(async () => (await editor.inputValue()).split('\n').filter((l) => l.startsWith('## ')), { timeout: W })
+      .toEqual(['## phase build', '## phase plan', '## phase ship']);
+
     // 8d.5. a value typed in a pill on the block lands in the file
     await blocksTab.click();
     await card('run command').click();
@@ -379,6 +387,43 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
       await textTab.click();
       return editor.inputValue();
     }, { timeout: W }).toContain('## repeat\nuntil: tests pass\nmax: 3\n');
+
+    // 8d.7. a grip dragged into an empty C body nests the block; a click on the nested block selects it, not the C block around it
+    await blocksTab.click();
+    await row('run-1').locator('.sx-grip').first().dragTo(page.locator('[data-body="repeat-1/kids"]'));
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('## repeat\nuntil: tests pass\nmax: 3\n\n### run `npm run lint`\n');
+    await blocksTab.click();
+    await row('run-1').locator('.sx-row').first().click();
+    await panel.locator('h3', { hasText: 'run-1' }).waitFor();
+
+    // 8d.8. a condition card dragged onto a hexagon replaces that condition (a different card than the one already there, so the drop must change the file)
+    await blocksTab.click();
+    await card('attempts > N').dragTo(page.locator('[data-hex="repeat-1/"]'));
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('## repeat\nuntil: attempts > 3\nmax: 3\n');
+
+    // 8d.9. a step card dragged onto the hat goes first in the workflow
+    await blocksTab.click();
+    await card('phase').dragTo(page.locator('.sx-hat'));
+    await textTab.click();
+    await expect.poll(async () => (await editor.inputValue()).split('\n').find((l) => l.startsWith('## ')), { timeout: W }).toBe('## phase');
+
+    // 8d.10. a palette card dropped into an empty repeat body, and into the else body that a fresh if does not have yet
+    await blocksTab.click();
+    await row('ship').locator('.sx-row').first().click();
+    await card('repeat until').click();
+    await row('repeat-2').waitFor();
+    await card('if / else').click();
+    await row('if-1').waitFor();
+    await card('custom prompt').dragTo(page.locator('[data-body="repeat-2/kids"]'));
+    // one edit at a time: wait for the first drop to land before the second
+    await expect.poll(() => row('repeat-2').locator('.blk[data-id="say-1"]').count(), { timeout: W }).toBe(1);
+    await card('phase').dragTo(page.locator('[data-body="if-1/else"]'));
+    await expect.poll(() => row('if-1').locator('.blk[data-id="phase-2"]').count(), { timeout: W }).toBe(1);
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('## repeat\nid: repeat-2\nuntil: you approve\nmax: 3\n\n### say\n');
+    expect(await editor.inputValue()).toContain('## if you approve\n\n### else\n\n### phase\n');
 
     // 8d.z. save, so the buffer is clean before Chat (Playwright dismisses the leave confirm)
     await textTab.click();

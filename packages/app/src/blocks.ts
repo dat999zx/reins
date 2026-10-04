@@ -34,16 +34,38 @@ export function newId(w: Workflow, kind: StepKind): string {
   return `${kind}-${n}`;
 }
 
-export function addStep(w: Workflow, kind: StepKind, after?: string): Workflow {
+export function addStepAt(w: Workflow, kind: StepKind, to: Place): Workflow {
   const fresh = KINDS[kind].fresh;
   if (!fresh) return w;
   const step: Step = { id: newId(w, kind), kind, attrs: {}, cards: [], links: [], ...fresh() };
-  const at = after === undefined ? undefined : placeOf(w, after);
   const m = structuredClone(w);
-  const list = at ? listIn(m, at) : m.steps;
+  const list = listIn(m, to);
   if (!list) return w;
-  list.splice(at ? at.index + 1 : list.length, 0, step);
+  list.splice(Math.max(0, Math.min(to.index, list.length)), 0, step);
   return m;
+}
+
+export function addStep(w: Workflow, kind: StepKind, after?: string): Workflow {
+  const at = after === undefined ? undefined : placeOf(w, after);
+  return addStepAt(w, kind, at ? { ...at, index: at.index + 1 } : { branch: 'kids', index: w.steps.length });
+}
+
+export type Hit = { block: string; edge: 'before' | 'after' | 'into' | 'else' } | { top: 'start' | 'end' } | { body: string; branch: 'kids' | 'else' };
+
+// The first slot of a block's own body, only if its kind has that body. Reads the model; never `listIn`, which mutates.
+function bodyStart(w: Workflow, id: string, branch: 'kids' | 'else'): Place | undefined {
+  const s = flatSteps(w.steps).find((x) => x.id === id);
+  const group = s && KINDS[s.kind].group;
+  return group && (branch === 'kids' || group === 'kids+else') ? { parent: id, branch, index: 0 } : undefined;
+}
+
+// Where a drop lands: a pure function of the model and what the pointer is over.
+export function dropPlace(w: Workflow, hit: Hit): Place | undefined {
+  if ('top' in hit) return { branch: 'kids', index: hit.top === 'start' ? 0 : w.steps.length };
+  if ('body' in hit) return bodyStart(w, hit.body, hit.branch);
+  if (hit.edge === 'into' || hit.edge === 'else') return bodyStart(w, hit.block, hit.edge === 'into' ? 'kids' : 'else');
+  const at = placeOf(w, hit.block);
+  return at && { ...at, index: at.index + (hit.edge === 'after' ? 1 : 0) };
 }
 
 export function moveStep(w: Workflow, id: string, to: Place): Workflow {

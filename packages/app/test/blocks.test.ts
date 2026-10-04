@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseWorkflow, printCond, printWorkflow, validate, type Workflow } from '@reins/core';
 import { flatSteps } from '../src/canvas.js';
-import { addStep, deleteStep, moveStep, nestPlace, newId, placeOf, setAlways, setCond } from '../src/blocks.js';
+import { addStep, addStepAt, deleteStep, dropPlace, moveStep, nestPlace, newId, placeOf, setAlways, setCond } from '../src/blocks.js';
 
 const HEAD = '---\nreins: 1\nname: demo\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n';
 const TEXT = `${HEAD}## phase plan
@@ -150,6 +150,69 @@ describe('addStep', () => {
   });
   it('add then delete gives the same bytes', () => {
     expect(printWorkflow(deleteStep(addStep(w, 'phase', 'build'), newId(w, 'phase')))).toBe(printWorkflow(w));
+  });
+});
+
+describe('addStepAt', () => {
+  const id = newId(w, 'phase');
+  it('inserts at an explicit place, clamping the index', () => {
+    expect(ids(find(addStepAt(w, 'phase', { parent: 'r', branch: 'kids', index: 0 }), 'r').kids)).toEqual([id, 't', 'fix']);
+    expect(ids(find(addStepAt(w, 'phase', { parent: 'r', branch: 'kids', index: 2 }), 'r').kids)).toEqual(['t', 'fix', id]);
+    expect(ids(find(addStepAt(w, 'phase', { parent: 'r', branch: 'kids', index: 99 }), 'r').kids)).toEqual(['t', 'fix', id]);
+    expect(ids(find(addStepAt(w, 'phase', { parent: 'i', branch: 'else', index: 0 }), 'i').else)).toEqual([id, 'no']);
+    expect(ids(addStepAt(w, 'phase', { branch: 'kids', index: 0 }).steps)).toEqual([id, 'plan', 'build', 'r', 'i', 'v']);
+    expect(ids(addStepAt(w, 'phase', { branch: 'kids', index: -3 }).steps)[0]).toBe(id);
+  });
+  it('creates an else list that is not there yet', () => {
+    const noElse = parse(`${HEAD}## if tests pass\nid: i2\n\n### phase y\n`);
+    expect(ids(find(addStepAt(noElse, 'phase', { parent: 'i2', branch: 'else', index: 0 }), 'i2').else)).toEqual(['phase-1']);
+  });
+  it('does nothing for a place with no list, or a kind with no fresh', () => {
+    expect(addStepAt(w, 'phase', { parent: 'plan', branch: 'kids', index: 0 })).toBe(w);
+    expect(addStepAt(w, 'phase', { parent: 'nope', branch: 'kids', index: 0 })).toBe(w);
+    expect(addStepAt(w, 'phase', { parent: 'r', branch: 'else', index: 0 })).toBe(w);
+    expect(addStepAt(w, 'phase', { branch: 'else', index: 0 })).toBe(w);
+    expect(addStepAt(w, 'use', { branch: 'kids', index: 0 })).toBe(w);
+  });
+  it('never mutates its input', () => {
+    const before = structuredClone(w);
+    addStepAt(w, 'phase', { parent: 'i', branch: 'else', index: 0 });
+    expect(w).toEqual(before);
+  });
+});
+
+describe('dropPlace', () => {
+  it('before / after a block is its slot / slot + 1, in its own list', () => {
+    expect(dropPlace(w, { block: 'build', edge: 'before' })).toEqual({ branch: 'kids', index: 1 });
+    expect(dropPlace(w, { block: 'build', edge: 'after' })).toEqual({ branch: 'kids', index: 2 });
+    expect(dropPlace(w, { block: 'fix', edge: 'before' })).toEqual({ parent: 'r', branch: 'kids', index: 1 });
+    expect(dropPlace(w, { block: 'fix', edge: 'after' })).toEqual({ parent: 'r', branch: 'kids', index: 2 });
+    expect(dropPlace(w, { block: 'no', edge: 'after' })).toEqual({ parent: 'i', branch: 'else', index: 1 });
+  });
+  it('into and else are first in that body, only where the block has it', () => {
+    expect(dropPlace(w, { block: 'r', edge: 'into' })).toEqual({ parent: 'r', branch: 'kids', index: 0 });
+    expect(dropPlace(w, { block: 'i', edge: 'into' })).toEqual({ parent: 'i', branch: 'kids', index: 0 });
+    expect(dropPlace(w, { block: 'i', edge: 'else' })).toEqual({ parent: 'i', branch: 'else', index: 0 });
+    expect(dropPlace(w, { block: 'plan', edge: 'into' })).toBeUndefined();
+    expect(dropPlace(w, { block: 'plan', edge: 'else' })).toBeUndefined();
+    expect(dropPlace(w, { block: 'r', edge: 'else' })).toBeUndefined();
+  });
+  it('the script start and end, and a body', () => {
+    expect(dropPlace(w, { top: 'start' })).toEqual({ branch: 'kids', index: 0 });
+    expect(dropPlace(w, { top: 'end' })).toEqual({ branch: 'kids', index: 5 });
+    expect(dropPlace(w, { body: 'r', branch: 'kids' })).toEqual({ parent: 'r', branch: 'kids', index: 0 });
+    expect(dropPlace(w, { body: 'i', branch: 'else' })).toEqual({ parent: 'i', branch: 'else', index: 0 });
+    expect(dropPlace(w, { body: 'r', branch: 'else' })).toBeUndefined();
+  });
+  it('an unknown block gives nothing', () => {
+    expect(dropPlace(w, { block: 'nope', edge: 'before' })).toBeUndefined();
+    expect(dropPlace(w, { block: 'nope', edge: 'into' })).toBeUndefined();
+    expect(dropPlace(w, { body: 'nope', branch: 'kids' })).toBeUndefined();
+  });
+  it('never mutates its input', () => {
+    const before = structuredClone(w);
+    dropPlace(w, { body: 'i', branch: 'else' });
+    expect(w).toEqual(before);
   });
 });
 
