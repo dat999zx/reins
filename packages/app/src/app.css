@@ -193,7 +193,7 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .bpanel .brow > span { overflow-wrap: anywhere; color: var(--ink); }
 .bpanel .brow .bmax { grid-column: 1; }
 .bpanel .turn { max-height: 160px; overflow: auto; margin: 0; font: 11.5px/1.45 var(--mono); }
-.blocks { overflow: auto; min-height: 0; padding: 22px 24px 90px; display: flex; gap: 32px; align-items: stretch; background-image: radial-gradient(circle, #2a2c31 1px, transparent 1.3px); background-size: 18px 18px; }
+.blocks { overflow: auto; min-height: 0; padding: 22px 24px 90px; display: flex; flex-wrap: wrap-reverse; gap: 20px 32px; align-items: stretch; align-content: flex-end; background-image: radial-gradient(circle, #2a2c31 1px, transparent 1.3px); background-size: 18px 18px; }
 .sx-pal { border-top: 1px solid var(--line); padding-top: 2px; }
 .sx-pal h4 { margin: 10px 2px 5px; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); font-weight: 600; }
 .sx-pgrp { display: flex; flex-wrap: wrap; gap: 3px; }
@@ -201,8 +201,8 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .sx-card:hover { border-color: var(--c); }
 .sx-card i { width: 9px; height: 9px; border-radius: 2px; background: var(--c); flex: none; }
 [data-kind='recall'].sx-card i, [data-kind='store'].sx-card i { border-radius: 50%; }
-.blocks .always { width: 250px; flex: none; align-self: flex-start; }
-.sx-script { flex: 1; min-width: 0; min-height: 100%; padding-right: 190px; display: flex; flex-direction: column; align-items: flex-start; }
+.blocks .always { width: 250px; flex: none; align-self: flex-end; }
+.sx-script { flex: 1 0 auto; min-height: 100%; padding-right: 190px; display: flex; flex-direction: column; align-items: flex-start; }
 .sx-stack { display: flex; flex-direction: column; align-items: flex-start; }
 
 [data-kind='phase'], [data-kind='say'] { --c: var(--soft); }
@@ -244,6 +244,14 @@ select.sx-pill { cursor: pointer; }
 .sx-faint { opacity: 0.85; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sx-hex { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 5px; min-height: 22px; padding: 1px 13px; font-size: 12px; line-height: 1.5; background: rgb(0 0 0 / 0.24); color: #fff; clip-path: polygon(9px 0, calc(100% - 9px) 0, 100% 50%, calc(100% - 9px) 100%, 9px 100%, 0 50%); }
 .sx-hex .sx-hex { background: rgb(0 0 0 / 0.22); }
+.sx-hex select { appearance: none; field-sizing: content; max-width: 100%; border: 0; margin: 0; padding: 0 2px; background: transparent; color: inherit; font: inherit; line-height: 1.5; cursor: pointer; outline: none; border-radius: 3px; }
+.sx-hex select option { background: #fff; color: #232428; }
+.sx-hex select:focus-visible { box-shadow: 0 0 0 1px #fff; }
+.sx-hex input.sx-pill, .sx-hex input.sx-code { padding: 0 7px; line-height: 1.45; }
+.sx-hex input.sx-pill:focus, .sx-hex input.sx-code:focus { box-shadow: inset 0 0 0 2px var(--brand); }
+.sx-hex b { font-weight: 600; }
+.sx-condcard { clip-path: polygon(7px 0, calc(100% - 7px) 0, 100% 50%, calc(100% - 7px) 100%, 7px 100%, 0 50%); padding: 3px 12px; border: 0; background: rgb(255 255 255 / 0.1); border-radius: 0; }
+.sx-condcard:hover { background: rgb(255 255 255 / 0.2); }
 .sx-hole { min-width: 44px; justify-content: center; background: rgb(255 255 255 / 0.2); color: rgb(255 255 255 / 0.75); }
 .sx-mods { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; pointer-events: none; }
 .sx-mod { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 1px 7px; border-radius: 4px; background: var(--c); border: 1px solid rgb(255 255 255 / 0.4); color: #fff; }

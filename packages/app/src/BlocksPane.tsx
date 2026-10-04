@@ -1,13 +1,16 @@
 import { useContext, useEffect, useMemo, useRef, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
-import type { Diagnostic, Step, Workflow } from '@reins/core';
+import type { Cond, Diagnostic, Step, Workflow } from '@reins/core';
 import { KINDS, type Token } from './canvasKinds.js';
+import { applyParam, COND_KINDS, type CondParam } from './condKinds.js';
 import { editStep, marksOf } from './canvas.js';
-import { moveStep, nestPlace, placeOf, setAlways, type Place } from './blocks.js';
+import { moveStep, nestPlace, placeOf, setAlways, setCond, type CondPath, type Place } from './blocks.js';
 import { applyField, fieldValue } from './panelEdit.js';
 import { useDraft } from './BlockPanel.js';
 import { Pill, StepPick } from './Pill.js';
 import { cx, StatusCtx } from './CanvasPane.js';
 import { StepChips } from './StepChips.js';
+
+const LOOK = { code: 'code', str: 'pill', num: 'num', pill: 'pill' } as const satisfies Record<CondParam['look'], string>;
 
 export function BlocksPane({ w, steps, diags, text, selected, rev, onEdit, onSelect, onDelete }: {
   w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; selected?: string; rev: unknown;
@@ -51,8 +54,39 @@ export function BlocksPane({ w, steps, diags, text, selected, rev, onEdit, onSel
     };
   };
 
+  // A plain recursive function. `p` is the path from the step's condition to this node.
+  const hex = (s: Step, c: Cond | undefined, p: CondPath): ReactNode => {
+    const at = p.length ? ` at ${p.join('.')}` : '';
+    const key = `${s.id}/${p.join('.')}`;
+    if (c && 'a' in c) {
+      const b = 'b' in c ? c.b : undefined;
+      return (
+        <span key={key} className="sx-hex" data-hex={key}>
+          {c.t === 'not' && <b>not</b>}{hex(s, c.a, [...p, 'a'])}{b && <><b>{c.t}</b>{hex(s, b, [...p, 'b'])}</>}
+        </span>
+      );
+    }
+    const kind = c && COND_KINDS[c.t];
+    if (c && !kind) return <span key={key} className="sx-hex" data-hex={key}>{c.t}</span>;
+    const param = kind?.param;
+    const val = c && param ? (c as unknown as Record<string, unknown>)[param.key] : undefined;
+    return (
+      <span key={key} className={cx('sx-hex', !c && 'sx-hole')} data-hex={key}>
+        <select aria-label={`Condition of ${s.id}${at}`} value={c?.t ?? ''}
+          onChange={(e) => onEdit((m) => setCond(m, s.id, p, COND_KINDS[e.target.value]!.fresh()))}>
+          {!c && <option value="" disabled>?</option>}
+          {Object.entries(COND_KINDS).map(([t, k]) => <option key={t} value={t}>{k.label}</option>)}
+        </select>
+        {c && param && (
+          <Pill label={`Value of ${s.id} condition${at}`} value={val === undefined ? '' : String(val)} look={LOOK[param.look]} rev={rev}
+            commit={(v) => { const n = applyParam(c, v); return n !== undefined && onEdit((m) => setCond(m, s.id, p, n)); }} />
+        )}
+      </span>
+    );
+  };
+
   const token = (s: Step, t: Token, i: number): ReactNode => {
-    if (t === 'cond') return <span key={i} className={cx('sx-hex', conds[s.id] === undefined && 'sx-hole')} data-hex={`${s.id}/`}>{conds[s.id] ?? '?'}</span>;
+    if (t === 'cond') return <span key={i}>{hex(s, s.cond, [])}</span>;
     if (t === 'sub') return <span key={i}>{KINDS[s.kind].sub(s, conds[s.id])}</span>;
     if (typeof t === 'string') return <b key={i}>{t}</b>;
     const f = KINDS[s.kind].fields.find((x) => x.key === t.field);

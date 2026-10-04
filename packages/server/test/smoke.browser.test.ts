@@ -245,6 +245,13 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await expect.poll(() => page.locator('.sx-hat').innerText(), { timeout: W }).toContain('smoke');
     await row('plan').locator('.sx-row').first().click();
     await panel.locator('h3', { hasText: 'plan' }).waitFor();
+    // with the inspector open the pane is narrow: the hat and the Always box must not overlap
+    const hatBox = await page.locator('.sx-hat').boundingBox();
+    const alwaysBox = await page.locator('.blocks .always').boundingBox();
+    expect(hatBox && alwaysBox).toBeTruthy();
+    const apart = hatBox!.x + hatBox!.width <= alwaysBox!.x || alwaysBox!.x + alwaysBox!.width <= hatBox!.x
+      || hatBox!.y + hatBox!.height <= alwaysBox!.y || alwaysBox!.y + alwaysBox!.height <= hatBox!.y;
+    expect(apart, `hat ${JSON.stringify(hatBox)} overlaps Always ${JSON.stringify(alwaysBox)}`).toBe(true);
 
     // the text the next steps compare against byte for byte
     await textTab.click();
@@ -345,6 +352,33 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await cmd.blur();
     await textTab.click();
     expect(await editor.inputValue()).not.toContain('discard me');
+
+    // 8d.6. a condition picked on a hexagon, a number typed in its pill, and a Conditions card clicked, all land in the file
+    await blocksTab.click();
+    await card('repeat until').click();
+    await row('repeat-1').waitFor();
+    // retried inside the poll: an edit made while another is in flight is dropped
+    await expect.poll(async () => {
+      await blocksTab.click();
+      await page.getByRole('combobox', { name: 'Condition of repeat-1', exact: true }).selectOption({ label: 'attempts > N' });
+      await textTab.click();
+      return editor.inputValue();
+    }, { timeout: W }).toContain('## repeat\nuntil: attempts > 3\nmax: 3\n');
+    const num = page.getByRole('textbox', { name: 'Value of repeat-1 condition', exact: true });
+    await expect.poll(async () => {
+      await blocksTab.click();
+      await num.fill('5');
+      await num.press('Enter');
+      await textTab.click();
+      return editor.inputValue();
+    }, { timeout: W }).toContain('until: attempts > 5');
+    await expect.poll(async () => {
+      await blocksTab.click();
+      await row('repeat-1').locator('.sx-row').first().click();
+      await card('tests pass').click();
+      await textTab.click();
+      return editor.inputValue();
+    }, { timeout: W }).toContain('## repeat\nuntil: tests pass\nmax: 3\n');
 
     // 8d.z. save, so the buffer is clean before Chat (Playwright dismisses the leave confirm)
     await textTab.click();

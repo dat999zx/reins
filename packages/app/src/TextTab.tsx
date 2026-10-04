@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { Diagnostic, StepKind, Workflow } from '@reins/core';
-import { addStep, deleteStep, newId } from './blocks.js';
+import { addStep, deleteStep, newId, setCond } from './blocks.js';
+import { COND_KINDS } from './condKinds.js';
 import { ApiError, get, post, put } from './api.js';
 import { restoreFile, restoreStep, type CanvasView, type EditorState, type Tab } from './editorState.js';
 import { highlight, lineOffset } from './highlight.js';
@@ -209,6 +210,12 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   const known = !prev?.workflow || flatSteps(prev.workflow.steps).every((s) => s.kind in KINDS);
   const sel = stepId && prev?.workflow ? flatSteps(prev.workflow.steps).find((s) => s.id === stepId) : undefined;
 
+  // The slot is checked before edit(): a declined rewrite confirm or a busy editor must not show this note.
+  const cond = (t: string) => {
+    if (!sel || !KINDS[sel.kind].line.includes('cond')) return setMsg('Select a wait until, repeat until or if block first.');
+    edit((w) => setCond(w, sel.id, [], COND_KINDS[t]!.fresh()));
+  };
+
   return (
     <div className="texttab">
       <aside className="wflist">
@@ -226,7 +233,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
           ))}
           {list.length === 0 && <li className="hint">No workflows yet.</li>}
         </ul>
-        {view === 'blocks' && prev?.workflow && known && <Palette onAdd={add} />}
+        {view === 'blocks' && prev?.workflow && known && <Palette onAdd={add} onCond={cond} />}
       </aside>
       <section className="editor">
         {file === null ? <p className="hint">Pick a workflow, or make a new one.</p> : (

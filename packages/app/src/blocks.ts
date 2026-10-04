@@ -1,4 +1,4 @@
-import type { Step, StepKind, Workflow } from '@reins/core';
+import type { Cond, Step, StepKind, Workflow } from '@reins/core';
 import { flatSteps } from './canvas.js';
 import { KINDS } from './canvasKinds.js';
 
@@ -89,6 +89,25 @@ export function deleteStep(w: Workflow, id: string): Workflow {
     s.links = s.links.filter((l) => !gone.has(l.to));
     if (gone.has(s.attrs.against ?? '')) delete s.attrs.against;
   }
+  return m;
+}
+
+export type CondPath = Array<'a' | 'b'>;
+
+// Replace the condition node at `path` of a step that has a condition slot; the same `w` when there is no such node.
+export function setCond(w: Workflow, id: string, path: CondPath, cond: Cond): Workflow {
+  const m = structuredClone(w);
+  const step = flatSteps(m.steps).find((s) => s.id === id);
+  if (!step || !KINDS[step.kind].line.includes('cond')) return w;
+  let holder = step as unknown as Record<string, Cond | undefined>;
+  let key = 'cond';
+  for (const hop of path) {
+    const c = holder[key];
+    if (!c || !(hop in c)) return w;
+    holder = c as unknown as Record<string, Cond | undefined>;
+    key = hop;
+  }
+  holder[key] = cond;
   return m;
 }
 

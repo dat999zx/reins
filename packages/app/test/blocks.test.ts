@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { parseWorkflow, printWorkflow, validate, type Workflow } from '@reins/core';
+import { parseWorkflow, printCond, printWorkflow, validate, type Workflow } from '@reins/core';
 import { flatSteps } from '../src/canvas.js';
-import { addStep, deleteStep, moveStep, nestPlace, newId, placeOf, setAlways } from '../src/blocks.js';
+import { addStep, deleteStep, moveStep, nestPlace, newId, placeOf, setAlways, setCond } from '../src/blocks.js';
 
 const HEAD = '---\nreins: 1\nname: demo\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n';
 const TEXT = `${HEAD}## phase plan
@@ -173,6 +173,36 @@ describe('deleteStep', () => {
 describe('setAlways', () => {
   it('trims lines and drops blanks', () => {
     expect(setAlways(w, ' a \n\n b\n').always).toEqual(['a', 'b']);
+  });
+});
+
+describe('setCond', () => {
+  const cw = parse(`${TEXT}\n## gate\nid: g\nuntil: tests pass and not attempts > 3\n`);
+  const condOf = (m: Workflow) => find(m, 'g').cond!;
+  const printed = (m: Workflow) => printCond(condOf(m));
+  const check = (m: Workflow) => {
+    const r = parseWorkflow(printWorkflow(m));
+    expect(r.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+  };
+  it('replaces the node at a path', () => {
+    const a = setCond(cw, 'g', [], { t: 'approve' });
+    expect(printed(a)).toBe('you approve');
+    const b = setCond(cw, 'g', ['a'], { t: 'approve' });
+    expect(printed(b)).toBe('you approve and not attempts > 3');
+    const c = setCond(cw, 'g', ['b', 'a'], { t: 'attempts', n: 5 });
+    expect(printed(c)).toBe('tests pass and not attempts > 5');
+    for (const m of [a, b, c]) check(m);
+  });
+  it('does nothing for a path that is not there, a step with no condition slot, or an unknown id', () => {
+    expect(setCond(cw, 'g', ['b', 'b'], { t: 'approve' })).toBe(cw);
+    expect(setCond(cw, 'g', ['a', 'a'], { t: 'approve' })).toBe(cw);
+    expect(setCond(cw, 'plan', [], { t: 'approve' })).toBe(cw);
+    expect(setCond(cw, 'nope', [], { t: 'approve' })).toBe(cw);
+  });
+  it('never mutates its input', () => {
+    const before = structuredClone(cw);
+    setCond(cw, 'g', ['b', 'a'], { t: 'approve' });
+    expect(cw).toEqual(before);
   });
 });
 
