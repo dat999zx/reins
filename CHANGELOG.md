@@ -2,6 +2,11 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com). Versions: [SemVer](https://semver.org).
 
+## 0.1.1
+
+- Published as `reins-ai` (npm refused `reins`); the command is still `reins`.
+- Releases are published from a version tag by CI.
+
 ## 0.1.0
 
 First release.
