@@ -242,28 +242,71 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await row('ship').waitFor();
     expect(await page.locator('.blk').evaluateAll((els) => els.map((e) => (e as unknown as { dataset: { id: string } }).dataset.id))).toEqual(['plan', 'build', 'ship']);
     await expect.poll(() => page.locator('.blk .sstate[aria-label^="done"]').count(), { timeout: W }).toBe(2);
-    await row('plan').locator('.bhead').first().click();
+    await expect.poll(() => page.locator('.sx-hat').innerText(), { timeout: W }).toContain('smoke');
+    await row('plan').locator('.sx-row').first().click();
     await panel.locator('h3', { hasText: 'plan' }).waitFor();
 
-    // 8d.1. the arrows move a block within its list; down undoes up
+    // the text the next steps compare against byte for byte
     await textTab.click();
     const tidy = await editor.inputValue();
+
+    // 8d.1. Alt+Up / Alt+Down move the focused block within its list, focus follows; all inside Blocks (Text would unmount the pane)
     await blocksTab.click();
-    await page.getByRole('button', { name: 'Move build up' }).click();
-    await textTab.click();
-    await expect.poll(async () => { const t = await editor.inputValue(); return t.indexOf('## phase build') < t.indexOf('## phase plan'); }, { timeout: W }).toBe(true);
-    await blocksTab.click();
-    await page.getByRole('button', { name: 'Move build down' }).click();
+    const order = () => page.locator('.blk').evaluateAll((els) => els.map((e) => (e as unknown as { dataset: { id: string } }).dataset.id));
+    await row('build').focus();
+    await page.keyboard.press('Alt+ArrowUp');
+    await expect.poll(order, { timeout: W }).toEqual(['build', 'plan', 'ship']);
+    await expect.poll(() => page.locator(':focus').getAttribute('data-id', { timeout: 1000 }).catch(() => null), { timeout: W }).toBe('build');
+    await page.keyboard.press('Alt+ArrowDown');
+    await expect.poll(order, { timeout: W }).toEqual(['plan', 'build', 'ship']);
     await textTab.click();
     await expect.poll(() => editor.inputValue(), { timeout: W }).toBe(tidy);
 
-    // 8d.2. the palette adds a step after the selection and selects it; Delete in the panel removes it, byte for byte
+    // 8d.2. a palette card adds a step after the selection and selects it; the Delete key removes it, then the panel's Delete button, byte for byte
+    const palette = page.getByRole('region', { name: 'Palette' });
+    const card = (name: string) => palette.getByRole('button', { name, exact: true });
     await blocksTab.click();
-    await page.getByRole('toolbar', { name: 'Add a step' }).getByRole('button', { name: 'phase', exact: true }).click();
+    await card('phase').click();
+    await row('phase-1').waitFor();
+    await panel.locator('h3', { hasText: 'phase-1' }).waitFor();
+    await row('phase-1').focus();
+    await page.keyboard.press('Delete');
+    await expect.poll(() => row('phase-1').count(), { timeout: W }).toBe(0);
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toBe(tidy);
+    await blocksTab.click();
+    await card('phase').click();
     await row('phase-1').waitFor();
     await panel.locator('h3', { hasText: 'phase-1' }).waitFor();
     await panel.getByRole('button', { name: 'Delete', exact: true }).click();
     await expect.poll(() => row('phase-1').count(), { timeout: W }).toBe(0);
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toBe(tidy);
+
+    // 8d.2b. Enter selects a focused block; Alt+Right nests a block into the C block before it, Alt+Left takes it out
+    await blocksTab.click();
+    await row('ship').focus();
+    await page.keyboard.press('Enter');
+    await panel.locator('h3', { hasText: 'ship' }).waitFor();
+    await card('repeat until').click();
+    await row('repeat-1').waitFor();
+    await card('phase').click();
+    await row('phase-1').waitFor();
+    await row('phase-1').focus();
+    await page.keyboard.press('Alt+ArrowRight');
+    await expect.poll(() => row('repeat-1').locator('.blk[data-id="phase-1"]').count(), { timeout: W }).toBe(1);
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('## repeat\nuntil: you approve\nmax: 3\n\n### phase\n');
+    await blocksTab.click();
+    await row('phase-1').focus();
+    await page.keyboard.press('Alt+ArrowLeft');
+    await expect.poll(() => row('repeat-1').locator('.blk[data-id="phase-1"]').count(), { timeout: W }).toBe(0);
+    await row('phase-1').focus();
+    await page.keyboard.press('Delete');
+    await expect.poll(() => row('phase-1').count(), { timeout: W }).toBe(0);
+    await row('repeat-1').focus();
+    await page.keyboard.press('Delete');
+    await expect.poll(() => row('repeat-1').count(), { timeout: W }).toBe(0);
     await textTab.click();
     await expect.poll(() => editor.inputValue(), { timeout: W }).toBe(tidy);
 
@@ -279,23 +322,6 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     }, { timeout: W }).toContain('always:\n  - "Never: touch prod"\n');
     await blocksTab.click();
     await expect.poll(() => always.inputValue(), { timeout: W }).toBe('Never: touch prod');
-
-    // 8d.4. dragging a block's grip onto a drop line moves it
-    await blocksTab.click();
-    await row('build').locator('.grip').first().dragTo(page.locator('[data-drop="/kids/0"]'));
-    await expect.poll(() => page.locator('.blk').evaluateAll((els) => els.map((e) => (e as unknown as { dataset: { id: string } }).dataset.id)), { timeout: W }).toEqual(['build', 'plan', 'ship']);
-    await textTab.click();
-    await expect.poll(async () => { const t = await editor.inputValue(); return t.includes('## phase build') && t.indexOf('## phase build') < t.indexOf('## phase plan'); }, { timeout: W }).toBe(true);
-
-    // 8d.5. a block dropped on a container's empty drop line goes inside it
-    await blocksTab.click();
-    await page.getByRole('toolbar', { name: 'Add a step' }).getByRole('button', { name: 'repeat', exact: true }).click();
-    await row('repeat-1').waitFor();
-    await page.getByRole('toolbar', { name: 'Add a step' }).getByRole('button', { name: 'run', exact: true }).click();
-    await row('run-1').waitFor();
-    await row('run-1').locator('.grip').first().dragTo(page.locator('[data-drop="repeat-1/kids/0"]'));
-    await textTab.click();
-    await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('## repeat\nuntil: you approve\nmax: 3\n\n### run `npm test`\n');
 
     // 8d.z. save, so the buffer is clean before Chat (Playwright dismisses the leave confirm)
     await textTab.click();

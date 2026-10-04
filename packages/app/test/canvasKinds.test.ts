@@ -39,6 +39,33 @@ describe('KINDS', () => {
   });
 });
 
+describe('line', () => {
+  const kinds = Object.keys(KINDS) as StepKind[];
+  it('every kind has a non-empty row', () => {
+    for (const k of kinds) expect(KINDS[k].line.length, k).toBeGreaterThan(0);
+  });
+  it('every field token is one of the kind fields', () => {
+    for (const k of kinds) for (const t of KINDS[k].line) if (typeof t === 'object') expect(KINDS[k].fields.map((f) => f.key), k).toContain(t.field);
+  });
+  it("'cond' is in exactly the kinds whose fresh step has a cond", () => {
+    const withCond = kinds.filter((k) => KINDS[k].line.includes('cond')).sort();
+    expect(withCond).toEqual(['gate', 'if', 'repeat']);
+    expect(kinds.filter((k) => KINDS[k].fresh?.().cond).sort()).toEqual(withCond);
+  });
+});
+
+describe('card', () => {
+  const kinds = Object.keys(KINDS) as StepKind[];
+  it('exactly the kinds that can be added have a palette card', () => {
+    expect(kinds.filter((k) => KINDS[k].card).sort()).toEqual(kinds.filter((k) => KINDS[k].fresh).sort());
+  });
+  it('labels are unique and sections are Flow or Memory', () => {
+    const cards = kinds.flatMap((k) => (KINDS[k].card ? [KINDS[k].card!] : []));
+    expect(new Set(cards.map((c) => c.label)).size).toBe(cards.length);
+    for (const c of cards) expect(['Flow', 'Memory']).toContain(c.section);
+  });
+});
+
 describe('fresh', () => {
   const withFresh = [...NODES.keys()].filter((k) => k !== 'use').sort();
   it('exists for every kind but use', () => {

@@ -63,6 +63,19 @@ export function moveStep(w: Workflow, id: string, to: Place): Workflow {
   return m;
 }
 
+// Where Alt+Right (in) or Alt+Left (out) sends a step: the end of the container before it, or the slot just after its parent.
+export function nestPlace(w: Workflow, id: string, dir: 'in' | 'out'): Place | undefined {
+  const at = placeOf(w, id);
+  if (!at) return undefined;
+  if (dir === 'out') {
+    const p = at.parent === undefined ? undefined : placeOf(w, at.parent);
+    return p && { ...p, index: p.index + 1 };
+  }
+  const list = at.parent === undefined ? w.steps : flatSteps(w.steps).find((s) => s.id === at.parent)?.[at.branch];
+  const prev = list?.[at.index - 1];
+  return prev && KINDS[prev.kind].group ? { parent: prev.id, branch: 'kids', index: prev.kids?.length ?? 0 } : undefined;
+}
+
 export function deleteStep(w: Workflow, id: string): Workflow {
   const at = placeOf(w, id);
   const target = flatSteps(w.steps).find((s) => s.id === id);

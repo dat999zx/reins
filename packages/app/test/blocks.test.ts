@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseWorkflow, printWorkflow, validate, type Workflow } from '@reins/core';
 import { flatSteps } from '../src/canvas.js';
-import { addStep, deleteStep, moveStep, newId, placeOf, setAlways } from '../src/blocks.js';
+import { addStep, deleteStep, moveStep, nestPlace, newId, placeOf, setAlways } from '../src/blocks.js';
 
 const HEAD = '---\nreins: 1\nname: demo\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n';
 const TEXT = `${HEAD}## phase plan
@@ -45,6 +45,34 @@ describe('placeOf', () => {
     expect(placeOf(w, 'fix')).toEqual({ parent: 'r', branch: 'kids', index: 1 });
     expect(placeOf(w, 'no')).toEqual({ parent: 'i', branch: 'else', index: 0 });
     expect(placeOf(w, 'nope')).toBeUndefined();
+  });
+});
+
+describe('nestPlace', () => {
+  it('in: after a container, at the end of its kids; otherwise nothing', () => {
+    expect(nestPlace(w, 'i', 'in')).toEqual({ parent: 'r', branch: 'kids', index: 2 });
+    expect(nestPlace(w, 'v', 'in')).toEqual({ parent: 'i', branch: 'kids', index: 1 });
+    expect(nestPlace(w, 'r', 'in')).toBeUndefined();
+    expect(nestPlace(w, 'plan', 'in')).toBeUndefined();
+    expect(nestPlace(w, 'fix', 'in')).toBeUndefined();
+    expect(nestPlace(w, 'nope', 'in')).toBeUndefined();
+  });
+  it('out: right after the parent; top level has nowhere to go', () => {
+    expect(nestPlace(w, 'fix', 'out')).toEqual({ branch: 'kids', index: 3 });
+    expect(nestPlace(w, 'no', 'out')).toEqual({ branch: 'kids', index: 4 });
+    expect(nestPlace(w, 'plan', 'out')).toBeUndefined();
+  });
+  it('results move cleanly and survive print and parse', () => {
+    for (const [id, dir] of [['i', 'in'], ['v', 'in'], ['fix', 'out'], ['no', 'out']] as const) {
+      const to = nestPlace(w, id, dir)!;
+      const m = moveStep(w, id, to);
+      expect(m, `${id} ${dir}`).not.toBe(w);
+      expect(placeOf(m, id)).toEqual(to);
+      const text = printWorkflow(m);
+      const r = parseWorkflow(text);
+      expect(r.diagnostics).toEqual([]);
+      expect(printWorkflow(r.workflow!)).toBe(text);
+    }
   });
 });
 

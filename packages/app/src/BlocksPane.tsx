@@ -1,82 +1,120 @@
-import { Fragment, useContext, useMemo, useRef, useState, type DragEvent } from 'react';
-import type { Diagnostic, Step, StepKind, Workflow } from '@reins/core';
-import { KINDS } from './canvasKinds.js';
+import { useContext, useEffect, useMemo, useRef, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import type { Diagnostic, Step, Workflow } from '@reins/core';
+import { KINDS, type Token } from './canvasKinds.js';
 import { marksOf } from './canvas.js';
-import { moveStep, setAlways } from './blocks.js';
+import { moveStep, nestPlace, placeOf, setAlways, type Place } from './blocks.js';
+import { fieldValue } from './panelEdit.js';
 import { useDraft } from './BlockPanel.js';
 import { cx, StatusCtx } from './CanvasPane.js';
 import { StepChips } from './StepChips.js';
 
-// ponytail: the arrows move a step only within its list; leaving a container needs a drag
-// ponytail: native HTML5 drag; no touch, no keyboard drag (the arrows instead), no auto-scroll near the edge. Upgrade: dnd-kit, moveStep unchanged
-export function BlocksPane({ w, steps, diags, text, selected, rev, onEdit, onSelect, onAdd }: {
+export function BlocksPane({ w, steps, diags, text, selected, rev, onEdit, onSelect, onDelete }: {
   w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; selected?: string; rev: unknown;
-  onEdit: (fn: (w: Workflow) => Workflow) => void; onSelect: (id: string | undefined) => void; onAdd?: (kind: StepKind) => void;
+  onEdit: (fn: (w: Workflow) => Workflow) => boolean; onSelect: (id: string | undefined) => void; onDelete: (id: string) => void;
 }) {
   const conds = Object.fromEntries(steps.flatMap((s) => (s.cond === undefined ? [] : [[s.id, s.cond]])));
   const marks = useMemo(() => marksOf(w, diags, text).steps, [w, diags, text]);
   const { status, show } = useContext(StatusCtx);
-  const move = (id: string, to: Parameters<typeof moveStep>[2]) => onEdit((m) => moveStep(m, id, to));
-  const dragged = useRef<string | undefined>(undefined);
-  const [over, setOver] = useState<string | undefined>();
+  const root = useRef<HTMLDivElement>(null);
+  const refocus = useRef<string | undefined>(undefined);
 
-  // A leaf li per slot, so a nested container never handles a drop twice. The dragged id is in a ref: dataTransfer is unreadable during dragover.
-  // A custom type, not text/plain: a drag that misses a drop line must not paste the id into a text field. The type list is readable during dragover, the data is not.
-  const MIME = 'application/x-reins-step';
-  const ours = (e: DragEvent<HTMLElement>) => !!dragged.current && e.dataTransfer.types.includes(MIME);
-  const drop = (place: Parameters<typeof moveStep>[2]) => {
-    const key = `${place.parent ?? ''}/${place.branch}/${place.index}`;
+  // The model changes asynchronously (edit -> server print -> new w); focus follows the moved block once it re-renders.
+  useEffect(() => {
+    if (refocus.current !== undefined) root.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(refocus.current)}"]`)?.focus();
+    refocus.current = undefined;
+  }, [w]);
+  const move = (id: string, to: Place) => { refocus.current = onEdit((m) => moveStep(m, id, to)) ? id : undefined; };
+
+  // Stack and C blocks share these attributes. A click stops here: it must not bubble to every enclosing C block.
+  const blockProps = (s: Step, shape: string, last: boolean) => {
+    const info = show ? status[s.id] : undefined;
+    const mark = marks.get(s.id);
+    return {
+      className: cx('blk', shape, s.id === selected && 'sx-sel', info?.state && `sx-${info.state}`, mark && `mark-${mark}`),
+      'data-id': s.id,
+      'data-kind': s.kind,
+      tabIndex: 0,
+      onClick: (e: MouseEvent) => { e.stopPropagation(); onSelect(s.id); },
+      onKeyDown: (e: KeyboardEvent<HTMLElement>) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(s.id); return; }
+        if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); onDelete(s.id); return; }
+        if (!e.altKey) return;
+        const at = placeOf(w, s.id);
+        const dest = { ArrowUp: at && at.index > 0 && { ...at, index: at.index - 1 }, ArrowDown: at && !last && { ...at, index: at.index + 2 },
+          ArrowRight: nestPlace(w, s.id, 'in'), ArrowLeft: nestPlace(w, s.id, 'out') }[e.key];
+        if (dest === undefined) return;
+        e.preventDefault();
+        if (dest) move(s.id, dest);
+      },
+    };
+  };
+
+  const token = (s: Step, t: Token, i: number): ReactNode => {
+    if (t === 'cond') return <span key={i} className={cx('sx-hex', conds[s.id] === undefined && 'sx-hole')} data-hex={`${s.id}/`}>{conds[s.id] ?? '?'}</span>;
+    if (t === 'sub') return <span key={i}>{KINDS[s.kind].sub(s, conds[s.id])}</span>;
+    if (typeof t === 'string') return <b key={i}>{t}</b>;
+    const f = KINDS[s.kind].fields.find((x) => x.key === t.field);
+    const v = fieldValue(s, t.field);
+    if (f?.input === 'textarea') return v ? <span key={i} className="sx-faint">{v.split('\n')[0]}</span> : null;
+    const look = t.field === 'title' ? 'sx-bold' : f?.input === 'mono' ? 'sx-code' : f?.input === 'number' ? 'sx-pill sx-num' : 'sx-pill';
+    return <span key={i} className={look}>{v}</span>;
+  };
+
+  const head = (s: Step) => {
+    const info = show ? status[s.id] : undefined;
     return (
-      <li className={cx('drop', over === key && 'over')} data-drop={key} onDragEnter={(e) => ours(e) && setOver(key)} onDragLeave={() => setOver((o) => (o === key ? undefined : o))}
-        onDragOver={(e) => { if (ours(e)) e.preventDefault(); }}
-        onDrop={(e) => { if (!ours(e)) return; e.preventDefault(); const id = dragged.current; dragged.current = undefined; setOver(undefined); if (id) move(id, place); }} />
+      <>
+        <div className="sx-row"><span className="sx-grip" aria-hidden />{KINDS[s.kind].line.map((t, i) => token(s, t, i))}</div>
+        {(s.cards.length > 0 || s.links.length > 0) && (
+          <div className="sx-mods">
+            {s.cards.map((c, i) => <span key={`c${i}`} className="sx-mod">{c.kind}: {c.text}</span>)}
+            {s.links.map((l, i) => <span key={`l${i}`} className="sx-mod sx-link" data-lk={l.kind}>{l.kind} → {l.to}</span>)}
+          </div>
+        )}
+        <span className="sx-st">{info && <StepChips i={info} />}</span>
+      </>
     );
   };
 
-  // A plain function, not a component: a component declared here would remount every row on each render.
-  const list = (items: Step[], parent: string | undefined, branch: 'kids' | 'else') => (
-    <ol>
+  // A plain function, not a component: a component declared here would remount every block on each render.
+  const stack = (items: Step[], parent: string | undefined, branch: 'kids' | 'else'): ReactNode => (
+    <div className="sx-stack" data-list={`${parent ?? ''}/${branch}`}>
       {items.map((s, n) => {
         const key = items.findIndex((x) => x.id === s.id) === n ? s.id : `${n}/${s.id}`; // a duplicate id is a validator error; keep the keys unique anyway
-        const info = show ? status[s.id] : undefined;
-        const mark = marks.get(s.id);
         const group = KINDS[s.kind].group;
+        if (!group) return <div key={key} {...blockProps(s, 'sx-blk', n === items.length - 1)}>{head(s)}</div>;
         return (
-          <Fragment key={key}>
-          {drop({ parent, branch, index: n })}
-          <li className="blk" data-id={s.id}>
-            <div className={cx('cbox', 'bhead', s.id === selected && 'selected', info?.state, mark && `mark-${mark}`)} tabIndex={0} onClick={() => onSelect(s.id)}
-              onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onSelect(s.id); } }}>
-              <span className="grip" draggable aria-hidden onDragStart={(e) => { dragged.current = s.id; e.dataTransfer.setData(MIME, s.id); e.dataTransfer.effectAllowed = 'move'; }}
-                onDragEnd={() => { dragged.current = undefined; setOver(undefined); }}>⠿</span>
-              <span className="ckind">{s.kind}</span>
-              <span className={cx('csub', s.kind === 'run' && 'mono')}>{KINDS[s.kind].sub(s, conds[s.id])}</span>
-              {info && <StepChips i={info} />}
-              <button aria-label={`Move ${s.id} up`} disabled={n === 0} onClick={() => move(s.id, { parent, branch, index: n - 1 })}>▲</button>
-              <button aria-label={`Move ${s.id} down`} disabled={n === items.length - 1} onClick={() => move(s.id, { parent, branch, index: n + 2 })}>▼</button>
-            </div>
-            {group && list(s.kids ?? [], s.id, 'kids')}
-            {group === 'kids+else' && <><div className="belse">else</div>{list(s.else ?? [], s.id, 'else')}</>}
-          </li>
-          </Fragment>
+          <div key={key} {...blockProps(s, 'sx-c', n === items.length - 1)}>
+            <div className="sx-chead">{head(s)}</div>
+            <div className="sx-cbody" data-body={`${s.id}/kids`}>{stack(s.kids ?? [], s.id, 'kids')}</div>
+            {group === 'kids+else' && (
+              <>
+                <div className="sx-cmid">else</div>
+                <div className="sx-cbody" data-body={`${s.id}/else`}>{stack(s.else ?? [], s.id, 'else')}</div>
+              </>
+            )}
+            <div className="sx-cfoot" />
+          </div>
         );
       })}
-      {drop({ parent, branch, index: items.length })}
-    </ol>
+    </div>
   );
 
+  const clear = (e: MouseEvent) => { if (!(e.target as HTMLElement).closest('.blk, .sx-hat, .always')) onSelect(undefined); };
+
   return (
-    <div className="blocks">
-      <div className="bpal" role="toolbar" aria-label="Add a step">
-        {(Object.keys(KINDS) as StepKind[]).filter((k) => KINDS[k].fresh).map((k) => <button key={k} onClick={() => onAdd?.(k)}>{k}</button>)}
+    <div className="blocks" ref={root} onClick={clear}>
+      <div className="sx-script">
+        <div className="sx-blk sx-hat"><b>{w.name}</b>{w.task && <span className="sx-pill">{w.task}</span>}</div>
+        {stack(w.steps, undefined, 'kids')}
       </div>
       <Always w={w} rev={rev} onEdit={onEdit} />
-      {list(w.steps, undefined, 'kids')}
     </div>
   );
 }
 
-function Always({ w, rev, onEdit }: { w: Workflow; rev: unknown; onEdit: (fn: (w: Workflow) => Workflow) => void }) {
+function Always({ w, rev, onEdit }: { w: Workflow; rev: unknown; onEdit: (fn: (w: Workflow) => Workflow) => boolean }) {
   const value = w.always.join('\n');
   const [v, setV] = useDraft(value, rev);
   return (
