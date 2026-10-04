@@ -2,7 +2,7 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com). Versions: [SemVer](https://semver.org).
 
-## 0.1.3
+## Unreleased
 
 - `reins --version` (and `-v`) prints the version.
 
