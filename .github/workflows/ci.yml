@@ -25,5 +25,5 @@ jobs:
       - run: npm run lint
       - run: npm test
       # the real install route: pack the published package, install it clean, run it
-      - run: npm pack --pack-destination "$RUNNER_TEMP" -w packages/server && cd "$RUNNER_TEMP" && npm init -y && npm i ./reins-ai-*.tgz && npx reins check "$GITHUB_WORKSPACE/examples/bug-fix.reins.md"
+      - run: npm pack --pack-destination "$RUNNER_TEMP" -w packages/server && cd "$RUNNER_TEMP" && npm init -y && npm i -g --prefix "$RUNNER_TEMP/g" ./reins-ai-*.tgz && node "$(find "$RUNNER_TEMP/g" -path '*node_modules/reins-ai/dist/cli.js' | head -1)" check "$GITHUB_WORKSPACE/examples/bug-fix.reins.md"
         shell: bash

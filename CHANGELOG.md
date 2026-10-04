@@ -2,6 +2,10 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com). Versions: [SemVer](https://semver.org).
 
+## 0.1.2
+
+- Fix `npm i -g reins-ai`: `yaml` and `picomatch` were installed empty, so `reins` crashed on start. They are now bundled.
+
 ## 0.1.1
 
 - Published as `reins-ai` (npm refused `reins`); the command is still `reins`.

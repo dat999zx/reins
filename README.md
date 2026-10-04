@@ -104,7 +104,7 @@ npx playwright install chromium   # for the browser smoke test
 npm run build && npm test
 ```
 
-Three packages in `packages/`: `core` (format, engine), `server` (CLI, HTTP, Claude adapter; published as `reins`), `app` (the UI).
+Three packages in `packages/`: `core` (format, engine), `server` (CLI, HTTP, Claude adapter; published as `reins-ai`), `app` (the UI).
 
 ## License
 
