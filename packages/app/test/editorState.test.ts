@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanEditorState, makeSaver, prunePos, restoreFile, restoreStep } from '../src/editorState.js';
+import { cleanEditorState, makeSaver, restoreFile, restoreStep } from '../src/editorState.js';
 
 describe('cleanEditorState', () => {
   it('keeps good fields', () => {
@@ -8,8 +8,12 @@ describe('cleanEditorState', () => {
   it('drops wrong types, keeps the rest', () => {
     expect(cleanEditorState({ workflow: 5, tab: 'zzz', stepId: 'x' })).toEqual({ stepId: 'x' });
   });
-  it('keeps tab blocks', () => {
+  it('keeps tab blocks and tab map', () => {
     expect(cleanEditorState({ tab: 'blocks' })).toEqual({ tab: 'blocks' });
+    expect(cleanEditorState({ tab: 'map' })).toEqual({ tab: 'map' });
+  });
+  it('migrates a stored tab canvas to blocks', () => {
+    expect(cleanEditorState({ tab: 'canvas' })).toEqual({ tab: 'blocks' });
   });
   it('gives {} for arrays, null, strings and undefined', () => {
     for (const raw of [[], null, 'text', 3, undefined]) expect(cleanEditorState(raw)).toEqual({});
@@ -18,17 +22,17 @@ describe('cleanEditorState', () => {
 
 describe('cleanEditorState canvas', () => {
   const P = '/w/a.reins.md';
-  it('keeps tab canvas and a good canvas entry', () => {
-    const canvas = { [P]: { pos: { plan: { x: 1, y: 2 } }, view: { x: 0, y: -5, zoom: 1.5 } } };
-    expect(cleanEditorState({ tab: 'canvas', canvas })).toEqual({ tab: 'canvas', canvas });
+  it('maps tab canvas to blocks and keeps a good canvas entry', () => {
+    const canvas = { [P]: { view: { x: 0, y: -5, zoom: 1.5 } } };
+    expect(cleanEditorState({ tab: 'canvas', canvas })).toEqual({ tab: 'blocks', canvas });
   });
-  it('drops a bad position but keeps its siblings', () => {
-    const pos = { a: { x: 1, y: 2 }, b: { x: NaN, y: 0 }, c: { x: '1', y: 0 }, d: { x: 0, y: Infinity }, e: null };
-    expect(cleanEditorState({ canvas: { [P]: { pos } } })).toEqual({ canvas: { [P]: { pos: { a: { x: 1, y: 2 } } } } });
+  it('drops a stored pos but keeps the view', () => {
+    const view = { x: 0, y: 0, zoom: 1 };
+    expect(cleanEditorState({ canvas: { [P]: { pos: { a: { x: 1, y: 2 } }, view } } })).toEqual({ canvas: { [P]: { view } } });
   });
   it('drops a view with zoom <= 0 or missing numbers', () => {
     for (const view of [{ x: 0, y: 0, zoom: 0 }, { x: 0, y: 0, zoom: -1 }, { x: 0, y: 0 }, { x: 'a', y: 0, zoom: 1 }, 5]) {
-      expect(cleanEditorState({ canvas: { [P]: { view, pos: { a: { x: 1, y: 1 } } } } })).toEqual({ canvas: { [P]: { pos: { a: { x: 1, y: 1 } } } } });
+      expect(cleanEditorState({ canvas: { [P]: { view, pos: { a: { x: 1, y: 1 } } } } })).toEqual({ canvas: { [P]: {} } });
     }
   });
   it('drops a canvas that is an array or a string', () => {
@@ -38,13 +42,6 @@ describe('cleanEditorState canvas', () => {
   it('drops a per-path entry that is not an object', () => {
     expect(cleanEditorState({ canvas: { [P]: 'x', '/w/b': [], '/w/c': null, '/w/d': { view: { x: 1, y: 2, zoom: 1 } } } }))
       .toEqual({ canvas: { '/w/d': { view: { x: 1, y: 2, zoom: 1 } } } });
-  });
-});
-
-describe('prunePos', () => {
-  it('keeps only ids in the set', () => {
-    const pos = { a: { x: 1, y: 1 }, b: { x: 2, y: 2 } };
-    expect(prunePos(pos, new Set(['b', 'zzz']))).toEqual({ b: { x: 2, y: 2 } });
   });
 });
 

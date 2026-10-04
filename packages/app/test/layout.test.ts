@@ -39,31 +39,6 @@ describe('layout', () => {
     expect(b.after!.x).toBeGreaterThan(0);
   });
 
-  it('a saved position moves only that step', () => {
-    const steps = [s('plan'), s('build')];
-    const auto = layout(steps);
-    const b = layout(steps, { plan: { x: 500, y: 7 } });
-    expect(b.plan).toMatchObject({ x: 500, y: 7, w: NODE_W, h: NODE_H });
-    expect(b.build).toEqual(auto.build);
-  });
-
-  it('a saved kid dragged out grows its group', () => {
-    const b = layout([s('r', 'repeat', [s('k')])], { k: { x: 400, y: 50 } });
-    expect(b.r!.w).toBe(400 + NODE_W + PAD);
-    expect(b.r!.h).toBe(50 + NODE_H + PAD);
-  });
-
-  it('grows nested groups deepest first', () => {
-    const b = layout([s('o', 'repeat', [s('i', 'repeat', [s('k')])])], { k: { x: 400, y: 50 } });
-    expect(b.i!.w).toBe(400 + NODE_W + PAD);
-    expect(b.o!.w).toBeGreaterThanOrEqual(b.i!.x + b.i!.w + PAD);
-  });
-
-  it('ignores a saved id that is not a step', () => {
-    const steps = [s('a'), s('b')];
-    expect(layout(steps, { ghost: { x: 1, y: 2 } })).toEqual(layout(steps));
-  });
-
   it('an empty group is NODE_W by HEAD + PAD', () => {
     expect(layout([s('r', 'repeat', [])]).r).toMatchObject({ w: NODE_W, h: HEAD + PAD });
   });

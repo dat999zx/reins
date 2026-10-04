@@ -7,8 +7,7 @@ export const NODE_W = 220, NODE_H = 56, GAP = 28, PAD = 16, HEAD = 34;
 
 type Size = { w: number; h: number; elseX?: number };
 
-// ponytail: auto positions ignore saved ones, and a group grown by a saved child does not push the boxes below it down, so boxes can overlap; lay out around saved boxes if it bites
-export function layout(steps: Step[], saved: Record<string, Pos> = {}): Record<string, Box> {
+export function layout(steps: Step[]): Record<string, Box> {
   const out: Record<string, Box> = {};
 
   // Places a list as a centred column at (ox, oy); returns its size.
@@ -40,19 +39,5 @@ export function layout(steps: Step[], saved: Record<string, Pos> = {}): Record<s
   };
 
   column(steps, 0, 0);
-
-  for (const [id, p] of Object.entries(saved)) if (out[id]) { out[id].x = p.x; out[id].y = p.y; }
-
-  // Deepest first: a child grows its group, which may then grow its own parent.
-  const grow = (st: Step) => {
-    const kids = [...(st.kids ?? []), ...(st.else ?? [])];
-    if (!kids.length) return;
-    kids.forEach(grow);
-    const g = out[st.id]!;
-    g.w = Math.max(g.w, ...kids.map((k) => out[k.id]!.x + out[k.id]!.w + PAD));
-    g.h = Math.max(g.h, ...kids.map((k) => out[k.id]!.y + out[k.id]!.h + PAD));
-  };
-  steps.forEach(grow);
-
   return out;
 }

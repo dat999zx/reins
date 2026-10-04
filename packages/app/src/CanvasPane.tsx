@@ -2,11 +2,11 @@ import '@xyflow/react/dist/style.css';
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   applyEdgeChanges, applyNodeChanges, Background, Controls, Handle, MarkerType, Position, ReactFlow,
-  type Connection, type Edge, type EdgeChange, type Node, type NodeChange, type NodeProps,
+  type Edge, type EdgeChange, type Node, type NodeChange, type NodeProps,
 } from '@xyflow/react';
 import type { Diagnostic, Workflow } from '@reins/core';
 import { KINDS } from './canvasKinds.js';
-import { toGraph, setLink, removeLinks, type BoxData, type WireData } from './canvas.js';
+import { toGraph, type BoxData, type WireData } from './canvas.js';
 import type { CanvasView } from './editorState.js';
 import { layout } from './layout.js';
 import { StepChips } from './StepChips.js';
@@ -69,12 +69,11 @@ function styleWire(e: Edge<WireData>): Edge<WireData> {
   };
 }
 
-export function Canvas({ w, steps, diags, text, selected, view, onView, onEdit, onSelect }: {
+export function Canvas({ w, steps, diags, text, selected, view, onView, onSelect }: {
   w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; selected?: string;
-  view: CanvasView; onView: (patch: CanvasView) => void;
-  onEdit: (fn: (w: Workflow) => Workflow) => void; onSelect: (id: string | undefined) => void;
+  view: CanvasView; onView: (patch: CanvasView) => void; onSelect: (id: string | undefined) => void;
 }) {
-  const boxes = useMemo(() => layout(w.steps, view.pos), [w, view.pos]);
+  const boxes = useMemo(() => layout(w.steps), [w]);
   const derived = useMemo(() => {
     const conds = Object.fromEntries(steps.flatMap((s) => (s.cond === undefined ? [] : [[s.id, s.cond]])));
     const g = toGraph(w, boxes, { conds, diags, text, selected });
@@ -92,11 +91,7 @@ export function Canvas({ w, steps, diags, text, selected, view, onView, onEdit, 
       colorMode="dark" nodeTypes={nodeTypes} nodes={nodes} edges={edges}
       onNodesChange={(c: NodeChange<Node<BoxData>>[]) => setNodes((ns) => applyNodeChanges(c, ns))}
       onEdgesChange={(c: EdgeChange<Edge<WireData>>[]) => setEdges((es) => applyEdgeChanges(c, es))}
-      deleteKeyCode={['Backspace', 'Delete']}
-      isValidConnection={(c) => c.source !== c.target}
-      onConnect={({ source, sourceHandle, target }: Connection) => onEdit((m) => setLink(m, source, sourceHandle === 'on-fail' ? 'on-fail' : 'next', target))}
-      onEdgesDelete={(es) => onEdit((m) => removeLinks(m, es.flatMap((e) => (e.data?.index === undefined ? [] : [{ from: e.source, index: e.data.index }]))))}
-      onNodeDragStop={(_, node) => onView({ pos: { ...view.pos, [node.id]: node.position } })}
+      deleteKeyCode={null} nodesDraggable={false} nodesConnectable={false} edgesFocusable={false}
       onMoveEnd={(_, vp) => { if (skipMove.current) skipMove.current = false; else onView({ view: vp }); }}
       onNodeClick={(_, node) => onSelect(node.id)}
       onPaneClick={() => onSelect(undefined)}

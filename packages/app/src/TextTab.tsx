@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import type { Diagnostic, StepKind, Workflow } from '@reins/core';
 import { addStep, deleteStep, newId } from './blocks.js';
 import { ApiError, get, post, put } from './api.js';
-import { prunePos, restoreFile, restoreStep, type CanvasView, type EditorState, type Tab } from './editorState.js';
+import { restoreFile, restoreStep, type CanvasView, type EditorState, type Tab } from './editorState.js';
 import { highlight, lineOffset } from './highlight.js';
 import type { Sess } from './state.js';
 import { runRows, stepStatus } from './stepStatus.js';
@@ -139,7 +139,6 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   const setView = (patch: CanvasView) => {
     if (!restored || file === null) return;
     const next = { ...restore?.canvas?.[file], ...patch };
-    if (next.pos) next.pos = prunePos(next.pos, new Set((prev?.steps ?? []).map((s) => s.id)));
     onState({ canvas: { ...restore?.canvas, [file]: next } });
   };
 
@@ -241,9 +240,9 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
               <div className="canvaswrap" tabIndex={-1}
                 onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); } }}>
                 <StatusCtx.Provider value={{ status, show: showStatus }}>
-                  {view === 'canvas'
+                  {view === 'map'
                     ? <Canvas w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} selected={stepId}
-                      view={restore?.canvas?.[file] ?? {}} onView={setView} onEdit={edit} onSelect={setStepId} />
+                      view={restore?.canvas?.[file] ?? {}} onView={setView} onSelect={setStepId} />
                     : <BlocksPane w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} selected={stepId}
                       rev={prev} onEdit={edit} onSelect={setStepId} onAdd={add} />}
                 </StatusCtx.Provider>

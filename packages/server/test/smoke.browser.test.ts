@@ -173,89 +173,66 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     expect(await page.getByRole('tab', { name: 'Text' }).getAttribute('aria-selected')).toBe('true');
     await expect.poll(() => steps.nth(1).getByRole('button').getAttribute('aria-pressed'), { timeout: W }).toBe('true');
 
-    // 8c.0. Canvas is a third tab on the same file; unsaved text survives Text <-> Canvas
-    const canvasTab = page.getByRole('tab', { name: 'Canvas' });
+    // 8c.0. the tabs are Chat, Blocks, Map, Text; the Map shows the same file; unsaved text survives Text <-> Blocks
+    expect(await page.getByRole('tab').allInnerTexts()).toEqual(['Chat', 'Blocks', 'Map', 'Text']);
+    const mapTab = page.getByRole('tab', { name: 'Map' });
     const textTab = page.getByRole('tab', { name: 'Text' });
-    await canvasTab.click();
-    expect(await canvasTab.getAttribute('aria-selected')).toBe('true');
+    await mapTab.click();
+    expect(await mapTab.getAttribute('aria-selected')).toBe('true');
     await page.locator('.ebar b', { hasText: 'smoke.reins.md' }).waitFor();
     await textTab.click();
     const clean = await editor.inputValue();
     await editor.fill(`${clean}x`);
-    await canvasTab.click();
+    await mapTab.click();
     await textTab.click();
     expect(await editor.inputValue()).toMatch(/x$/);
     await editor.fill(clean);
 
-    // 8c.1. the canvas shows the boxes, with the finished run's state on them
-    await canvasTab.click();
+    // 8c.1. the Map shows the boxes, with the finished run's state on them
+    await mapTab.click();
     const planNode = page.locator('.react-flow__node[data-id="plan"]');
     await planNode.waitFor();
     await page.locator('.react-flow__node[data-id="build"]').waitFor();
     await expect.poll(() => page.locator('.react-flow__node .sstate[aria-label^="done"]').count(), { timeout: W }).toBe(2);
 
-    // 8c.2. draw a wire plan -> build
-    const drag = async (from: string, to: string) => {
-      const a = (await page.locator(from).boundingBox())!;
-      const b = (await page.locator(to).boundingBox())!;
-      await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
-      await page.mouse.down();
-      await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 10 });
-      await page.mouse.up();
-    };
-    // retried: the first drag can land before react-flow has laid the handles out (macOS CI)
-    const wire = page.locator('[data-testid="rf__edge-plan>0>build"]');
-    await expect.poll(async () => {
-      if (!(await wire.count())) await drag('[data-id="plan"] .react-flow__handle[data-handleid="next"]', '[data-id="build"] .react-flow__handle[data-handleid="in"]');
-      return wire.count();
-    }, { timeout: W }).toBe(1);
-
-    // 8c.3. the wire is `next:` in the Text tab, with no confirm (the file prints back as it is)
+    // 8c.2. the inspector adds a `next` link to a new step ship; Ctrl+S in the Map saves
     await textTab.click();
-    expect(await editor.inputValue()).toContain('## phase plan\nnext: build\n');
-
-    // 8c.4. edit the Text: the wire moves
-    const wired = await editor.inputValue();
-    await editor.fill(`${wired.replace('next: build', 'next: ship')}\n## phase ship\n> Ship it.\n`);
-    await diags.getByText('step `build` is never reached').first().waitFor();
-    await canvasTab.click();
-    await page.locator('[data-testid="rf__edge-plan>0>ship"]').waitFor({ state: 'attached' });
-    expect(await page.locator('[data-testid="rf__edge-plan>0>build"]').count()).toBe(0);
-
-    // 8c.5. Ctrl+S from inside the canvas saves
+    await editor.fill(`${clean}\n## phase ship\n> Ship it.\n`);
+    await mapTab.click();
+    await page.locator('.react-flow__node[data-id="ship"]').waitFor();
+    const panel = page.locator('aside[aria-label="Block panel"]');
+    for (const id of ['plan', 'build']) {
+      await page.locator(`[data-id="${id}"]`).click();
+      await panel.getByLabel('Link kind').selectOption('next');
+      await panel.getByLabel('Link target').selectOption('ship');
+      await panel.getByRole('button', { name: 'Add link' }).click();
+      // an edit made while another is in flight is dropped, so wait for the link before the next one
+      await panel.getByText('next → ship').waitFor();
+    }
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('## phase plan\nnext: ship\n');
+    expect(await editor.inputValue()).toContain('## phase build\nnext: ship\n');
+    const linked = await editor.inputValue();
+    await mapTab.click();
     await planNode.click();
     await page.keyboard.press('ControlOrMeta+S');
     await page.getByRole('status').getByText('Saved.').waitFor();
 
-    // 8c.6. a dragged box keeps its place after a reload (flow coordinates, not screen)
-    const transform = () => planNode.evaluate((e) => (e as unknown as { style: { transform: string } }).style.transform);
-    const t0 = await transform();
-    const pb = (await planNode.boundingBox())!;
-    await page.mouse.move(pb.x + pb.width / 2, pb.y + pb.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(pb.x + pb.width / 2 + 120, pb.y + pb.height / 2, { steps: 10 });
-    await page.mouse.up();
+    // 8c.3. the Map is read-only: no node can be dragged
+    await planNode.waitFor();
+    expect(await page.locator('.react-flow__node.draggable').count()).toBe(0);
+    // regression guard (passes before this change too: nodes are `deletable: false`): Delete after a click leaves the text alone
+    await page.locator('[data-id="build"]').click();
+    await page.keyboard.press('Delete');
+    await textTab.click();
+    expect(await editor.inputValue()).toBe(linked);
+
+    // 8c.4. a reload restores the Map tab
+    await mapTab.click();
     await page.waitForTimeout(700); // the editor state is saved 500 ms after a change
-    const t1 = await transform();
-    expect(t1).not.toBe(t0);
     await page.reload();
     await rail.waitFor();
-    await planNode.waitFor();
-    expect(await canvasTab.getAttribute('aria-selected')).toBe('true');
-    expect(await transform()).toBe(t1);
-
-    // 8c.7. the Block panel adds a `next` link to ship; Ctrl+S leaves the buffer clean
-    await page.locator('[data-id="build"]').click();
-    const panel = page.locator('aside[aria-label="Block panel"]');
-    await panel.getByLabel('Link kind').selectOption('next');
-    await panel.getByLabel('Link target').selectOption('ship');
-    await panel.getByRole('button', { name: 'Add link' }).click();
-    await textTab.click();
-    await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('## phase build\nnext: ship\n');
-    await editor.focus();
-    await page.keyboard.press('ControlOrMeta+S');
-    await page.getByRole('status').getByText('Saved.').waitFor();
-
+    await expect.poll(() => mapTab.getAttribute('aria-selected'), { timeout: W }).toBe('true');
     // 8d.0. Blocks is a fourth tab: the steps as a list, with the finished run's state on the rows
     const blocksTab = page.getByRole('tab', { name: 'Blocks' });
     const row = (id: string) => page.locator(`.blk[data-id="${id}"]`);

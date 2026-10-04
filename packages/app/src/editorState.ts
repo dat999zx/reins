@@ -1,8 +1,8 @@
 import { get, put } from './api.js';
 
-export type CanvasView = { pos?: Record<string, { x: number; y: number }>; view?: { x: number; y: number; zoom: number } };
-export type Tab = 'chat' | 'canvas' | 'blocks' | 'text';
-const TABS: readonly Tab[] = ['chat', 'canvas', 'blocks', 'text'];
+export type CanvasView = { view?: { x: number; y: number; zoom: number } };
+export type Tab = 'chat' | 'blocks' | 'map' | 'text';
+const TABS: readonly Tab[] = ['chat', 'blocks', 'map', 'text'];
 export interface EditorState {
   workflow?: string; tab?: Tab; stepId?: string;
   canvas?: Record<string /* absolute workflow path */, CanvasView>;
@@ -11,29 +11,21 @@ export interface EditorState {
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
-// ponytail: canvas entries of deleted workflows are never pruned; the server caps the state at 64 KB (~1,500 positions per folder), past that saves fail silently. Prune paths missing from the workflow list on load if it bites
+// ponytail: canvas entries of deleted workflows are never pruned; each entry is only a viewport, so the 64 KB server cap is far away. Prune paths missing from the workflow list on load if it bites
 function cleanCanvas(raw: unknown): CanvasView {
   const out: CanvasView = {};
   if (!isObj(raw)) return out;
-  if (isObj(raw.pos)) {
-    const pos: Record<string, { x: number; y: number }> = {};
-    for (const [id, p] of Object.entries(raw.pos)) if (isObj(p) && num(p.x) && num(p.y)) pos[id] = { x: p.x, y: p.y };
-    out.pos = pos;
-  }
   const v = raw.view;
   if (isObj(v) && num(v.x) && num(v.y) && num(v.zoom) && v.zoom > 0) out.view = { x: v.x, y: v.y, zoom: v.zoom };
   return out;
-}
-
-export function prunePos(pos: Record<string, { x: number; y: number }>, ids: Set<string>): Record<string, { x: number; y: number }> {
-  return Object.fromEntries(Object.entries(pos).filter(([id]) => ids.has(id)));
 }
 
 export function cleanEditorState(raw: unknown): EditorState {
   if (!isObj(raw)) return {};
   const out: EditorState = {};
   if (typeof raw.workflow === 'string') out.workflow = raw.workflow;
-  if (TABS.includes(raw.tab as Tab)) out.tab = raw.tab as Tab;
+  const tab = raw.tab === 'canvas' ? 'blocks' : raw.tab;
+  if (TABS.includes(tab as Tab)) out.tab = tab as Tab;
   if (typeof raw.stepId === 'string') out.stepId = raw.stepId;
   if (isObj(raw.canvas)) {
     out.canvas = {};
