@@ -179,12 +179,12 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     return ok({ workflows: [...list(path.join(cwd, '.reins', 'workflows'), 'project'), ...list(path.join(o.dir, 'workflows'), 'user')] });
   }
 
-  let picking = false;
+  let picking: AbortController | undefined;
   async function pick(res: http.ServerResponse): Promise<Reply> {
     if (!o.pickFolder) return fail(501, 'This machine has no folder picker.');
-    if (picking) return fail(409, 'A folder dialog is already open.');
-    picking = true;
-    const ac = new AbortController();
+    // A new click replaces a dialog that is stuck or lost behind a window, instead of locking the picker out.
+    picking?.abort();
+    const ac = (picking = new AbortController());
     res.on('close', () => { if (!res.writableEnded) ac.abort(); });
     try {
       const p = await o.pickFolder(ac.signal);
@@ -192,7 +192,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     } catch (e) {
       return fail(501, e instanceof Error ? e.message : 'No folder picker is available.');
     } finally {
-      picking = false;
+      if (picking === ac) picking = undefined;
     }
   }
 
