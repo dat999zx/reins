@@ -1,0 +1,45 @@
+name: Publish
+
+# Push a tag v<version> (matching packages/server/package.json) to publish `reins` to npm.
+# A prerelease version (0.2.0-beta.1) goes to the `next` dist-tag; anything else to `latest`.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # the GitHub release at the end
+  id-token: write # npm trusted publishing (OIDC), no stored token
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      # Pinned by SHA: every step here runs beside the publish credential.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@latest # trusted publishing needs npm 11.5+
+      - run: npm ci
+      - name: Check the tag, pick the dist-tag
+        id: v
+        run: |
+          version="$(node -p "require('./packages/server/package.json').version")"
+          if [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match packages/server/package.json $version" >&2; exit 1
+          fi
+          if npm view "reins@$version" version > /dev/null 2>&1; then
+            echo "reins@$version is already on npm. Bump the version first." >&2; exit 1
+          fi
+          case "$version" in *-*) tag=next ;; *) tag=latest ;; esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"; echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: npm test
+      - run: npm publish -w reins --access public --tag ${{ steps.v.outputs.tag }}
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes ${{ steps.v.outputs.tag == 'next' && '--prerelease' || '--latest' }}

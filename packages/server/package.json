@@ -1,17 +1,26 @@
 {
-  "name": "@reins/server",
+  "name": "reins",
   "version": "0.1.0",
+  "description": "Scratch for agent loops: workflows with gates, loops and live cards for Claude Code.",
+  "license": "MIT",
+  "repository": "github:dat999zx/reins",
+  "files": ["dist", "app", "CHANGELOG.md"],
+  "bundleDependencies": ["@reins/core"],
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12"
   },
   "bin": {
     "reins": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json"
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "node pack.mjs pre",
+    "postpack": "node pack.mjs post"
   },
   "dependencies": {
-    "@reins/core": "0.1.0"
+    "@reins/core": "0.1.0",
+    "picomatch": "^4.0.2",
+    "yaml": "^2.7.0"
   }
 }

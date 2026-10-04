@@ -10,3 +10,6 @@ KNOWL.md
 node_modules/
 dist/
 docs/
+packages/server/app/
+packages/server/README.md
+packages/server/CHANGELOG.md

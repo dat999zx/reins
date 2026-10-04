@@ -93,8 +93,9 @@ export async function main(argv: string[], io: Io): Promise<number> {
     }
     const bin = findClaude(io.env)?.path ?? '';
     const home = io.env.REINS_HOME ?? os.homedir();
-    const app = fileURLToPath(new URL('../../app/dist/', import.meta.url));
-    const appDir = fs.existsSync(path.join(app, 'index.html')) ? app : undefined;
+    // the published package carries the UI in app/; the repo builds it into packages/app/dist
+    const appDir = ['../app/', '../../app/dist/'].map((u) => fileURLToPath(new URL(u, import.meta.url)))
+      .find((d) => fs.existsSync(path.join(d, 'index.html')));
     if (!appDir) err('The UI is not built (run npm run build); serving the API only.');
     const bare = cmd === undefined;
     const open = io.open ?? ((url: string) => {
