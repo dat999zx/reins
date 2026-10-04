@@ -11,6 +11,7 @@ beforeAll(() => {
   // A space in the folder name, as Windows user folders often have.
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reins cmd-'));
   fs.writeFileSync(path.join(dir, 'lines.mjs'), 'for (let i = 1; i <= 500; i++) console.log("line " + i); console.error("boom"); process.exitCode = 3;');
+  fs.writeFileSync(path.join(dir, 'err.mjs'), 'console.log("out"); console.error("boom"); process.exitCode = 3;');
   fs.writeFileSync(path.join(dir, 'hang.mjs'), 'setInterval(() => {}, 1000);');
   fs.writeFileSync(path.join(dir, 'cwd.mjs'), 'console.log(process.cwd());');
 });
@@ -22,14 +23,21 @@ describe('runCommand', () => {
     expect(fs.realpathSync(r.stdout.trim())).toBe(fs.realpathSync(dir));
   });
 
-  it('keeps the exit code and only the last 200 lines, stderr included', async () => {
+  it('keeps the exit code and only the last 200 lines', async () => {
     const r = await runCommand(`${node} lines.mjs`, { cwd: dir });
     expect(r.exitCode).toBe(3);
     const lines = r.stdout.trimEnd().split(/\r?\n/);
     expect(lines).toHaveLength(200);
-    expect(lines, JSON.stringify([lines.slice(0, 3), lines.slice(-3), r.stdout.length])).toContain('boom');
     expect(lines).toContain('line 500');
     expect(lines).not.toContain('line 250');
+  });
+
+  // Its own fixture: on Linux Node writes stdout to a pipe asynchronously, so a stderr line written
+  // after 500 stdout lines can overtake them and fall outside the last 200 (CI saw lines 301-500, no boom).
+  it('keeps stderr with stdout', async () => {
+    const r = await runCommand(`${node} err.mjs`, { cwd: dir });
+    expect(r.exitCode).toBe(3);
+    expect(r.stdout.trimEnd().split(/\r?\n/).sort()).toEqual(['boom', 'out']);
   });
 
   it('streams output as it comes', async () => {
