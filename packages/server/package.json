@@ -1,5 +1,5 @@
 {
-  "name": "@dat999zx/reins",
+  "name": "reins-ai",
   "version": "0.1.0",
   "description": "Scratch for agent loops: workflows with gates, loops and live cards for Claude Code.",
   "license": "MIT",

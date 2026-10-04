@@ -1,6 +1,6 @@
 name: Publish
 
-# Push a tag v<version> (matching packages/server/package.json) to publish `@dat999zx/reins` to npm.
+# Push a tag v<version> (matching packages/server/package.json) to publish `reins-ai` to npm.
 # A prerelease version (0.2.0-beta.1) goes to the `next` dist-tag; anything else to `latest`.
 on:
   push:
@@ -30,8 +30,8 @@ jobs:
           if [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
             echo "Tag $GITHUB_REF_NAME does not match packages/server/package.json $version" >&2; exit 1
           fi
-          if npm view "@dat999zx/reins@$version" version > /dev/null 2>&1; then
-            echo "@dat999zx/reins@$version is already on npm. Bump the version first." >&2; exit 1
+          if npm view "reins-ai@$version" version > /dev/null 2>&1; then
+            echo "reins-ai@$version is already on npm. Bump the version first." >&2; exit 1
           fi
           case "$version" in *-*) tag=next ;; *) tag=latest ;; esac
           echo "version=$version" >> "$GITHUB_OUTPUT"; echo "tag=$tag" >> "$GITHUB_OUTPUT"

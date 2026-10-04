@@ -5,7 +5,7 @@
 Prompt files (`CLAUDE.md`, rules, skills) have no control flow. You type "repeat until the tests pass" or "don't start coding until I approve the plan" and hope. In Reins those are a `repeat`, a `gate`, a `guard`, and they are enforced.
 
 ```
-npm i -g @dat999zx/reins
+npm i -g reins-ai
 reins                  # starts the app and opens your browser
 ```
 
