@@ -93,7 +93,7 @@ export function App() {
   useEffect(() => {
     if (!cwd) return;
     saver.current?.s.flush();
-    const s = makeSaver(cwd);
+    const s = makeSaver(cwd, undefined, undefined, (e) => flash(`Could not save the workspace layout: ${e.message}`));
     saver.current = { cwd, s };
     const known = editorRef.current[cwd];
     if (known) return s.ready(known);

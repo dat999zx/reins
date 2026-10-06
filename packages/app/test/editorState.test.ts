@@ -22,17 +22,24 @@ describe('cleanEditorState', () => {
 
 describe('cleanEditorState canvas', () => {
   const P = '/w/a.reins.md';
-  it('maps tab canvas to blocks and keeps a good canvas entry', () => {
-    const canvas = { [P]: { view: { x: 0, y: -5, zoom: 1.5 } } };
-    expect(cleanEditorState({ tab: 'canvas', canvas })).toEqual({ tab: 'blocks', canvas });
+  it('maps tab canvas to blocks and keeps a good cam and script', () => {
+    const entry = { cam: { x: 0, y: -5, zoom: 1.5 }, script: { x: 40, y: 60 } };
+    expect(cleanEditorState({ tab: 'canvas', canvas: { [P]: entry } })).toEqual({ tab: 'blocks', canvas: { [P]: entry } });
   });
-  it('drops a stored pos but keeps the view', () => {
-    const view = { x: 0, y: 0, zoom: 1 };
-    expect(cleanEditorState({ canvas: { [P]: { pos: { a: { x: 1, y: 2 } }, view } } })).toEqual({ canvas: { [P]: { view } } });
+  it('drops the old Map view and a stored pos', () => {
+    const cam = { x: 0, y: 0, zoom: 1 };
+    expect(cleanEditorState({ canvas: { [P]: { pos: { a: { x: 1, y: 2 } }, view: { x: 1, y: 1, zoom: 1 }, cam } } })).toEqual({ canvas: { [P]: { cam } } });
   });
-  it('drops a view with zoom <= 0 or missing numbers', () => {
-    for (const view of [{ x: 0, y: 0, zoom: 0 }, { x: 0, y: 0, zoom: -1 }, { x: 0, y: 0 }, { x: 'a', y: 0, zoom: 1 }, 5]) {
-      expect(cleanEditorState({ canvas: { [P]: { view, pos: { a: { x: 1, y: 1 } } } } })).toEqual({ canvas: { [P]: {} } });
+  it('clamps cam zoom to 25 %..200 %; drops a cam with zoom <= 0 or missing numbers', () => {
+    expect(cleanEditorState({ canvas: { [P]: { cam: { x: 1, y: 2, zoom: 9 } } } })).toEqual({ canvas: { [P]: { cam: { x: 1, y: 2, zoom: 2 } } } });
+    expect(cleanEditorState({ canvas: { [P]: { cam: { x: 1, y: 2, zoom: 0.01 } } } })).toEqual({ canvas: { [P]: { cam: { x: 1, y: 2, zoom: 0.25 } } } });
+    for (const cam of [{ x: 0, y: 0, zoom: 0 }, { x: 0, y: 0, zoom: -1 }, { x: 0, y: 0 }, { x: 'a', y: 0, zoom: 1 }, 5]) {
+      expect(cleanEditorState({ canvas: { [P]: { cam } } })).toEqual({ canvas: { [P]: {} } });
+    }
+  });
+  it('drops a bad script', () => {
+    for (const script of [{ x: 1 }, { x: 'a', y: 2 }, 5, null, { x: NaN, y: 1 }]) {
+      expect(cleanEditorState({ canvas: { [P]: { script } } })).toEqual({ canvas: { [P]: {} } });
     }
   });
   it('drops a canvas that is an array or a string', () => {
@@ -40,8 +47,8 @@ describe('cleanEditorState canvas', () => {
     expect(cleanEditorState({ canvas: 'x' })).toEqual({});
   });
   it('drops a per-path entry that is not an object', () => {
-    expect(cleanEditorState({ canvas: { [P]: 'x', '/w/b': [], '/w/c': null, '/w/d': { view: { x: 1, y: 2, zoom: 1 } } } }))
-      .toEqual({ canvas: { '/w/d': { view: { x: 1, y: 2, zoom: 1 } } } });
+    expect(cleanEditorState({ canvas: { [P]: 'x', '/w/b': [], '/w/c': null, '/w/d': { cam: { x: 1, y: 2, zoom: 1 } } } }))
+      .toEqual({ canvas: { '/w/d': { cam: { x: 1, y: 2, zoom: 1 } } } });
   });
 });
 
@@ -118,5 +125,18 @@ describe('makeSaver', () => {
     vi.advanceTimersByTime(500);
     await vi.advanceTimersByTimeAsync(0);
     expect(put).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onError once when the PUT rejects', async () => {
+    const put = vi.fn(async () => { throw new Error('413'); });
+    const onError = vi.fn();
+    const saver = makeSaver('/proj', put, 500, onError);
+    saver.ready({});
+    saver.set({ tab: 'text' });
+    vi.advanceTimersByTime(500);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0]![0]).toBeInstanceOf(Error);
+    expect(onError.mock.calls[0]![0].message).toBe('413');
   });
 });

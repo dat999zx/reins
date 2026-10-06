@@ -1,0 +1,37 @@
+export type Pt = { x: number; y: number };
+export type Rect = { x: number; y: number; w: number; h: number };
+export type Cam = { x: number; y: number; zoom: number }; // screen = world * zoom + (x, y), in viewport pixels
+export const ZOOM = { min: 0.25, max: 2, step: 1.25, wheel: 1.1 };
+
+export const toScreen = (c: Cam, p: Pt): Pt => ({ x: p.x * c.zoom + c.x, y: p.y * c.zoom + c.y });
+export const toWorld = (c: Cam, p: Pt): Pt => ({ x: (p.x - c.x) / c.zoom, y: (p.y - c.y) / c.zoom });
+export const clampZoom = (z: number) => Math.min(ZOOM.max, Math.max(ZOOM.min, z));
+
+export function zoomAt(c: Cam, at: Pt, factor: number): Cam {
+  const zoom = clampZoom(c.zoom * factor);
+  const w = toWorld(c, at);
+  return { x: at.x - w.x * zoom, y: at.y - w.y * zoom, zoom };
+}
+
+export function boundsOf(rects: Rect[]): Rect | undefined {
+  if (!rects.length) return undefined;
+  const x = Math.min(...rects.map((r) => r.x)), y = Math.min(...rects.map((r) => r.y));
+  return { x, y, w: Math.max(...rects.map((r) => r.x + r.w)) - x, h: Math.max(...rects.map((r) => r.y + r.h)) - y };
+}
+
+export function fitBounds(b: Rect, view: { w: number; h: number }, pad = 40): Cam {
+  const zoom = clampZoom(Math.min(1, (view.w - 2 * pad) / Math.max(b.w, 1), (view.h - 2 * pad) / Math.max(b.h, 1)));
+  return { zoom, x: view.w / 2 - (b.x + b.w / 2) * zoom, y: view.h / 2 - (b.y + b.h / 2) * zoom };
+}
+
+// How far to pan the camera per frame: toward the surface's inside, so it reveals what is past the edge the pointer is at.
+export function edgePan(p: Pt, view: { w: number; h: number }, margin = 40, max = 12): Pt {
+  const axis = (v: number, size: number) => {
+    if (v < margin) return Math.min(max, ((margin - v) / margin) * max);
+    if (v > size - margin) return -Math.min(max, ((v - (size - margin)) / margin) * max);
+    return 0;
+  };
+  return { x: axis(p.x, view.w), y: axis(p.y, view.h) };
+}
+
+export const inside = (i: Rect, o: Rect) => i.x >= o.x && i.y >= o.y && i.x + i.w <= o.x + o.w && i.y + i.h <= o.y + o.h;

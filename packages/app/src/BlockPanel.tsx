@@ -1,6 +1,7 @@
 import { useEffect, useState, type JSX, type KeyboardEvent } from 'react';
 import type { CardKind, Step, Workflow } from '@reins/core';
 import { CARD_KINDS, KINDS, type Field } from './canvasKinds.js';
+import { setAlways } from './blocks.js';
 import { editStep, removeLinks, setLink } from './canvas.js';
 import { applyField, applyLinkMax, fieldValue } from './panelEdit.js';
 
@@ -146,6 +147,27 @@ export function BlockPanel({ step, all, cond, turn, rev, onEdit, onEditInText, o
         <pre className="turn">{turn ?? 'This step sends no turn.'}</pre>
       </section>
     </aside>
+  );
+}
+
+export function WorkflowPanel({ w, rev, onEdit }: { w: Workflow; rev: unknown; onEdit: (fn: (w: Workflow) => Workflow) => void }) {
+  return (
+    <aside className="bpanel" aria-label="Workflow panel">
+      <h3>{w.name}</h3>
+      {w.task && <div className="bfield">Task<span className="sx-faint">{w.task}</span></div>}
+      <Always w={w} rev={rev} onEdit={onEdit} />
+    </aside>
+  );
+}
+
+function Always({ w, rev, onEdit }: { w: Workflow; rev: unknown; onEdit: (fn: (w: Workflow) => Workflow) => void }) {
+  const value = w.always.join('\n');
+  const [v, setV] = useDraft(value, rev);
+  return (
+    <label className="always">Always
+      <textarea rows={Math.max(2, w.always.length + 1)} value={v} onChange={(e) => setV(e.target.value)}
+        onBlur={() => { if (v !== value) onEdit((m) => setAlways(m, v)); }} />
+    </label>
   );
 }
 

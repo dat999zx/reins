@@ -1,11 +1,10 @@
-import { useContext, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
-import type { Cond, Diagnostic, Step, StepKind, Workflow } from '@reins/core';
+import { useContext, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';import type { Cond, Diagnostic, Step, StepKind, Workflow } from '@reins/core';
 import { KINDS, type Token } from './canvasKinds.js';
 import { applyParam, COND_KINDS, type CondParam } from './condKinds.js';
 import { editStep, marksOf } from './canvas.js';
-import { addStepAt, dropPlace, moveStep, nestPlace, newId, placeOf, setAlways, setCond, type CondPath, type Hit, type Place } from './blocks.js';
+import { addStepAt, dropPlace, moveStep, nestPlace, newId, placeOf, setCond, type CondPath, type Hit, type Place } from './blocks.js';
 import { applyField, fieldValue } from './panelEdit.js';
-import { useDraft } from './BlockPanel.js';
+import type { Pt } from './surface.js';
 import { Pill, StepPick } from './Pill.js';
 import { cx } from './generic.js';
 import { StatusCtx, StepChips } from './StepChips.js';
@@ -21,9 +20,9 @@ type Zone = { el: string; cls: string; hit?: Hit; hex?: { id: string; path: Cond
 type Over = { el: string; cls: string; place?: Place; hex?: Zone['hex'] };
 
 // ponytail: native HTML5 drag; no touch, no auto-scroll near the edge. Upgrade: pointer-event drag, `dropPlace` unchanged.
-export function BlocksPane({ w, steps, diags, text, selected, rev, dragging, onEdit, onSelect, onDelete }: {
+export function BlocksPane({ w, steps, diags, text, selected, rev, dragging, at, onEdit, onSelect, onDelete }: {
   w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; selected?: string; rev: unknown;
-  dragging?: 'step' | 'cond';
+  dragging?: 'step' | 'cond'; at: Pt;
   onEdit: (fn: (w: Workflow) => Workflow) => boolean; onSelect: (id: string | undefined) => void; onDelete: (id: string) => void;
 }) {
   const conds = Object.fromEntries(steps.flatMap((s) => (s.cond === undefined ? [] : [[s.id, s.cond]])));
@@ -230,28 +229,12 @@ export function BlocksPane({ w, steps, diags, text, selected, rev, dragging, onE
     </div>
   );
 
-  const clear = (e: MouseEvent) => { if (!(e.target as HTMLElement).closest('.blk, .sx-hat, .always')) onSelect(undefined); };
-
   return (
-    <div className={cx('blocks', dragging === 'cond' && 'sx-drag-cond')} ref={root} onClick={clear}
-      onDragOver={() => { if (drag.current.zone) leaveZone(); }}
+    <div className={cx('sx-script', dragging === 'cond' && 'sx-drag-cond')} ref={root} style={{ left: at.x, top: at.y }}
+      {...target(() => ({ el: 'end', cls: 'sx-end', hit: { top: 'end' } }))}
       onDragLeave={(e) => { if (!root.current?.contains(e.relatedTarget as Node | null)) leaveZone(); }}>
-      <div className="sx-script" {...target(() => ({ el: 'end', cls: 'sx-end', hit: { top: 'end' } }))}>
-        <div className={cx('sx-blk', 'sx-hat', ov('hat'))} {...target(() => ({ el: 'hat', cls: 'sx-after', hit: { top: 'start' } }))}><b>{w.name}</b>{w.task && <span className="sx-pill">{w.task}</span>}</div>
-        {stack(w.steps, undefined, 'kids')}
-      </div>
-      <Always w={w} rev={rev} onEdit={onEdit} />
+      <div className={cx('sx-blk', 'sx-hat', ov('hat'))} {...target(() => ({ el: 'hat', cls: 'sx-after', hit: { top: 'start' } }))}><b>{w.name}</b>{w.task && <span className="sx-pill">{w.task}</span>}</div>
+      {stack(w.steps, undefined, 'kids')}
     </div>
-  );
-}
-
-function Always({ w, rev, onEdit }: { w: Workflow; rev: unknown; onEdit: (fn: (w: Workflow) => Workflow) => boolean }) {
-  const value = w.always.join('\n');
-  const [v, setV] = useDraft(value, rev);
-  return (
-    <label className="always">Always
-      <textarea rows={Math.max(2, w.always.length + 1)} value={v} onChange={(e) => setV(e.target.value)}
-        onBlur={() => { if (v !== value) onEdit((m) => setAlways(m, v)); }} />
-    </label>
   );
 }

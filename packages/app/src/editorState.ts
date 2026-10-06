@@ -1,6 +1,9 @@
 import { get, put } from './api.js';
+import { clampZoom, type Cam, type Pt } from './surface.js';
 
-export type CanvasView = { view?: { x: number; y: number; zoom: number } };
+export type { Pt };
+export type Layout = { script?: Pt };
+export type CanvasView = Layout & { cam?: Cam };
 export type Tab = 'chat' | 'blocks' | 'text';
 const TABS: readonly Tab[] = ['chat', 'blocks', 'text'];
 export interface EditorState {
@@ -11,12 +14,13 @@ export interface EditorState {
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
-// ponytail: canvas entries of deleted workflows are never pruned; each entry is only a viewport, so the 64 KB server cap is far away. Prune paths missing from the workflow list on load if it bites
+// ponytail: canvas entries of deleted workflows are never pruned; each entry is a camera and a point, so the 64 KB server cap is far away. Prune paths missing from the workflow list on load if it bites
 function cleanCanvas(raw: unknown): CanvasView {
   const out: CanvasView = {};
   if (!isObj(raw)) return out;
-  const v = raw.view;
-  if (isObj(v) && num(v.x) && num(v.y) && num(v.zoom) && v.zoom > 0) out.view = { x: v.x, y: v.y, zoom: v.zoom };
+  const { cam, script } = raw;
+  if (isObj(cam) && num(cam.x) && num(cam.y) && num(cam.zoom) && cam.zoom > 0) out.cam = { x: cam.x, y: cam.y, zoom: clampZoom(cam.zoom) };
+  if (isObj(script) && num(script.x) && num(script.y)) out.script = { x: script.x, y: script.y };
   return out;
 }
 
@@ -47,14 +51,14 @@ export const restoreStep = (stepId: string | undefined, steps: Array<{ id: strin
 type Put = (cwd: string, state: EditorState) => Promise<unknown>;
 const realPut: Put = (cwd, state) => put('/api/editor-state', { cwd, state });
 
-export function makeSaver(cwd: string, send: Put = realPut, delayMs = 500) {
+export function makeSaver(cwd: string, send: Put = realPut, delayMs = 500, onError?: (e: Error) => void) {
   let on = false;
   let state: EditorState = {};
   let timer: ReturnType<typeof setTimeout> | undefined;
   const fire = () => {
     timer = undefined;
-    // ponytail: a failed save is dropped; the next change PUTs the full state again
-    send(cwd, state).catch(() => {});
+    // ponytail: a failed save is reported, not retried; the next change PUTs the full state again
+    send(cwd, state).catch((e: Error) => onError?.(e));
   };
   return {
     ready(initial: EditorState) { on = true; state = { ...initial }; },

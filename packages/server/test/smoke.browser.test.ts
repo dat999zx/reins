@@ -178,6 +178,21 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     const blocksTab = page.getByRole('tab', { name: 'Blocks' });
     const textTab = page.getByRole('tab', { name: 'Text' });
     const row = (id: string) => page.locator(`.blk[data-id="${id}"]`);
+    // the first point on a 24 px grid where the pointer is over the bare surface: not a block, an arrow, the toolbar or a menu
+    const empty = async () => {
+      const p = await page.evaluate(`(() => {
+        const v = document.querySelector('[aria-label="Workspace"]');
+        const r = v.getBoundingClientRect();
+        for (let y = r.top + 24; y < r.bottom - 24; y += 24) for (let x = r.left + 24; x < r.right - 24; x += 24) {
+          const e = document.elementFromPoint(x, y);
+          if (e === v || (e && e.classList.contains('sx-world'))) return { x, y };
+        }
+        return null;
+      })()`) as { x: number; y: number } | null;
+      expect(p, 'no empty surface in the workspace').not.toBeNull();
+      return p!;
+    };
+    const zoomLabel = page.locator('.sx-zoom output');
     await blocksTab.click();
     expect(await blocksTab.getAttribute('aria-selected')).toBe('true');
     await page.locator('.ebar b', { hasText: 'smoke.reins.md' }).waitFor();
@@ -211,11 +226,18 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await page.keyboard.press('ControlOrMeta+S');
     await page.getByRole('status').getByText('Saved.').waitFor();
 
-    // 8c.4. a reload restores the Blocks tab
+    // 8c.4. the zoom toolbar: Reset zoom is 100 %, Zoom in is 125 %; a reload restores the Blocks tab and the zoom
+    await page.getByRole('button', { name: 'Reset zoom' }).click();
+    await expect.poll(() => zoomLabel.innerText(), { timeout: W }).toBe('100%');
+    await page.getByRole('button', { name: 'Zoom in' }).click();
+    await expect.poll(() => zoomLabel.innerText(), { timeout: W }).toBe('125%');
     await page.waitForTimeout(700); // the editor state is saved 500 ms after a change
     await page.reload();
     await rail.waitFor();
     await expect.poll(() => blocksTab.getAttribute('aria-selected'), { timeout: W }).toBe('true');
+    await expect.poll(() => zoomLabel.innerText(), { timeout: W }).toBe('125%');
+    await page.getByRole('button', { name: 'Reset zoom' }).click();
+    await expect.poll(() => zoomLabel.innerText(), { timeout: W }).toBe('100%');
     // 8d.0. Blocks: the steps as a list, with the finished run's state on the rows
     await blocksTab.click();
     expect(await blocksTab.getAttribute('aria-selected')).toBe('true');
@@ -226,13 +248,10 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await expect.poll(() => page.locator('.sx-hat').innerText(), { timeout: W }).toContain('smoke');
     await row('plan').locator('.sx-row').first().click();
     await panel.locator('h3', { hasText: 'plan' }).waitFor();
-    // with the inspector open the pane is narrow: the hat and the Always box must not overlap
-    const hatBox = await page.locator('.sx-hat').boundingBox();
-    const alwaysBox = await page.locator('.blocks .always').boundingBox();
-    expect(hatBox && alwaysBox).toBeTruthy();
-    const apart = hatBox!.x + hatBox!.width <= alwaysBox!.x || alwaysBox!.x + alwaysBox!.width <= hatBox!.x
-      || hatBox!.y + hatBox!.height <= alwaysBox!.y || alwaysBox!.y + alwaysBox!.height <= hatBox!.y;
-    expect(apart, `hat ${JSON.stringify(hatBox)} overlaps Always ${JSON.stringify(alwaysBox)}`).toBe(true);
+    // a click on the bare surface clears the selection: the side column shows the Workflow panel with the Always box
+    const bare = await empty();
+    await page.mouse.click(bare.x, bare.y);
+    await page.getByRole('complementary', { name: 'Workflow panel' }).getByRole('textbox', { name: 'Always' }).waitFor();
 
     // the text the next steps compare against byte for byte
     await textTab.click();
@@ -303,6 +322,8 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     // retried inside the poll: a preview reply landing between fill and blur resets the draft; setAlways gives the same result every time
     await expect.poll(async () => {
       await blocksTab.click();
+      const spot = await empty(); // the Always box lives in the Workflow panel, shown when no block is selected
+      await page.mouse.click(spot.x, spot.y);
       await always.fill('Never: touch prod');
       await always.blur();
       await textTab.click();
@@ -418,6 +439,28 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     expect(await page.getByText('This file does not parse').count()).toBe(0);
     await textTab.click();
     await editor.fill(beforeEnd);
+
+    // 8e.0c. a plain drag on bare surface pans; the wheel zooms toward the cursor
+    await blocksTab.click();
+    const hatBox = async () => (await page.locator('.sx-hat').boundingBox())!;
+    const hat0 = await hatBox();
+    const from = await empty();
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 80, from.y + 40, { steps: 8 });
+    await page.mouse.up();
+    const hat1 = await hatBox();
+    expect(Math.abs(hat1.x - hat0.x - 80)).toBeLessThanOrEqual(2);
+    expect(Math.abs(hat1.y - hat0.y - 40)).toBeLessThanOrEqual(2);
+    const mid = { x: hat1.x + hat1.width / 2, y: hat1.y + hat1.height / 2 };
+    await page.mouse.move(mid.x, mid.y);
+    await page.mouse.wheel(0, -240);
+    await expect.poll(async () => parseInt(await zoomLabel.innerText(), 10), { timeout: W }).toBeGreaterThan(100);
+    const hat2 = await hatBox();
+    expect(Math.abs(hat2.x + hat2.width / 2 - mid.x)).toBeLessThanOrEqual(3);
+    expect(Math.abs(hat2.y + hat2.height / 2 - mid.y)).toBeLessThanOrEqual(3);
+    await page.getByRole('button', { name: 'Reset zoom' }).click();
+    await expect.poll(() => zoomLabel.innerText(), { timeout: W }).toBe('100%');
 
     // 8d.z. save, so the buffer is clean before Chat (Playwright dismisses the leave confirm)
     await textTab.click();

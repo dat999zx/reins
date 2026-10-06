@@ -3,14 +3,14 @@ import type { Diagnostic, StepKind, Workflow } from '@reins/core';
 import { addStep, deleteStep, newId, setCond } from './blocks.js';
 import { COND_KINDS } from './condKinds.js';
 import { ApiError, get, post, put } from './api.js';
-import { restoreFile, restoreStep, type EditorState, type Tab } from './editorState.js';
+import { restoreFile, restoreStep, type CanvasView, type EditorState, type Layout, type Tab } from './editorState.js';
 import { highlight, lineOffset } from './highlight.js';
 import type { Sess } from './state.js';
 import { runRows, stepStatus } from './stepStatus.js';
-import { BlockPanel } from './BlockPanel.js';
+import { BlockPanel, WorkflowPanel } from './BlockPanel.js';
 import { flatSteps } from './canvas.js';
 import { KINDS } from './canvasKinds.js';
-import { BlocksPane } from './BlocksPane.js';
+import { Workspace } from './Workspace.js';
 import { Palette } from './Palette.js';
 import { StatusCtx, StepChips } from './StepChips.js';
 
@@ -49,6 +49,13 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   const wantStep = useRef<string | undefined>(undefined);
   // Hold back onState until the restore finished, so a half-restored view never overwrites the stored state.
   const [restored, setRestored] = useState(!restore?.workflow);
+  // The stored per-workflow view. A ref, so two writes in one tick (a camera and a layout) never overwrite each other.
+  const canvas = useRef(restore?.canvas);
+  const [lay, setLay] = useState<Layout>({});
+  const setView = (path: string, patch: Partial<CanvasView>) => {
+    canvas.current = { ...canvas.current, [path]: { ...canvas.current?.[path], ...patch } };
+    onState({ canvas: canvas.current });
+  };
 
   const refresh = () => get<{ workflows: Listed[] }>(`/api/workflows?cwd=${encodeURIComponent(sess.cwd)}`).then((r) => { setList(r.workflows); return r.workflows; }).catch((e) => { setMsg(e.message); return undefined; });
   useEffect(() => {
@@ -70,6 +77,10 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
     if (restored && file !== null) onState({ workflow: file, stepId });
   }, [file, stepId, restored]);
   useEffect(() => { onDirty(dirty); return () => onDirty(false); }, [dirty]);
+  // The layout is written only while the buffer is clean: a discarded buffer must not leave layout changes behind.
+  useEffect(() => {
+    if (restored && file !== null && !dirty) setView(file, { script: undefined, ...lay });
+  }, [lay, dirty]);
 
   const leave = () => !dirty || window.confirm('Discard unsaved changes?');
   const open = async (path: string, force = false) => {
@@ -77,7 +88,8 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
     try {
       const r = await get<{ path: string; text: string }>(`${base}/workflow?path=${encodeURIComponent(path)}`);
       const t = r.text.replace(/\r\n/g, '\n');
-      setFile(r.path); setText(t); setSaved(t); setStepId(undefined); setMsg(''); setPrev(null);
+      const { cam: _cam, ...stored } = canvas.current?.[r.path] ?? {};
+      setFile(r.path); setText(t); setSaved(t); setStepId(undefined); setMsg(''); setPrev(null); setLay(stored);
       return true;
     } catch (e) {
       setMsg((e as Error).message);
@@ -244,11 +256,13 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
               <div className="canvaswrap" tabIndex={-1}
                 onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); } }}>
                 <StatusCtx.Provider value={{ status, show: showStatus }}>
-                  <BlocksPane w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} selected={stepId}
-                    rev={prev} dragging={dragging} onEdit={edit} onSelect={setStepId} onDelete={del} />
+                  <Workspace key={file} w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} selected={stepId}
+                    rev={prev} dragging={dragging} cam={canvas.current?.[file]?.cam} lay={lay}
+                    onEdit={edit} onSelect={setStepId} onDelete={del} onCam={(cam) => { if (restored) setView(file, { cam }); }} />
                 </StatusCtx.Provider>
-                {sel && <BlockPanel key={sel.id} step={sel} all={flatSteps(prev.workflow.steps)} cond={prev.steps.find((s) => s.id === sel.id)?.cond}
-                  turn={prev.turn} rev={prev} onEdit={edit} onDelete={() => del(sel.id)} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />}
+                {sel ? <BlockPanel key={sel.id} step={sel} all={flatSteps(prev.workflow.steps)} cond={prev.steps.find((s) => s.id === sel.id)?.cond}
+                  turn={prev.turn} rev={prev} onEdit={edit} onDelete={() => del(sel.id)} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />
+                  : <WorkflowPanel w={prev.workflow} rev={prev} onEdit={edit} />}
               </div>
             )}
             {view === 'text' && <div className="ed">
