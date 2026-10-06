@@ -146,21 +146,22 @@ export function dropSteps(w: Workflow, ids: string[], hit: Hit): Workflow {
 export function withFreshIds(w: Workflow, steps: Step[]): Step[] {
   const all = flatSteps(w.steps);
   const used = new Set([...all.map((s) => s.id), ...all.flatMap((s) => s.links.map((l) => l.to)), ...all.flatMap((s) => (s.attrs.against ? [s.attrs.against] : []))]);
-  const out = structuredClone(steps), flat = flatSteps(out), rename = new Map<string, string>();
-  const taken = new Set(used);
-  for (const s of flat) if (!used.has(s.id)) taken.add(s.id);
-  for (const s of flat) {
-    if (!used.has(s.id)) continue;
+  const out = structuredClone(steps), flat = flatSteps(out), rename = new Map<string, string>(), own = new Map<Step, string>();
+  // the first step with a free id keeps it; a taken id, or an id met earlier in this call, gets a new one
+  const taken = new Set(used), dup: Step[] = [];
+  for (const s of flat) { if (taken.has(s.id)) dup.push(s); else taken.add(s.id); }
+  for (const s of dup) {
     let n = 1;
     while (taken.has(`${s.kind}-${n}`)) n++;
-    rename.set(s.id, `${s.kind}-${n}`);
+    own.set(s, `${s.kind}-${n}`);
+    if (used.has(s.id) && !rename.has(s.id)) rename.set(s.id, `${s.kind}-${n}`);
     taken.add(`${s.kind}-${n}`);
   }
   for (const s of flat) {
     for (const l of s.links) l.to = rename.get(l.to) ?? l.to;
     if (s.attrs.against) s.attrs.against = rename.get(s.attrs.against) ?? s.attrs.against;
   }
-  for (const s of flat) s.id = rename.get(s.id) ?? s.id;
+  for (const s of flat) s.id = own.get(s) ?? s.id;
   return out;
 }
 

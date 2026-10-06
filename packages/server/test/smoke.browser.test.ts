@@ -572,6 +572,44 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await blocksTab.click();
     await workspace.focus();
     await page.keyboard.press('Escape');
+    // 8e.2. dragging a step onto bare surface parks it (it leaves the file, the links into it go); dragging the loose block onto a slot puts it back; each is one undo step
+    const park = async () => {
+      await page.getByRole('button', { name: 'Fit' }).click();
+      await page.waitForTimeout(600); // the 300 ms preview debounce: an edit while the preview is stale is refused
+      const g = (await row('ship').locator('.sx-grip').first().boundingBox())!;
+      await drag({ x: g.x + g.width / 2, y: g.y + g.height / 2 }, await empty());
+      await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(1);
+    };
+    await park();
+    await page.getByText(/Removed 2 links/).waitFor({ timeout: W });
+    await textTab.click();
+    const parkedText = await editor.inputValue();
+    expect(parkedText).not.toContain('## phase ship');
+    expect(parkedText).not.toContain('next: ship');
+    await blocksTab.click();
+    await workspace.focus();
+    await page.keyboard.press('ControlOrMeta+Z');
+    await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(0);
+    await textTab.click();
+    expect(await editor.inputValue()).toBe(textBeforeHat);
+    await blocksTab.click();
+    await park();
+    const lg = (await looseBlocks.locator('.sx-grip').first().boundingBox())!, planBox = (await row('plan').boundingBox())!;
+    await drag({ x: lg.x + lg.width / 2, y: lg.y + lg.height / 2 }, { x: planBox.x + 40, y: planBox.y + 4 });
+    await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(0);
+    await textTab.click();
+    expect((await editor.inputValue()).split('\n').filter((l) => l.startsWith('## phase '))).toEqual(['## phase build', '## phase ship', '## phase plan']);
+    await blocksTab.click();
+    await workspace.focus();
+    await page.keyboard.press('ControlOrMeta+Z');
+    await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(1);
+    await page.keyboard.press('ControlOrMeta+Z');
+    await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(0);
+    await textTab.click();
+    expect(await editor.inputValue()).toBe(textBeforeHat);
+    await blocksTab.click();
+    await workspace.focus();
+    await page.keyboard.press('Escape');
     // 8d.z. save, so the buffer is clean before Chat (Playwright dismisses the leave confirm)
     await textTab.click();
     await editor.focus();

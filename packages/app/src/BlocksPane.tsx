@@ -18,7 +18,7 @@ const LOOK = { code: 'code', str: 'pill', num: 'num', pill: 'pill' } as const sa
 export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, over, at, loose, onEdit, onSelect }: {
   w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; sel: Set<Key>; rev: unknown;
   condDrag?: boolean; src?: Set<string>; over?: Over; at: Pt;
-  loose?: { key: string; selected: boolean; onPick: (add: boolean) => void }; // w is then a wrapper of the one parked step: read-only, no ids, no zones
+  loose?: { key: string; selected: boolean; moving: boolean; onPick: (add: boolean) => void }; // w is then a wrapper of the one parked step: read-only, no ids, no zones
   onEdit: (fn: (w: Workflow) => Workflow) => boolean; onSelect: (id: string, add: boolean) => void;
 }) {
   const conds = Object.fromEntries(steps.flatMap((s) => (s.cond === undefined ? [] : [[s.id, s.cond]])));
@@ -144,7 +144,7 @@ export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, ove
 
   if (loose) {
     return (
-      <div className={cx('sx-loose', loose.selected && 'sx-sel')} style={{ left: at.x, top: at.y }} data-loose={loose.key} data-zone="loose" tabIndex={0} aria-label="Loose block">
+      <div className={cx('sx-loose', loose.selected && 'sx-sel', loose.moving && 'sx-moving')} style={{ left: at.x, top: at.y }} data-loose={loose.key} data-zone="loose" tabIndex={0} aria-label="Loose block">
         <span className="sx-loose-tag">loose</span>
         {stack(w.steps, undefined, 'kids')}
       </div>

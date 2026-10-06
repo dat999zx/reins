@@ -286,4 +286,6 @@ input.sx-pill::placeholder, input.sx-code::placeholder { color: rgb(35 36 40 / 0
 .sx-loose { position: absolute; display: flex; flex-direction: column; align-items: flex-start; opacity: 0.55; outline: 2px dashed var(--faint, #888); outline-offset: 4px; border-radius: 6px; cursor: grab; }
 .sx-loose.sx-sel { opacity: 0.8; outline: 2px solid var(--brand); }
 .sx-loose :is(input, select, button, .sx-pill, .sx-code) { pointer-events: none; }
+.sx-loose.sx-moving { pointer-events: none; }
+.sx-view.sx-parking .sx-ghost-block { opacity: 0.45; outline: 2px dashed var(--faint, #888); outline-offset: 4px; }
 .sx-loose-tag { position: absolute; top: -20px; left: 0; font-size: 11px; color: var(--faint, #888); }

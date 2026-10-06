@@ -31,6 +31,7 @@ export function useDrag(o: Opts) {
     const grab = { x: from.x - box.left, y: from.y - box.top };
     const zoom0 = oref.current.cam().zoom;
     const kind = 'move' in src ? 'move' : 'cond' in src ? 'cond' : 'step';
+    const looseMove = 'move' in src && src.move.every((k) => k.startsWith('l:')); // loose blocks move live and may land on a slot
     const card = 'kind' in src || 'cond' in src;
     const rel = (p: Pt) => { const r = oref.current.view.current!.getBoundingClientRect(); return { x: p.x - r.left, y: p.y - r.top }; };
     const start = toWorld(oref.current.cam(), rel(from));
@@ -58,7 +59,8 @@ export function useDrag(o: Opts) {
       }
       if (kind === 'move') {
         const w = toWorld(c, rel(at));
-        return setLive((s) => ({ ...s, d: { x: w.x - start.x, y: w.y - start.y } }));
+        setLive((s) => ({ ...s, d: { x: w.x - start.x, y: w.y - start.y } }));
+        if (!looseMove) return;
       }
       const { t, snap } = probe();
       const k = (snap ? zoneKey(snap.el) + snap.cls : '') + (t ? '+' : '');
@@ -118,16 +120,17 @@ export function useDrag(o: Opts) {
     const up = (m: globalThis.PointerEvent) => {
       at.x = m.clientX; at.y = m.clientY;
       const done = on;
-      const t = done && kind !== 'move' ? probe().t : undefined;
+      const t = done && (kind !== 'move' || looseMove) ? probe().t : undefined;
       const w = toWorld(oref.current.cam(), rel(at));
+      const tl = toWorld(oref.current.cam(), rel({ x: at.x - grab.x, y: at.y - grab.y })); // where the ghost's top-left is
       end();
       if (!done) return;
       // the click that follows a drag must not select or press anything
       const swallow = (ev: Event) => { ev.stopPropagation(); ev.preventDefault(); };
       window.addEventListener('click', swallow, { capture: true, once: true });
       setTimeout(() => window.removeEventListener('click', swallow, true), 0);
-      if ('move' in src) oref.current.move(src.move, { x: w.x - start.x, y: w.y - start.y });
-      else if (t) oref.current.drop(src, t, w);
+      if (t) oref.current.drop(src, t, tl);
+      else if ('move' in src) oref.current.move(src.move, { x: w.x - start.x, y: w.y - start.y });
     };
     const esc = (k: KeyboardEvent) => { if (k.key === 'Escape') { k.preventDefault(); end(); } };
     window.addEventListener('pointermove', move);

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseWorkflow, printWorkflow, type Step } from '@reins/core';
-import { addLoose, HOME, LOOSE_MAX, moveItems, nextKey, removeLoose, selfContained, stateBytes } from '../src/arrange.js';
+import { addLoose, HOME, LOOSE_MAX, moveItems, nextKey, park, removeLoose, selfContained, stateBytes, unpark } from '../src/arrange.js';
+import { flatSteps } from '../src/canvas.js';
 import type { Layout } from '../src/editorState.js';
 
 const HEAD = '---\nreins: 1\nname: demo\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n';
@@ -85,6 +86,85 @@ describe('selfContained', () => {
     const snap = JSON.stringify(steps);
     selfContained(steps);
     expect(JSON.stringify(steps)).toBe(snap);
+  });
+});
+
+const PW = parseWorkflow(`${HEAD}## phase plan\nnext: build\n\n## phase build\n\n## run \`npm test\`\nid: t\non-fail: fix\n\n## phase fix\nnext: t (max 3)\n\n## verify\nid: v\nagainst: fix\n\n## repeat\nid: r\nuntil: tests pass\nmax: 3\n\n### phase a\nnext: plan (max 2)\n\n### phase b\n`).workflow!;
+const idsOf = (w: typeof PW) => flatSteps(w.steps).map((s) => s.id);
+const errors = (w: typeof PW) => parseWorkflow(printWorkflow(w)).diagnostics.filter((d) => d.severity === 'error');
+
+describe('park', () => {
+  it('takes the step out, drops links and against that point into it, reports each', () => {
+    const r = park(PW, ['fix']);
+    expect(idsOf(r.w)).not.toContain('fix');
+    expect(flatSteps(r.w.steps).find((s) => s.id === 't')!.links).toEqual([]);
+    expect(flatSteps(r.w.steps).find((s) => s.id === 'v')!.attrs.against).toBeUndefined();
+    expect(r.steps.map((s) => s.id)).toEqual(['fix']);
+    expect(r.steps[0]!.links).toEqual([]); // fix -> t leaves the copy
+    expect(r.lost).toEqual(['`t` on-fail → `fix`', '`fix` next → `t`', '`v` against → `fix`']);
+    expect(errors(r.w)).toEqual([]);
+  });
+  it('keeps links inside the parked set; a C block goes with its children; pos is stripped', () => {
+    const r = park(PW, ['t', 'fix']);
+    expect(r.steps.map((s) => s.id)).toEqual(['t', 'fix']);
+    expect(r.steps[0]!.links).toMatchObject([{ kind: 'on-fail', to: 'fix' }]);
+    expect(r.steps[1]!.links).toMatchObject([{ kind: 'next', to: 't', max: 3 }]);
+    expect(r.lost).toEqual(['`v` against → `fix`']);
+    const c = park(PW, ['r']);
+    expect(c.steps[0]!.kids!.map((s) => s.id)).toEqual(['a', 'b']);
+    expect(c.steps[0]!.kids![0]!.links).toEqual([]); // a -> plan leaves the copy
+    expect(c.lost).toEqual(['`a` next → `plan`']);
+    expect(idsOf(c.w)).not.toContain('a');
+    expect(JSON.stringify(c.steps)).not.toContain('"pos"');
+  });
+  it('parks a nested step; an unknown id changes nothing', () => {
+    expect(idsOf(park(PW, ['a']).w)).not.toContain('a');
+    expect(idsOf(park(PW, ['a']).w)).toContain('r');
+    const none = park(PW, ['nope']);
+    expect(none.w).toBe(PW);
+    expect(none.steps).toEqual([]);
+    expect(none.lost).toEqual([]);
+  });
+  it('never mutates its input', () => {
+    const snap = JSON.stringify(PW);
+    park(PW, ['fix', 'r']);
+    expect(JSON.stringify(PW)).toBe(snap);
+  });
+});
+
+describe('unpark', () => {
+  const at = { branch: 'kids' as const, index: 0 };
+  it('inserts the steps and returns their ids', () => {
+    const parked = park(PW, ['build']);
+    const r = unpark(parked.w, parked.steps, { branch: 'kids', index: 1 });
+    expect(r.ids).toEqual(['build']);
+    expect(idsOf(r.w).slice(0, 2)).toEqual(['plan', 'build']);
+    expect(errors(r.w)).toEqual([]);
+  });
+  it('renames on a collision, also two in one call', () => {
+    const [p] = PW.steps as [Step];
+    const one = unpark(PW, [p], at);
+    expect(one.ids).toEqual(['phase-1']);
+    expect(one.w.steps[0]!.id).toBe('phase-1');
+    const two = unpark(PW, [p, { ...p, id: 'plan' }], at);
+    expect(two.ids).toEqual(['phase-1', 'phase-2']);
+  });
+  it('gives a max to a link that now points back', () => {
+    const x = { ...mk('x'), links: [{ kind: 'next', to: 'plan' }] } as Step;
+    const r = unpark(PW, [x], { branch: 'kids', index: PW.steps.length });
+    expect(r.capped).toEqual(['`x` next → `plan`']);
+    expect(flatSteps(r.w.steps).find((s) => s.id === 'x')!.links[0]!.max).toBe(3);
+  });
+  it('is the same workflow for an illegal place or no steps', () => {
+    expect(unpark(PW, [mk('x')], { parent: 'nope', branch: 'kids', index: 0 })).toEqual({ w: PW, ids: [], capped: [] });
+    expect(unpark(PW, [mk('x')], { parent: 'plan', branch: 'kids', index: 0 }).w).toBe(PW);
+    expect(unpark(PW, [], at).w).toBe(PW);
+  });
+  it('never mutates its input', () => {
+    const snap = JSON.stringify(PW), steps = [mk('plan')], s2 = JSON.stringify(steps);
+    unpark(PW, steps, at);
+    expect(JSON.stringify(PW)).toBe(snap);
+    expect(JSON.stringify(steps)).toBe(s2);
   });
 });
 

@@ -145,14 +145,14 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   // ponytail: the 300 ms text preview fires once more for the new text and re-syncs every draft field, so text typed within ~300 ms of an edit is lost; debounce it away if it bites
   // `o.lay` changes the layout in the same undo step; `o.then` hears whether the reply landed.
   const edit = (fn: (w: Workflow) => Workflow, o?: EditOpts) => {
-    const sent = (() => {
-      if (busy.current || file === null || !prev?.workflow || prev.for !== text) return false;
+    const sent = (() => {      if (busy.current || file === null || !prev?.workflow || prev.for !== text) return false;
       if (prev.reformats && !confirmed.current.has(file)) {
         if (!window.confirm('Editing here rewrites this file in the standard form. Comments, unknown lines, frontmatter comments and unknown keys, and custom order are not kept. Continue?')) return false;
         confirmed.current.add(file);
       }
       const next = fn(prev.workflow);
       if (next === prev.workflow) return false; // a no-op edit sends nothing
+      if (o?.lay && tooBig(o.lay(lay))) { setMsg(FULL); return false; }
       busy.current = true;
       const at = { file, text, lay };
       post<Preview>(`${base}/preview`, { path: file, workflow: next, ...(stepId ? { stepId } : {}) })
@@ -172,11 +172,13 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
     if (!sent) o?.then?.(false);
     return sent;
   };
+  // The editor state may not cross the server's cap; a layout that shrinks is always allowed.
+  const tooBig = (next: Layout) => file !== null && stateBytes({ ...canvas.current, [file]: { ...canvas.current?.[file], ...next } }) > STATE_MAX && stateBytes(next) > stateBytes(lay);
   // A layout-only change: refused while an edit is in flight, nothing to do when it changes nothing.
   const setLayout = (fn: (l: Layout) => Layout) => {
     const next = fn(lay);
     if (busy.current || JSON.stringify(next) === JSON.stringify(lay)) return false;
-    if (file !== null && stateBytes({ ...canvas.current, [file]: { ...canvas.current?.[file], ...next } }) > STATE_MAX && stateBytes(next) > stateBytes(lay)) { setMsg(FULL); return false; }
+    if (tooBig(next)) { setMsg(FULL); return false; }
     hist.current = push(hist.current, { before: { text, lay }, after: { text, lay: next } });
     setLay(next);
     return true;

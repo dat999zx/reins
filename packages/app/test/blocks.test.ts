@@ -417,6 +417,10 @@ describe('withFreshIds', () => {
   it('two taken ids in one call get two different new ids', () => {
     expect(withFreshIds(w, [S('plan'), S('build')]).map((s) => s.id)).toEqual(['phase-1', 'phase-2']);
   });
+  it('the same id twice in one call gives two different ids, taken or free', () => {
+    expect(withFreshIds(w, [S('plan'), S('plan')]).map((s) => s.id)).toEqual(['phase-1', 'phase-2']);
+    expect(withFreshIds(w, [S('mine'), S('mine')]).map((s) => s.id)).toEqual(['mine', 'phase-1']);
+  });
   it('a renamed id does not meet an id the call keeps', () => {
     expect(withFreshIds(w, [S('phase-1'), S('plan')]).map((s) => s.id)).toEqual(['phase-1', 'phase-2']);
   });

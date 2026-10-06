@@ -1,4 +1,5 @@
-import type { Step } from '@reins/core';
+import type { Step, Workflow } from '@reins/core';
+import { capBackward, deleteSteps, insertSteps, takeSteps, withFreshIds, type Place } from './blocks.js';
 import { flatSteps } from './canvas.js';
 import type { Layout, Loose, Pt } from './editorState.js';
 
@@ -7,7 +8,29 @@ export const LOOSE_MAX = 100;
 export const FULL = 'The parking area is full: delete some loose blocks first.';
 export const STATE_MAX = 60000; // the server refuses 64 KB of editor state
 
-export const stateBytes = (v: unknown): number => new TextEncoder().encode(JSON.stringify(v)).length;
+// Takes the steps (with their subtrees) out of the file as stand-alone copies. `lost` names every link and `against` cut on the way.
+export function park(w: Workflow, ids: string[]): { w: Workflow; steps: Step[]; lost: string[] } {
+  const { taken } = takeSteps(w, ids);
+  if (!taken.length) return { w, steps: [], lost: [] };
+  const inside = new Set(flatSteps(taken).map((s) => s.id)), lost: string[] = [];
+  for (const s of flatSteps(w.steps)) {
+    const own = inside.has(s.id);
+    for (const l of s.links) if (inside.has(l.to) !== own) lost.push(`\`${s.id}\` ${l.kind} → \`${l.to}\``);
+    const a = s.attrs.against;
+    if (a && inside.has(a) !== own) lost.push(`\`${s.id}\` against → \`${a}\``);
+  }
+  return { w: deleteSteps(w, ids), steps: selfContained(taken), lost };
+}
+
+// Puts parked steps into the file with free ids; `ids` are the new root ids. The same workflow for an illegal place.
+export function unpark(w: Workflow, steps: Step[], to: Place): { w: Workflow; ids: string[]; capped: string[] } {
+  const fresh = withFreshIds(w, steps), m = steps.length ? insertSteps(w, fresh, to) : w;
+  if (m === w) return { w, ids: [], capped: [] };
+  const r = capBackward(m);
+  return { w: r.w, ids: fresh.map((s) => s.id), capped: r.capped };
+}
+
+export const stateBytes =(v: unknown): number => new TextEncoder().encode(JSON.stringify(v)).length;
 
 export function nextKey(lay: Layout): string {
   const used = new Set((lay.loose ?? []).map((l) => l.key));
