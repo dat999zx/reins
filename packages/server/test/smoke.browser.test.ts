@@ -538,6 +538,40 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await blocksTab.click();
     await workspace.focus();
     await page.keyboard.press('Escape');
+    // 8e.2a. a palette card dropped on bare surface is a loose block: not in the file; click it and Delete removes it
+    await blocksTab.click();
+    const looseBlocks = page.locator('.sx-loose');
+    const cardBox = (await card('phase').boundingBox())!;
+    await drag({ x: cardBox.x + cardBox.width / 2, y: cardBox.y + cardBox.height / 2 }, await empty());
+    await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(1);
+    await textTab.click();
+    expect(await editor.inputValue()).toBe(textBeforeHat);
+    await blocksTab.click();
+    await looseBlocks.locator('.sx-row').first().click();
+    await page.keyboard.press('Delete');
+    await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(0);
+    // 8e.3. Ctrl+C then Ctrl+V pastes a loose copy at the pointer; Ctrl+D puts a copy right after the original; Ctrl+Z takes it back
+    await row('plan').locator('.sx-row').first().click();
+    await page.keyboard.press('ControlOrMeta+C');
+    const spot = await empty();
+    await page.mouse.move(spot.x, spot.y);
+    await page.keyboard.press('ControlOrMeta+V');
+    await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(1);
+    await looseBlocks.locator('.sx-row').first().click();
+    await page.keyboard.press('Delete');
+    await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(0);
+    await row('plan').locator('.sx-row').first().click();
+    await page.keyboard.press('ControlOrMeta+D');
+    await textTab.click();
+    await expect.poll(async () => ((await editor.inputValue()).match(/## phase plan/g) ?? []).length, { timeout: W }).toBe(2);
+    await blocksTab.click();
+    await workspace.focus();
+    await page.keyboard.press('ControlOrMeta+Z');
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toBe(textBeforeHat);
+    await blocksTab.click();
+    await workspace.focus();
+    await page.keyboard.press('Escape');
     // 8d.z. save, so the buffer is clean before Chat (Playwright dismisses the leave confirm)
     await textTab.click();
     await editor.focus();

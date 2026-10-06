@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as KeyEvent, type MutableRefObject, type PointerEvent } from 'react';
-import type { Diagnostic, Workflow } from '@reins/core';
+import type { Diagnostic, Step, Workflow } from '@reins/core';
 import { BlocksPane } from './BlocksPane.js';
-import { addStepAt, capBackward, dropPlace, dropSteps, moveStep, nestPlace, newId, placeOf, setCond, type Place } from './blocks.js';
+import { addLoose, FULL, HOME, LOOSE_MAX, moveItems, selfContained } from './arrange.js';
+import { addStepAt, capBackward, dropPlace, dropSteps, duplicateSteps, moveStep, nestPlace, newId, placeOf, setCond, takeSteps, type Place } from './blocks.js';
+import { KINDS } from './canvasKinds.js';
 import { flatSteps } from './canvas.js';
 import { COND_KINDS } from './condKinds.js';
 import type { Layout } from './editorState.js';
@@ -12,14 +14,16 @@ import { allKeys, boxSelect, stepIds, stepKey, toggle, withoutNested, type Key }
 import { fitBounds, toWorld, ZOOM, zoomAt, type Cam, type Pt, type Rect } from './surface.js';
 import { useDrag, type Start } from './useDrag.js';
 
-const HOME = { x: 40, y: 40 };
+// ponytail: in-app clipboard, lost on reload; the system clipboard if it matters
+let clip: Step[] = [];
+export type EditOpts = { lay?: (l: Layout) => Layout; then?: (applied: boolean) => void };
 const NATIVE = 'input, textarea, select, option, button, .sx-menu, .sx-zoom';
-const onOf = (t: Element): Press['on'] => (t.closest(NATIVE) ? 'input' : t.closest('.sx-hat') ? 'hat' : t.closest('.blk') ? 'block' : 'empty');
+const onOf = (t: Element): Press['on'] => (t.closest(NATIVE) ? 'input' : t.closest('.sx-hat') ? 'hat' : t.closest('.sx-loose') ? 'loose' : t.closest('.blk') ? 'block' : 'empty');
 
 export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, press, onEdit, onSel, onDelete, onCam, onLayout, onUndo, onRedo, onNote }: {
   w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; sel: Set<Key>; rev: unknown;
   cam?: Cam; lay: Layout; press: MutableRefObject<Start | undefined>;
-  onEdit: (fn: (w: Workflow) => Workflow) => boolean; onSel: (keys: Set<Key>, primary?: string) => void; onDelete: (ids: string[]) => void; onCam: (c: Cam) => void;
+  onEdit: (fn: (w: Workflow) => Workflow, o?: EditOpts) => boolean; onSel: (keys: Set<Key>, primary?: string) => void; onDelete: (keys: Key[]) => void; onCam: (c: Cam) => void;
   onLayout: (fn: (l: Layout) => Layout) => boolean; onUndo: () => void; onRedo: () => void; onNote: (s: string) => void;
 }) {
   const view = useRef<HTMLDivElement>(null);
@@ -64,6 +68,44 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
     onSel(n, n.has(k) ? id : stepIds(n).at(-1));
   };
   const top = () => stepIds(withoutNested(w, sel));
+  const looseSel = () => (lay.loose ?? []).filter((l) => sel.has(`l:${l.key}`));
+  const pickLoose = (key: string, add: boolean) => {
+    const k = `l:${key}`, n = add ? toggle(sel, k) : new Set([k]);
+    onSel(n, add ? stepIds(n).at(-1) : undefined);
+  };
+  const ptr = useRef<Pt | undefined>(undefined);
+  const pasted = useRef<{ x: number; y: number; n: number } | undefined>(undefined);
+  // Parked blocks are only in the editor state; the new ones become the selection.
+  const park = (steps: Step[], at: Pt[]) => {
+    let keys: string[] = [];
+    const ok = onLayout((l) => { const r = addLoose(l, steps, at); keys = r.keys; return r.lay; });
+    if (ok) onSel(new Set(keys.map((k) => `l:${k}`)));
+    else if ((lay.loose?.length ?? 0) + steps.length > LOOSE_MAX) onNote(FULL);
+  };
+  const copy = () => {
+    const s = selfContained([...takeSteps(w, top()).taken, ...looseSel().map((l) => l.step)]);
+    if (s.length) clip = s;
+    return s.length > 0;
+  };
+  // Pasted blocks are always loose, at the pointer (or the view's centre); the same point again steps 24 px.
+  const paste = () => {
+    if (!clip.length) return;
+    const r = view.current!.getBoundingClientRect(), p = ptr.current ?? { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    const base = toWorld(camRef.current, { x: p.x - r.left, y: p.y - r.top }), last = pasted.current;
+    const n = last && last.x === base.x && last.y === base.y ? last.n + 1 : 0;
+    pasted.current = { ...base, n };
+    park(clip, clip.map((_, i) => ({ x: base.x + 24 * (n + i), y: base.y + 24 * (n + i) })));
+  };
+  const duplicate = () => {
+    const ids = top(), lo = looseSel();
+    let made: string[] = [], keys: string[] = [];
+    const parkLoose = (l: Layout) => { const r = addLoose(l, lo.map((x) => x.step), lo.map((x) => ({ x: x.at.x + 24, y: x.at.y + 24 }))); keys = r.keys; return r.lay; };
+    if (!ids.length) return void (lo.length && onLayout(parkLoose) && onSel(new Set(keys.map((k) => `l:${k}`))));
+    onEdit((m) => { const r = duplicateSteps(m, ids); made = r.ids; return r.w; }, {
+      ...(lo.length && { lay: parkLoose }),
+      then: (ok) => { if (ok) onSel(new Set([...made.map(stepKey), ...keys.map((k) => `l:${k}`)]), made.at(-1)); },
+    });
+  };
 
   const last = (id: string) => {
     const at = placeOf(w, id);
@@ -72,8 +114,8 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
   };
   // the block acts get the focused block's id; the others ignore it
   const ACTS: Record<ActName, (id: string) => void> = {
-    delete: (id) => onDelete(sel.has(stepKey(id)) ? top() : [id]),
-    select: one,
+    delete: (id) => onDelete(id !== '' && !sel.has(stepKey(id)) ? [stepKey(id)] : [...withoutNested(w, sel)]),
+    select: (id) => { if (id !== '') one(id); },
     moveUp: (id) => { const at = placeOf(w, id); if (at && at.index > 0) move(id, { ...at, index: at.index - 1 }); },
     moveDown: (id) => { const at = placeOf(w, id); if (at && !last(id)) move(id, { ...at, index: at.index + 2 }); },
     nestIn: (id) => { const to = nestPlace(w, id, 'in'); if (to) move(id, to); },
@@ -81,7 +123,11 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
     undo: onUndo,
     redo: onRedo,
     escape: () => one(),
-    selectAll: () => { const n = allKeys(w); onSel(n, stepIds(n).at(-1)); },
+    copy: () => { copy(); },
+    cut: () => { if (copy()) onDelete([...withoutNested(w, sel)]); },
+    paste,
+    duplicate,
+    selectAll: () => { const n = allKeys(w, (lay.loose ?? []).map((l) => l.key)); onSel(n, stepIds(n).at(-1)); },
     zoomIn: () => zoom(ZOOM.step),
     zoomOut: () => zoom(1 / ZOOM.step),
     zoomReset: () => zoom(1 / camRef.current.zoom),
@@ -90,11 +136,11 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
   const keydown = (e: KeyEvent<HTMLDivElement>) => {
     const t = e.target as HTMLElement;
     if (isTyping(t.tagName)) return;
-    const block = t.matches('.blk[data-id]');
+    const block = t.matches('.blk[data-id]') || !!t.closest('.sx-loose');
     const act = matchKey({ key: e.key, ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey, alt: e.altKey }, block ? 'block' : 'any');
     if (!act) return;
     e.preventDefault(); // also swallows Alt+Left / Alt+Right, the browser's Back / Forward, on a block
-    ACTS[act](block ? t.dataset.id! : '');
+    ACTS[act](block ? t.dataset.id ?? '' : '');
   };
 
   const ghosts = useRef<HTMLDivElement>(null);
@@ -104,21 +150,25 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
     view, ghosts, cam: () => camRef.current, setCam: (c, save) => (save ? commit(c) : set(c)),
     legal: (src, t) => {
       if ('hex' in t) return 'cond' in src && setCond(w, t.hex.id, t.hex.path, { t: 'approve' }) !== w;
+      if ('surface' in t) return 'kind' in src && !!KINDS[src.kind].fresh;
       if ('id' in src) return 'hit' in t && dropSteps(w, src.ids ?? [src.id], t.hit) !== w;
       const place = 'hit' in t ? dropPlace(w, t.hit) : undefined;
       return !!place && 'kind' in src && addStepAt(w, 'phase', place) !== w;
     },
-    drop: (src, t) => {
+    drop: (src, t, pt) => {
       const place = 'hit' in t ? dropPlace(w, t.hit) : undefined;
       if ('hex' in t && 'cond' in src) onEdit((m) => setCond(m, t.hex.id, t.hex.path, COND_KINDS[src.cond]!.fresh()));
       else if ('hit' in t && 'id' in src) {
         const ids = src.ids ?? [src.id];
         refocus.current = moved((m) => dropSteps(m, ids, t.hit)) ? ids[0] : undefined;
+      } else if ('surface' in t && 'kind' in src) {
+        park([{ id: newId(w, src.kind), kind: src.kind, attrs: {}, cards: [], links: [], ...KINDS[src.kind].fresh!() }], [pt]);
       } else if (place && 'kind' in src && onEdit((m) => addStepAt(m, src.kind, place))) one(newId(w, src.kind));
     },
-    hat: (d: Pt) => { onLayout((l) => ({ ...l, script: { x: home.x + d.x, y: home.y + d.y } })); },
+    move: (keys, d) => { onLayout((l) => moveItems(l, keys, d)); },
   });
   press.current = drag.press;
+  const hatMoving = !!drag.keys?.includes('hat');
 
   useEffect(() => {
     const v = view.current!;
@@ -157,9 +207,9 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
       setBox(undefined);
       if (!moved) return add ? undefined : one();
       const c = camRef.current;
-      const rects = [...view.current!.querySelectorAll<HTMLElement>('.blk[data-id]')].map((el) => {
+      const rects = [...view.current!.querySelectorAll<HTMLElement>('.blk[data-id], .sx-loose[data-loose]')].map((el) => {
         const r = el.getBoundingClientRect(), o = toWorld(c, { x: r.left - vr.left, y: r.top - vr.top });
-        return { key: stepKey(el.dataset.id!), r: { ...o, w: r.width / c.zoom, h: r.height / c.zoom } };
+        return { key: el.dataset.id === undefined ? `l:${el.dataset.loose}` : stepKey(el.dataset.id), r: { ...o, w: r.width / c.zoom, h: r.height / c.zoom } };
       });
       const n = withoutNested(w, new Set([...boxSelect(rects, rect(m)), ...(add ? sel : [])]));
       onSel(n, stepIds(n).at(-1));
@@ -174,7 +224,12 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
     const g = pickGesture(p);
     if (g === 'pending') {
       const hat = (e.target as Element).closest<HTMLElement>('.sx-hat'), blk = (e.target as Element).closest<HTMLElement>('.blk');
-      if (hat) drag.press(e.nativeEvent, { hat: true }, hat);
+      const lo = (e.target as Element).closest<HTMLElement>('.sx-loose');
+      if (hat) drag.press(e.nativeEvent, { move: ['hat'] }, hat);
+      else if (lo) {
+        const k = `l:${lo.dataset.loose}`;
+        drag.press(e.nativeEvent, { move: sel.has(k) ? [...sel].filter((x) => x.startsWith('l:')) : [k] }, lo);
+      }
       else if (blk) {
         // a block in the selection drags the whole selection, one ghost each; any other block drags alone
         const id = blk.dataset.id!, ids = sel.has(stepKey(id)) ? top() : [id];
@@ -208,12 +263,17 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
   };
 
   return (
-    <div ref={view} className={cx('sx-view', panning && 'sx-panning', drag.kind && 'sx-dragging', drag.kind && drag.kind !== 'hat' && !drag.over && 'sx-nodrop')} role="region" aria-label="Workspace" tabIndex={0}
+    <div ref={view} className={cx('sx-view', panning && 'sx-panning', drag.kind && 'sx-dragging', drag.kind && drag.kind !== 'move' && !drag.ok && 'sx-nodrop')} role="region" aria-label="Workspace" tabIndex={0}
       style={{ backgroundPosition: `${cam.x}px ${cam.y}px`, backgroundSize: `${18 * cam.zoom}px ${18 * cam.zoom}px` }}
-      onKeyDown={keydown} onPointerDown={down} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}>
+      onKeyDown={keydown} onPointerDown={down} onPointerMove={(e) => { ptr.current = { x: e.clientX, y: e.clientY }; }} onPointerLeave={() => { ptr.current = undefined; }} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}>
       <div className="sx-world" style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.zoom})` }}>
         <BlocksPane w={w} steps={steps} diags={diags} text={text} sel={sel} rev={rev} condDrag={drag.kind === 'cond'} src={drag.src} over={drag.over}
-          at={{ x: home.x + (drag.d?.x ?? 0), y: home.y + (drag.d?.y ?? 0) }} onEdit={onEdit} onSelect={pick} />
+          at={{ x: home.x + (hatMoving ? drag.d?.x ?? 0 : 0), y: home.y + (hatMoving ? drag.d?.y ?? 0 : 0) }} onEdit={onEdit} onSelect={pick} />
+        {(lay.loose ?? []).map((l) => {
+          const k = `l:${l.key}`, d = drag.keys?.includes(k) ? drag.d : undefined;
+          return <BlocksPane key={l.key} w={{ ...w, steps: [l.step] }} steps={[]} diags={[]} text="" sel={sel} rev={rev} at={{ x: l.at.x + (d?.x ?? 0), y: l.at.y + (d?.y ?? 0) }}
+            loose={{ key: l.key, selected: sel.has(k), onPick: (add) => pickLoose(l.key, add) }} onEdit={() => false} onSelect={() => {}} />;
+        })}
         <div className="sx-ghosts" ref={ghosts} />
         {box && <div className="sx-box" style={{ left: box.x, top: box.y, width: box.w, height: box.h }} />}
       </div>

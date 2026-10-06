@@ -37,6 +37,13 @@ describe('keys', () => {
     expect(matchKey(ev('A', { ctrl: true }), 'block')).toBe('selectAll');
     expect(matchKey(ev('a'), 'any')).toBeUndefined();
   });
+  it('copy, cut, paste and duplicate are Ctrl rows on the viewport or a block', () => {
+    for (const [key, act] of [['c', 'copy'], ['x', 'cut'], ['v', 'paste'], ['d', 'duplicate']] as const) {
+      expect(matchKey(ev(key, { ctrl: true }), 'any')).toBe(act);
+      expect(matchKey(ev(key.toUpperCase(), { ctrl: true }), 'block')).toBe(act);
+      expect(matchKey(ev(key), 'any')).toBeUndefined();
+    }
+  });
   it('an extra modifier does not match', () => {
     expect(matchKey(ev('z', { ctrl: true, alt: true }), 'any')).toBeUndefined();
     expect(matchKey(ev('Escape', { shift: true }), 'any')).toBeUndefined();

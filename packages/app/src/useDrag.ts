@@ -3,14 +3,14 @@ import type { StepKind } from '@reins/core';
 import { DRAG_PX, hitOf, snapOf, zoneKey, type Target, type Zone } from './gesture.js';
 import { edgePan, toWorld, type Cam, type Pt } from './surface.js';
 
-export type Src = { id: string; ids?: string[] } | { kind: StepKind } | { cond: string } | { hat: true };
+export type Src = { id: string; ids?: string[] } | { kind: StepKind } | { cond: string } | { move: string[] }; // move: 'hat' and 'l:<key>' items, moved live
 export type Start = (e: PointerEvent, src: Src, el: Element, group?: Element[]) => void;
 export type Over = { el: Zone; cls: string };
-type Live = { kind?: 'step' | 'cond' | 'hat'; src?: Set<string>; over?: Over; d?: Pt };
+type Live = { kind?: 'step' | 'cond' | 'move'; src?: Set<string>; over?: Over; ok?: boolean; d?: Pt; keys?: string[] };
 type Opts = {
   view: { current: HTMLElement | null }; ghosts: { current: HTMLElement | null };
   cam(): Cam; setCam(c: Cam, save?: boolean): void;
-  legal(src: Src, t: Target): boolean; drop(src: Src, t: Target): void; hat(d: Pt): void;
+  legal(src: Src, t: Target): boolean; drop(src: Src, t: Target, at: Pt): void; move(keys: string[], d: Pt): void;
 };
 
 const ZONE_ATTRS = ['data-id', 'data-zone', 'data-zid', 'data-zb', 'data-zpath'];
@@ -30,7 +30,7 @@ export function useDrag(o: Opts) {
     const box = el.getBoundingClientRect();
     const grab = { x: from.x - box.left, y: from.y - box.top };
     const zoom0 = oref.current.cam().zoom;
-    const kind = 'hat' in src ? 'hat' : 'cond' in src ? 'cond' : 'step';
+    const kind = 'move' in src ? 'move' : 'cond' in src ? 'cond' : 'step';
     const card = 'kind' in src || 'cond' in src;
     const rel = (p: Pt) => { const r = oref.current.view.current!.getBoundingClientRect(); return { x: p.x - r.left, y: p.y - r.top }; };
     const start = toWorld(oref.current.cam(), rel(from));
@@ -47,7 +47,7 @@ export function useDrag(o: Opts) {
       const b = z?.getBoundingClientRect();
       const half = b && at.y < b.top + b.height / 2 ? 'top' : 'bottom';
       const t = zone ? hitOf(zone, half) : { surface: true as const };
-      return t && oref.current.legal(src, t) ? { t, snap: zone && snapOf(zone, half) } : {};
+      return t && oref.current.legal(src, t) ? { t, snap: zone && !('surface' in t) ? snapOf(zone, half) : undefined } : {};
     };
     const update = () => {
       const c = oref.current.cam();
@@ -56,17 +56,17 @@ export function useDrag(o: Opts) {
         ghost.style.left = `${p.x}px`;
         ghost.style.top = `${p.y}px`;
       }
-      if (kind === 'hat') {
+      if (kind === 'move') {
         const w = toWorld(c, rel(at));
         return setLive((s) => ({ ...s, d: { x: w.x - start.x, y: w.y - start.y } }));
       }
-      const { snap } = probe();
-      const k = snap ? zoneKey(snap.el) + snap.cls : '';
-      if (k !== key) { key = k; setLive((s) => ({ ...s, over: snap })); }
+      const { t, snap } = probe();
+      const k = (snap ? zoneKey(snap.el) + snap.cls : '') + (t ? '+' : '');
+      if (k !== key) { key = k; setLive((s) => ({ ...s, over: snap, ok: !!t })); }
     };
     const begin = () => {
       on = true;
-      if (kind !== 'hat') {
+      if (kind !== 'move') {
         const clone = (n: Element) => {
           const c = n.cloneNode(true) as HTMLElement;
           for (const x of [c, ...c.querySelectorAll('[data-id], [data-zone]')]) for (const a of ZONE_ATTRS) x.removeAttribute(a);
@@ -88,7 +88,7 @@ export function useDrag(o: Opts) {
         ghost.classList.add('sx-ghost', card ? 'sx-ghost-card' : 'sx-ghost-block');
         (card ? document.body : oref.current.ghosts.current!).append(ghost);
       }
-      setLive({ kind, src: 'id' in src ? new Set(src.ids ?? [src.id]) : undefined });
+      setLive({ kind, src: 'id' in src ? new Set(src.ids ?? [src.id]) : undefined, keys: 'move' in src ? src.move : undefined });
       const tick = () => {
         const r = oref.current.view.current!.getBoundingClientRect();
         if (at.x >= r.left && at.x <= r.right && at.y >= r.top && at.y <= r.bottom) {
@@ -118,7 +118,7 @@ export function useDrag(o: Opts) {
     const up = (m: globalThis.PointerEvent) => {
       at.x = m.clientX; at.y = m.clientY;
       const done = on;
-      const t = done && kind !== 'hat' ? probe().t : undefined;
+      const t = done && kind !== 'move' ? probe().t : undefined;
       const w = toWorld(oref.current.cam(), rel(at));
       end();
       if (!done) return;
@@ -126,8 +126,8 @@ export function useDrag(o: Opts) {
       const swallow = (ev: Event) => { ev.stopPropagation(); ev.preventDefault(); };
       window.addEventListener('click', swallow, { capture: true, once: true });
       setTimeout(() => window.removeEventListener('click', swallow, true), 0);
-      if (kind === 'hat') oref.current.hat({ x: w.x - start.x, y: w.y - start.y });
-      else if (t) oref.current.drop(src, t);
+      if ('move' in src) oref.current.move(src.move, { x: w.x - start.x, y: w.y - start.y });
+      else if (t) oref.current.drop(src, t, w);
     };
     const esc = (k: KeyboardEvent) => { if (k.key === 'Escape') { k.preventDefault(); end(); } };
     window.addEventListener('pointermove', move);

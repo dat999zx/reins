@@ -1,4 +1,4 @@
-export type ActName = 'delete' | 'select' | 'moveUp' | 'moveDown' | 'nestIn' | 'nestOut' | 'undo' | 'redo' | 'escape' | 'zoomIn' | 'zoomOut' | 'zoomReset' | 'fit' | 'selectAll';
+export type ActName = 'delete' | 'select' | 'moveUp' | 'moveDown' | 'nestIn' | 'nestOut' | 'undo' | 'redo' | 'escape' | 'zoomIn' | 'zoomOut' | 'zoomReset' | 'fit' | 'selectAll' | 'copy' | 'cut' | 'paste' | 'duplicate';
 export type On = 'block' | 'any';
 type Row = { key: string; ctrl?: true; shift?: true; alt?: true; on: On; act: ActName };
 
@@ -18,6 +18,10 @@ export const KEYS: ReadonlyArray<Row> = [
   { key: 'z', ctrl: true, shift: true, on: 'any', act: 'redo' },
   { key: 'y', ctrl: true, on: 'any', act: 'redo' },
   { key: 'a', ctrl: true, on: 'any', act: 'selectAll' },
+  { key: 'c', ctrl: true, on: 'any', act: 'copy' },
+  { key: 'x', ctrl: true, on: 'any', act: 'cut' },
+  { key: 'v', ctrl: true, on: 'any', act: 'paste' },
+  { key: 'd', ctrl: true, on: 'any', act: 'duplicate' },
   { key: 'Escape', on: 'any', act: 'escape' },
   { key: '=', ctrl: true, on: 'any', act: 'zoomIn' },
   { key: '+', ctrl: true, shift: true, on: 'any', act: 'zoomIn' },

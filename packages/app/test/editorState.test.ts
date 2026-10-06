@@ -52,6 +52,49 @@ describe('cleanEditorState canvas', () => {
   });
 });
 
+describe('cleanEditorState loose blocks', () => {
+  const P = '/w/a.reins.md';
+  const step = (o: Record<string, unknown> = {}) => ({ id: 'plan', kind: 'phase', attrs: {}, cards: [], links: [], ...o });
+  const loose = (key: string, s: unknown = step(), at: unknown = { x: 5, y: 6 }) => ({ key, at, step: s });
+  const read = (list: unknown[], onDropped?: (n: number) => void) => cleanEditorState({ canvas: { [P]: { loose: list } } }, onDropped).canvas![P]!.loose;
+
+  it('keeps a good loose block, with a C block and its kids', () => {
+    const c = step({ id: 'r', kind: 'repeat', attrs: { max: '3' }, cond: { t: 'tests' }, kids: [step({ id: 'k', kind: 'run', attrs: { cmd: 'x' } })] });
+    expect(read([loose('l1'), loose('l2', c)])).toEqual([loose('l1'), loose('l2', c)]);
+  });
+  it('drops pos from the step, its cards and its links', () => {
+    const s = step({ pos: { line: 3, col: 1 }, cards: [{ kind: 'guard', text: 'x', pos: { line: 4, col: 1 } }], links: [{ kind: 'next', to: 'b', max: 2, pos: { line: 5, col: 1 } }] });
+    expect(read([loose('l1', s)])).toEqual([loose('l1', step({ cards: [{ kind: 'guard', text: 'x' }], links: [{ kind: 'next', to: 'b', max: 2 }] }))]);
+  });
+  it('drops bad entries and counts them', () => {
+    const bad = [
+      loose('', step()), loose('l1', step()), loose('l1', step()), // empty key, then a duplicate key
+      loose('l2', step({ kind: 'nope' })), loose('l3', step({ id: '' })), loose('l4', step({ attrs: { a: 1 } })),
+      loose('l5', step({ cards: [{ kind: 'zzz', text: 'x' }] })), loose('l6', step({ links: [{ kind: 'next', to: 'b', max: 0 }] })),
+      loose('l7', step({ links: [{ kind: 'sideways', to: 'b' }] })), loose('l8', step({ cond: { t: 5 } })),
+      loose('l9', step({ kids: [step()] })), // phase has no body
+      loose('l10', step(), { x: 'a', y: 1 }), loose('l11', 'x'), 5, null,
+    ];
+    const n = vi.fn();
+    expect(read(bad, n)!.map((l) => l.key)).toEqual(['l1']);
+    expect(n).toHaveBeenCalledWith(bad.length - 1);
+  });
+  it('does not call onDropped when everything reads', () => {
+    const n = vi.fn();
+    read([loose('l1')], n);
+    expect(n).not.toHaveBeenCalled();
+  });
+  it('keeps at most 100 loose blocks and counts the rest as dropped', () => {
+    const many = Array.from({ length: 103 }, (_, i) => loose(`l${i}`));
+    const n = vi.fn();
+    expect(read(many, n)).toHaveLength(100);
+    expect(n).toHaveBeenCalledWith(3);
+  });
+  it('drops a loose that is not an array', () => {
+    expect(cleanEditorState({ canvas: { [P]: { loose: 'x' } } })).toEqual({ canvas: { [P]: {} } });
+  });
+});
+
 describe('restoreFile / restoreStep', () => {
   const list = [{ path: '/p/.reins/workflows/a.reins.md', name: 'a' }, { path: '/home/.reins/workflows/a.reins.md', name: 'a' }];
   it('matches the absolute path, not the name', () => {

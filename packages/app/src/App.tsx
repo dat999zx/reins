@@ -99,7 +99,7 @@ export function App() {
     if (known) return s.ready(known);
     const at = view.current;
     let off = false;
-    void loadEditorState(cwd).then((state) => {
+    void loadEditorState(cwd, (n) => flash(`${n} loose block${n === 1 ? '' : 's'} could not be read and ${n === 1 ? 'was' : 'were'} dropped.`)).then((state) => {
       if (off) return;
       const same = view.current.selected === at.selected && view.current.tab === at.tab;
       const merged = same ? state : { ...state, tab: view.current.tab };

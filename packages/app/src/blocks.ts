@@ -142,6 +142,40 @@ export function dropSteps(w: Workflow, ids: string[], hit: Hit): Workflow {
   return !m || m === rest || JSON.stringify(m) === JSON.stringify(w) ? w : m;
 }
 
+// Clones of `steps` whose ids are free in `w`: a taken id gets `<kind>-<n>`, links and `against` inside the call follow it, links outside stay.
+export function withFreshIds(w: Workflow, steps: Step[]): Step[] {
+  const all = flatSteps(w.steps);
+  const used = new Set([...all.map((s) => s.id), ...all.flatMap((s) => s.links.map((l) => l.to)), ...all.flatMap((s) => (s.attrs.against ? [s.attrs.against] : []))]);
+  const out = structuredClone(steps), flat = flatSteps(out), rename = new Map<string, string>();
+  const taken = new Set(used);
+  for (const s of flat) if (!used.has(s.id)) taken.add(s.id);
+  for (const s of flat) {
+    if (!used.has(s.id)) continue;
+    let n = 1;
+    while (taken.has(`${s.kind}-${n}`)) n++;
+    rename.set(s.id, `${s.kind}-${n}`);
+    taken.add(`${s.kind}-${n}`);
+  }
+  for (const s of flat) {
+    for (const l of s.links) l.to = rename.get(l.to) ?? l.to;
+    if (s.attrs.against) s.attrs.against = rename.get(s.attrs.against) ?? s.attrs.against;
+  }
+  for (const s of flat) s.id = rename.get(s.id) ?? s.id;
+  return out;
+}
+
+// A copy of each step (with its subtree) right after its original; a step inside another chosen step is not copied twice.
+export function duplicateSteps(w: Workflow, ids: string[]): { w: Workflow; ids: string[] } {
+  const src = takeSteps(w, ids).taken;
+  if (!src.length) return { w, ids: [] };
+  const copies = withFreshIds(w, src);
+  let m = w;
+  for (let i = src.length - 1; i >= 0; i--) {
+    const at = placeOf(w, src[i]!.id)!;
+    m = insertSteps(m, [copies[i]!], { ...at, index: at.index + 1 });
+  }
+  return { w: m, ids: copies.map((c) => c.id) };
+}
 // A link that points at its own step or one before it needs a max (the validator's rule, as setLink applies it).
 export function capBackward(w: Workflow): { w: Workflow; capped: string[] } {
   const m = structuredClone(w), all = flatSteps(m.steps), order = all.map((s) => s.id), capped: string[] = [];

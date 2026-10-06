@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { Diagnostic, StepKind, Workflow } from '@reins/core';
 import { addStep, deleteSteps, newId, setCond } from './blocks.js';
+import { FULL, removeLoose, STATE_MAX, stateBytes } from './arrange.js';
 import { stepIds, stepKey, withoutNested, type Key } from './selection.js';
 import { COND_KINDS } from './condKinds.js';
 import { ApiError, get, post, put } from './api.js';
@@ -12,7 +13,7 @@ import { runRows, stepStatus } from './stepStatus.js';
 import { BlockPanel, WorkflowPanel } from './BlockPanel.js';
 import { flatSteps } from './canvas.js';
 import { KINDS } from './canvasKinds.js';
-import { Workspace } from './Workspace.js';
+import { Workspace, type EditOpts } from './Workspace.js';
 import { Palette } from './Palette.js';
 import type { Start } from './useDrag.js';
 import { StatusCtx, StepChips } from './StepChips.js';
@@ -25,7 +26,6 @@ interface Preview {
   for?: string; // the text this preview was made for
 }
 
-type EditOpts = { lay?: (l: Layout) => Layout; then?: (applied: boolean) => void };
 const NAME = /^[a-z0-9][a-z0-9-]*$/;
 const template = (name: string) =>
   `---\nreins: 1\nname: ${name}\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n## phase plan\n> Plan the change.\n\n## phase build\n> Make the change.\n`;
@@ -41,15 +41,18 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   const [saved, setSaved] = useState('');
   const [prev, setPrev] = useState<Preview | null>(null);
   const [stepId, setStepId] = useState<string | undefined>();
+  const [lay, setLay] = useState<Layout>({});
   const [sels, setSels] = useState<Set<Key>>(new Set());
   // the selection follows the primary step; a multi-selection survives edits, minus steps that no longer exist
   useEffect(() => {
     const ids = new Set(prev?.workflow ? flatSteps(prev.workflow.steps).map((s) => s.id) : []);
+    const loose = new Set((lay.loose ?? []).map((l) => `l:${l.key}`));
     setSels((s) => {
-      const n = stepId === undefined ? new Set<Key>() : s.has(stepKey(stepId)) ? new Set([...s].filter((k) => !k.startsWith('s:') || ids.has(k.slice(2)))) : new Set([stepKey(stepId)]);
+      const keep = (k: Key) => (k.startsWith('s:') ? ids.has(k.slice(2)) : loose.has(k));
+      const n = stepId === undefined ? new Set([...s].filter((k) => !k.startsWith('s:') && keep(k))) : s.has(stepKey(stepId)) ? new Set([...s].filter(keep)) : new Set([stepKey(stepId)]);
       return n.size === s.size && [...n].every((k) => s.has(k)) ? s : n;
     });
-  }, [stepId, prev?.workflow]);
+  }, [stepId, prev?.workflow, lay.loose]);
   const [name, setName] = useState('');
   const [msg, setMsg] = useState('');
   const ta = useRef<HTMLTextAreaElement>(null);
@@ -63,7 +66,6 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   const [restored, setRestored] = useState(!restore?.workflow);
   // The stored per-workflow view. A ref, so two writes in one tick (a camera and a layout) never overwrite each other.
   const canvas = useRef(restore?.canvas);
-  const [lay, setLay] = useState<Layout>({});
   const hist = useRef(emptyHistory()); // lives here, so it is gone after a reload and after the Chat tab unmounts this
   const press = useRef<Start | undefined>(undefined); // the workspace's drag engine, for the palette beside it
   const setView = (path: string, patch: Partial<CanvasView>) => {
@@ -93,7 +95,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   useEffect(() => { onDirty(dirty); return () => onDirty(false); }, [dirty]);
   // The layout is written only while the buffer is clean: a discarded buffer must not leave layout changes behind.
   useEffect(() => {
-    if (restored && file !== null && !dirty) setView(file, { script: undefined, ...lay });
+    if (restored && file !== null && !dirty) setView(file, { script: undefined, loose: undefined, ...lay });
   }, [lay, dirty]);
 
   const leave = () => !dirty || window.confirm('Discard unsaved changes?');
@@ -174,6 +176,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   const setLayout = (fn: (l: Layout) => Layout) => {
     const next = fn(lay);
     if (busy.current || JSON.stringify(next) === JSON.stringify(lay)) return false;
+    if (file !== null && stateBytes({ ...canvas.current, [file]: { ...canvas.current?.[file], ...next } }) > STATE_MAX && stateBytes(next) > stateBytes(lay)) { setMsg(FULL); return false; }
     hist.current = push(hist.current, { before: { text, lay }, after: { text, lay: next } });
     setLay(next);
     return true;
@@ -188,7 +191,12 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   // ponytail: a step is added as a sibling after the selection; into a container only by dragging
   const add = (kind: StepKind) => { if (prev?.workflow && edit((w) => addStep(w, kind, stepId))) setStepId(newId(prev.workflow, kind)); };
   // ponytail: no confirm, no undo; nothing is written until Save
-  const del = (ids: string[]) => { if (edit((w) => deleteSteps(w, ids)) && stepId !== undefined && ids.includes(stepId)) setStepId(undefined); };
+  // keys are 's:<id>' (in the file) and 'l:<key>' (parked); both go in one undo step
+  const del = (keys: Key[]) => {
+    const ids = stepIds(keys), parked = keys.filter((k) => k.startsWith('l:')).map((k) => k.slice(2));
+    if (!ids.length) { setLayout((l) => removeLoose(l, parked)); return; }
+    if (edit((w) => deleteSteps(w, ids), { lay: (l) => removeLoose(l, parked) }) && stepId !== undefined && ids.includes(stepId)) setStepId(undefined);
+  };
 
   const save = async () => {
     if (file === null) return;
@@ -300,13 +308,14 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
                     rev={prev} press={press} cam={canvas.current?.[file]?.cam} lay={lay}
                     onEdit={edit} onSel={(keys, primary) => { setSels(keys); setStepId(primary); }} onNote={setMsg} onDelete={del} onLayout={setLayout} onUndo={() => step(undo)} onRedo={() => step(redo)} onCam={(cam) => { if (restored) setView(file, { cam }); }} />
                 </StatusCtx.Provider>
-                {stepIds(sels).length > 1 ? (
+                {sels.size > 1 ? (
                   <aside className="bpanel" aria-label="Selection panel">
-                    <h3>{stepIds(sels).length} blocks selected</h3>
-                    <button className="danger" onClick={() => del(stepIds(withoutNested(prev.workflow!, sels)))}>Delete</button>
+                    <h3>{sels.size} blocks selected</h3>
+                    <button className="danger" onClick={() => del([...withoutNested(prev.workflow!, sels)])}>Delete</button>
                   </aside>
                 ) : sel ? <BlockPanel key={sel.id} step={sel} all={flatSteps(prev.workflow.steps)} cond={prev.steps.find((s) => s.id === sel.id)?.cond}
-                  turn={prev.turn} rev={prev} onEdit={edit} onDelete={() => del([sel.id])} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />
+                  turn={prev.turn} rev={prev} onEdit={edit} onDelete={() => del([stepKey(sel.id)])} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />
+                  : sels.size === 1 ? <aside className="bpanel" aria-label="Loose block"><p className="hint">Loose block: not part of the workflow, never runs. Drag it into the script to use it.</p></aside>
                   : <WorkflowPanel w={prev.workflow} rev={prev} onEdit={edit} />}
               </div>
             )}

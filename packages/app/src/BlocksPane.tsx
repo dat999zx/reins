@@ -15,27 +15,30 @@ import { StatusCtx, StepChips } from './StepChips.js';
 
 const LOOK = { code: 'code', str: 'pill', num: 'num', pill: 'pill' } as const satisfies Record<CondParam['look'], string>;
 
-export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, over, at, onEdit, onSelect }: {
+export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, over, at, loose, onEdit, onSelect }: {
   w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; sel: Set<Key>; rev: unknown;
   condDrag?: boolean; src?: Set<string>; over?: Over; at: Pt;
+  loose?: { key: string; selected: boolean; onPick: (add: boolean) => void }; // w is then a wrapper of the one parked step: read-only, no ids, no zones
   onEdit: (fn: (w: Workflow) => Workflow) => boolean; onSelect: (id: string, add: boolean) => void;
 }) {
   const conds = Object.fromEntries(steps.flatMap((s) => (s.cond === undefined ? [] : [[s.id, s.cond]])));
-  const marks = useMemo(() => marksOf(w, diags, text).steps, [w, diags, text]);
-  const { status, show } = useContext(StatusCtx);
+  const marks = useMemo(() => (loose ? undefined : marksOf(w, diags, text).steps), [w, diags, text, !!loose]);
+  const { status, show: showAll } = useContext(StatusCtx);
+  const show = showAll && !loose;
+  const za = (z: Zone) => (loose ? {} : zoneAttrs(z));
   // the snap bar of the drop zone the pointer is over
-  const ov = (z: Zone) => (over && zoneKey(over.el) === zoneKey(z) ? over.cls : undefined);
-  const zone = (z: Zone) => ({ ...zoneAttrs(z), className: ov(z) });
+  const ov = (z: Zone) => (!loose && over && zoneKey(over.el) === zoneKey(z) ? over.cls : undefined);
+  const zone = (z: Zone) => ({ ...za(z), className: ov(z) });
   // Stack and C blocks share these attributes. A click stops here: it must not bubble to every enclosing C block.
   const blockProps = (s: Step, shape: string) => {
     const info = show ? status[s.id] : undefined;
-    const mark = marks.get(s.id);
+    const mark = marks?.get(s.id);
     return {
-      className: cx('blk', shape, sel.has(stepKey(s.id)) && 'sx-sel', src?.has(s.id) && 'sx-dragsrc', info?.state && `sx-${info.state}`, mark && `mark-${mark}`),
-      'data-id': s.id,
+      className: cx('blk', shape, !loose && sel.has(stepKey(s.id)) && 'sx-sel', src?.has(s.id) && 'sx-dragsrc', info?.state && `sx-${info.state}`, mark && `mark-${mark}`),
+      'data-id': loose ? undefined : s.id,
       'data-kind': s.kind,
-      tabIndex: 0,
-      onClick: (e: MouseEvent) => { e.stopPropagation(); onSelect(s.id, e.shiftKey || e.ctrlKey || e.metaKey); },
+      tabIndex: loose ? -1 : 0,
+      onClick: (e: MouseEvent) => { e.stopPropagation(); const add = e.shiftKey || e.ctrlKey || e.metaKey; if (loose) loose.onPick(add); else onSelect(s.id, add); },
     };
   };
 
@@ -45,7 +48,7 @@ export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, ove
     const key = `${s.id}/${p.join('.')}`;
     const z: Zone = { type: 'hex', id: s.id, path: p.join('.') };
     const own = cx('sx-hex', ov(z));
-    const drop = zoneAttrs(z);
+    const drop = za(z);
     if (c && 'a' in c) {
       const b = 'b' in c ? c.b : undefined;
       return (
@@ -128,7 +131,7 @@ export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, ove
             <div {...kids} className={cx('sx-cbody', kids.className)} data-body={`${s.id}/kids`}>{stack(s.kids ?? [], s.id, 'kids')}</div>
             {group === 'kids+else' && (
               <>
-                <div {...zoneAttrs({ type: 'mid', id: s.id })} className="sx-cmid">else</div>
+                <div {...za({ type: 'mid', id: s.id })} className="sx-cmid">else</div>
                 <div {...els} className={cx('sx-cbody', els.className)} data-body={`${s.id}/else`}>{stack(s.else ?? [], s.id, 'else')}</div>
               </>
             )}
@@ -139,6 +142,14 @@ export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, ove
     </div>
   );
 
+  if (loose) {
+    return (
+      <div className={cx('sx-loose', loose.selected && 'sx-sel')} style={{ left: at.x, top: at.y }} data-loose={loose.key} data-zone="loose" tabIndex={0} aria-label="Loose block">
+        <span className="sx-loose-tag">loose</span>
+        {stack(w.steps, undefined, 'kids')}
+      </div>
+    );
+  }
   const hat = zone({ type: 'hat' }), end = zone({ type: 'end' });
   return (
     <div className={cx('sx-script', condDrag && 'sx-drag-cond')} style={{ left: at.x, top: at.y }}>

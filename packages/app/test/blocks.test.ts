@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseWorkflow, printCond, printWorkflow, validate, type Workflow } from '@reins/core';
 import { flatSteps } from '../src/canvas.js';
-import { addStep, addStepAt, capBackward, deleteStep, deleteSteps, dropPlace, dropSteps, insertSteps, moveStep, nestPlace, newId, placeOf, setAlways, setCond, takeSteps } from '../src/blocks.js';
+import { addStep, addStepAt, capBackward, deleteStep, deleteSteps, dropPlace, dropSteps, duplicateSteps, insertSteps, moveStep, nestPlace, newId, placeOf, setAlways, setCond, takeSteps, withFreshIds } from '../src/blocks.js';
 
 const HEAD = '---\nreins: 1\nname: demo\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n';
 const TEXT = `${HEAD}## phase plan
@@ -404,5 +404,88 @@ describe('purity of the multi-step functions', () => {
     deleteSteps(w, ['plan', 'r']);
     insertSteps(w, [w.steps[0]!], { branch: 'kids', index: 0 });
     expect(w).toEqual(before);
+  });
+});
+
+const S = (id: string, extra: Record<string, unknown> = {}) => ({ id, kind: 'phase', attrs: {}, cards: [], links: [], ...extra }) as Workflow['steps'][number];
+
+describe('withFreshIds', () => {
+  it('keeps an id that is free, renames one that is taken', () => {
+    expect(withFreshIds(w, [S('mine')]).map((s) => s.id)).toEqual(['mine']);
+    expect(withFreshIds(w, [S('plan')]).map((s) => s.id)).toEqual(['phase-1']);
+  });
+  it('two taken ids in one call get two different new ids', () => {
+    expect(withFreshIds(w, [S('plan'), S('build')]).map((s) => s.id)).toEqual(['phase-1', 'phase-2']);
+  });
+  it('a renamed id does not meet an id the call keeps', () => {
+    expect(withFreshIds(w, [S('phase-1'), S('plan')]).map((s) => s.id)).toEqual(['phase-1', 'phase-2']);
+  });
+  it('avoids ids that only a link or an against points at', () => {
+    const m = structuredClone(w);
+    find(m, 'plan').links = [{ kind: 'next', to: 'ghost' }];
+    find(m, 'v').attrs.against = 'phantom';
+    expect(withFreshIds(m, [S('ghost'), S('phantom')]).map((s) => s.id)).toEqual(['phase-1', 'phase-2']);
+  });
+  it('links and against inside the call follow a rename; links outside stay', () => {
+    const [a, b] = withFreshIds(w, [S('plan', { links: [{ kind: 'next', to: 'build' }, { kind: 'on-fail', to: 'fix' }] }), S('build', { attrs: { against: 'plan' } })]) as [Workflow['steps'][number], Workflow['steps'][number]];
+    expect([a.id, b.id]).toEqual(['phase-1', 'phase-2']);
+    expect(a.links.map((l) => l.to)).toEqual(['phase-2', 'fix']);
+    expect(b.attrs.against).toBe('phase-1');
+  });
+  it('renames inside a C block and follows links between its kids', () => {
+    const [c] = withFreshIds(w, [S('r', { kind: 'repeat', kids: [S('t', { links: [{ kind: 'next', to: 'fix' }] }), S('fix')] })]);
+    expect(c!.id).toBe('repeat-1');
+    expect(c!.kids!.map((k) => k.id)).toEqual(['phase-1', 'phase-2']); // t and fix are both taken by the workflow
+    expect(c!.kids![0]!.links[0]!.to).toBe('phase-2');
+  });
+  it('never mutates its input', () => {
+    const input = [S('plan', { links: [{ kind: 'next', to: 'build' }] }), S('build')], snap = structuredClone(input), before = structuredClone(w);
+    withFreshIds(w, input);
+    expect(input).toEqual(snap);
+    expect(w).toEqual(before);
+  });
+});
+
+describe('duplicateSteps', () => {
+  it('puts a copy with a fresh id right after the original and returns the new id', () => {
+    const r = duplicateSteps(w, ['build']);
+    expect(ids(r.w.steps).slice(0, 4)).toEqual(['plan', 'build', 'phase-1', 'r']);
+    expect(r.ids).toEqual(['phase-1']);
+  });
+  it('keeps a link to a step outside the copy', () => {
+    const r = duplicateSteps(w, ['plan']);
+    expect(find(r.w, 'phase-1').links).toMatchObject([{ kind: 'next', to: 'fix' }]);
+  });
+  it('several steps, each copy after its own original', () => {
+    const r = duplicateSteps(w, ['plan', 'build']);
+    expect(ids(r.w.steps).slice(0, 4)).toEqual(['plan', 'phase-1', 'build', 'phase-2']);
+    expect(r.ids).toEqual(['phase-1', 'phase-2']);
+  });
+  it('a C block is copied with its kids, links inside follow the new ids', () => {
+    const r = duplicateSteps(w, ['plan', 'r']);
+    expect(r.ids).toHaveLength(2);
+    const copy = find(r.w, r.ids[1]!);
+    expect(copy.kind).toBe('repeat');
+    expect(ids(copy.kids)).toHaveLength(2);
+    expect(ids(copy.kids).some((k) => k === 't' || k === 'fix')).toBe(false);
+    expect(find(r.w, r.ids[0]!).links[0]!.to).toBe(ids(copy.kids)[1]); // plan -> fix became plan' -> fix'
+  });
+  it('a step inside a selected C block is not copied twice', () => {
+    const r = duplicateSteps(w, ['r', 'fix']);
+    expect(r.ids).toHaveLength(1);
+  });
+  it('an unknown id changes nothing', () => {
+    const r = duplicateSteps(w, ['nope']);
+    expect(r.w).toBe(w);
+    expect(r.ids).toEqual([]);
+  });
+  it('prints and parses, and never mutates', () => {
+    const before = structuredClone(w);
+    const r = duplicateSteps(w, ['plan', 'r', 'i']);
+    expect(w).toEqual(before);
+    const text = printWorkflow(r.w);
+    const back = parseWorkflow(text);
+    expect(back.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+    expect(printWorkflow(back.workflow!)).toBe(text);
   });
 });
