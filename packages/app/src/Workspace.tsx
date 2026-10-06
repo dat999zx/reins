@@ -1,30 +1,32 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as KeyEvent, type MutableRefObject, type PointerEvent } from 'react';
 import type { Diagnostic, Workflow } from '@reins/core';
 import { BlocksPane } from './BlocksPane.js';
-import { addStepAt, dropPlace, moveStep, nestPlace, newId, placeOf, setCond, type Place } from './blocks.js';
+import { addStepAt, capBackward, dropPlace, dropSteps, moveStep, nestPlace, newId, placeOf, setCond, type Place } from './blocks.js';
 import { flatSteps } from './canvas.js';
 import { COND_KINDS } from './condKinds.js';
 import type { Layout } from './editorState.js';
 import { cx } from './generic.js';
 import { DRAG_PX, pickGesture, type Press } from './gesture.js';
 import { isTyping, matchKey, type ActName } from './keys.js';
-import { fitBounds, toWorld, ZOOM, zoomAt, type Cam, type Pt } from './surface.js';
+import { allKeys, boxSelect, stepIds, stepKey, toggle, withoutNested, type Key } from './selection.js';
+import { fitBounds, toWorld, ZOOM, zoomAt, type Cam, type Pt, type Rect } from './surface.js';
 import { useDrag, type Start } from './useDrag.js';
 
 const HOME = { x: 40, y: 40 };
 const NATIVE = 'input, textarea, select, option, button, .sx-menu, .sx-zoom';
 const onOf = (t: Element): Press['on'] => (t.closest(NATIVE) ? 'input' : t.closest('.sx-hat') ? 'hat' : t.closest('.blk') ? 'block' : 'empty');
 
-export function Workspace({ w, steps, diags, text, selected, rev, cam: saved, lay, press, onEdit, onSelect, onDelete, onCam, onLayout, onUndo, onRedo }: {
-  w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; selected?: string; rev: unknown;
+export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, press, onEdit, onSel, onDelete, onCam, onLayout, onUndo, onRedo, onNote }: {
+  w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; sel: Set<Key>; rev: unknown;
   cam?: Cam; lay: Layout; press: MutableRefObject<Start | undefined>;
-  onEdit: (fn: (w: Workflow) => Workflow) => boolean; onSelect: (id: string | undefined) => void; onDelete: (id: string) => void; onCam: (c: Cam) => void;
-  onLayout: (fn: (l: Layout) => Layout) => boolean; onUndo: () => void; onRedo: () => void;
+  onEdit: (fn: (w: Workflow) => Workflow) => boolean; onSel: (keys: Set<Key>, primary?: string) => void; onDelete: (ids: string[]) => void; onCam: (c: Cam) => void;
+  onLayout: (fn: (l: Layout) => Layout) => boolean; onUndo: () => void; onRedo: () => void; onNote: (s: string) => void;
 }) {
   const view = useRef<HTMLDivElement>(null);
   const [cam, setCam] = useState<Cam>(saved ?? { x: 0, y: 0, zoom: 1 });
   const camRef = useRef(cam);
   const [panning, setPanning] = useState(false);
+  const [box, setBox] = useState<Rect>();
   const space = useRef(false);
   const set = (c: Cam) => { camRef.current = c; setCam(c); };
   const commit = (c: Cam) => { set(c); onCam(c); };
@@ -46,7 +48,22 @@ export function Workspace({ w, steps, diags, text, selected, rev, cam: saved, la
     if (refocus.current !== undefined) view.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(refocus.current)}"]`)?.focus();
     refocus.current = undefined;
   }, [w]);
-  const move = (id: string, to: Place) => { refocus.current = onEdit((m) => moveStep(m, id, to)) ? id : undefined; };
+  // Every move is one edit; a link the move turned backward gets its max, and the note says which.
+  const moved = (fn: (m: Workflow) => Workflow) => {
+    let capped: string[] = [];
+    const sent = onEdit((m) => { const d = fn(m); if (d === m) return m; const r = capBackward(d); capped = r.capped; return r.w; });
+    if (sent && capped.length) onNote(`Added max 3 to ${capped.length === 1 ? '1 link that now points' : `${capped.length} links that now point`} back: ${capped.join(', ')}.`);
+    return sent;
+  };
+  const move = (id: string, to: Place) => { refocus.current = moved((m) => moveStep(m, id, to)) ? id : undefined; };
+
+  const one = (id?: string) => onSel(new Set(id === undefined ? [] : [stepKey(id)]), id);
+  const pick = (id: string, add: boolean) => {
+    if (!add) return one(id);
+    const k = stepKey(id), n = toggle(sel, k);
+    onSel(n, n.has(k) ? id : stepIds(n).at(-1));
+  };
+  const top = () => stepIds(withoutNested(w, sel));
 
   const last = (id: string) => {
     const at = placeOf(w, id);
@@ -55,15 +72,16 @@ export function Workspace({ w, steps, diags, text, selected, rev, cam: saved, la
   };
   // the block acts get the focused block's id; the others ignore it
   const ACTS: Record<ActName, (id: string) => void> = {
-    delete: onDelete,
-    select: onSelect,
+    delete: (id) => onDelete(sel.has(stepKey(id)) ? top() : [id]),
+    select: one,
     moveUp: (id) => { const at = placeOf(w, id); if (at && at.index > 0) move(id, { ...at, index: at.index - 1 }); },
     moveDown: (id) => { const at = placeOf(w, id); if (at && !last(id)) move(id, { ...at, index: at.index + 2 }); },
     nestIn: (id) => { const to = nestPlace(w, id, 'in'); if (to) move(id, to); },
     nestOut: (id) => { const to = nestPlace(w, id, 'out'); if (to) move(id, to); },
     undo: onUndo,
     redo: onRedo,
-    escape: () => onSelect(undefined),
+    escape: () => one(),
+    selectAll: () => { const n = allKeys(w); onSel(n, stepIds(n).at(-1)); },
     zoomIn: () => zoom(ZOOM.step),
     zoomOut: () => zoom(1 / ZOOM.step),
     zoomReset: () => zoom(1 / camRef.current.zoom),
@@ -86,14 +104,17 @@ export function Workspace({ w, steps, diags, text, selected, rev, cam: saved, la
     view, ghosts, cam: () => camRef.current, setCam: (c, save) => (save ? commit(c) : set(c)),
     legal: (src, t) => {
       if ('hex' in t) return 'cond' in src && setCond(w, t.hex.id, t.hex.path, { t: 'approve' }) !== w;
+      if ('id' in src) return 'hit' in t && dropSteps(w, src.ids ?? [src.id], t.hit) !== w;
       const place = 'hit' in t ? dropPlace(w, t.hit) : undefined;
-      return !!place && ('id' in src ? moveStep(w, src.id, place) !== w : 'kind' in src && addStepAt(w, 'phase', place) !== w);
+      return !!place && 'kind' in src && addStepAt(w, 'phase', place) !== w;
     },
     drop: (src, t) => {
       const place = 'hit' in t ? dropPlace(w, t.hit) : undefined;
       if ('hex' in t && 'cond' in src) onEdit((m) => setCond(m, t.hex.id, t.hex.path, COND_KINDS[src.cond]!.fresh()));
-      else if (place && 'id' in src) move(src.id, place);
-      else if (place && 'kind' in src && onEdit((m) => addStepAt(m, src.kind, place))) onSelect(newId(w, src.kind));
+      else if ('hit' in t && 'id' in src) {
+        const ids = src.ids ?? [src.id];
+        refocus.current = moved((m) => dropSteps(m, ids, t.hit)) ? ids[0] : undefined;
+      } else if (place && 'kind' in src && onEdit((m) => addStepAt(m, src.kind, place))) one(newId(w, src.kind));
     },
     hat: (d: Pt) => { onLayout((l) => ({ ...l, script: { x: home.x + d.x, y: home.y + d.y } })); },
   });
@@ -118,15 +139,51 @@ export function Workspace({ w, steps, diags, text, selected, rev, cam: saved, la
     return () => { v.removeEventListener('wheel', wheel); window.removeEventListener('keydown', key); window.removeEventListener('keyup', key); clearTimeout(timer); };
   }, []);
 
+  // Shift+drag on bare surface: a rectangle; on release every block fully inside it is selected (Ctrl adds).
+  const startBox = (e: PointerEvent<HTMLDivElement>) => {
+    const vr = view.current!.getBoundingClientRect(), add = e.ctrlKey || e.metaKey;
+    const at = (m: { clientX: number; clientY: number }) => toWorld(camRef.current, { x: m.clientX - vr.left, y: m.clientY - vr.top });
+    const a = at(e), x0 = e.clientX, y0 = e.clientY;
+    const rect = (m: { clientX: number; clientY: number }): Rect => { const b = at(m); return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) }; };
+    let moved = false;
+    const move = (m: globalThis.PointerEvent) => {
+      if (Math.hypot(m.clientX - x0, m.clientY - y0) >= DRAG_PX) moved = true;
+      if (moved) setBox(rect(m));
+    };
+    const up = (m: globalThis.PointerEvent) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      setBox(undefined);
+      if (!moved) return add ? undefined : one();
+      const c = camRef.current;
+      const rects = [...view.current!.querySelectorAll<HTMLElement>('.blk[data-id]')].map((el) => {
+        const r = el.getBoundingClientRect(), o = toWorld(c, { x: r.left - vr.left, y: r.top - vr.top });
+        return { key: stepKey(el.dataset.id!), r: { ...o, w: r.width / c.zoom, h: r.height / c.zoom } };
+      });
+      const n = withoutNested(w, new Set([...boxSelect(rects, rect(m)), ...(add ? sel : [])]));
+      onSel(n, stepIds(n).at(-1));
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  };
+
   const down = (e: PointerEvent<HTMLDivElement>) => {
     const p: Press = { button: e.button, shift: e.shiftKey, space: space.current && !isTyping(document.activeElement?.tagName ?? ''), on: onOf(e.target as Element) };
     const g = pickGesture(p);
     if (g === 'pending') {
       const hat = (e.target as Element).closest<HTMLElement>('.sx-hat'), blk = (e.target as Element).closest<HTMLElement>('.blk');
       if (hat) drag.press(e.nativeEvent, { hat: true }, hat);
-      else if (blk) drag.press(e.nativeEvent, { id: blk.dataset.id! }, blk);
+      else if (blk) {
+        // a block in the selection drags the whole selection, one ghost each; any other block drags alone
+        const id = blk.dataset.id!, ids = sel.has(stepKey(id)) ? top() : [id];
+        const group = ids.flatMap((i) => view.current!.querySelector(`.blk[data-id="${CSS.escape(i)}"]`) ?? []);
+        drag.press(e.nativeEvent, { id, ids }, blk, group.length > 1 ? group : undefined);
+      }
       return;
     }
+    if (g === 'box') return startBox(e);
     if (g !== 'pan') return;
     if (e.button === 1) e.preventDefault();
     const from = { x: e.clientX, y: e.clientY }, start = camRef.current;
@@ -143,7 +200,7 @@ export function Workspace({ w, steps, diags, text, selected, rev, cam: saved, la
       window.removeEventListener('pointercancel', up);
       setPanning(false);
       if (moved) onCam(camRef.current);
-      else if (p.on === 'empty' && p.button === 0 && !p.space) onSelect(undefined);
+      else if (p.on === 'empty' && p.button === 0 && !p.space) one();
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -155,9 +212,10 @@ export function Workspace({ w, steps, diags, text, selected, rev, cam: saved, la
       style={{ backgroundPosition: `${cam.x}px ${cam.y}px`, backgroundSize: `${18 * cam.zoom}px ${18 * cam.zoom}px` }}
       onKeyDown={keydown} onPointerDown={down} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}>
       <div className="sx-world" style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.zoom})` }}>
-        <BlocksPane w={w} steps={steps} diags={diags} text={text} selected={selected} rev={rev} condDrag={drag.kind === 'cond'} src={drag.src} over={drag.over}
-          at={{ x: home.x + (drag.d?.x ?? 0), y: home.y + (drag.d?.y ?? 0) }} onEdit={onEdit} onSelect={onSelect} />
+        <BlocksPane w={w} steps={steps} diags={diags} text={text} sel={sel} rev={rev} condDrag={drag.kind === 'cond'} src={drag.src} over={drag.over}
+          at={{ x: home.x + (drag.d?.x ?? 0), y: home.y + (drag.d?.y ?? 0) }} onEdit={onEdit} onSelect={pick} />
         <div className="sx-ghosts" ref={ghosts} />
+        {box && <div className="sx-box" style={{ left: box.x, top: box.y, width: box.w, height: box.h }} />}
       </div>
       <div className="sx-zoom" role="group" aria-label="Zoom">
         <button aria-label="Zoom out" onClick={() => zoom(1 / ZOOM.step)}>−</button>

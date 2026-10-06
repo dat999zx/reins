@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseWorkflow, printCond, printWorkflow, validate, type Workflow } from '@reins/core';
 import { flatSteps } from '../src/canvas.js';
-import { addStep, addStepAt, deleteStep, dropPlace, moveStep, nestPlace, newId, placeOf, setAlways, setCond } from '../src/blocks.js';
+import { addStep, addStepAt, capBackward, deleteStep, deleteSteps, dropPlace, dropSteps, insertSteps, moveStep, nestPlace, newId, placeOf, setAlways, setCond, takeSteps } from '../src/blocks.js';
 
 const HEAD = '---\nreins: 1\nname: demo\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n';
 const TEXT = `${HEAD}## phase plan
@@ -290,6 +290,119 @@ describe('purity', () => {
     setAlways(w, 'x');
     newId(w, 'phase');
     placeOf(w, 'fix');
+    expect(w).toEqual(before);
+  });
+});
+
+describe('insertSteps', () => {
+  const mk = (id: string) => ({ id, kind: 'phase', attrs: {}, cards: [], links: [] }) as unknown as Workflow['steps'][number];
+  it('inserts the given steps, in order, at a place', () => {
+    expect(ids(insertSteps(w, [mk('a'), mk('b')], { branch: 'kids', index: 1 }).steps)).toEqual(['plan', 'a', 'b', 'build', 'r', 'i', 'v']);
+    expect(ids(find(insertSteps(w, [mk('a')], { parent: 'r', branch: 'kids', index: 0 }), 'r').kids)).toEqual(['a', 't', 'fix']);
+  });
+  it('gives the same workflow for a place that does not exist', () => {
+    expect(insertSteps(w, [mk('a')], { parent: 'plan', branch: 'kids', index: 0 })).toBe(w);
+    expect(insertSteps(w, [mk('a')], { parent: 'r', branch: 'else', index: 0 })).toBe(w);
+  });
+});
+
+describe('takeSteps', () => {
+  it('removes the steps and returns them in document order', () => {
+    const r = takeSteps(w, ['fix', 'plan']);
+    expect(ids(r.taken)).toEqual(['plan', 'fix']);
+    expect(flatSteps(r.w.steps).map((s) => s.id)).not.toContain('plan');
+    expect(flatSteps(r.w.steps).map((s) => s.id)).not.toContain('fix');
+  });
+  it('takes a container with its subtree, and not its selected child twice', () => {
+    const r = takeSteps(w, ['fix', 'r']);
+    expect(ids(r.taken)).toEqual(['r']);
+    expect(ids(r.taken[0]!.kids)).toEqual(['t', 'fix']);
+  });
+  it('keeps links: the steps are moving, not going away', () => {
+    expect(takeSteps(w, ['fix']).w.steps[0]!.links).toEqual(w.steps[0]!.links);
+  });
+});
+
+describe('dropSteps', () => {
+  const order = (m: Workflow) => ids(m.steps);
+  it('moves two top-level steps before plan, in document order', () => {
+    expect(order(dropSteps(w, ['v', 'build'], { block: 'plan', edge: 'before' }))).toEqual(['build', 'v', 'plan', 'r', 'i']);
+  });
+  it('moves several steps into the kids of r', () => {
+    const m = dropSteps(w, ['plan', 'build'], { body: 'r', branch: 'kids' });
+    expect(ids(find(m, 'r').kids)).toEqual(['plan', 'build', 't', 'fix']);
+  });
+  it('is the same workflow when the drop is on a moved step, inside one, or changes nothing', () => {
+    expect(dropSteps(w, ['plan', 'build'], { block: 'build', edge: 'before' })).toBe(w);
+    expect(dropSteps(w, ['r'], { block: 'fix', edge: 'before' })).toBe(w);
+    expect(dropSteps(w, ['r'], { body: 'r', branch: 'kids' })).toBe(w);
+    expect(dropSteps(w, ['plan'], { block: 'build', edge: 'before' })).toBe(w);
+    expect(dropSteps(w, ['nope'], { top: 'start' })).toBe(w);
+  });
+  it('equals moveStep for one id', () => {
+    const hits = [{ block: 'v', edge: 'after' }, { top: 'start' }, { top: 'end' }, { body: 'i', branch: 'else' }, { block: 'r', edge: 'into' }, { block: 'plan', edge: 'after' }] as const;
+    for (const id of ['build', 'fix', 'plan', 'no']) for (const hit of hits) {
+      const place = dropPlace(w, hit);
+      const want = place ? moveStep(w, id, place) : w;
+      expect(printWorkflow(dropSteps(w, [id], hit))).toBe(printWorkflow(want));
+    }
+  });
+  it('prints and parses', () => {
+    const m = dropSteps(w, ['v', 'fix'], { block: 'plan', edge: 'before' });
+    expect(parseWorkflow(printWorkflow(m)).diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+  });
+});
+
+describe('deleteSteps', () => {
+  it('deletes several, with the links and against that pointed at them', () => {
+    const m = deleteSteps(w, ['plan', 'fix']);
+    expect(ids(m.steps)).not.toContain('plan');
+    expect(find(m, 'v').attrs.against).toBeUndefined();
+    expect(parseWorkflow(printWorkflow(m)).workflow).toBeDefined();
+  });
+  it('handles a parent and its child in one call; unknown ids change nothing', () => {
+    expect(flatSteps(deleteSteps(w, ['fix', 'r']).steps).map((s) => s.id)).toEqual(['plan', 'build', 'i', 'yes', 'no', 'v']);
+    expect(deleteSteps(w, ['nope'])).toBe(w);
+    expect(deleteSteps(w, [])).toBe(w);
+  });
+});
+
+describe('capBackward', () => {
+  const after = (): Workflow => moveStep(w, 'plan', { parent: 'r', branch: 'kids', index: 2 });
+  it('gives a link that now points back a max of 3 and names it', () => {
+    const r = capBackward(after());
+    expect(find(r.w, 'plan').links).toMatchObject([{ kind: 'next', to: 'fix', max: 3 }]);
+    expect(r.capped).toEqual(['`plan` next → `fix`']);
+  });
+  it('keeps an existing max, and leaves forward links alone', () => {
+    const m = after();
+    find(m, 'plan').links[0]!.max = 7;
+    const r = capBackward(m);
+    expect(r.w).toBe(m);
+    expect(r.capped).toEqual([]);
+    expect(capBackward(w).w).toBe(w);
+  });
+  it('caps a link to itself, and prints and parses', () => {
+    const m = structuredClone(w);
+    find(m, 'build').links.push({ kind: 'on-fail', to: 'build' });
+    const r = capBackward(m);
+    expect(find(r.w, 'build').links[0]!.max).toBe(3);
+    expect(parseWorkflow(printWorkflow(r.w)).workflow).toBeDefined();
+  });
+  it('never mutates its input', () => {
+    const m = after(), before = structuredClone(m);
+    capBackward(m);
+    expect(m).toEqual(before);
+  });
+});
+
+describe('purity of the multi-step functions', () => {
+  it('never mutates its input', () => {
+    const before = structuredClone(w);
+    takeSteps(w, ['plan', 'r']);
+    dropSteps(w, ['v', 'build'], { block: 'plan', edge: 'before' });
+    deleteSteps(w, ['plan', 'r']);
+    insertSteps(w, [w.steps[0]!], { branch: 'kids', index: 0 });
     expect(w).toEqual(before);
   });
 });

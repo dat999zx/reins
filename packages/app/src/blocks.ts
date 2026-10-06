@@ -34,15 +34,18 @@ export function newId(w: Workflow, kind: StepKind): string {
   return `${kind}-${n}`;
 }
 
-export function addStepAt(w: Workflow, kind: StepKind, to: Place): Workflow {
-  const fresh = KINDS[kind].fresh;
-  if (!fresh) return w;
-  const step: Step = { id: newId(w, kind), kind, attrs: {}, cards: [], links: [], ...fresh() };
+export function insertSteps(w: Workflow, steps: Step[], to: Place): Workflow {
   const m = structuredClone(w);
   const list = listIn(m, to);
   if (!list) return w;
-  list.splice(Math.max(0, Math.min(to.index, list.length)), 0, step);
+  list.splice(Math.max(0, Math.min(to.index, list.length)), 0, ...structuredClone(steps));
   return m;
+}
+
+export function addStepAt(w: Workflow, kind: StepKind, to: Place): Workflow {
+  const fresh = KINDS[kind].fresh;
+  if (!fresh) return w;
+  return insertSteps(w, [{ id: newId(w, kind), kind, attrs: {}, cards: [], links: [], ...fresh() }], to);
 }
 
 export function addStep(w: Workflow, kind: StepKind, after?: string): Workflow {
@@ -112,6 +115,41 @@ export function deleteStep(w: Workflow, id: string): Workflow {
     if (gone.has(s.attrs.against ?? '')) delete s.attrs.against;
   }
   return m;
+}
+
+export const deleteSteps = (w: Workflow, ids: string[]): Workflow => ids.reduce((m, id) => deleteStep(m, id), w);
+
+// Cut the steps (with their subtrees) out of a clone, in document order; a step inside another taken step goes with it. Links stay as they are.
+export function takeSteps(w: Workflow, ids: string[]): { w: Workflow; taken: Step[] } {
+  const want = new Set(ids), taken: Step[] = [], m = structuredClone(w);
+  const strip = (list: Step[]): Step[] => list.filter((s) => {
+    if (want.has(s.id)) { taken.push(s); return false; }
+    if (s.kids) s.kids = strip(s.kids);
+    if (s.else) s.else = strip(s.else);
+    return true;
+  });
+  m.steps = strip(m.steps);
+  return { w: m, taken };
+}
+
+// Move several steps to where a pointer hit points. The same workflow when nothing would change or the hit is on a moved step or inside one.
+export function dropSteps(w: Workflow, ids: string[], hit: Hit): Workflow {
+  const { w: rest, taken } = takeSteps(w, ids);
+  const anchor = 'block' in hit ? hit.block : 'body' in hit ? hit.body : undefined;
+  if (!taken.length || (anchor !== undefined && flatSteps(taken).some((s) => s.id === anchor))) return w;
+  const place = dropPlace(rest, hit);
+  const m = place && insertSteps(rest, taken, place);
+  return !m || m === rest || JSON.stringify(m) === JSON.stringify(w) ? w : m;
+}
+
+// A link that points at its own step or one before it needs a max (the validator's rule, as setLink applies it).
+export function capBackward(w: Workflow): { w: Workflow; capped: string[] } {
+  const m = structuredClone(w), all = flatSteps(m.steps), order = all.map((s) => s.id), capped: string[] = [];
+  for (const [i, s] of all.entries()) for (const l of s.links) {
+    const j = order.indexOf(l.to);
+    if (j !== -1 && j <= i && l.max === undefined) { l.max = 3; capped.push(`\`${s.id}\` ${l.kind} → \`${l.to}\``); }
+  }
+  return capped.length ? { w: m, capped } : { w, capped };
 }
 
 export type CondPath = Array<'a' | 'b'>;

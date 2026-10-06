@@ -22,6 +22,11 @@ describe('pickGesture', () => {
   it('left on empty surface pans', () => {
     expect(pickGesture(press({}))).toBe('pan');
   });
+  it('Shift on empty surface draws a selection box; Shift on a block still drags; Space still pans', () => {
+    expect(pickGesture(press({ shift: true }))).toBe('box');
+    expect(pickGesture(press({ shift: true, on: 'block' }))).toBe('pending');
+    expect(pickGesture(press({ shift: true, space: true }))).toBe('pan');
+  });
   it('right button and presses outside do nothing', () => {
     expect(pickGesture(press({ button: 2 }))).toBe('none');
     expect(pickGesture(press({ on: 'outside' }))).toBe('none');

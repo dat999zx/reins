@@ -236,6 +236,7 @@ select.sx-pill { cursor: pointer; }
 .sx-grip:hover { opacity: 0.9; }
 .sx-dragsrc { opacity: 0.45; }
 .sx-ghosts { position: absolute; left: 0; top: 0; }
+.sx-box { position: absolute; border: 1px solid var(--brand); background: color-mix(in srgb, var(--brand) 15%, transparent); pointer-events: none; z-index: 60; }
 .sx-ghost { position: absolute; box-sizing: border-box; margin: 0; opacity: 0.85; pointer-events: none; z-index: 50; }
 .sx-ghost * { pointer-events: none; }
 .sx-ghost-card { position: fixed; }

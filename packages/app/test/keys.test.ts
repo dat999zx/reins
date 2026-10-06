@@ -32,6 +32,11 @@ describe('keys', () => {
     expect(matchKey(ev('ArrowLeft', { alt: true }), 'block')).toBe('nestOut');
     expect(matchKey(ev('ArrowUp'), 'block')).toBeUndefined();
   });
+  it('Ctrl+A selects all, from the viewport or a block', () => {
+    expect(matchKey(ev('a', { ctrl: true }), 'any')).toBe('selectAll');
+    expect(matchKey(ev('A', { ctrl: true }), 'block')).toBe('selectAll');
+    expect(matchKey(ev('a'), 'any')).toBeUndefined();
+  });
   it('an extra modifier does not match', () => {
     expect(matchKey(ev('z', { ctrl: true, alt: true }), 'any')).toBeUndefined();
     expect(matchKey(ev('Escape', { shift: true }), 'any')).toBeUndefined();

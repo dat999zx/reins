@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { Diagnostic, StepKind, Workflow } from '@reins/core';
-import { addStep, deleteStep, newId, setCond } from './blocks.js';
+import { addStep, deleteSteps, newId, setCond } from './blocks.js';
+import { stepIds, stepKey, withoutNested, type Key } from './selection.js';
 import { COND_KINDS } from './condKinds.js';
 import { ApiError, get, post, put } from './api.js';
 import { restoreFile, restoreStep, type CanvasView, type EditorState, type Layout, type Tab } from './editorState.js';
@@ -40,6 +41,15 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   const [saved, setSaved] = useState('');
   const [prev, setPrev] = useState<Preview | null>(null);
   const [stepId, setStepId] = useState<string | undefined>();
+  const [sels, setSels] = useState<Set<Key>>(new Set());
+  // the selection follows the primary step; a multi-selection survives edits, minus steps that no longer exist
+  useEffect(() => {
+    const ids = new Set(prev?.workflow ? flatSteps(prev.workflow.steps).map((s) => s.id) : []);
+    setSels((s) => {
+      const n = stepId === undefined ? new Set<Key>() : s.has(stepKey(stepId)) ? new Set([...s].filter((k) => !k.startsWith('s:') || ids.has(k.slice(2)))) : new Set([stepKey(stepId)]);
+      return n.size === s.size && [...n].every((k) => s.has(k)) ? s : n;
+    });
+  }, [stepId, prev?.workflow]);
   const [name, setName] = useState('');
   const [msg, setMsg] = useState('');
   const ta = useRef<HTMLTextAreaElement>(null);
@@ -178,7 +188,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   // ponytail: a step is added as a sibling after the selection; into a container only by dragging
   const add = (kind: StepKind) => { if (prev?.workflow && edit((w) => addStep(w, kind, stepId))) setStepId(newId(prev.workflow, kind)); };
   // ponytail: no confirm, no undo; nothing is written until Save
-  const del = (id: string) => { if (edit((w) => deleteStep(w, id)) && id === stepId) setStepId(undefined); };
+  const del = (ids: string[]) => { if (edit((w) => deleteSteps(w, ids)) && stepId !== undefined && ids.includes(stepId)) setStepId(undefined); };
 
   const save = async () => {
     if (file === null) return;
@@ -286,12 +296,17 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
               <div className="canvaswrap" tabIndex={-1}
                 onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); } }}>
                 <StatusCtx.Provider value={{ status, show: showStatus }}>
-                  <Workspace key={file} w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} selected={stepId}
+                  <Workspace key={file} w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} sel={sels}
                     rev={prev} press={press} cam={canvas.current?.[file]?.cam} lay={lay}
-                    onEdit={edit} onSelect={setStepId} onDelete={del} onLayout={setLayout} onUndo={() => step(undo)} onRedo={() => step(redo)} onCam={(cam) => { if (restored) setView(file, { cam }); }} />
+                    onEdit={edit} onSel={(keys, primary) => { setSels(keys); setStepId(primary); }} onNote={setMsg} onDelete={del} onLayout={setLayout} onUndo={() => step(undo)} onRedo={() => step(redo)} onCam={(cam) => { if (restored) setView(file, { cam }); }} />
                 </StatusCtx.Provider>
-                {sel ? <BlockPanel key={sel.id} step={sel} all={flatSteps(prev.workflow.steps)} cond={prev.steps.find((s) => s.id === sel.id)?.cond}
-                  turn={prev.turn} rev={prev} onEdit={edit} onDelete={() => del(sel.id)} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />
+                {stepIds(sels).length > 1 ? (
+                  <aside className="bpanel" aria-label="Selection panel">
+                    <h3>{stepIds(sels).length} blocks selected</h3>
+                    <button className="danger" onClick={() => del(stepIds(withoutNested(prev.workflow!, sels)))}>Delete</button>
+                  </aside>
+                ) : sel ? <BlockPanel key={sel.id} step={sel} all={flatSteps(prev.workflow.steps)} cond={prev.steps.find((s) => s.id === sel.id)?.cond}
+                  turn={prev.turn} rev={prev} onEdit={edit} onDelete={() => del([sel.id])} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />
                   : <WorkflowPanel w={prev.workflow} rev={prev} onEdit={edit} />}
               </div>
             )}

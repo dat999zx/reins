@@ -1,4 +1,4 @@
-export type ActName = 'delete' | 'select' | 'moveUp' | 'moveDown' | 'nestIn' | 'nestOut' | 'undo' | 'redo' | 'escape' | 'zoomIn' | 'zoomOut' | 'zoomReset' | 'fit';
+export type ActName = 'delete' | 'select' | 'moveUp' | 'moveDown' | 'nestIn' | 'nestOut' | 'undo' | 'redo' | 'escape' | 'zoomIn' | 'zoomOut' | 'zoomReset' | 'fit' | 'selectAll';
 export type On = 'block' | 'any';
 type Row = { key: string; ctrl?: true; shift?: true; alt?: true; on: On; act: ActName };
 
@@ -17,6 +17,7 @@ export const KEYS: ReadonlyArray<Row> = [
   { key: 'z', ctrl: true, on: 'any', act: 'undo' },
   { key: 'z', ctrl: true, shift: true, on: 'any', act: 'redo' },
   { key: 'y', ctrl: true, on: 'any', act: 'redo' },
+  { key: 'a', ctrl: true, on: 'any', act: 'selectAll' },
   { key: 'Escape', on: 'any', act: 'escape' },
   { key: '=', ctrl: true, on: 'any', act: 'zoomIn' },
   { key: '+', ctrl: true, shift: true, on: 'any', act: 'zoomIn' },

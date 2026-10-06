@@ -491,6 +491,53 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await expect.poll(async () => { const h = await hatBox(); return Math.abs(h.x - hat3.x) <= 2 && Math.abs(h.y - hat3.y) <= 2; }, { timeout: W }).toBe(true);
     await textTab.click();
     expect(await editor.inputValue()).toBe(textBeforeHat);
+    // 8e.1. Shift+click selects several; Delete removes them in one edit, one Ctrl+Z brings them back; a Shift+drag box selects; a multi-drag moves them together
+    await blocksTab.click();
+    const workspace = page.getByRole('region', { name: 'Workspace' });
+    const selected = page.locator('.blk.sx-sel');
+    await row('plan').locator('.sx-row').first().click();
+    await row('build').locator('.sx-row').first().click({ modifiers: ['Shift'] });
+    await expect.poll(() => selected.count(), { timeout: W }).toBe(2);
+    await page.keyboard.press('Delete');
+    await expect.poll(async () => (await row('plan').count()) + (await row('build').count()), { timeout: W }).toBe(0);
+    await textTab.click();
+    expect(await editor.inputValue()).not.toMatch(/## phase (plan|build)\n/);
+    await blocksTab.click();
+    await workspace.focus();
+    await page.keyboard.press('ControlOrMeta+Z');
+    await row('build').waitFor({ timeout: W });
+    await textTab.click();
+    expect(await editor.inputValue()).toBe(textBeforeHat);
+    await blocksTab.click();
+    await workspace.focus();
+    await page.keyboard.press('Escape');
+    await expect.poll(() => selected.count(), { timeout: W }).toBe(0);
+    // build sits above plan here (8c.2 swapped them)
+    const upper = (await row('build').boundingBox())!, lower = (await row('plan').boundingBox())!;
+    await page.keyboard.down('Shift');
+    await drag({ x: upper.x - 20, y: upper.y - 6 }, { x: lower.x + lower.width + 20, y: lower.y + lower.height + 6 });
+    await page.keyboard.up('Shift');
+    await expect.poll(() => selected.count(), { timeout: W }).toBe(2);
+    expect(await row('plan').getAttribute('class')).toContain('sx-sel');
+    expect(await row('build').getAttribute('class')).toContain('sx-sel');
+    // dragging one selected block takes the whole selection
+    const base = await order();
+    const grab = (await row('plan').locator('.sx-grip').first().boundingBox())!, shipBox = (await row('ship').boundingBox())!;
+    await page.mouse.move(grab.x + grab.width / 2, grab.y + grab.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(shipBox.x + 40, shipBox.y + shipBox.height * 0.7, { steps: 8 });
+    await page.mouse.up();
+    const moved = base.filter((id) => id !== 'build' && id !== 'plan');
+    moved.splice(moved.indexOf('ship') + 1, 0, 'build', 'plan');
+    await expect.poll(order, { timeout: W }).toEqual(moved);
+    await workspace.focus();
+    await page.keyboard.press('ControlOrMeta+Z');
+    await expect.poll(order, { timeout: W }).toEqual(base);
+    await textTab.click();
+    expect(await editor.inputValue()).toBe(textBeforeHat);
+    await blocksTab.click();
+    await workspace.focus();
+    await page.keyboard.press('Escape');
     // 8d.z. save, so the buffer is clean before Chat (Playwright dismisses the leave confirm)
     await textTab.click();
     await editor.focus();

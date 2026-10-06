@@ -6,6 +6,7 @@ import { editStep, marksOf } from './canvas.js';
 import { setCond, type CondPath } from './blocks.js';
 import { applyField, fieldValue } from './panelEdit.js';
 import type { Pt } from './surface.js';
+import { stepKey, type Key } from './selection.js';
 import { zoneAttrs, zoneKey, type Zone } from './gesture.js';
 import type { Over } from './useDrag.js';
 import { Pill, StepPick } from './Pill.js';
@@ -14,10 +15,10 @@ import { StatusCtx, StepChips } from './StepChips.js';
 
 const LOOK = { code: 'code', str: 'pill', num: 'num', pill: 'pill' } as const satisfies Record<CondParam['look'], string>;
 
-export function BlocksPane({ w, steps, diags, text, selected, rev, condDrag, src, over, at, onEdit, onSelect }: {
-  w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; selected?: string; rev: unknown;
-  condDrag?: boolean; src?: string; over?: Over; at: Pt;
-  onEdit: (fn: (w: Workflow) => Workflow) => boolean; onSelect: (id: string | undefined) => void;
+export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, over, at, onEdit, onSelect }: {
+  w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; sel: Set<Key>; rev: unknown;
+  condDrag?: boolean; src?: Set<string>; over?: Over; at: Pt;
+  onEdit: (fn: (w: Workflow) => Workflow) => boolean; onSelect: (id: string, add: boolean) => void;
 }) {
   const conds = Object.fromEntries(steps.flatMap((s) => (s.cond === undefined ? [] : [[s.id, s.cond]])));
   const marks = useMemo(() => marksOf(w, diags, text).steps, [w, diags, text]);
@@ -30,11 +31,11 @@ export function BlocksPane({ w, steps, diags, text, selected, rev, condDrag, src
     const info = show ? status[s.id] : undefined;
     const mark = marks.get(s.id);
     return {
-      className: cx('blk', shape, s.id === selected && 'sx-sel', s.id === src && 'sx-dragsrc', info?.state && `sx-${info.state}`, mark && `mark-${mark}`),
+      className: cx('blk', shape, sel.has(stepKey(s.id)) && 'sx-sel', src?.has(s.id) && 'sx-dragsrc', info?.state && `sx-${info.state}`, mark && `mark-${mark}`),
       'data-id': s.id,
       'data-kind': s.kind,
       tabIndex: 0,
-      onClick: (e: MouseEvent) => { e.stopPropagation(); onSelect(s.id); },
+      onClick: (e: MouseEvent) => { e.stopPropagation(); onSelect(s.id, e.shiftKey || e.ctrlKey || e.metaKey); },
     };
   };
 

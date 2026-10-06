@@ -3,10 +3,10 @@ import type { StepKind } from '@reins/core';
 import { DRAG_PX, hitOf, snapOf, zoneKey, type Target, type Zone } from './gesture.js';
 import { edgePan, toWorld, type Cam, type Pt } from './surface.js';
 
-export type Src = { id: string } | { kind: StepKind } | { cond: string } | { hat: true };
-export type Start = (e: PointerEvent, src: Src, el: Element) => void;
+export type Src = { id: string; ids?: string[] } | { kind: StepKind } | { cond: string } | { hat: true };
+export type Start = (e: PointerEvent, src: Src, el: Element, group?: Element[]) => void;
 export type Over = { el: Zone; cls: string };
-type Live = { kind?: 'step' | 'cond' | 'hat'; src?: string; over?: Over; d?: Pt };
+type Live = { kind?: 'step' | 'cond' | 'hat'; src?: Set<string>; over?: Over; d?: Pt };
 type Opts = {
   view: { current: HTMLElement | null }; ghosts: { current: HTMLElement | null };
   cam(): Cam; setCam(c: Cam, save?: boolean): void;
@@ -23,7 +23,7 @@ export function useDrag(o: Opts) {
   oref.current = o;
   const [live, setLive] = useState<Live>({});
 
-  const press: Start = (e, src, el) => {
+  const press: Start = (e, src, el, group = [el]) => {
     if (e.button !== 0) return;
     const from = { x: e.clientX, y: e.clientY };
     const at = { ...from };
@@ -67,14 +67,28 @@ export function useDrag(o: Opts) {
     const begin = () => {
       on = true;
       if (kind !== 'hat') {
-        ghost = el.cloneNode(true) as HTMLElement;
-        for (const n of [ghost, ...ghost.querySelectorAll('[data-id], [data-zone]')]) for (const a of ZONE_ATTRS) n.removeAttribute(a);
+        const clone = (n: Element) => {
+          const c = n.cloneNode(true) as HTMLElement;
+          for (const x of [c, ...c.querySelectorAll('[data-id], [data-zone]')]) for (const a of ZONE_ATTRS) x.removeAttribute(a);
+          return c;
+        };
+        // several blocks are one ghost: each clone keeps its place relative to the block under the pointer
+        ghost = group.length > 1 ? document.createElement('div') : clone(el);
+        if (group.length > 1) {
+          for (const n of group) {
+            const c = clone(n), b = n.getBoundingClientRect();
+            c.style.position = 'absolute';
+            c.style.left = `${(b.left - box.left) / zoom0}px`;
+            c.style.top = `${(b.top - box.top) / zoom0}px`;
+            c.style.width = `${b.width / zoom0}px`;
+            ghost.append(c);
+          }
+        } else ghost.style.width = `${box.width / (card ? 1 : zoom0)}px`;
         ghost.inert = true;
         ghost.classList.add('sx-ghost', card ? 'sx-ghost-card' : 'sx-ghost-block');
-        ghost.style.width = `${box.width / (card ? 1 : zoom0)}px`;
         (card ? document.body : oref.current.ghosts.current!).append(ghost);
       }
-      setLive({ kind, src: 'id' in src ? src.id : undefined });
+      setLive({ kind, src: 'id' in src ? new Set(src.ids ?? [src.id]) : undefined });
       const tick = () => {
         const r = oref.current.view.current!.getBoundingClientRect();
         if (at.x >= r.left && at.x <= r.right && at.y >= r.top && at.y <= r.bottom) {
