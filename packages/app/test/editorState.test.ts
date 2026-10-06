@@ -8,9 +8,9 @@ describe('cleanEditorState', () => {
   it('drops wrong types, keeps the rest', () => {
     expect(cleanEditorState({ workflow: 5, tab: 'zzz', stepId: 'x' })).toEqual({ stepId: 'x' });
   });
-  it('keeps tab blocks and tab map', () => {
+  it('keeps tab blocks; migrates tab map to blocks', () => {
     expect(cleanEditorState({ tab: 'blocks' })).toEqual({ tab: 'blocks' });
-    expect(cleanEditorState({ tab: 'map' })).toEqual({ tab: 'map' });
+    expect(cleanEditorState({ tab: 'map' })).toEqual({ tab: 'blocks' });
   });
   it('migrates a stored tab canvas to blocks', () => {
     expect(cleanEditorState({ tab: 'canvas' })).toEqual({ tab: 'blocks' });

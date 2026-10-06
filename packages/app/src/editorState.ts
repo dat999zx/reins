@@ -1,8 +1,8 @@
 import { get, put } from './api.js';
 
 export type CanvasView = { view?: { x: number; y: number; zoom: number } };
-export type Tab = 'chat' | 'blocks' | 'map' | 'text';
-const TABS: readonly Tab[] = ['chat', 'blocks', 'map', 'text'];
+export type Tab = 'chat' | 'blocks' | 'text';
+const TABS: readonly Tab[] = ['chat', 'blocks', 'text'];
 export interface EditorState {
   workflow?: string; tab?: Tab; stepId?: string;
   canvas?: Record<string /* absolute workflow path */, CanvasView>;
@@ -24,7 +24,7 @@ export function cleanEditorState(raw: unknown): EditorState {
   if (!isObj(raw)) return {};
   const out: EditorState = {};
   if (typeof raw.workflow === 'string') out.workflow = raw.workflow;
-  const tab = raw.tab === 'canvas' ? 'blocks' : raw.tab;
+  const tab = raw.tab === 'canvas' || raw.tab === 'map' ? 'blocks' : raw.tab;
   if (TABS.includes(tab as Tab)) out.tab = tab as Tab;
   if (typeof raw.stepId === 'string') out.stepId = raw.stepId;
   if (isObj(raw.canvas)) {

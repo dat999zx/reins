@@ -154,32 +154,6 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 
 .canvaswrap { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr); flex: 1; min-height: 420px; border: 1px solid var(--line2); border-radius: 6px; overflow: hidden; }
 .canvaswrap:focus { outline: none; }
-.canvaswrap .react-flow__handle { opacity: 0; pointer-events: none; }
-.canvaswrap .react-flow { --xy-background-color: var(--bg); --xy-edge-stroke-default: var(--mute); --xy-edge-label-background-color-default: var(--bg); --xy-edge-label-color-default: var(--mute); }
-.react-flow .react-flow__node-group, .react-flow .react-flow__node-step { padding: 0; border: 0; background: none; border-radius: 0; text-align: left; width: auto; color: var(--ink); font-size: 12px; }
-.cbox { position: relative; width: 100%; height: 100%; background: var(--panel); border: 1px solid var(--line2); border-radius: 7px; padding: 6px 10px; overflow: hidden; }
-.cbox .ckind { color: var(--brand); font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; }
-.cbox .csub { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cbox .csub.mono { font-family: var(--mono); font-size: 11.5px; }
-.cbox .cchips { position: absolute; right: 6px; top: 4px; }
-.cbox.selected { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand); }
-.cbox.active { border-color: var(--brand); box-shadow: 0 0 8px color-mix(in srgb, var(--brand) 55%, transparent); }
-.cbox.waiting { border-color: var(--gate); }
-.cbox.stuck, .cbox.mark-error { border-color: var(--bad); }
-.cbox.mark-warning { border-color: var(--gate); border-style: dashed; }
-.cgroup { background: color-mix(in srgb, var(--panel) 60%, transparent); border-style: dashed; padding: 6px 12px; }
-.cgroup .chead2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cgroup .celse { position: absolute; top: 34px; bottom: 12px; border-left: 1px dashed var(--line2); }
-.cgroup .celse span { position: absolute; top: 0; left: 4px; color: var(--faint); font-size: 10.5px; }
-.cbox .hfail { background: var(--bad); }
-.react-flow__edge.w-order .react-flow__edge-path { stroke: var(--line2); stroke-dasharray: 4 4; stroke-width: 1; }
-.react-flow__edge.w-fail .react-flow__edge-path { stroke: var(--bad); }
-.react-flow__edge.w-old .react-flow__edge-path { stroke: var(--faint); stroke-dasharray: 2 4; }
-.react-flow__edge.mark-error .react-flow__edge-path { stroke: var(--bad); }
-.react-flow__edge.mark-warning .react-flow__edge-path { stroke: var(--gate); stroke-dasharray: 5 3; }
-@media (prefers-reduced-motion: no-preference) {
-  .cbox.active { animation: sstate-pulse 1.6s ease-in-out infinite; }
-}
 .bpanel { width: 300px; box-sizing: border-box; overflow-y: auto; border-left: 1px solid var(--line2); background: var(--panel); padding: 10px 12px; display: grid; gap: 8px; align-content: start; font-size: 12px; }
 .bpanel h3 { margin: 0; font-size: 13px; }
 .bpanel h4 { margin: 4px 0; font-size: 12px; color: var(--mute); }

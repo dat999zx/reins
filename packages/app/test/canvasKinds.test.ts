@@ -26,16 +26,9 @@ describe('KINDS', () => {
   it('CARD_KINDS is the core cards without whenever-only kinds, in order', () => {
     expect(CARD_KINDS).toEqual([...CARDS.values()].filter((c) => !c.delivery).map((c) => c.kind));
   });
-  it('sub gives the second line', () => {
-    expect(KINDS.run.sub(step('run', { attrs: { cmd: 'npm test' } }))).toBe('npm test');
-    expect(KINDS.gate.sub(step('gate'), 'tests pass')).toBe('until tests pass');
-    expect(KINDS.verify.sub(step('verify', { attrs: { against: 'plan' } }))).toBe('against plan');
-    expect(KINDS.use.sub(step('use', { attrs: { use: 'lint-fix' } }))).toBe('lint-fix');
-    expect(KINDS.repeat.sub(step('repeat', { attrs: { max: '3' } }), 'tests pass')).toBe('until tests pass · max 3');
-    expect(KINDS.if.sub(step('if'), 'tests pass')).toBe('if tests pass');
-    expect(KINDS.handoff.sub(step('handoff', { attrs: { to: 'bob' } }))).toBe('bob');
-    expect(KINDS.recall.sub(step('recall', { attrs: { knowl: 'k' } }))).toBe('k');
-    expect(KINDS.say.sub(step('say', { prompt: `${'a'.repeat(50)}\nsecond` }))).toBe('a'.repeat(40));
+  it('only use has sub', () => {
+    expect((Object.keys(KINDS) as StepKind[]).filter((k) => KINDS[k].sub)).toEqual(['use']);
+    expect(KINDS.use.sub!(step('use', { attrs: { use: 'lint-fix' } }))).toBe('lint-fix');
   });
 });
 

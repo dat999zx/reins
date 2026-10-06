@@ -1,11 +1,6 @@
-import type { Diagnostic, LinkKind, Step, Workflow } from '@reins/core';
-import type { Edge, Node } from '@xyflow/react';
-import { KINDS } from './canvasKinds.js';
-import type { Box } from './layout.js';
+import type { Diagnostic, Step, Workflow } from '@reins/core';
 
 export type WireKind = 'next' | 'on-fail';
-export type BoxData = { step: Step; cond?: string; mark?: Mark; elseX?: number };
-export type WireData = { kind: LinkKind | 'order'; index?: number; mark?: Mark };
 
 export const edgeId = (from: string, index: number | 'order', to: string): string => `${from}>${index}>${to}`;
 
@@ -34,53 +29,6 @@ export function marksOf(w: Workflow, diags: Diagnostic[], text: string): { steps
     marks.set(key, worse(marks.get(key), d.severity)!);
   }
   return { steps, wires };
-}
-
-export function toGraph(w: Workflow, boxes: Record<string, Box>, o: {
-  conds: Record<string, string>; diags: Diagnostic[]; text: string; selected?: string;
-}): { nodes: Node<BoxData>[]; edges: Edge<WireData>[] } {
-  const ids = new Set(flatSteps(w.steps).map((s) => s.id));
-  const { steps: nodeMark, wires: wireMark } = marksOf(w, o.diags, o.text);
-
-  const nodes: Node<BoxData>[] = [];
-  const edges: Edge<WireData>[] = [];
-  const walk = (list: Step[], parentId?: string) => {
-    list.forEach((st, n) => {
-      const b = boxes[st.id]!;
-      nodes.push({
-        id: st.id,
-        type: KINDS[st.kind].group ? 'group' : 'step',
-        position: { x: b.x, y: b.y },
-        width: b.w,
-        height: b.h,
-        data: { step: st, cond: o.conds[st.id], mark: nodeMark.get(st.id), elseX: b.elseX },
-        deletable: false,
-        selected: st.id === o.selected,
-        ...(parentId ? { parentId, extent: 'parent' as const, expandParent: true } : {}),
-      });
-      st.links.forEach((l, index) => {
-        if (!ids.has(l.to)) return;
-        const id = edgeId(st.id, index, l.to);
-        edges.push({
-          id, source: st.id, target: l.to,
-          sourceHandle: l.kind === 'on-fail' ? 'on-fail' : 'next', targetHandle: 'in',
-          data: { kind: l.kind, index, mark: wireMark.get(id) }, deletable: true,
-        });
-      });
-      const next = list[n + 1];
-      if (next && !st.links.some((l) => l.kind === 'next')) {
-        edges.push({
-          id: edgeId(st.id, 'order', next.id), source: st.id, target: next.id,
-          sourceHandle: 'next', targetHandle: 'in', data: { kind: 'order' },
-          selectable: false, deletable: false, focusable: false,
-        });
-      }
-      walk(st.kids ?? [], st.id);
-      walk(st.else ?? [], st.id);
-    });
-  };
-  walk(w.steps);
-  return { nodes, edges };
 }
 
 export function editStep(w: Workflow, id: string, fn: (s: Step) => void): Workflow {

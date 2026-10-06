@@ -3,17 +3,16 @@ import type { Diagnostic, StepKind, Workflow } from '@reins/core';
 import { addStep, deleteStep, newId, setCond } from './blocks.js';
 import { COND_KINDS } from './condKinds.js';
 import { ApiError, get, post, put } from './api.js';
-import { restoreFile, restoreStep, type CanvasView, type EditorState, type Tab } from './editorState.js';
+import { restoreFile, restoreStep, type EditorState, type Tab } from './editorState.js';
 import { highlight, lineOffset } from './highlight.js';
 import type { Sess } from './state.js';
 import { runRows, stepStatus } from './stepStatus.js';
 import { BlockPanel } from './BlockPanel.js';
 import { flatSteps } from './canvas.js';
 import { KINDS } from './canvasKinds.js';
-import { Canvas, StatusCtx } from './CanvasPane.js';
 import { BlocksPane } from './BlocksPane.js';
 import { Palette } from './Palette.js';
-import { StepChips } from './StepChips.js';
+import { StatusCtx, StepChips } from './StepChips.js';
 
 interface Listed { path: string; name: string; scope: 'project' | 'user'; diagnostics: Diagnostic[] }
 interface Step { id: string; kind: string; title?: string; depth: number; cond?: string }
@@ -138,12 +137,6 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   const add = (kind: StepKind) => { if (prev?.workflow && edit((w) => addStep(w, kind, stepId))) setStepId(newId(prev.workflow, kind)); };
   // ponytail: no confirm, no undo; nothing is written until Save
   const del = (id: string) => { if (edit((w) => deleteStep(w, id)) && id === stepId) setStepId(undefined); };
-  // Read live from `restore`, never copied: a late editor-state load must not be overwritten by an early drag.
-  const setView = (patch: CanvasView) => {
-    if (!restored || file === null) return;
-    const next = { ...restore?.canvas?.[file], ...patch };
-    onState({ canvas: { ...restore?.canvas, [file]: next } });
-  };
 
   const save = async () => {
     if (file === null) return;
@@ -251,11 +244,8 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
               <div className="canvaswrap" tabIndex={-1}
                 onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); } }}>
                 <StatusCtx.Provider value={{ status, show: showStatus }}>
-                  {view === 'map'
-                    ? <Canvas w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} selected={stepId}
-                      view={restore?.canvas?.[file] ?? {}} onView={setView} onSelect={setStepId} />
-                    : <BlocksPane w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} selected={stepId}
-                      rev={prev} dragging={dragging} onEdit={edit} onSelect={setStepId} onDelete={del} />}
+                  <BlocksPane w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} selected={stepId}
+                    rev={prev} dragging={dragging} onEdit={edit} onSelect={setStepId} onDelete={del} />
                 </StatusCtx.Provider>
                 {sel && <BlockPanel key={sel.id} step={sel} all={flatSteps(prev.workflow.steps)} cond={prev.steps.find((s) => s.id === sel.id)?.cond}
                   turn={prev.turn} rev={prev} onEdit={edit} onDelete={() => del(sel.id)} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />}

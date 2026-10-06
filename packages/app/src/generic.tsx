@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 
+export const cx = (...c: Array<string | false | undefined>) => c.filter(Boolean).join(' ');
 export const words = (t: string) => t.replace(/[_-]/g, ' ');
 export const short = (v: unknown, n = 160) => {
   const s = typeof v === 'string' ? v : JSON.stringify(v ?? '');

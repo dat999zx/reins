@@ -7,8 +7,8 @@ import { addStepAt, dropPlace, moveStep, nestPlace, newId, placeOf, setAlways, s
 import { applyField, fieldValue } from './panelEdit.js';
 import { useDraft } from './BlockPanel.js';
 import { Pill, StepPick } from './Pill.js';
-import { cx, StatusCtx } from './CanvasPane.js';
-import { StepChips } from './StepChips.js';
+import { cx } from './generic.js';
+import { StatusCtx, StepChips } from './StepChips.js';
 
 const LOOK = { code: 'code', str: 'pill', num: 'num', pill: 'pill' } as const satisfies Record<CondParam['look'], string>;
 
@@ -158,7 +158,7 @@ export function BlocksPane({ w, steps, diags, text, selected, rev, dragging, onE
 
   const token = (s: Step, t: Token, i: number): ReactNode => {
     if (t === 'cond') return <span key={i}>{hex(s, s.cond, [])}</span>;
-    if (t === 'sub') return <span key={i}>{KINDS[s.kind].sub(s, conds[s.id])}</span>;
+    if (t === 'sub') return <span key={i}>{KINDS[s.kind].sub?.(s, conds[s.id]) ?? ''}</span>;
     if (typeof t === 'string') return <b key={i}>{t}</b>;
     const f = KINDS[s.kind].fields.find((x) => x.key === t.field);
     const v = fieldValue(s, t.field);
