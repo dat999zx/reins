@@ -462,6 +462,25 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await page.getByRole('button', { name: 'Reset zoom' }).click();
     await expect.poll(() => zoomLabel.innerText(), { timeout: W }).toBe('100%');
 
+    // 8e.0. one pointer engine: nothing is natively draggable; the hat moves the whole script, and the file is untouched
+    await blocksTab.click();
+    expect(await page.locator('.texttab [draggable="true"]').count()).toBe(0);
+    const drag = async (a: { x: number; y: number }, b: { x: number; y: number }) => {
+      await page.mouse.move(a.x, a.y);
+      await page.mouse.down();
+      await page.mouse.move(b.x, b.y, { steps: 8 });
+      await page.mouse.up();
+    };
+    const hat3 = await hatBox();
+    await textTab.click();
+    const textBeforeHat = await editor.inputValue();
+    await blocksTab.click();
+    await drag({ x: hat3.x + hat3.width / 2, y: hat3.y + hat3.height / 2 }, { x: hat3.x + hat3.width / 2 + 120, y: hat3.y + hat3.height / 2 + 60 });
+    const hat4 = await hatBox();
+    expect(Math.abs(hat4.x - hat3.x - 120)).toBeLessThanOrEqual(2);
+    expect(Math.abs(hat4.y - hat3.y - 60)).toBeLessThanOrEqual(2);
+    await textTab.click();
+    expect(await editor.inputValue()).toBe(textBeforeHat);
     // 8d.z. save, so the buffer is clean before Chat (Playwright dismisses the leave confirm)
     await textTab.click();
     await editor.focus();

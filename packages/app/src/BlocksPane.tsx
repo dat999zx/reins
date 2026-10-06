@@ -1,103 +1,30 @@
-import { useContext, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';import type { Cond, Diagnostic, Step, StepKind, Workflow } from '@reins/core';
+import { useContext, useMemo, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import type { Cond, Diagnostic, Step, Workflow } from '@reins/core';
 import { KINDS, type Token } from './canvasKinds.js';
 import { applyParam, COND_KINDS, type CondParam } from './condKinds.js';
 import { editStep, marksOf } from './canvas.js';
-import { addStepAt, dropPlace, moveStep, nestPlace, newId, placeOf, setCond, type CondPath, type Hit, type Place } from './blocks.js';
+import { nestPlace, placeOf, setCond, type CondPath, type Place } from './blocks.js';
 import { applyField, fieldValue } from './panelEdit.js';
 import type { Pt } from './surface.js';
+import { zoneAttrs, zoneKey, type Zone } from './gesture.js';
+import type { Over } from './useDrag.js';
 import { Pill, StepPick } from './Pill.js';
 import { cx } from './generic.js';
 import { StatusCtx, StepChips } from './StepChips.js';
 
 const LOOK = { code: 'code', str: 'pill', num: 'num', pill: 'pill' } as const satisfies Record<CondParam['look'], string>;
 
-export const STEP = 'application/x-reins-step';
-export const KIND = 'application/x-reins-kind';
-export const COND = 'application/x-reins-cond';
-
-// What the pointer is over (`el` + `cls` name the snap preview) and what a drop there would mean (`hit`, or a hexagon).
-type Zone = { el: string; cls: string; hit?: Hit; hex?: { id: string; path: CondPath } };
-type Over = { el: string; cls: string; place?: Place; hex?: Zone['hex'] };
-
-// ponytail: native HTML5 drag; no touch, no auto-scroll near the edge. Upgrade: pointer-event drag, `dropPlace` unchanged.
-export function BlocksPane({ w, steps, diags, text, selected, rev, dragging, at, onEdit, onSelect, onDelete }: {
+export function BlocksPane({ w, steps, diags, text, selected, rev, condDrag, src, over, at, onEdit, onSelect, onDelete, onMove }: {
   w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; selected?: string; rev: unknown;
-  dragging?: 'step' | 'cond'; at: Pt;
-  onEdit: (fn: (w: Workflow) => Workflow) => boolean; onSelect: (id: string | undefined) => void; onDelete: (id: string) => void;
+  condDrag?: boolean; src?: string; over?: Over; at: Pt;
+  onEdit: (fn: (w: Workflow) => Workflow) => boolean; onSelect: (id: string | undefined) => void; onDelete: (id: string) => void; onMove: (id: string, to: Place) => void;
 }) {
   const conds = Object.fromEntries(steps.flatMap((s) => (s.cond === undefined ? [] : [[s.id, s.cond]])));
   const marks = useMemo(() => marksOf(w, diags, text).steps, [w, diags, text]);
   const { status, show } = useContext(StatusCtx);
-  const root = useRef<HTMLDivElement>(null);
-  const refocus = useRef<string | undefined>(undefined);
-
-  // The model changes asynchronously (edit -> server print -> new w); focus follows the moved block once it re-renders.
-  useEffect(() => {
-    if (refocus.current !== undefined) root.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(refocus.current)}"]`)?.focus();
-    refocus.current = undefined;
-  }, [w]);
-  const move = (id: string, to: Place) => { refocus.current = onEdit((m) => moveStep(m, id, to)) ? id : undefined; };
-
-  // The data of a drag is not readable during dragover, so the dragged step id also lives in a ref, and `zone` / `over` cache the last decision.
-  const [over, setOver] = useState<Over>();
-  const [src, setSrc] = useState<string>();
-  const drag = useRef<{ step?: string; zone?: string; over?: Over }>({});
-  const ov = (el: string) => (over?.el === el ? over.cls : undefined);
-  const leaveZone = () => { drag.current.zone = undefined; drag.current.over = undefined; setOver(undefined); };
-  const endDrag = () => { drag.current = {}; setSrc(undefined); setOver(undefined); };
-  useEffect(() => { if (!dragging) endDrag(); }, [dragging]); // a palette drag ends in the palette, never here
-  // Legality is asked of the same pure functions that do the edit: a drop is legal iff it would change the model.
-  const legal = (z: Zone, types: readonly string[]): Over | undefined => {
-    const place = z.hit && dropPlace(w, z.hit);
-    const step = drag.current.step;
-    const ok = types.includes(STEP) ? place && step !== undefined && moveStep(w, step, place) !== w
-      : types.includes(KIND) ? place && addStepAt(w, 'phase', place) !== w
-        : types.includes(COND) && z.hex && setCond(w, z.hex.id, z.hex.path, { t: 'approve' }) !== w;
-    return ok ? { el: z.el, cls: z.cls, place, hex: z.hex } : undefined;
-  };
-  const target = (pick: (half: 'top' | 'bottom') => Zone) => {
-    const zone = (e: DragEvent<HTMLElement>) => {
-      const r = e.currentTarget.getBoundingClientRect();
-      return pick(e.clientY < r.top + r.height / 2 ? 'top' : 'bottom');
-    };
-    return {
-      onDragOver: (e: DragEvent<HTMLElement>) => {
-        const z = zone(e);
-        if (z.hex && !e.dataTransfer.types.includes(COND)) return; // a step over a hexagon falls through to its block
-        e.stopPropagation();
-        if (drag.current.zone !== z.el + z.cls) {
-          drag.current.zone = z.el + z.cls;
-          drag.current.over = legal(z, e.dataTransfer.types);
-          setOver(drag.current.over);
-        }
-        if (!drag.current.over) return; // no preventDefault: the browser shows no-drop and `drop` never fires
-        e.preventDefault();
-        e.dataTransfer.dropEffect = e.dataTransfer.types.includes(STEP) ? 'move' : 'copy';
-      },
-      onDrop: (e: DragEvent<HTMLElement>) => {
-        const z = zone(e);
-        if (z.hex && !e.dataTransfer.types.includes(COND)) return;
-        e.stopPropagation();
-        const o = legal(z, e.dataTransfer.types);
-        const dt = e.dataTransfer;
-        endDrag();
-        if (!o) return;
-        e.preventDefault();
-        const { place, hex: hx } = o;
-        if (dt.types.includes(STEP) && place) move(dt.getData(STEP), place);
-        else if (dt.types.includes(KIND) && place) {
-          const kind = dt.getData(KIND) as StepKind;
-          if (onEdit((m) => addStepAt(m, kind, place))) onSelect(newId(w, kind));
-        } else if (dt.types.includes(COND) && hx && COND_KINDS[dt.getData(COND)]) {
-          const fresh = COND_KINDS[dt.getData(COND)]!.fresh;
-          onEdit((m) => setCond(m, hx.id, hx.path, fresh()));
-        }
-      },
-    };
-  };
-  const sides = (el: string, id: string) => (h: 'top' | 'bottom'): Zone =>
-    h === 'top' ? { el, cls: 'sx-before', hit: { block: id, edge: 'before' } } : { el, cls: 'sx-after', hit: { block: id, edge: 'after' } };
-
+  // the snap bar of the drop zone the pointer is over
+  const ov = (z: Zone) => (over && zoneKey(over.el) === zoneKey(z) ? over.cls : undefined);
+  const zone = (z: Zone) => ({ ...zoneAttrs(z), className: ov(z) });
   // Stack and C blocks share these attributes. A click stops here: it must not bubble to every enclosing C block.
   const blockProps = (s: Step, shape: string, last: boolean) => {
     const info = show ? status[s.id] : undefined;
@@ -117,7 +44,7 @@ export function BlocksPane({ w, steps, diags, text, selected, rev, dragging, at,
         const at = placeOf(w, s.id);
         const dest = { ArrowUp: at && at.index > 0 && { ...at, index: at.index - 1 }, ArrowDown: at && !last && { ...at, index: at.index + 2 },
           ArrowRight: nestPlace(w, s.id, 'in'), ArrowLeft: nestPlace(w, s.id, 'out') }[e.key];
-        if (dest) move(s.id, dest);
+        if (dest) onMove(s.id, dest);
       },
     };
   };
@@ -126,8 +53,9 @@ export function BlocksPane({ w, steps, diags, text, selected, rev, dragging, at,
   const hex = (s: Step, c: Cond | undefined, p: CondPath): ReactNode => {
     const at = p.length ? ` at ${p.join('.')}` : '';
     const key = `${s.id}/${p.join('.')}`;
-    const drop = target(() => ({ el: `x:${key}`, cls: 'sx-hexover', hex: { id: s.id, path: p } }));
-    const own = cx('sx-hex', ov(`x:${key}`));
+    const z: Zone = { type: 'hex', id: s.id, path: p.join('.') };
+    const own = cx('sx-hex', ov(z));
+    const drop = zoneAttrs(z);
     if (c && 'a' in c) {
       const b = 'b' in c ? c.b : undefined;
       return (
@@ -176,16 +104,7 @@ export function BlocksPane({ w, steps, diags, text, selected, rev, dragging, at,
     return (
       <>
         <div className="sx-row">
-          <span className="sx-grip" draggable aria-hidden onDragEnd={endDrag}
-            onDragStart={(e) => {
-              e.dataTransfer.setData(STEP, s.id);
-              e.dataTransfer.effectAllowed = 'move';
-              const blk = e.currentTarget.closest('.blk');
-              if (blk) e.dataTransfer.setDragImage(blk, 12, 12);
-              drag.current.step = s.id;
-              // dimmed after the browser took the drag image, so the image is the block as it was
-              setTimeout(() => { if (drag.current.step === s.id) setSrc(s.id); }, 0);
-            }} />
+          <span className="sx-grip" aria-hidden />
           {KINDS[s.kind].line.map((t, i) => token(s, t, i))}
         </div>
         {(s.cards.length > 0 || s.links.length > 0) && (
@@ -201,40 +120,41 @@ export function BlocksPane({ w, steps, diags, text, selected, rev, dragging, at,
 
   // A plain function, not a component: a component declared here would remount every block on each render.
   const stack = (items: Step[], parent: string | undefined, branch: 'kids' | 'else'): ReactNode => (
-    <div className={cx('sx-stack', parent === undefined && ov('end'))} data-list={`${parent ?? ''}/${branch}`}>
+    <div className="sx-stack" data-list={`${parent ?? ''}/${branch}`}>
       {items.map((s, n) => {
         const key = items.findIndex((x) => x.id === s.id) === n ? s.id : `${n}/${s.id}`; // a duplicate id is a validator error; keep the keys unique anyway
         const group = KINDS[s.kind].group;
         const bp = blockProps(s, group ? 'sx-c' : 'sx-blk', n === items.length - 1);
         // a stack block is one target, halves from the whole block (chips and pills included)
-        if (!group) return <div key={key} {...bp} className={cx(bp.className, ov(s.id))} {...target(sides(s.id, s.id))}>{head(s)}</div>;
-        const kids = `b:${s.id}/kids`;
+        if (!group) {
+          const z = zone({ type: s.kind === 'end' ? 'cap' : 'block', id: s.id });
+          return <div key={key} {...bp} {...z} className={cx(bp.className, z.className)}>{head(s)}</div>;
+        }
         // ponytail: a drop on a body's own area, even beside its last child, lands first in that body (mockup behaviour); the snap bar shows it
-        const body = (b: 'kids' | 'else') => ({ el: `b:${s.id}/${b}`, cls: 'sx-into', hit: { body: s.id, branch: b } });
+        const head_ = zone({ type: 'chead', id: s.id }), kids = zone({ type: 'body', id: s.id, branch: 'kids' }), els = zone({ type: 'body', id: s.id, branch: 'else' }), foot = zone({ type: 'foot', id: s.id });
         return (
           <div key={key} {...bp}>
-            <div className={cx('sx-chead', ov(`h:${s.id}`))}
-              {...target((h) => (h === 'top' ? sides(`h:${s.id}`, s.id)(h) : { el: kids, cls: 'sx-into', hit: { block: s.id, edge: 'into' } }))}>{head(s)}</div>
-            <div className={cx('sx-cbody', ov(kids))} data-body={`${s.id}/kids`} {...target(() => body('kids'))}>{stack(s.kids ?? [], s.id, 'kids')}</div>
+            <div {...head_} className={cx('sx-chead', head_.className)}>{head(s)}</div>
+            <div {...kids} className={cx('sx-cbody', kids.className)} data-body={`${s.id}/kids`}>{stack(s.kids ?? [], s.id, 'kids')}</div>
             {group === 'kids+else' && (
               <>
-                <div className="sx-cmid" {...target(() => ({ el: `b:${s.id}/else`, cls: 'sx-into', hit: { block: s.id, edge: 'else' } }))}>else</div>
-                <div className={cx('sx-cbody', ov(`b:${s.id}/else`))} data-body={`${s.id}/else`} {...target(() => body('else'))}>{stack(s.else ?? [], s.id, 'else')}</div>
+                <div {...zoneAttrs({ type: 'mid', id: s.id })} className="sx-cmid">else</div>
+                <div {...els} className={cx('sx-cbody', els.className)} data-body={`${s.id}/else`}>{stack(s.else ?? [], s.id, 'else')}</div>
               </>
             )}
-            <div className={cx('sx-cfoot', ov(`f:${s.id}`))} {...target(() => ({ el: `f:${s.id}`, cls: 'sx-after', hit: { block: s.id, edge: 'after' } }))} />
+            <div {...foot} className={cx('sx-cfoot', foot.className)} />
           </div>
         );
       })}
     </div>
   );
 
+  const hat = zone({ type: 'hat' }), end = zone({ type: 'end' });
   return (
-    <div className={cx('sx-script', dragging === 'cond' && 'sx-drag-cond')} ref={root} style={{ left: at.x, top: at.y }}
-      {...target(() => ({ el: 'end', cls: 'sx-end', hit: { top: 'end' } }))}
-      onDragLeave={(e) => { if (!root.current?.contains(e.relatedTarget as Node | null)) leaveZone(); }}>
-      <div className={cx('sx-blk', 'sx-hat', ov('hat'))} {...target(() => ({ el: 'hat', cls: 'sx-after', hit: { top: 'start' } }))}><b>{w.name}</b>{w.task && <span className="sx-pill">{w.task}</span>}</div>
+    <div className={cx('sx-script', condDrag && 'sx-drag-cond')} style={{ left: at.x, top: at.y }}>
+      <div {...hat} className={cx('sx-blk', 'sx-hat', hat.className)}><b>{w.name}</b>{w.task && <span className="sx-pill">{w.task}</span>}</div>
       {stack(w.steps, undefined, 'kids')}
+      <div {...end} className={cx('sx-endstrip', end.className)} />
     </div>
   );
 }

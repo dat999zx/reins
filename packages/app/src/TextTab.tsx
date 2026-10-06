@@ -12,6 +12,7 @@ import { flatSteps } from './canvas.js';
 import { KINDS } from './canvasKinds.js';
 import { Workspace } from './Workspace.js';
 import { Palette } from './Palette.js';
+import type { Start } from './useDrag.js';
 import { StatusCtx, StepChips } from './StepChips.js';
 
 interface Listed { path: string; name: string; scope: 'project' | 'user'; diagnostics: Diagnostic[] }
@@ -37,7 +38,6 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   const [saved, setSaved] = useState('');
   const [prev, setPrev] = useState<Preview | null>(null);
   const [stepId, setStepId] = useState<string | undefined>();
-  const [dragging, setDragging] = useState<'step' | 'cond'>();
   const [name, setName] = useState('');
   const [msg, setMsg] = useState('');
   const ta = useRef<HTMLTextAreaElement>(null);
@@ -52,6 +52,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   // The stored per-workflow view. A ref, so two writes in one tick (a camera and a layout) never overwrite each other.
   const canvas = useRef(restore?.canvas);
   const [lay, setLay] = useState<Layout>({});
+  const press = useRef<Start | undefined>(undefined); // the workspace's drag engine, for the palette beside it
   const setView = (path: string, patch: Partial<CanvasView>) => {
     canvas.current = { ...canvas.current, [path]: { ...canvas.current?.[path], ...patch } };
     onState({ canvas: canvas.current });
@@ -143,6 +144,13 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
       })
       .catch((e) => setMsg((e as Error).message))
       .finally(() => { busy.current = false; });
+    return true;
+  };
+  // A layout-only change: refused while an edit is in flight, nothing to do when it changes nothing.
+  const setLayout = (fn: (l: Layout) => Layout) => {
+    const next = fn(lay);
+    if (busy.current || JSON.stringify(next) === JSON.stringify(lay)) return false;
+    setLay(next);
     return true;
   };
   // ponytail: a step is added as a sibling after the selection; into a container only by dragging
@@ -240,7 +248,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
           ))}
           {list.length === 0 && <li className="hint">No workflows yet.</li>}
         </ul>
-        {view === 'blocks' && prev?.workflow && known && <Palette onAdd={add} onCond={cond} onDrag={setDragging} />}
+        {view === 'blocks' && prev?.workflow && known && <Palette onAdd={add} onCond={cond} press={press} />}
       </aside>
       <section className="editor">
         {file === null ? <p className="hint">Pick a workflow, or make a new one.</p> : (
@@ -257,8 +265,8 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
                 onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); } }}>
                 <StatusCtx.Provider value={{ status, show: showStatus }}>
                   <Workspace key={file} w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} selected={stepId}
-                    rev={prev} dragging={dragging} cam={canvas.current?.[file]?.cam} lay={lay}
-                    onEdit={edit} onSelect={setStepId} onDelete={del} onCam={(cam) => { if (restored) setView(file, { cam }); }} />
+                    rev={prev} press={press} cam={canvas.current?.[file]?.cam} lay={lay}
+                    onEdit={edit} onSelect={setStepId} onDelete={del} onLayout={setLayout} onCam={(cam) => { if (restored) setView(file, { cam }); }} />
                 </StatusCtx.Provider>
                 {sel ? <BlockPanel key={sel.id} step={sel} all={flatSteps(prev.workflow.steps)} cond={prev.steps.find((s) => s.id === sel.id)?.cond}
                   turn={prev.turn} rev={prev} onEdit={edit} onDelete={() => del(sel.id)} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />

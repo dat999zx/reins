@@ -235,6 +235,16 @@ select.sx-pill { cursor: pointer; }
 .sx-hole { min-width: 44px; justify-content: center; background: rgb(255 255 255 / 0.2); color: rgb(255 255 255 / 0.75); }
 .sx-grip:hover { opacity: 0.9; }
 .sx-dragsrc { opacity: 0.45; }
+.sx-ghosts { position: absolute; left: 0; top: 0; }
+.sx-ghost { position: absolute; box-sizing: border-box; margin: 0; opacity: 0.85; pointer-events: none; z-index: 50; }
+.sx-ghost * { pointer-events: none; }
+.sx-ghost-card { position: fixed; }
+.sx-endstrip { position: relative; align-self: stretch; min-width: 190px; height: 24px; }
+.sx-endstrip.sx-end::before { top: -2px; bottom: auto; }
+.sx-hat { cursor: grab; }
+.sx-pal .sx-card { touch-action: none; user-select: none; }
+.sx-view.sx-dragging { cursor: grabbing; }
+.sx-view.sx-nodrop { cursor: not-allowed; }
 .sx-stack, .sx-cbody { position: relative; }
 .sx-before::before, .sx-after::before, .sx-end::before, .sx-into::before { content: ''; position: absolute; left: 0; right: 0; height: 4px; border-radius: 2px; background: #fff; box-shadow: 0 0 0 1px rgb(0 0 0 / 0.55), 0 0 10px 2px var(--brand); z-index: 6; pointer-events: none; }
 .sx-before::before, .sx-into::before { top: -2px; }
