@@ -1,5 +1,5 @@
-export type ActName = 'delete' | 'select' | 'moveUp' | 'moveDown' | 'nestIn' | 'nestOut' | 'undo' | 'redo' | 'escape' | 'zoomIn' | 'zoomOut' | 'zoomReset' | 'fit' | 'selectAll' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'menu' | 'park' | 'putEnd' | 'editInText';
-export type On = 'block' | 'any';
+export type ActName = 'delete' | 'select' | 'moveUp' | 'moveDown' | 'nestIn' | 'nestOut' | 'undo' | 'redo' | 'escape' | 'zoomIn' | 'zoomOut' | 'zoomReset' | 'fit' | 'selectAll' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'menu' | 'park' | 'putEnd' | 'editInText' | 'deleteLink';
+export type On = 'block' | 'link' | 'any';
 type Row = { key: string; ctrl?: true; shift?: true; alt?: true; on: On; act: ActName };
 
 export const isTyping = (tag: string) => tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
@@ -8,6 +8,8 @@ export const isTyping = (tag: string) => tag === 'INPUT' || tag === 'TEXTAREA' |
 export const KEYS: ReadonlyArray<Row> = [
   { key: 'Delete', on: 'block', act: 'delete' },
   { key: 'Backspace', on: 'block', act: 'delete' },
+  { key: 'Delete', on: 'link', act: 'deleteLink' },
+  { key: 'Backspace', on: 'link', act: 'deleteLink' },
   { key: 'Enter', on: 'block', act: 'select' },
   { key: ' ', on: 'block', act: 'select' },
   { key: 'ArrowUp', alt: true, on: 'block', act: 'moveUp' },

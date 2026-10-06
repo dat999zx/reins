@@ -25,6 +25,12 @@ describe('keys', () => {
     expect(matchKey(ev('Backspace'), 'block')).toBe('delete');
     expect(matchKey(ev('Delete'), 'any')).toBeUndefined();
   });
+  it('Delete and Backspace on a link arrow delete the link', () => {
+    expect(matchKey(ev('Delete'), 'link')).toBe('deleteLink');
+    expect(matchKey(ev('Backspace'), 'link')).toBe('deleteLink');
+    expect(matchKey(ev('ContextMenu'), 'link')).toBe('menu');
+    expect(matchKey(ev('Enter'), 'link')).toBeUndefined();
+  });
   it('Alt+arrows move and nest a block', () => {
     expect(matchKey(ev('ArrowUp', { alt: true }), 'block')).toBe('moveUp');
     expect(matchKey(ev('ArrowDown', { alt: true }), 'block')).toBe('moveDown');

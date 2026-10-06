@@ -317,7 +317,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
                   </aside>
                 ) : sel ? <BlockPanel key={sel.id} step={sel} all={flatSteps(prev.workflow.steps)} cond={prev.steps.find((s) => s.id === sel.id)?.cond}
                   turn={prev.turn} rev={prev} onEdit={edit} onDelete={() => del([stepKey(sel.id)])} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />
-                  : sels.size === 1 ? <aside className="bpanel" aria-label="Loose block"><p className="hint">Loose block: not part of the workflow, never runs. Drag it into the script to use it.</p></aside>
+                  : [...sels].some((k) => k.startsWith('l:')) ? <aside className="bpanel" aria-label="Loose block"><p className="hint">Loose block: not part of the workflow, never runs. Drag it into the script to use it.</p></aside>
                   : <WorkflowPanel w={prev.workflow} rev={prev} onEdit={edit} />}
               </div>
             )}

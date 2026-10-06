@@ -14,6 +14,9 @@ describe('menus', () => {
   it('a loose block can be put into the script, and cannot be parked', () => {
     expect(acts(itemsFor('loose', ctx()))).toEqual(['duplicate', 'copy', 'cut', 'delete', '-', 'putEnd']);
   });
+  it('a link can be deleted or opened in Text', () => {
+    expect(acts(itemsFor('link', ctx()))).toEqual(['deleteLink', 'editInText']);
+  });
   it('the surface offers Paste only with a clipboard', () => {
     expect(acts(itemsFor('surface', ctx()))).toEqual(['selectAll', '-', 'fit', 'zoomReset']);
     expect(acts(itemsFor('surface', ctx({ clip: true })))).toEqual(['paste', 'selectAll', '-', 'fit', 'zoomReset']);

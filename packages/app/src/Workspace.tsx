@@ -6,7 +6,7 @@ import { itemsFor, type MenuCtx, type MenuTarget } from './menus.js';
 import { addLoose, FULL, HOME, LOOSE_MAX, moveItems, park, removeLoose, selfContained, unpark } from './arrange.js';
 import { addStepAt, capBackward, dropPlace, dropSteps, duplicateSteps, moveStep, nestPlace, newId, placeOf, setCond, takeSteps, type Hit, type Place } from './blocks.js';
 import { KINDS } from './canvasKinds.js';
-import { flatSteps, marksOf } from './canvas.js';
+import { flatSteps, marksOf, removeLinks, setLink, type WireKind } from './canvas.js';
 import { lanes, linksToDraw } from './arrows.js';
 import { LinkLayer } from './LinkLayer.js';
 import { COND_KINDS } from './condKinds.js';
@@ -20,9 +20,11 @@ import { useDrag, type Start } from './useDrag.js';
 
 // ponytail: in-app clipboard, lost on reload; the system clipboard if it matters
 let clip: Step[] = [];
+// A selected arrow is the key 'k:<from>/<index>'.
+const parseLink = (k: string) => { const i = k.lastIndexOf('/'); return { from: k.slice(2, i), index: Number(k.slice(i + 1)) }; };
 export type EditOpts = { lay?: (l: Layout) => Layout; then?: (applied: boolean) => void };
 const NATIVE = 'input, textarea, select, option, button, .sx-menu, .sx-zoom';
-const onOf = (t: Element): Press['on'] => (t.closest(NATIVE) ? 'input' : t.closest('.sx-hat') ? 'hat' : t.closest('.sx-loose') ? 'loose' : t.closest('.blk') ? 'block' : 'empty');
+const onOf = (t: Element): Press['on'] => (t.closest(NATIVE) ? 'input' : t.closest('.sx-handle') ? 'handle' : t.closest('[data-link]') ? 'link' : t.closest('.sx-hat') ? 'hat' : t.closest('.sx-loose') ? 'loose' : t.closest('.blk') ? 'block' : 'empty');
 
 export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, press, onEdit, onSel, onDelete, onCam, onLayout, onUndo, onRedo, onNote, onEditInText }: {
   w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; sel: Set<Key>; rev: unknown;
@@ -35,6 +37,7 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
   const camRef = useRef(cam);
   const [panning, setPanning] = useState(false);
   const [box, setBox] = useState<Rect>();
+  const [band, setBand] = useState<{ a: Pt; b: Pt; to?: string }>(); // the link being drawn
   const [menu, setMenu] = useState<{ t: MenuTarget; id: string; at: Pt; opener: HTMLElement }>();
   const space = useRef(false);
   const set = (c: Cam) => { camRef.current = c; setCam(c); };
@@ -177,6 +180,7 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
   const openMenu = (t: MenuTarget, id: string, at: Pt, opener: HTMLElement) => {
     if (t === 'block' && !sel.has(stepKey(id))) one(id);
     if (t === 'loose' && !sel.has(`l:${id}`)) pickLoose(id, false);
+    if (t === 'link') onSel(new Set([id]));
     setMenu({ t, id, at, opener });
   };
   const menuCtx = (m: { id: string }): MenuCtx => {
@@ -189,8 +193,9 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
     if (t.closest('input, textarea, select, .sx-zoom')) return; // the browser's own menu
     e.preventDefault();
     const r = view.current!.getBoundingClientRect(), at = { x: e.clientX - r.left, y: e.clientY - r.top };
-    const lo = t.closest<HTMLElement>('.sx-loose'), blk = t.closest<HTMLElement>('.blk[data-id]');
-    if (lo) openMenu('loose', lo.dataset.loose!, at, lo);
+    const lo = t.closest<HTMLElement>('.sx-loose'), blk = t.closest<HTMLElement>('.blk[data-id]'), ln = t.closest<HTMLElement>('[data-link]');
+    if (ln) openMenu('link', `k:${ln.dataset.link}`, at, ln);
+    else if (lo) openMenu('loose', lo.dataset.loose!, at, lo);
     else if (blk) openMenu('block', blk.dataset.id!, at, blk);
     else openMenu('surface', '', at, view.current!);
   };
@@ -219,8 +224,16 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
     zoomOut: () => zoom(1 / ZOOM.step),
     zoomReset: () => zoom(1 / camRef.current.zoom),
     fit,
+    deleteLink: (id) => {
+      const keys = id.startsWith('k:') ? [id] : [...sel].filter((k) => k.startsWith('k:'));
+      if (keys.length) onEdit((m) => removeLinks(m, keys.map(parseLink)), { then: (ok) => { if (ok) { one(); view.current?.focus(); } } });
+    },
     menu: (id) => {
       const vr = view.current!.getBoundingClientRect(), lo = id === '' ? document.activeElement?.closest<HTMLElement>('.sx-loose') : null;
+      if (id.startsWith('k:')) {
+        const ln = view.current!.querySelector<HTMLElement>(`[data-link="${CSS.escape(id.slice(2))}"]`);
+        if (ln) { const b = ln.getBoundingClientRect(); return openMenu('link', id, { x: b.left - vr.left, y: b.top - vr.top }, ln); }
+      }
       const el = lo ?? (id === '' ? null : view.current!.querySelector<HTMLElement>(`.blk[data-id="${CSS.escape(id)}"]`));
       if (!el) return openMenu('surface', '', { x: vr.width / 2, y: vr.height / 2 }, view.current!);
       const b = el.getBoundingClientRect();
@@ -235,16 +248,19 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
       parkIds(sel.has(stepKey(id)) ? top() : [id], id, { x: o.x + 40, y: o.y });
     },
     putEnd: () => { const keys = [...sel].filter((k) => k.startsWith('l:')); if (keys.length) unparkTo(keys, { top: 'end' }); },
-    editInText: (id) => onEditInText(flatSteps(w.steps).find((s) => s.id === id)?.pos?.line ?? 1),
+    editInText: (id) => {
+      const l = id.startsWith('k:') ? parseLink(id) : undefined, s = flatSteps(w.steps).find((x) => x.id === (l?.from ?? id));
+      onEditInText((l && s?.links[l.index]?.pos?.line) || s?.pos?.line || 1);
+    },
   };
   const keydown = (e: KeyEvent<HTMLDivElement>) => {
     const t = e.target as HTMLElement;
     if (isTyping(t.tagName)) return;
-    const block = t.matches('.blk[data-id]') || !!t.closest('.sx-loose');
-    const act = matchKey({ key: e.key, ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey, alt: e.altKey }, block ? 'block' : 'any');
+    const block = t.matches('.blk[data-id]') || !!t.closest('.sx-loose'), link = t.closest<HTMLElement>('[data-link]');
+    const act = matchKey({ key: e.key, ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey, alt: e.altKey }, block ? 'block' : link ? 'link' : 'any');
     if (!act) return;
     e.preventDefault(); // also swallows Alt+Left / Alt+Right, the browser's Back / Forward, on a block
-    ACTS[act](block ? t.dataset.id ?? '' : '');
+    ACTS[act](block ? t.dataset.id ?? '' : link ? `k:${link.dataset.link}` : '');
   };
 
   const ghosts = useRef<HTMLDivElement>(null);
@@ -333,6 +349,36 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
     window.addEventListener('pointercancel', up);
   };
 
+  // Press a handle and drag: a rubber band follows; releasing over another block in the file sets the link.
+  const startLink = (e: PointerEvent<HTMLDivElement>) => {
+    const h = (e.target as Element).closest<HTMLElement>('.sx-handle')!;
+    const from = h.dataset.zid!, kind = h.dataset.lk as WireKind;
+    const vr = view.current!.getBoundingClientRect(), hb = h.getBoundingClientRect();
+    const at = (x: number, y: number) => toWorld(camRef.current, { x: x - vr.left, y: y - vr.top });
+    const a = at(hb.left + hb.width / 2, hb.top + hb.height / 2), x0 = e.clientX, y0 = e.clientY;
+    let to: string | undefined, moved = false;
+    const move = (m: globalThis.PointerEvent) => {
+      if (!moved && Math.hypot(m.clientX - x0, m.clientY - y0) < DRAG_PX) return;
+      moved = true;
+      const over = document.elementFromPoint(m.clientX, m.clientY)?.closest<HTMLElement>('.blk[data-id]')?.dataset.id;
+      to = over === from ? undefined : over;
+      setBand({ a, b: at(m.clientX, m.clientY), to });
+    };
+    const stop = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', stop);
+      window.removeEventListener('keydown', esc);
+      setBand(undefined);
+    };
+    const up = () => { stop(); if (to) onEdit((m) => setLink(m, from, kind, to!)); };
+    const esc = (k: KeyboardEvent) => { if (k.key === 'Escape') { k.preventDefault(); stop(); } };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', stop);
+    window.addEventListener('keydown', esc);
+  };
+
   const down = (e: PointerEvent<HTMLDivElement>) => {
     const p: Press = { button: e.button, shift: e.shiftKey, space: space.current && !isTyping(document.activeElement?.tagName ?? ''), on: onOf(e.target as Element) };
     const g = pickGesture(p);
@@ -353,6 +399,8 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
       return;
     }
     if (g === 'box') return startBox(e);
+    if (g === 'link') return startLink(e);
+    if (g === 'linkclick') return onSel(new Set([`k:${(e.target as Element).closest<HTMLElement>('[data-link]')!.dataset.link}`]));
     if (g !== 'pan') return;
     if (e.button === 1) e.preventDefault();
     const from = { x: e.clientX, y: e.clientY }, start = camRef.current;
@@ -381,9 +429,9 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
       style={{ backgroundPosition: `${cam.x}px ${cam.y}px`, backgroundSize: `${18 * cam.zoom}px ${18 * cam.zoom}px` }}
       onKeyDown={keydown} onContextMenu={contextmenu} onPointerDown={down} onPointerMove={(e) => { ptr.current = { x: e.clientX, y: e.clientY }; }} onPointerLeave={() => { ptr.current = undefined; }} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}>
       <div className="sx-world" style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.zoom})` }}>
-        <BlocksPane w={w} steps={steps} diags={diags} text={text} sel={sel} rev={rev} condDrag={drag.kind === 'cond'} src={drag.src} over={drag.over}
+        <BlocksPane w={w} steps={steps} diags={diags} text={text} sel={sel} rev={rev} condDrag={drag.kind === 'cond'} src={drag.src} over={drag.over} linkOver={band?.to}
           at={scriptAt} missing={gone} onEdit={onEdit} onSelect={pick} />
-        <LinkLayer arrows={arrows} rects={rects} lanes={lane} at={scriptAt} />
+        <LinkLayer arrows={arrows} rects={rects} lanes={lane} at={scriptAt} selected={[...sel].find((k) => k.startsWith('k:'))?.slice(2)} band={band} />
         {(lay.loose ?? []).map((l) => {
           const k = `l:${l.key}`, d = drag.keys?.includes(k) ? drag.d : undefined;
           return <BlocksPane key={l.key} w={{ ...w, steps: [l.step] }} steps={[]} diags={[]} text="" sel={sel} rev={rev} at={{ x: l.at.x + (d?.x ?? 0), y: l.at.y + (d?.y ?? 0) }}
@@ -399,7 +447,7 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
         <button aria-label="Fit view" onClick={fit}>Fit</button>
         <button aria-label="Reset zoom" onClick={() => zoom(1 / camRef.current.zoom)}>1:1</button>
       </div>
-      {menu && <ContextMenu items={itemsFor(menu.t, menuCtx(menu))} at={menu.at} onRun={(act) => ACTS[act](menu.t === 'block' ? menu.id : '')}
+      {menu && <ContextMenu items={itemsFor(menu.t, menuCtx(menu))} at={menu.at} onRun={(act) => ACTS[act](menu.t === 'block' || menu.t === 'link' ? menu.id : '')}
         onClose={(refocus) => { setMenu(undefined); if (refocus) (menu.opener.isConnected ? menu.opener : view.current)?.focus(); }} />}
     </div>
   );

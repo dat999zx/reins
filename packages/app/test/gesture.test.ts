@@ -27,6 +27,12 @@ describe('pickGesture', () => {
     expect(pickGesture(press({ shift: true, on: 'block' }))).toBe('pending');
     expect(pickGesture(press({ shift: true, space: true }))).toBe('pan');
   });
+  it('left on a link handle draws a link; left on an arrow selects it', () => {
+    expect(pickGesture(press({ on: 'handle' }))).toBe('link');
+    expect(pickGesture(press({ on: 'link' }))).toBe('linkclick');
+    expect(pickGesture(press({ on: 'handle', button: 2 }))).toBe('none');
+    expect(pickGesture(press({ on: 'link', button: 2 }))).toBe('none');
+  });
   it('right button and presses outside do nothing', () => {
     expect(pickGesture(press({ button: 2 }))).toBe('none');
     expect(pickGesture(press({ on: 'outside' }))).toBe('none');

@@ -12,11 +12,10 @@ const edit: Item[] = [
   '-',
 ];
 
-// The link menu is Task 12's.
 export const MENUS: Record<MenuTarget, Item[]> = {
   block: [...edit, { label: 'Park (leaves the workflow)', act: 'park' }, '-', { label: 'Edit in Text', act: 'editInText', when: (c) => c.count === 1 }],
   loose: [...edit, { label: 'Put into script at the end', act: 'putEnd' }],
-  link: [],
+  link: [{ label: 'Delete link', act: 'deleteLink', hint: 'Del' }, { label: 'Edit in Text', act: 'editInText' }],
   surface: [
     { label: 'Paste', act: 'paste', hint: 'Ctrl+V', when: (c) => c.clip },
     { label: 'Select all', act: 'selectAll', hint: 'Ctrl+A' },

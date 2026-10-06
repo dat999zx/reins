@@ -7,7 +7,8 @@ const colour = (a: LinkArrow) => (a.mark === 'error' ? BAD : a.mark === 'warning
 const head = (c: string) => `sx-ah${c.slice(1)}`;
 
 // `rects` are measured inside the script (its own origin), so a hat drag only moves `at`.
-export function LinkLayer({ arrows, rects, lanes, at }: { arrows: LinkArrow[]; rects: Map<string, Rect>; lanes: Map<string, number>; at: Pt }) {
+// `band` is the link being drawn, in world coordinates.
+export function LinkLayer({ arrows, rects, lanes, at, selected, band }: { arrows: LinkArrow[]; rects: Map<string, Rect>; lanes: Map<string, number>; at: Pt; selected?: string; band?: { a: Pt; b: Pt } }) {
   const colours = [...new Set(arrows.map(colour))];
   return (
     <svg className="sx-links" width="1" height="1">
@@ -22,7 +23,7 @@ export function LinkLayer({ arrows, rects, lanes, at }: { arrows: LinkArrow[]; r
           if (!f || !t) return null;
           const d = arrowPath(f, t, lanes.get(key) ?? 0), c = colour(a);
           return (
-            <g key={key} data-link={key} data-lk={a.kind} role="button" tabIndex={0} aria-label={`${a.kind} link from ${a.from} to ${a.to}`}>
+            <g key={key} className={selected === key ? 'sx-lsel' : undefined} data-link={key} data-lk={a.kind} role="button" tabIndex={0} aria-label={`${a.kind} link from ${a.from} to ${a.to}`}>
               <path d={d} fill="none" stroke={c} strokeWidth={1.5} strokeDasharray={a.mark === 'warning' ? '5 4' : WIRES[a.kind] ? undefined : '2 4'} markerEnd={`url(#${head(c)})`} />
               <path className="sx-hit" d={d} fill="none" stroke="transparent" strokeWidth={10} />
               {a.kind !== 'next' && <text {...labelAt(f, t, lanes.get(key) ?? 0)} fill={c}>{a.kind === 'on-fail' ? 'on fail' : a.kind}</text>}
@@ -30,6 +31,7 @@ export function LinkLayer({ arrows, rects, lanes, at }: { arrows: LinkArrow[]; r
           );
         })}
       </g>
+      {band && <path className="sx-band" d={`M ${band.a.x} ${band.a.y} L ${band.b.x} ${band.b.y}`} />}
     </svg>
   );
 }

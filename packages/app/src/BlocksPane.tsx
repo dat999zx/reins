@@ -15,9 +15,9 @@ import { StatusCtx, StepChips } from './StepChips.js';
 
 const LOOK = { code: 'code', str: 'pill', num: 'num', pill: 'pill' } as const satisfies Record<CondParam['look'], string>;
 
-export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, over, at, missing, loose, onEdit, onSelect }: {
+export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, over, linkOver, at, missing, loose, onEdit, onSelect }: {
   w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; sel: Set<Key>; rev: unknown;
-  condDrag?: boolean; src?: Set<string>; over?: Over; at: Pt;
+  condDrag?: boolean; src?: Set<string>; over?: Over; linkOver?: string; at: Pt;
   missing?: Set<string>; // `from/index` of links whose target does not exist: the only links shown as chips (the others are arrows)
   loose?: { key: string; selected: boolean; moving: boolean; onPick: (add: boolean) => void }; // w is then a wrapper of the one parked step: read-only, no ids, no zones
   onEdit: (fn: (w: Workflow) => Workflow) => boolean; onSelect: (id: string, add: boolean) => void;
@@ -35,7 +35,7 @@ export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, ove
     const info = show ? status[s.id] : undefined;
     const mark = marks?.get(s.id);
     return {
-      className: cx('blk', shape, !loose && sel.has(stepKey(s.id)) && 'sx-sel', src?.has(s.id) && 'sx-dragsrc', info?.state && `sx-${info.state}`, mark && `mark-${mark}`),
+      className: cx('blk', shape, !loose && sel.has(stepKey(s.id)) && 'sx-sel', src?.has(s.id) && 'sx-dragsrc', !loose && linkOver === s.id && 'sx-linkover', info?.state && `sx-${info.state}`, mark && `mark-${mark}`),
       'data-id': loose ? undefined : s.id,
       'data-kind': s.kind,
       tabIndex: loose ? -1 : 0,
@@ -102,6 +102,9 @@ export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, ove
         <div className="sx-row">
           <span className="sx-grip" aria-hidden />
           {KINDS[s.kind].line.map((t, i) => token(s, t, i))}
+          {!loose && s.kind !== 'end' && (['next', ...(KINDS[s.kind].fails ? ['on-fail'] : [])] as const).map((k, _, all) => (
+            <span key={k} className={cx('sx-handle', all.length > 1 && 'sx-two')} data-zid={s.id} data-lk={k} aria-hidden />
+          ))}
         </div>
         {(s.cards.length > 0 || chips.length > 0) && (
           <div className="sx-mods">

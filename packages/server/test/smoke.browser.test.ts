@@ -654,6 +654,40 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await workspace.focus();
     await page.keyboard.press('Escape');
     await expect.poll(() => selected.count(), { timeout: W }).toBe(0);
+    // 8e.5. draw a link from a handle (backward, so it gets max 3); delete it from its menu; draw it again; select the arrow and press Delete
+    const centre = (b: { x: number; y: number; width: number; height: number }) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
+    const arrow = page.locator('[data-link="ship/0"]');
+    // the middle of the arrow's path, in client pixels
+    const arrowAt = async () => (await page.evaluate(`(() => {
+      const p = document.querySelector('[data-link="ship/0"] .sx-hit'), q = p.getPointAtLength(p.getTotalLength() / 2), m = p.getScreenCTM();
+      return { x: m.a * q.x + m.c * q.y + m.e, y: m.b * q.x + m.d * q.y + m.f };
+    })()`)) as { x: number; y: number };
+    const draw = async () => {
+      await page.waitForTimeout(600); // the 300 ms preview debounce: an edit while the preview is stale is refused
+      await row('ship').locator('.sx-row').first().hover();
+      const hb = (await row('ship').locator('.sx-handle[data-lk="next"]').boundingBox())!;
+      await drag(centre(hb), centre((await row('plan').locator('.sx-row').first().boundingBox())!));
+      await arrow.waitFor({ state: 'attached', timeout: W });
+    };
+    await draw();
+    await textTab.click();
+    expect(await editor.inputValue()).toContain('## phase ship\nnext: plan (max 3)\n');
+    await blocksTab.click();
+    const at1 = await arrowAt();
+    await page.mouse.click(at1.x, at1.y, { button: 'right' });
+    await menu.getByRole('menuitem', { name: 'Delete link' }).click();
+    await expect.poll(() => arrow.count(), { timeout: W }).toBe(0);
+    await textTab.click();
+    expect(await editor.inputValue()).toBe(textBeforeHat);
+    await blocksTab.click();
+    await draw();
+    const at2 = await arrowAt();
+    await page.mouse.click(at2.x, at2.y);
+    await page.keyboard.press('Delete');
+    await expect.poll(() => arrow.count(), { timeout: W }).toBe(0);
+    await textTab.click();
+    expect(await editor.inputValue()).toBe(textBeforeHat);
+    await blocksTab.click();
     // 8d.z. save, so the buffer is clean before Chat (Playwright dismisses the leave confirm)
     await textTab.click();
     await editor.focus();

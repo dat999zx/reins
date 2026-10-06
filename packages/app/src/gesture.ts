@@ -12,6 +12,8 @@ export function pickGesture(p: Press): GestureKind {
   if (p.button !== 0 || p.on === 'input') return 'none';
   if (p.space) return 'pan';
   if (p.on === 'empty') return p.shift ? 'box' : 'pan';
+  if (p.on === 'handle') return 'link';
+  if (p.on === 'link') return 'linkclick';
   return p.on === 'block' || p.on === 'hat' || p.on === 'loose' ? 'pending' : 'none';
 }
 
