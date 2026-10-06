@@ -425,6 +425,19 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('## repeat\nid: repeat-2\nuntil: you approve\nmax: 3\n\n### say\n');
     expect(await editor.inputValue()).toContain('## if you approve\n\n### else\n\n### phase\n');
 
+    // 8e.e. the end step: a palette card exists; an `## end` typed in Text shows as a block of that kind, not as "does not parse"
+    await blocksTab.click();
+    await card('end').waitFor({ timeout: W });
+    await textTab.click();
+    const beforeEnd = await editor.inputValue();
+    await editor.fill(`${beforeEnd}\n## end\n`);
+    await blocksTab.click();
+    await row('end-1').waitFor({ timeout: W });
+    expect(await row('end-1').getAttribute('data-kind')).toBe('end');
+    expect(await page.getByText('This file does not parse').count()).toBe(0);
+    await textTab.click();
+    await editor.fill(beforeEnd);
+
     // 8d.z. save, so the buffer is clean before Chat (Playwright dismisses the leave confirm)
     await textTab.click();
     await editor.focus();

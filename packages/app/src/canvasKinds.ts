@@ -47,6 +47,7 @@ export const KINDS: Record<StepKind, KindView> = {
     card: { label: 'hand off', section: 'Flow' }, fresh: () => ({}),
     sub: (s) => s.attrs.to ?? '',
   },
+  end: { fields: [], line: ['end'], card: { label: 'end', section: 'Flow' }, fresh: () => ({}), sub: () => '' },
   use: { fields: [], line: ['use', 'sub'], sub: (s) => s.title || s.attrs.use || s.id },
 };
 
