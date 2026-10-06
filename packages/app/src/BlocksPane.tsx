@@ -16,8 +16,8 @@ import { StatusCtx, StepChips } from './StepChips.js';
 
 const LOOK = { code: 'code', str: 'pill', num: 'num', pill: 'pill' } as const satisfies Record<CondParam['look'], string>;
 
-export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, over, linkOver, at, missing, loose, free, onEdit, onSelect }: {
-  w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; sel: Set<Key>; rev: unknown;
+export function BlocksPane({ w, steps, diags, text, sel, primary, rev, condDrag, src, over, linkOver, at, missing, loose, free, onEdit, onSelect }: {
+  w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; sel: Set<Key>; primary?: string; rev: unknown;
   condDrag?: boolean; src?: Set<string>; over?: Over; linkOver?: string; at: Pt;
   missing?: Set<string>; // `from/index` of links whose target does not exist: the only links shown as chips (the others are arrows)
   loose?: { key: string; selected: boolean; moving: boolean; onPick: (add: boolean) => void }; // w is then a wrapper of the one parked step: read-only, no ids, no zones
@@ -34,13 +34,17 @@ export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, ove
   const ov = (z: Zone) => (!loose && over && zoneKey(over.el) === zoneKey(z) ? over.cls : undefined);
   const zone = (z: Zone) => ({ ...za(z), className: ov(z) });
   // Stack and C blocks share these attributes. A click stops here: it must not bubble to every enclosing C block.
-  const blockProps = (s: Step, shape: string) => {
+  const name = (s: Step) => `${KINDS[s.kind].card?.label ?? s.kind} ${s.id}`;
+  const blockProps = (s: Step, shape: string, free = false) => {
     const info = show ? status[s.id] : undefined;
     const mark = marks?.get(s.id);
     return {
       className: cx('blk', shape, !loose && sel.has(stepKey(s.id)) && 'sx-sel', src?.has(s.id) && 'sx-dragsrc', !loose && linkOver === s.id && 'sx-linkover', info?.state && `sx-${info.state}`, mark && `mark-${mark}`),
       'data-id': loose ? undefined : s.id,
       'data-kind': s.kind,
+      role: loose ? undefined : ('group' as const), // a loose block is named by its wrapper
+      'aria-label': loose ? undefined : `${free ? 'free ' : ''}${name(s)}`,
+      'aria-current': !loose && primary === s.id ? ('true' as const) : undefined,
       title: found?.notes.get(s.id)?.join('\n'),
       'aria-description': found?.notes.get(s.id)?.join(' '),
       tabIndex: loose ? -1 : 0,
@@ -129,7 +133,7 @@ export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, ove
       {items.map((s, n) => {
         const key = items.findIndex((x) => x.id === s.id) === n ? s.id : `${n}/${s.id}`; // a duplicate id is a validator error; keep the keys unique anyway
         const group = KINDS[s.kind].group;
-        const bp = blockProps(s, group ? 'sx-c' : 'sx-blk');
+        const bp = blockProps(s, group ? 'sx-c' : 'sx-blk', top);
         // a stack block is one target, halves from the whole block (chips and pills included)
         if (!group) {
           const z = zone({ type: top ? 'free' : s.kind === 'end' ? 'cap' : 'block', id: s.id });
@@ -156,7 +160,7 @@ export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, ove
 
   if (loose) {
     return (
-      <div className={cx('sx-loose', loose.selected && 'sx-sel', loose.moving && 'sx-moving', linkOver === `l:${loose.key}` && 'sx-linkover')} style={{ left: at.x, top: at.y }} data-loose={loose.key} data-zone="loose" tabIndex={0} aria-label="Loose block">
+      <div className={cx('sx-loose', loose.selected && 'sx-sel', loose.moving && 'sx-moving', linkOver === `l:${loose.key}` && 'sx-linkover')} style={{ left: at.x, top: at.y }} data-loose={loose.key} data-zone="loose" tabIndex={0} role="group" aria-label={`loose ${name(w.steps[0]!)}`}>
         <span className="sx-loose-tag">loose</span>
         {stack(w.steps, undefined, 'kids')}
       </div>

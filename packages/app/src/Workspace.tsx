@@ -13,8 +13,8 @@ import { COND_KINDS } from './condKinds.js';
 import type { Layout } from './editorState.js';
 import { cx } from './generic.js';
 import { DRAG_PX, pickGesture, type Press } from './gesture.js';
-import { isTyping, matchKey, type ActName } from './keys.js';
-import { allKeys, boxSelect, stepIds, stepKey, toggle, withoutNested, type Key } from './selection.js';
+import { isTyping, matchKey, type ActName, type On } from './keys.js';
+import { allKeys, boxSelect, neighbour, nestedKeys, readingOrder, stepIds, stepKey, toggle, withoutNested, type Key } from './selection.js';
 import { fitBounds, toWorld, ZOOM, zoomAt, type Cam, type Pt, type Rect } from './surface.js';
 import { useDrag, type Start } from './useDrag.js';
 
@@ -23,14 +23,16 @@ let clip: Step[] = [];
 // A selected arrow is the key 'k:<from>/<index>'.
 const parseLink = (k: string) => { const i = k.lastIndexOf('/'); return { from: k.slice(2, i), index: Number(k.slice(i + 1)) }; };
 export type EditOpts = { lay?: (l: Layout) => Layout; then?: (applied: boolean) => void };
+const ARROW: Record<string, Pt> = { ArrowUp: { x: 0, y: -1 }, ArrowDown: { x: 0, y: 1 }, ArrowLeft: { x: -1, y: 0 }, ArrowRight: { x: 1, y: 0 } };
+const NUDGE = 20, PAN = 40;
 const NATIVE = 'input, textarea, select, option, button, .sx-menu, .sx-zoom';
 const onOf = (t: Element): Press['on'] => (t.closest(NATIVE) ? 'input' : t.closest('.sx-handle') ? 'handle' : t.closest('[data-link]') ? 'link' : t.closest('.sx-hat') ? 'hat' : t.closest('.sx-loose') ? 'loose' : t.closest('.blk') ? 'block' : 'empty');
 
-export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, press, onEdit, onSel, onDelete, onCam, onLayout, onUndo, onRedo, onNote, onEditInText }: {
-  w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; sel: Set<Key>; rev: unknown;
+export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved, lay, press, onEdit, onSel, onDelete, onCam, onLayout, onUndo, onRedo, onNote, onEditInText }: {
+  w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; sel: Set<Key>; primary?: string; rev: unknown;
   cam?: Cam; lay: Layout; press: MutableRefObject<Start | undefined>;
-  onEdit: (fn: (w: Workflow) => Workflow, o?: EditOpts) => boolean; onSel: (keys: Set<Key>, primary?: string) => void; onDelete: (keys: Key[]) => void; onCam: (c: Cam) => void;
-  onLayout: (fn: (l: Layout) => Layout) => boolean; onUndo: () => void; onRedo: () => void; onNote: (s: string) => void; onEditInText: (line: number) => void;
+  onEdit: (fn: (w: Workflow) => Workflow, o?: EditOpts) => boolean; onSel: (keys: Set<Key>, primary?: string) => void; onDelete: (keys: Key[], then?: (applied: boolean) => void) => void; onCam: (c: Cam) => void;
+  onLayout: (fn: (l: Layout) => Layout) => boolean; onUndo: () => boolean; onRedo: () => boolean; onNote: (s: string) => void; onEditInText: (line: number) => void;
 }) {
   const view = useRef<HTMLDivElement>(null);
   const [cam, setCam] = useState<Cam>(saved ?? { x: 0, y: 0, zoom: 1 });
@@ -84,17 +86,21 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
   const lane = useMemo(() => lanes(arrows, flatSteps(w.steps).map((s) => s.id)), [arrows, w]);
   const gone = useMemo(() => new Set(missing.map((m) => `${m.from}/${m.index}`)), [missing]);
 
-  // The model changes asynchronously (edit -> server print -> new w); focus follows the moved block once it re-renders.
-  const refocus = useRef<string | undefined>(undefined);
+  // The model changes asynchronously (edit -> server print -> new w); focus goes where an operation said (from its `then`, so a failed
+  // request leaves nothing behind) once the new blocks are on the page. 'primary' is the selected step, 'view' the viewport itself.
+  const refocus = useRef<Key | undefined>(undefined);
+  const elOf = (k: Key) => view.current!.querySelector<HTMLElement>(k.startsWith('s:') ? `.blk[data-id="${CSS.escape(k.slice(2))}"]` : `.sx-loose[data-loose="${CSS.escape(k.slice(2))}"]`);
   useEffect(() => {
-    if (refocus.current !== undefined) view.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(refocus.current)}"]`)?.focus();
+    const k = refocus.current === 'primary' ? (primary === undefined ? 'view' : stepKey(primary)) : refocus.current;
     refocus.current = undefined;
-  }, [w]);
+    if (k !== undefined) (k === 'view' ? view.current : elOf(k) ?? view.current)?.focus({ preventScroll: true });
+  }, [w, lay]);
+  const focusAfter = (k?: Key) => (ok: boolean) => { if (ok && k !== undefined) refocus.current = k; };
   // Every move is one edit; a link the move turned backward gets its max, and the note says which.
   const capNote = (capped: string[]) => `Added max 3 to ${capped.length === 1 ? '1 link that now points' : `${capped.length} links that now point`} back: ${capped.join(', ')}.`;
-  const moved = (fn: (m: Workflow) => Workflow) => {
+  const moved = (fn: (m: Workflow) => Workflow, focus?: Key) => {
     let capped: string[] = [];
-    const sent = onEdit((m) => { const d = fn(m); if (d === m) return m; const r = capBackward(d); capped = r.capped; return r.w; });
+    const sent = onEdit((m) => { const d = fn(m); if (d === m) return m; const r = capBackward(d); capped = r.capped; return r.w; }, { then: focusAfter(focus) });
     if (sent && capped.length) onNote(capNote(capped));
     return sent;
   };
@@ -102,10 +108,15 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
   const flow = (ids: string[], one: (m: Workflow, id: string) => { w: Workflow; capped: string[] } | undefined, said: string) => {
     let capped: string[] = [];
     onEdit((m) => { capped = []; return ids.reduce((acc, id) => { const r = one(acc, id); capped.push(...(r?.capped ?? [])); return r?.w ?? acc; }, m); }, {
-      then: (ok) => { if (!ok) return; refocus.current = ids[0]; onNote(capped.length ? `${said} ${capNote(capped)}` : said); },
+      then: (ok) => { if (!ok) return; refocus.current = stepKey(ids[0]!); onNote(capped.length ? `${said} ${capNote(capped)}` : said); },
     });
   };
-  const move = (id: string, to: Place) => { refocus.current = moved((m) => moveStep(m, id, to)) ? id : undefined; };
+  const move = (id: string, to: Place) => { moved((m) => moveStep(m, id, to), stepKey(id)); };
+  // delete: focus goes to the next block in reading order, else the previous one, else the viewport
+  const remove = (keys: Key[]) => {
+    const next = neighbour(readingOrder(w, lay.loose), new Set([...keys, ...nestedKeys(w, new Set(keys))]));
+    onDelete(keys, focusAfter(next ?? 'view'));
+  };
 
   const one = (id?: string) => onSel(new Set(id === undefined ? [] : [stepKey(id)]), id);
   const pick = (id: string, add: boolean) => {
@@ -125,7 +136,7 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
   const stash = (steps: Step[], at: Pt[]) => {
     let keys: string[] = [];
     const ok = onLayout((l) => { const r = addLoose(l, steps, at); keys = r.keys; return r.lay; });
-    if (ok) onSel(new Set(keys.map((k) => `l:${k}`)));
+    if (ok) { onSel(new Set(keys.map((k) => `l:${k}`))); refocus.current = `l:${keys[0]}`; }
     else if ((lay.loose?.length ?? 0) + steps.length > LOOSE_MAX) onNote(FULL);
   };
   // Park: the steps leave the file and become loose blocks, keeping their offsets from the block that was grabbed.
@@ -142,6 +153,7 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
       then: (ok) => {
         if (!ok) return;
         onSel(new Set(keys.map((k) => `l:${k}`)));
+        refocus.current = `l:${keys[0]}`;
         const n = r.lost.length;
         onNote(`Parked ${r.steps.map((s) => `\`${s.id}\``).join(', ')}.${n ? ` Removed ${n} link${n > 1 ? 's' : ''}: ${r.lost.join(', ')}.` : ''} Ctrl+Z puts it back.`);
       },
@@ -156,7 +168,7 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
       lay: (l) => removeLoose(l, lo.map((x) => x.key)),
       then: (ok) => {
         if (!ok || !r) return;
-        refocus.current = r.ids[0];
+        if (r.ids[0] !== undefined) refocus.current = stepKey(r.ids[0]);
         onSel(new Set(r.ids.map(stepKey)), r.ids.at(-1));
         if (r.capped.length) onNote(capNote(r.capped));
       },
@@ -194,10 +206,10 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
     const ids = top(), lo = looseSel();
     let made: string[] = [], keys: string[] = [];
     const parkLoose = (l: Layout) => { const r = addLoose(l, lo.map((x) => x.step), lo.map((x) => ({ x: x.at.x + 24, y: x.at.y + 24 }))); keys = r.keys; return r.lay; };
-    if (!ids.length) return void (lo.length && onLayout(parkLoose) && onSel(new Set(keys.map((k) => `l:${k}`))));
+    if (!ids.length) return void (lo.length && onLayout(parkLoose) && (onSel(new Set(keys.map((k) => `l:${k}`))), (refocus.current = `l:${keys[0]}`)));
     onEdit((m) => { const r = duplicateSteps(m, ids); made = r.ids; return r.w; }, {
       ...(lo.length && { lay: parkLoose }),
-      then: (ok) => { if (ok) onSel(new Set([...made.map(stepKey), ...keys.map((k) => `l:${k}`)]), made.at(-1)); },
+      then: (ok) => { if (!ok) return; onSel(new Set([...made.map(stepKey), ...keys.map((k) => `l:${k}`)]), made.at(-1)); refocus.current = made[0] !== undefined ? stepKey(made[0]) : `l:${keys[0]}`; },
     });
   };
 
@@ -231,18 +243,37 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
     return !at || at.index === (list?.length ?? 0) - 1 || (at.parent === undefined && at.index === stackEnd(w) - 1);
   };
   // the block acts get the focused block's id; the others ignore it
-  const ACTS: Record<ActName, (id: string) => void> = {
-    delete: (id) => onDelete(id !== '' && !sel.has(stepKey(id)) ? [stepKey(id)] : [...withoutNested(w, sel)]),
+  // `ev` is the key press: the block that has the focus and the key itself (the arrows share an act)
+  const walk = (cur: Key, by: number) => {
+    const order = readingOrder(w, lay.loose), i = order.indexOf(cur), k = order[Math.min(Math.max(i + by, 0), order.length - 1)];
+    return k === undefined || i < 0 ? undefined : k;
+  };
+  const ACTS: Record<ActName, (id: string, ev?: { key: string; cur: Key }) => void> = {
+    delete: (id) => remove(id !== '' && !sel.has(stepKey(id)) ? [stepKey(id)] : [...withoutNested(w, sel)]),
+    focusPrev: (_, ev) => { const k = ev && walk(ev.cur, -1); if (k) elOf(k)?.focus({ preventScroll: true }); },
+    focusNext: (_, ev) => { const k = ev && walk(ev.cur, 1); if (k) elOf(k)?.focus({ preventScroll: true }); },
+    extendPrev: (_, ev) => { const k = ev && walk(ev.cur, -1); if (k) { onSel(new Set([...sel, ev.cur, k]), stepIds([k]).at(0) ?? primary); elOf(k)?.focus({ preventScroll: true }); } },
+    extendNext: (_, ev) => { const k = ev && walk(ev.cur, 1); if (k) { onSel(new Set([...sel, ev.cur, k]), stepIds([k]).at(0) ?? primary); elOf(k)?.focus({ preventScroll: true }); } },
+    nudge: (_, ev) => {
+      const d = ev && ARROW[ev.key];
+      if (!d) return;
+      const keys = sel.has(ev.cur) ? [...sel] : [ev.cur];
+      onLayout((l) => moveItems(keys.some((k) => k.startsWith('s:')) ? { ...l, free: { ...Object.fromEntries(freeAt), ...l.free } } : l, keys, { x: d.x * NUDGE, y: d.y * NUDGE }));
+    },
+    pan: (_, ev) => {
+      const d = ev && ARROW[ev.key], c = camRef.current;
+      if (d) commit({ ...c, x: c.x - d.x * PAN, y: c.y - d.y * PAN });
+    },
     select: (id) => { if (id !== '') one(id); },
     moveUp: (id) => { const at = placeOf(w, id); if (at && at.index > (freeIds.has(id) ? stackEnd(w) + 1 : 0)) move(id, { ...at, index: at.index - 1 }); },
     moveDown: (id) => { const at = placeOf(w, id); if (at && !last(id)) move(id, { ...at, index: at.index + 2 }); },
     nestIn: (id) => { const to = nestPlace(w, id, 'in'); if (to) move(id, to); },
     nestOut: (id) => { const to = nestPlace(w, id, 'out'); if (to) move(id, to); },
-    undo: onUndo,
-    redo: onRedo,
+    undo: () => { if (onUndo()) refocus.current = 'primary'; },
+    redo: () => { if (onRedo()) refocus.current = 'primary'; },
     escape: () => one(),
     copy: () => { copy(); },
-    cut: () => { if (copy()) onDelete([...withoutNested(w, sel)]); },
+    cut: () => { if (copy()) remove([...withoutNested(w, sel)]); },
     paste,
     duplicate,
     selectAll: () => { const n = allKeys(w, (lay.loose ?? []).map((l) => l.key)); onSel(n, stepIds(n).at(-1)); },
@@ -252,7 +283,7 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
     fit,
     deleteLink: (id) => {
       const keys = id.startsWith('k:') ? [id] : [...sel].filter((k) => k.startsWith('k:'));
-      if (keys.length) onEdit((m) => removeLinks(m, keys.map(parseLink)), { then: (ok) => { if (ok) { one(); view.current?.focus(); } } });
+      if (keys.length) onEdit((m) => removeLinks(m, keys.map(parseLink)), { then: (ok) => { if (ok) { one(); view.current?.focus({ preventScroll: true }); } } });
     },
     menu: (id) => {
       const vr = view.current!.getBoundingClientRect(), lo = id === '' ? document.activeElement?.closest<HTMLElement>('.sx-loose') : null;
@@ -284,11 +315,13 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
   const keydown = (e: KeyEvent<HTMLDivElement>) => {
     const t = e.target as HTMLElement;
     if (isTyping(t.tagName)) return;
-    const block = t.matches('.blk[data-id]') || !!t.closest('.sx-loose'), link = t.closest<HTMLElement>('[data-link]');
-    const act = matchKey({ key: e.key, ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey, alt: e.altKey }, block ? 'block' : link ? 'link' : 'any');
+    const lo = t.closest<HTMLElement>('.sx-loose'), blk = t.matches('.blk[data-id]'), link = t.closest<HTMLElement>('[data-link]');
+    const cur = lo ? `l:${lo.dataset.loose}` : blk ? stepKey(t.dataset.id!) : '';
+    const on: On = lo || (blk && freeIds.has(t.dataset.id!)) ? 'positioned' : blk ? 'block' : link ? 'link' : t === view.current ? 'view' : 'any';
+    const act = matchKey({ key: e.key, ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey, alt: e.altKey }, on);
     if (!act) return;
     e.preventDefault(); // also swallows Alt+Left / Alt+Right, the browser's Back / Forward, on a block
-    ACTS[act](block ? t.dataset.id ?? '' : link ? `k:${link.dataset.link}` : '');
+    ACTS[act](blk ? t.dataset.id! : link && !lo ? `k:${link.dataset.link}` : '', { key: e.key, cur });
   };
 
   const ghosts = useRef<HTMLDivElement>(null);
@@ -313,7 +346,7 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
       if ('hex' in t && 'cond' in src) onEdit((m) => setCond(m, t.hex.id, t.hex.path, COND_KINDS[src.cond]!.fresh()));
       else if ('hit' in t && 'id' in src) {
         const ids = src.ids ?? [src.id];
-        refocus.current = moved((m) => dropSteps(m, ids, t.hit)) ? ids[0] : undefined;
+        moved((m) => dropSteps(m, ids, t.hit), stepKey(ids[0]!));
       } else if ('hit' in t && 'move' in src) {
         if (src.move[0]!.startsWith('s:')) flow(src.move.map((k) => k.slice(2)), (m, id) => attach(m, id, t.hit), 'Put back in the stack.');
         else unparkTo(src.move, t.hit);
@@ -479,11 +512,11 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
   };
 
   return (
-    <div ref={view} className={cx('sx-view', panning && 'sx-panning', drag.kind && 'sx-dragging', parking && 'sx-parking', drag.kind && drag.kind !== 'move' && !drag.ok && 'sx-nodrop')} role="region" aria-label="Workspace" tabIndex={0}
+    <div ref={view} className={cx('sx-view', panning && 'sx-panning', drag.kind && 'sx-dragging', parking && 'sx-parking', drag.kind && drag.kind !== 'move' && !drag.ok && 'sx-nodrop')} role="region" aria-label="Workspace" aria-describedby="sx-help" tabIndex={0}
       style={{ backgroundPosition: `${cam.x}px ${cam.y}px`, backgroundSize: `${18 * cam.zoom}px ${18 * cam.zoom}px` }}
       onKeyDown={keydown} onContextMenu={contextmenu} onPointerDown={down} onPointerMove={(e) => { ptr.current = { x: e.clientX, y: e.clientY }; }} onPointerLeave={() => { ptr.current = undefined; }} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}>
       <div className="sx-world" style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.zoom})` }}>
-        <BlocksPane w={w} steps={steps} diags={diags} text={text} sel={sel} rev={rev} condDrag={drag.kind === 'cond'} src={drag.src} over={drag.over} linkOver={band?.to}
+        <BlocksPane w={w} steps={steps} diags={diags} text={text} sel={sel} primary={primary} rev={rev} condDrag={drag.kind === 'cond'} src={drag.src} over={drag.over} linkOver={band?.to}
           at={scriptAt} missing={gone} free={{ at: freeAt, moving: movingFree }} onEdit={onEdit} onSelect={pick} />
         <LinkLayer arrows={arrows} then={then} rects={world} lanes={lane} selected={[...sel].find((k) => k.startsWith('k:'))?.slice(2)} band={band} />
         {(lay.loose ?? []).map((l) => {
@@ -494,6 +527,7 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
         <div className="sx-ghosts" ref={ghosts} />
         {box && <div className="sx-box" style={{ left: box.x, top: box.y, width: box.w, height: box.h }} />}
       </div>
+      <p id="sx-help" className="sx-sr">Up and Down move between blocks, Shift extends the selection. Alt with the arrows moves a block, or nudges a free or loose one. Arrows pan the view. Delete removes, Shift+F10 opens the menu.</p>
       <div className="sx-zoom" role="group" aria-label="Zoom">
         <button aria-label="Zoom out" onClick={() => zoom(1 / ZOOM.step)}>−</button>
         <output aria-live="polite">{Math.round(cam.zoom * 100)}%</output>
@@ -502,7 +536,7 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
         <button aria-label="Reset zoom" onClick={() => zoom(1 / camRef.current.zoom)}>1:1</button>
       </div>
       {menu && <ContextMenu items={itemsFor(menu.t, menuCtx(menu))} at={menu.at} onRun={(act) => ACTS[act](menu.t === 'block' || menu.t === 'link' ? menu.id : '')}
-        onClose={(refocus) => { setMenu(undefined); if (refocus) (menu.opener.isConnected ? menu.opener : view.current)?.focus(); }} />}
+        onClose={(refocus) => { setMenu(undefined); if (refocus) (menu.opener.isConnected ? menu.opener : view.current)?.focus({ preventScroll: true }); }} />}
     </div>
   );
 }

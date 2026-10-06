@@ -186,20 +186,25 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   };
   // Undo and redo restore the buffer and the layout from the snapshot; the server is not asked.
   const step = (go: typeof undo) => {
-    if (busy.current || file === null) return;
+    if (busy.current || file === null) return false;
     const r = go(hist.current, text);
     if (r === 'stale') { hist.current = emptyHistory(); setMsg('Undo history was cleared because the text was edited in the Text tab.'); }
-    else if (r) { hist.current = r.h; setText(r.to.text); setLay(r.to.lay); }
+    else if (r) { hist.current = r.h; setText(r.to.text); setLay(r.to.lay); return true; }
+    return false;
   };
   // ponytail: a step is added as a sibling after the selection; into a container only by dragging
   const add = (kind: StepKind) => { if (prev?.workflow && edit((w) => addStep(w, kind, stepId))) setStepId(newId(prev.workflow, kind)); };
   // ponytail: no confirm, no undo; nothing is written until Save
   // keys are 's:<id>' (in the file) and 'l:<key>' (parked); both go in one undo step
-  const del = (keys: Key[]) => {
+  const del = (keys: Key[], then?: (applied: boolean) => void) => {
     const ids = stepIds(keys), parked = keys.filter((k) => k.startsWith('l:')).map((k) => k.slice(2));
-    if (!ids.length) { setLayout((l) => removeLoose(l, parked)); return; }
-    if (edit((w) => deleteSteps(w, ids), { lay: (l) => removeLoose(l, parked) }) && stepId !== undefined && ids.includes(stepId)) setStepId(undefined);
+    if (!ids.length) { then?.(setLayout((l) => removeLoose(l, parked))); return; }
+    if (edit((w) => deleteSteps(w, ids), { lay: (l) => removeLoose(l, parked), then }) && stepId !== undefined && ids.includes(stepId)) setStepId(undefined);
   };
+  useEffect(() => {
+    if (sels.size > 1) setMsg((m) => (m === '' || /blocks selected\.$/.test(m) ? `${sels.size} blocks selected.` : m));
+    else setMsg((m) => (/blocks selected\.$/.test(m) ? '' : m));
+  }, [sels]);
 
   const save = async () => {
     if (file === null) return;
@@ -307,7 +312,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
               <div className="canvaswrap" tabIndex={-1}
                 onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); } }}>
                 <StatusCtx.Provider value={{ status, show: showStatus }}>
-                  <Workspace key={file} w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} sel={sels}
+                  <Workspace key={file} w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} sel={sels} primary={stepId}
                     rev={prev} press={press} cam={canvas.current?.[file]?.cam} lay={lay}
                     onEdit={edit} onSel={(keys, primary) => { setSels(keys); setStepId(primary); }} onNote={setMsg} onEditInText={(line) => { pendingLine.current = line; onView('text'); }} onDelete={del} onLayout={setLayout} onUndo={() => step(undo)} onRedo={() => step(redo)} onCam={(cam) => { if (restored) setView(file, { cam }); }} />
                 </StatusCtx.Provider>

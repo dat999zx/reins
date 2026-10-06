@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseWorkflow, type Workflow } from '@reins/core';
-import { allKeys, boxSelect, stepIds, stepKey, toggle, withoutNested } from '../src/selection.js';
+import { allKeys, boxSelect, neighbour, nestedKeys, readingOrder, stepIds, stepKey, toggle, withoutNested } from '../src/selection.js';
 
 const TEXT = `---
 reins: 1
@@ -66,5 +66,43 @@ describe('allKeys', () => {
   it('is every top-level step, then the loose blocks; nested steps are not listed', () => {
     expect([...allKeys(w)]).toEqual(['s:plan', 's:r', 's:ship']);
     expect([...allKeys(w, ['l1', 'l2'])]).toEqual(['s:plan', 's:r', 's:ship', 'l:l1', 'l:l2']);
+  });
+});
+
+const WITH_END = TEXT.replace('## phase ship\n', '## phase ship\n\n## end\n\n## phase fixup\n\n## phase later\n');
+const e = parseWorkflow(WITH_END).workflow!;
+
+describe('readingOrder', () => {
+  it('is the stack top to bottom including nested steps, the cap, then the free blocks in list order', () => {
+    expect(readingOrder(e)).toEqual(['s:plan', 's:r', 's:fix', 's:ship', 's:end-1', 's:fixup', 's:later']);
+  });
+  it('lists the loose blocks last, top-left first (by y, then x)', () => {
+    const loose = [{ key: 'a', at: { x: 50, y: 10 } }, { key: 'b', at: { x: 5, y: 10 } }, { key: 'c', at: { x: 90, y: 0 } }];
+    expect(readingOrder(w, loose)).toEqual(['s:plan', 's:r', 's:fix', 's:ship', 'l:c', 'l:b', 'l:a']);
+  });
+  it('is only the loose blocks for an empty script, and does not mutate its input', () => {
+    const loose = [{ key: 'a', at: { x: 1, y: 1 } }, { key: 'b', at: { x: 0, y: 0 } }];
+    expect(readingOrder({ ...w, steps: [] }, loose)).toEqual(['l:b', 'l:a']);
+    expect(loose.map((l) => l.key)).toEqual(['a', 'b']);
+  });
+});
+
+describe('nestedKeys', () => {
+  it('is every step below a selected step', () => {
+    expect([...nestedKeys(w, new Set(['s:r', 's:ship']))]).toEqual(['s:fix']);
+  });
+});
+
+describe('neighbour', () => {
+  const order = ['s:a', 's:b', 's:c', 'l:x'];
+  it('is the next block after the deleted ones', () => {
+    expect(neighbour(order, new Set(['s:b']))).toBe('s:c');
+    expect(neighbour(order, new Set(['s:a', 's:b']))).toBe('s:c');
+  });
+  it('is the previous block when nothing follows', () => {
+    expect(neighbour(order, new Set(['s:c', 'l:x']))).toBe('s:b');
+  });
+  it('is nothing when everything goes', () => {
+    expect(neighbour(order, new Set(order))).toBeUndefined();
   });
 });

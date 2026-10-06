@@ -737,6 +737,34 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await looseBlocks.locator('.sx-row').first().click();
     await page.keyboard.press('Delete');
     await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(0);
+    // 8e.8. keyboard: blocks are named groups; the arrows walk the reading order; Shift+arrow extends; a pasted loose block takes the focus and Alt+arrows nudge it; Delete focuses the block before it (the last one in reading order)
+    const focused = (prop: string) => page.evaluate(`document.activeElement && document.activeElement.dataset.${prop}`);
+    await workspace.focus();
+    await page.keyboard.press('Escape');
+    expect(await page.getByRole('group', { name: 'phase plan' }).count()).toBe(1);
+    await row('build').focus();
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(() => focused('id'), { timeout: W }).toBe('plan');
+    await page.keyboard.press('ArrowUp');
+    await expect.poll(() => focused('id'), { timeout: W }).toBe('build');
+    await page.keyboard.press('Shift+ArrowUp');
+    await expect.poll(() => focused('id'), { timeout: W }).toBe('phase-1');
+    await expect.poll(() => page.locator('.blk.sx-sel').count(), { timeout: W }).toBe(2);
+    await page.keyboard.press('Escape');
+    await row('plan').locator('.sx-row').first().click();
+    await page.keyboard.press('ControlOrMeta+C');
+    const spot3 = await empty();
+    await page.mouse.move(spot3.x, spot3.y);
+    await page.keyboard.press('ControlOrMeta+V');
+    await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(1);
+    await expect.poll(() => focused('loose'), { timeout: W }).toBeTruthy();
+    const leftOf = async () => Number(/left:\s*(-?[\d.]+)px/.exec((await looseBlocks.first().getAttribute('style')) ?? '')?.[1]);
+    const left0 = await leftOf();
+    await page.keyboard.press('Alt+ArrowRight');
+    await expect.poll(leftOf, { timeout: W }).toBe(left0 + 20);
+    await page.keyboard.press('Delete');
+    await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(0);
+    await expect.poll(() => focused('id'), { timeout: W }).toBe('phase-3');
     // 8d.z. save, so the buffer is clean before Chat (Playwright dismisses the leave confirm)
     await textTab.click();
     await editor.focus();

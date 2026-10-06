@@ -36,7 +36,7 @@ describe('keys', () => {
     expect(matchKey(ev('ArrowDown', { alt: true }), 'block')).toBe('moveDown');
     expect(matchKey(ev('ArrowRight', { alt: true }), 'block')).toBe('nestIn');
     expect(matchKey(ev('ArrowLeft', { alt: true }), 'block')).toBe('nestOut');
-    expect(matchKey(ev('ArrowUp'), 'block')).toBeUndefined();
+    expect(matchKey(ev('ArrowUp'), 'block')).toBe('focusPrev');
   });
   it('Ctrl+A selects all, from the viewport or a block', () => {
     expect(matchKey(ev('a', { ctrl: true }), 'any')).toBe('selectAll');
@@ -56,6 +56,31 @@ describe('keys', () => {
       expect(matchKey(ev('F10', { shift: true }), on)).toBe('menu');
     }
     expect(matchKey(ev('F10'), 'any')).toBeUndefined();
+  });
+  it('Up / Down move the focus between blocks, Shift extends the selection; the viewport pans with the arrows', () => {
+    for (const on of ['block', 'positioned'] as const) {
+      expect(matchKey(ev('ArrowUp'), on)).toBe('focusPrev');
+      expect(matchKey(ev('ArrowDown'), on)).toBe('focusNext');
+      expect(matchKey(ev('ArrowUp', { shift: true }), on)).toBe('extendPrev');
+      expect(matchKey(ev('ArrowDown', { shift: true }), on)).toBe('extendNext');
+    }
+    for (const key of ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']) {
+      expect(matchKey(ev(key), 'view')).toBe('pan');
+      expect(matchKey(ev(key), 'any')).toBeUndefined();
+      expect(matchKey(ev(key, { alt: true }), 'positioned')).toBe('nudge');
+    }
+    expect(matchKey(ev('ArrowLeft'), 'block')).toBeUndefined();
+  });
+  it('Alt+arrows never mean both: a free or loose block nudges, a stack block moves, the viewport does nothing', () => {
+    expect(matchKey(ev('ArrowUp', { alt: true }), 'positioned')).toBe('nudge');
+    expect(matchKey(ev('ArrowUp', { alt: true }), 'block')).toBe('moveUp');
+    expect(matchKey(ev('ArrowRight', { alt: true }), 'block')).toBe('nestIn');
+    expect(matchKey(ev('ArrowUp', { alt: true }), 'view')).toBeUndefined();
+  });
+  it('a free or loose block still answers the block keys', () => {
+    expect(matchKey(ev('Delete'), 'positioned')).toBe('delete');
+    expect(matchKey(ev('Enter'), 'positioned')).toBe('select');
+    expect(matchKey(ev('Delete'), 'view')).toBeUndefined();
   });
   it('an extra modifier does not match', () => {
     expect(matchKey(ev('z', { ctrl: true, alt: true }), 'any')).toBeUndefined();
