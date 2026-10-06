@@ -1,10 +1,9 @@
 import type { Step, Workflow } from '@reins/core';
 import { addStepAt, capBackward, deleteSteps, dropSteps, insertSteps, stackEnd, takeSteps, withFreshIds, type Hit, type Place } from './blocks.js';
 import { flatSteps } from './canvas.js';
-import type { Layout, Loose, Pt } from './editorState.js';
+import { LOOSE_MAX, type Layout, type Loose, type Pt } from './editorState.js';
 
 export const HOME: Pt = { x: 40, y: 40 };
-export const LOOSE_MAX = 100;
 export const FULL = 'The parking area is full: delete some loose blocks first.';
 export const STATE_MAX = 60000; // the server refuses 64 KB of editor state
 
@@ -30,7 +29,7 @@ export function unpark(w: Workflow, steps: Step[], to: Place): { w: Workflow; id
   return { w: r.w, ids: fresh.map((s) => s.id), capped: r.capped };
 }
 
-export const stateBytes =(v: unknown): number => new TextEncoder().encode(JSON.stringify(v)).length;
+export const stateBytes = (v: unknown): number => new TextEncoder().encode(JSON.stringify(v)).length;
 
 export function nextKey(lay: Layout): string {
   const used = new Set((lay.loose ?? []).map((l) => l.key));
@@ -61,6 +60,12 @@ export function splitAtEnd(w: Workflow): { stack: Step[]; end?: Step; tail: Step
   const i = stackEnd(w);
   return { stack: w.steps.slice(0, i), end: w.steps[i], tail: w.steps.slice(i + 1) };
 }
+
+// Moving, parking or deleting the top-level end turns the free blocks behind it into stack steps that run.
+export const freedBy = (w: Workflow, ids: string[]): string[] => {
+  const { end, tail } = splitAtEnd(w);
+  return end && ids.includes(end.id) ? tail.map((s) => s.id) : [];
+};
 
 export const ensureEnd = (w: Workflow): Workflow => (stackEnd(w) < w.steps.length ? w : addStepAt(w, 'end', { branch: 'kids', index: w.steps.length }));
 

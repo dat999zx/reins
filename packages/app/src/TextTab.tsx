@@ -27,6 +27,9 @@ interface Preview {
 }
 
 const NAME = /^[a-z0-9][a-z0-9-]*$/;
+const WAIT = 'Still applying the last change. Try again.';
+// the panel's Delete button goes away with the block, so the focus goes back to the workspace
+const toWorkspace = (ok: boolean) => { if (ok) document.querySelector<HTMLElement>('.sx-view')?.focus({ preventScroll: true }); };
 const template = (name: string) =>
   `---\nreins: 1\nname: ${name}\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n## phase plan\n> Plan the change.\n\n## phase build\n> Make the change.\n`;
 
@@ -109,7 +112,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
       const r = await get<{ path: string; text: string }>(`${base}/workflow?path=${encodeURIComponent(path)}`);
       const t = r.text.replace(/\r\n/g, '\n');
       const { cam: _cam, ...stored } = canvas.current?.[r.path] ?? {};
-      setFile(r.path); setText(t); setSaved(t); setStepId(undefined); setMsg(''); setPrev(null); setLay(stored); hist.current = emptyHistory();
+      setFile(r.path); setText(t); setSaved(t); setStepId(undefined); setMsg(''); setPrev(null); got.current = undefined; setLay(stored); hist.current = emptyHistory();
       return true;
     } catch (e) {
       setMsg((e as Error).message);
@@ -120,6 +123,8 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   useEffect(() => {
     if (file === null) return;
     let stale = false;
+    // an edit's own reply was this text's preview already; asking again would only re-sync every draft field under the user's typing
+    if (got.current?.file === file && got.current.text === text && got.current.step === stepId) return;
     const t = setTimeout(() => {
       post<Preview>(`${base}/preview`, { text, path: file, ...(stepId ? { stepId } : {}) }).then((p) => {
         if (stale) return;
@@ -144,13 +149,15 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   textRef.current = text;
   layRef.current = lay;
   const busy = useRef(false);
+  const got = useRef<{ file: string; text: string; step?: string }>(undefined); // what the last edit reply already previewed
   const saveAfter = useRef(false); // Ctrl+S while a draft was committing: save the text that edit produces
   const confirmed = useRef(new Set<string>());
   // Canvas edits go model -> server print -> this same buffer. One at a time; a reply for another file or text is dropped.
-  // ponytail: the 300 ms text preview fires once more for the new text and re-syncs every draft field, so text typed within ~300 ms of an edit is lost; debounce it away if it bites
   // `o.lay` changes the layout in the same undo step; `o.then` hears whether the reply landed.
   const edit = (fn: (w: Workflow) => Workflow, o?: EditOpts) => {
-    const sent = (() => {      if (busy.current || file === null || !prev?.workflow || prev.for !== text) return false;
+    const sent = (() => {
+      if (file === null || !prev?.workflow) return false;
+      if (busy.current || prev.for !== text) { setMsg(WAIT); return false; }
       if (prev.reformats && !confirmed.current.has(file)) {
         if (!window.confirm('Editing here rewrites this file in the standard form. Comments, unknown lines, frontmatter comments and unknown keys, and custom order are not kept. Continue?')) return false;
         confirmed.current.add(file);
@@ -166,6 +173,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
           const laid = o?.lay ? o.lay(layRef.current) : layRef.current;
           const after = r.workflow ? pruneLayout(laid, r.workflow) : laid; // the place of a step that is no longer free goes
           hist.current = push(hist.current, { before: { text: at.text, lay: at.lay, prev: at.prev }, after: { text: r.text, lay: after, prev: { ...r, for: r.text } } });
+          got.current = { file: at.file, text: r.text, step: stepId };
           setText(r.text);
           setPrev({ ...r, for: r.text });
           setLay(after);
@@ -184,7 +192,8 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   // A layout-only change: refused while an edit is in flight, nothing to do when it changes nothing.
   const setLayout = (fn: (l: Layout) => Layout) => {
     const next = fn(lay);
-    if (busy.current || JSON.stringify(next) === JSON.stringify(lay)) return false;
+    if (busy.current) { setMsg(WAIT); return false; }
+    if (JSON.stringify(next) === JSON.stringify(lay)) return false;
     if (tooBig(next)) { setMsg(FULL); return false; }
     hist.current = push(hist.current, { before: { text, lay, prev }, after: { text, lay: next, prev } });
     setLay(next);
@@ -192,7 +201,8 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   };
   // Undo and redo restore the buffer and the layout from the snapshot; the server is not asked.
   const step = (go: typeof undo) => {
-    if (busy.current || file === null) return false;
+    if (file === null) return false;
+    if (busy.current) { setMsg(WAIT); return false; }
     const r = go(hist.current, text);
     if (r === 'stale') { hist.current = emptyHistory(); setMsg('Undo history was cleared because the text was edited in the Text tab.'); }
     else if (r) { hist.current = r.h; setText(r.to.text); setLay(r.to.lay); if (r.to.prev) setPrev(r.to.prev as Preview); return true; }
@@ -200,7 +210,6 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   };
   // ponytail: a step is added as a sibling after the selection; into a container only by dragging
   const add = (kind: StepKind) => { if (prev?.workflow && edit((w) => addStep(w, kind, stepId))) setStepId(newId(prev.workflow, kind)); };
-  // ponytail: no confirm, no undo; nothing is written until Save
   // keys are 's:<id>' (in the file) and 'l:<key>' (parked); both go in one undo step
   const del = (keys: Key[], then?: (applied: boolean) => void) => {
     const ids = stepIds(keys), parked = keys.filter((k) => k.startsWith('l:')).map((k) => k.slice(2));
@@ -332,10 +341,10 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
                 {sels.size > 1 ? (
                   <aside className="bpanel" aria-label="Selection panel">
                     <h3>{sels.size} blocks selected</h3>
-                    <button className="danger" onClick={() => del([...withoutNested(prev.workflow!, sels)])}>Delete</button>
+                    <button className="danger" onClick={() => del([...withoutNested(prev.workflow!, sels)], toWorkspace)}>Delete</button>
                   </aside>
                 ) : sel ? <BlockPanel key={sel.id} step={sel} all={flatSteps(prev.workflow.steps)} cond={prev.steps.find((s) => s.id === sel.id)?.cond}
-                  turn={prev.turn} rev={prev} onEdit={edit} onDelete={() => del([stepKey(sel.id)])} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />
+                  turn={prev.turn} rev={prev} onEdit={edit} onDelete={() => del([stepKey(sel.id)], toWorkspace)} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />
                   : [...sels].some((k) => k.startsWith('l:')) ? <aside className="bpanel" aria-label="Loose block"><p className="hint">Loose block: not part of the workflow, never runs. Drag it into the script to use it.</p></aside>
                   : <WorkflowPanel w={prev.workflow} rev={prev} onEdit={edit} />}
               </div>

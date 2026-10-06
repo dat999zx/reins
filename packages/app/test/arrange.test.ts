@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { parseWorkflow, printWorkflow, type Step } from '@reins/core';
-import { addLoose, attach, detach, ensureEnd, HOME, LOOSE_MAX, moveItems, nextKey, park, pruneLayout, removeLoose, selfContained, splitAtEnd, stateBytes, unpark } from '../src/arrange.js';
+import { addLoose, attach, detach, ensureEnd, freedBy, HOME, moveItems, nextKey, park, pruneLayout, removeLoose, selfContained, splitAtEnd, stateBytes, unpark } from '../src/arrange.js';
 import { flatSteps } from '../src/canvas.js';
-import type { Layout } from '../src/editorState.js';
+import { LOOSE_MAX, type Layout } from '../src/editorState.js';
 
 const HEAD = '---\nreins: 1\nname: demo\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n';
 const steps = parseWorkflow(`${HEAD}## phase plan\nnext: build\n\n## repeat\nid: r\nuntil: tests pass\nmax: 3\n\n### phase a\nnext: plan\n\n### phase b\n\n## verify\nid: v\nagainst: plan\n`).workflow!.steps;
@@ -187,6 +187,13 @@ describe('free blocks: the steps after the first top-level end', () => {
     expect([ids(none.stack), none.end, none.tail]).toEqual([['plan', 'build'], undefined, []]);
     const nested = wf('## phase a\n\n## repeat\nid: r\nuntil: tests pass\nmax: 3\n\n### end\n\n### phase z\n\n## phase b\n');
     expect([ids(splitAtEnd(nested).stack), splitAtEnd(nested).tail]).toEqual([['a', 'r', 'b'], []]);
+  });
+  it('freedBy names the free blocks that start to run when the top-level end is moved, parked or deleted', () => {
+    expect(freedBy(withEnd, ['end-1'])).toEqual(['fix', 'other']);
+    expect(freedBy(withEnd, ['plan', 'end-1'])).toEqual(['fix', 'other']);
+    expect(freedBy(withEnd, ['plan', 'fix'])).toEqual([]);
+    expect(freedBy(wf('## phase plan\n\n## end\n'), ['end-1'])).toEqual([]);
+    expect(freedBy(base, ['plan'])).toEqual([]);
   });
   it('ensureEnd appends one end, once', () => {
     const m = ensureEnd(base);

@@ -81,11 +81,15 @@ export function App() {
   }, [token]);
 
   // Editor state per cwd. The saver stays silent until the stored state has loaded, so an early change can't overwrite it.
-  // ponytail: a change made in the last 500 ms before a reload or close is lost; add a pagehide flush if that bites
   const [editor, setEditor] = useState<Record<string, EditorState>>({});
   const editorRef = useRef(editor);
   editorRef.current = editor;
   const saver = useRef<{ cwd: string; s: ReturnType<typeof makeSaver> } | undefined>(undefined);
+  useEffect(() => {
+    const flush = () => saver.current?.s.flush();
+    window.addEventListener('pagehide', flush);
+    return () => window.removeEventListener('pagehide', flush);
+  }, []);
   const view = useRef({ selected, tab });
   view.current = { selected, tab };
   const cwd = selected ? st.sessions[selected]?.cwd : undefined;

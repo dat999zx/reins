@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { StepKind } from '@reins/core';
 import { DRAG_PX, hitOf, snapOf, zoneKey, type Target, type Zone } from './gesture.js';
 import { edgePan, toWorld, type Cam, type Pt } from './surface.js';
@@ -22,9 +22,12 @@ export function useDrag(o: Opts) {
   const oref = useRef(o);
   oref.current = o;
   const [live, setLive] = useState<Live>({});
+  const active = useRef<() => void>(undefined); // the running drag's teardown, so an unmount or a second press ends it
+  useEffect(() => () => active.current?.(), []);
 
   const press: Start = (e, src, el, group = [el]) => {
     if (e.button !== 0) return;
+    active.current?.();
     const from = { x: e.clientX, y: e.clientY };
     const at = { ...from };
     const box = el.getBoundingClientRect();
@@ -106,7 +109,8 @@ export function useDrag(o: Opts) {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', end);
-      window.removeEventListener('keydown', esc);
+      window.removeEventListener('keydown', esc, true);
+      active.current = undefined;
       ghost?.remove();
       setLive({});
       if (panned) oref.current.setCam(oref.current.cam(), true);
@@ -132,11 +136,13 @@ export function useDrag(o: Opts) {
       if (t) oref.current.drop(src, t, tl);
       else if ('move' in src) oref.current.move(src.move, { x: w.x - start.x, y: w.y - start.y });
     };
-    const esc = (k: KeyboardEvent) => { if (k.key === 'Escape') { k.preventDefault(); end(); } };
+    // capture + stop: the Escape that cancels a drag must not also clear the selection
+    const esc = (k: KeyboardEvent) => { if (k.key === 'Escape') { k.preventDefault(); k.stopPropagation(); end(); } };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', end);
-    window.addEventListener('keydown', esc);
+    window.addEventListener('keydown', esc, true);
+    active.current = end;
   };
 
   return { press, ...live };

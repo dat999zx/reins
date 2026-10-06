@@ -29,6 +29,7 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, condDrag,
   const marks = found?.steps;
   const { status, show: showAll } = useContext(StatusCtx);
   const show = showAll && !loose;
+  const dead = !!loose || undefined; // a loose block is read-only: its controls are inert, the block itself still takes clicks
   const za = (z: Zone) => (loose ? {} : zoneAttrs(z));
   // the snap bar of the drop zone the pointer is over
   const ov = (z: Zone) => (!loose && over && zoneKey(over.el) === zoneKey(z) ? over.cls : undefined);
@@ -73,13 +74,13 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, condDrag,
     const val = c && param ? (c as unknown as Record<string, unknown>)[param.key] : undefined;
     return (
       <span key={key} className={cx(own, !c && 'sx-hole')} data-hex={key} {...drop}>
-        <select aria-label={`Condition of ${s.id}${at}`} value={c?.t ?? ''}
+        <select aria-label={`Condition of ${s.id}${at}`} value={c?.t ?? ''} inert={dead}
           onChange={(e) => onEdit((m) => setCond(m, s.id, p, COND_KINDS[e.target.value]!.fresh()))}>
           {!c && <option value="" disabled>?</option>}
           {Object.entries(COND_KINDS).map(([t, k]) => <option key={t} value={t}>{k.label}</option>)}
         </select>
         {c && param && (
-          <Pill label={`Value of ${s.id} condition${at}`} value={val === undefined ? '' : String(val)} look={LOOK[param.look]} rev={rev}
+          <Pill label={`Value of ${s.id} condition${at}`} value={val === undefined ? '' : String(val)} look={LOOK[param.look]} rev={rev} dead={dead} valid={(v) => applyParam(c, v) !== undefined}
             commit={(v) => { const n = applyParam(c, v); return n !== undefined && onEdit((m) => setCond(m, s.id, p, n)); }} />
         )}
       </span>
@@ -96,10 +97,11 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, condDrag,
     const label = `${f?.label} of ${s.id}`;
     if (f?.input === 'step') {
       const ids = steps.filter((x) => x.id !== s.id).map((x) => x.id);
-      return <StepPick key={i} label={label} value={v} ids={ids} commit={(nv) => onEdit((m) => editStep(m, s.id, (x) => applyField(x, t.field, nv)))} />;
+      return <StepPick key={i} label={label} value={v} ids={ids} dead={dead} commit={(nv) => onEdit((m) => editStep(m, s.id, (x) => applyField(x, t.field, nv)))} />;
     }
     const look = t.field === 'title' ? 'bold' : f?.input === 'mono' ? 'code' : f?.input === 'number' ? 'num' : 'pill';
-    return <Pill key={i} label={label} value={v} look={look} rev={rev} commit={(nv) => onEdit((m) => editStep(m, s.id, (x) => applyField(x, t.field, nv)))} />;
+    return <Pill key={i} label={label} value={v} look={look} rev={rev} dead={dead} valid={(nv) => applyField(structuredClone(s), t.field, nv)}
+      commit={(nv) => onEdit((m) => editStep(m, s.id, (x) => applyField(x, t.field, nv)))} />;
   };
 
   const head = (s: Step) => {
@@ -111,7 +113,7 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, condDrag,
         <div className="sx-row">
           <span className="sx-grip" aria-hidden />
           {KINDS[s.kind].line.map((t, i) => token(s, t, i))}
-          {!loose && s.kind !== 'end' && (['next', ...(KINDS[s.kind].fails ? ['on-fail'] : [])] as const).map((k, _, all) => (
+          {!loose && !KINDS[s.kind].stops && (['next', ...(KINDS[s.kind].fails ? ['on-fail'] : [])] as const).map((k, _, all) => (
             <span key={k} className={cx('sx-handle', all.length > 1 && 'sx-two')} data-zid={s.id} data-lk={k} aria-hidden />
           ))}
         </div>
@@ -127,7 +129,7 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, condDrag,
   };
 
   // A plain function, not a component: a component declared here would remount every block on each render.
-  // 	op: a free block's own list; its blocks are zones of the free block, not drop slots.
+  // `top`: a free block's own list; its blocks are zones of the free block, not drop slots.
   const stack = (items: Step[], parent: string | undefined, branch: 'kids' | 'else', top = false): ReactNode => (
     <div className="sx-stack" data-list={`${parent ?? ''}/${branch}`}>
       {items.map((s, n) => {
@@ -136,7 +138,7 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, condDrag,
         const bp = blockProps(s, group ? 'sx-c' : 'sx-blk', top);
         // a stack block is one target, halves from the whole block (chips and pills included)
         if (!group) {
-          const z = zone({ type: top ? 'free' : s.kind === 'end' ? 'cap' : 'block', id: s.id });
+          const z = zone({ type: top ? 'free' : KINDS[s.kind].stops ? 'cap' : 'block', id: s.id });
           return <div key={key} {...bp} {...z} className={cx(bp.className, z.className)}>{head(s)}</div>;
         }
         // ponytail: a drop on a body's own area, even beside its last child, lands first in that body (mockup behaviour); the snap bar shows it

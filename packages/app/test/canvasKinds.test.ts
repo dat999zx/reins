@@ -26,6 +26,9 @@ describe('KINDS', () => {
   it('CARD_KINDS is the core cards without whenever-only kinds, in order', () => {
     expect(CARD_KINDS).toEqual([...CARDS.values()].filter((c) => !c.delivery).map((c) => c.kind));
   });
+  it('only end stops the workflow', () => {
+    expect((Object.keys(KINDS) as StepKind[]).filter((k) => KINDS[k].stops)).toEqual(['end']);
+  });
   it('only use has sub', () => {
     expect((Object.keys(KINDS) as StepKind[]).filter((k) => KINDS[k].sub)).toEqual(['use']);
     expect(KINDS.use.sub!(step('use', { attrs: { use: 'lint-fix' } }))).toBe('lint-fix');

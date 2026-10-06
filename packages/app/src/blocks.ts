@@ -26,9 +26,14 @@ export function placeOf(w: Workflow, id: string): Place | undefined {
   return look(w.steps);
 }
 
-export function newId(w: Workflow, kind: StepKind): string {
+// every id the workflow uses or points at
+const takenIds = (w: Workflow) => {
   const all = flatSteps(w.steps);
-  const taken = new Set([...all.map((s) => s.id), ...all.flatMap((s) => s.links.map((l) => l.to)), ...all.flatMap((s) => (s.attrs.against ? [s.attrs.against] : []))]);
+  return new Set([...all.map((s) => s.id), ...all.flatMap((s) => s.links.map((l) => l.to)), ...all.flatMap((s) => (s.attrs.against ? [s.attrs.against] : []))]);
+};
+
+export function newId(w: Workflow, kind: StepKind): string {
+  const taken = takenIds(w);
   let n = 1;
   while (taken.has(`${kind}-${n}`)) n++;
   return `${kind}-${n}`;
@@ -150,8 +155,7 @@ export function dropSteps(w: Workflow, ids: string[], hit: Hit): Workflow {
 
 // Clones of `steps` whose ids are free in `w`: a taken id gets `<kind>-<n>`, links and `against` inside the call follow it, links outside stay.
 export function withFreshIds(w: Workflow, steps: Step[]): Step[] {
-  const all = flatSteps(w.steps);
-  const used = new Set([...all.map((s) => s.id), ...all.flatMap((s) => s.links.map((l) => l.to)), ...all.flatMap((s) => (s.attrs.against ? [s.attrs.against] : []))]);
+  const used = takenIds(w);
   const out = structuredClone(steps), flat = flatSteps(out), rename = new Map<string, string>(), own = new Map<Step, string>();
   // the first step with a free id keeps it; a taken id, or an id met earlier in this call, gets a new one
   const taken = new Set(used), dup: Step[] = [];

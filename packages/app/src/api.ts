@@ -20,9 +20,10 @@ export function initToken(): string | null {
   return token;
 }
 
-async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function call<T>(method: string, path: string, body?: unknown, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     method,
+    ...init,
     headers: { authorization: `Bearer ${token}`, ...(body !== undefined ? { 'content-type': 'application/json' } : {}) },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
@@ -33,5 +34,5 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 
 export const get = <T>(path: string) => call<T>('GET', path);
 export const post = <T = unknown>(path: string, body: unknown = {}) => call<T>('POST', path, body);
-export const put = <T = unknown>(path: string, body: unknown) => call<T>('PUT', path, body);
+export const put = <T = unknown>(path: string, body: unknown, init?: RequestInit) => call<T>('PUT', path, body, init);
 export const stream = (after: string) => new EventSource(`/api/stream?token=${encodeURIComponent(token ?? '')}&after=${encodeURIComponent(after)}`);

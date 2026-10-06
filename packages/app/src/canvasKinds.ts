@@ -6,6 +6,7 @@ export type Token = string | 'cond' | 'sub' | { field: FieldKey };
 export type KindView = {
   group?: 'kids' | 'kids+else';
   fails?: true;
+  stops?: true; // ends the workflow: no links out, drawn as a cap
   cards?: true;
   fields: Field[];
   line: Token[];
@@ -44,7 +45,7 @@ export const KINDS: Record<StepKind, KindView> = {
     line: ['hand off to', { field: 'to' }],
     card: { label: 'hand off', section: 'Flow' }, fresh: () => ({}),
   },
-  end: { fields: [], line: ['end'], card: { label: 'end', section: 'Flow' }, fresh: () => ({}) },
+  end: { stops: true, fields: [], line: ['end'], card: { label: 'end', section: 'Flow' }, fresh: () => ({}) },
   use: { fields: [], line: ['use', 'sub'], sub: (s) => s.title || s.attrs.use || s.id },
 };
 

@@ -1,5 +1,5 @@
 export type ActName = 'delete' | 'select' | 'moveUp' | 'moveDown' | 'nestIn' | 'nestOut' | 'undo' | 'redo' | 'escape' | 'zoomIn' | 'zoomOut' | 'zoomReset' | 'fit' | 'selectAll' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'menu' | 'park' | 'detach' | 'attach' | 'putEnd' | 'editInText' | 'deleteLink' | 'focusPrev' | 'focusNext' | 'extendPrev' | 'extendNext' | 'nudge' | 'pan';
-// 'positioned' is a free or loose block (it answers the block keys too); 'view' is the viewport itself\r
+// 'positioned' is a free or loose block (it answers the block keys too); 'view' is the viewport itself
 export type On = 'block' | 'positioned' | 'link' | 'view' | 'any';
 type Row = { key: string; ctrl?: true; shift?: true; alt?: true; on: On; act: ActName };
 
@@ -21,7 +21,8 @@ export const KEYS: ReadonlyArray<Row> = [
   { key: 'ArrowDown', on: 'block', act: 'focusNext' },
   { key: 'ArrowUp', shift: true, on: 'block', act: 'extendPrev' },
   { key: 'ArrowDown', shift: true, on: 'block', act: 'extendNext' },
-  ...['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].flatMap((key): Row[] => [{ key, alt: true, on: 'positioned', act: 'nudge' }, { key, on: 'view', act: 'pan' }]),  { key: 'z', ctrl: true, on: 'any', act: 'undo' },
+  ...['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].flatMap((key): Row[] => [{ key, alt: true, on: 'positioned', act: 'nudge' }, { key, on: 'view', act: 'pan' }]),
+  { key: 'z', ctrl: true, on: 'any', act: 'undo' },
   { key: 'z', ctrl: true, shift: true, on: 'any', act: 'redo' },
   { key: 'y', ctrl: true, on: 'any', act: 'redo' },
   { key: 'a', ctrl: true, on: 'any', act: 'selectAll' },

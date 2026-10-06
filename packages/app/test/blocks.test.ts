@@ -366,7 +366,7 @@ describe('deleteSteps', () => {
     const m = deleteSteps(w, ['plan', 'fix']);
     expect(ids(m.steps)).not.toContain('plan');
     expect(find(m, 'v').attrs.against).toBeUndefined();
-    expect(parseWorkflow(printWorkflow(m)).workflow).toBeDefined();
+    expect(parseWorkflow(printWorkflow(m)).diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
   });
   it('handles a parent and its child in one call; unknown ids change nothing', () => {
     expect(flatSteps(deleteSteps(w, ['fix', 'r']).steps).map((s) => s.id)).toEqual(['plan', 'build', 'i', 'yes', 'no', 'v']);
@@ -395,7 +395,7 @@ describe('capBackward', () => {
     find(m, 'build').links.push({ kind: 'on-fail', to: 'build' });
     const r = capBackward(m);
     expect(find(r.w, 'build').links[0]!.max).toBe(3);
-    expect(parseWorkflow(printWorkflow(r.w)).workflow).toBeDefined();
+    expect(parseWorkflow(printWorkflow(r.w)).diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
   });
   it('never mutates its input', () => {
     const m = after(), before = structuredClone(m);

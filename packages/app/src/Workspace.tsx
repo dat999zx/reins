@@ -3,19 +3,19 @@ import type { Diagnostic, Step, Workflow } from '@reins/core';
 import { BlocksPane } from './BlocksPane.js';
 import { ContextMenu } from './ContextMenu.js';
 import { itemsFor, type MenuCtx, type MenuTarget } from './menus.js';
-import { addLoose, attach, detach, ensureEnd, FULL, HOME, LOOSE_MAX, moveItems, park, removeLoose, selfContained, splitAtEnd, unpark } from './arrange.js';
+import { addLoose, attach, detach, ensureEnd, freedBy, FULL, HOME, moveItems, park, removeLoose, selfContained, splitAtEnd, unpark } from './arrange.js';
 import { addStepAt, capBackward, dropPlace, dropSteps, duplicateSteps, moveStep, nestPlace, newId, placeOf, setCond, stackEnd, takeSteps, type Hit, type Place } from './blocks.js';
 import { KINDS } from './canvasKinds.js';
 import { flatSteps, marksOf, removeLinks, setLink, type WireKind } from './canvas.js';
 import { lanes, linksToDraw } from './arrows.js';
 import { LinkLayer } from './LinkLayer.js';
 import { COND_KINDS } from './condKinds.js';
-import type { Layout } from './editorState.js';
+import { LOOSE_MAX, type Layout } from './editorState.js';
 import { cx } from './generic.js';
 import { DRAG_PX, pickGesture, type Press } from './gesture.js';
 import { isTyping, matchKey, type ActName, type On } from './keys.js';
 import { allKeys, boxSelect, neighbour, nestedKeys, readingOrder, stepIds, stepKey, toggle, withoutNested, type Key } from './selection.js';
-import { fitBounds, toWorld, ZOOM, zoomAt, type Cam, type Pt, type Rect } from './surface.js';
+import { boundsOf, fitBounds, toWorld, ZOOM, zoomAt, type Cam, type Pt, type Rect } from './surface.js';
 import { useDrag, type Start } from './useDrag.js';
 
 // ponytail: in-app clipboard, lost on reload; the system clipboard if it matters
@@ -42,17 +42,25 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
   const [band, setBand] = useState<{ a: Pt; b: Pt; to?: string }>(); // the link being drawn
   const [menu, setMenu] = useState<{ t: MenuTarget; id: string; at: Pt; opener: HTMLElement }>();
   const space = useRef(false);
-  const set = (c: Cam) => { camRef.current = c; setCam(c); };
+  // What a gesture reads when it ends: the latest props, not the ones from the render that began it.
+  const live = useRef<{ onEdit: typeof onEdit; onSel: typeof onSel; onCam: typeof onCam; link: (from: string, kind: WireKind, key: string) => void; w: Workflow; sel: Set<Key> }>(undefined as never);
+  const gesture = useRef<() => void>(undefined); // the running pan, box or link gesture's teardown
+  useEffect(() => () => gesture.current?.(), []);
+  const set =(c: Cam) => { camRef.current = c; setCam(c); };
   const commit = (c: Cam) => { set(c); onCam(c); };
 
   const size = () => view.current!.getBoundingClientRect();
   const zoom = (f: number) => { const r = size(); commit(zoomAt(camRef.current, { x: r.width / 2, y: r.height / 2 }, f)); };
+  // Fit covers the script, the free blocks and the loose blocks.
   const fit = () => {
-    const s = view.current?.querySelector('.sx-script');
-    if (!s) return;
-    const r = size(), b = s.getBoundingClientRect(), c = camRef.current;
-    const o = toWorld(c, { x: b.left - r.left, y: b.top - r.top });
-    commit(fitBounds({ ...o, w: b.width / c.zoom, h: b.height / c.zoom }, { w: r.width, h: r.height }));
+    if (!view.current) return;
+    const r = size(), c = camRef.current;
+    const all = [...view.current.querySelectorAll('.sx-script, .sx-free, .sx-loose')].map((el): Rect => {
+      const b = el.getBoundingClientRect(), o = toWorld(c, { x: b.left - r.left, y: b.top - r.top });
+      return { ...o, w: b.width / c.zoom, h: b.height / c.zoom };
+    });
+    const b = boundsOf(all);
+    if (b) commit(fitBounds(b, { w: r.width, h: r.height }));
   };
   useLayoutEffect(() => { if (!saved) fit(); }, []);
 
@@ -71,18 +79,28 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
     }
     setRects((p) => (JSON.stringify([...p]) === JSON.stringify([...next]) ? p : next));
   };
-  useEffect(() => {
-    const s = view.current!.querySelector('.sx-script');
-    if (!s) return;
-    const ro = new ResizeObserver(measure);
-    ro.observe(s);
-    return () => ro.disconnect();
-  }, []);
   const wires = useMemo(() => marksOf(w, diags, text).wires, [w, diags, text]);
   const { arrows, missing, then } = useMemo(() => linksToDraw(w, wires), [w, wires]);
   const tail = useMemo(() => splitAtEnd(w).tail, [w]);
   const freeIds = useMemo(() => new Set(tail.map((s) => s.id)), [tail]);
+  // A free block sits outside the script's box, so it is observed itself: a pill typed into it moves its arrows.
+  const tailKey = tail.map((s) => s.id).join('\n');
+  useEffect(() => {
+    const els = view.current!.querySelectorAll('.sx-script, .sx-free');
+    if (!els.length) return;
+    const ro = new ResizeObserver(measure);
+    els.forEach((el) => ro.observe(el));
+    return () => ro.disconnect();
+  }, [tailKey]);
   const base = useRef(new Map<string, Pt>()); // the world places of the free blocks when a press began
+  // Where each free block stands now, read from the page: an unplaced one has no saved place until something moves it.
+  const freePlaces = () => {
+    const vr = view.current!.getBoundingClientRect();
+    return new Map(tail.flatMap((s) => {
+      const b = view.current!.querySelector(`.sx-free[data-zid="${CSS.escape(s.id)}"]`)?.getBoundingClientRect();
+      return b ? [[s.id, toWorld(camRef.current, { x: b.left - vr.left, y: b.top - vr.top })] as const] : [];
+    }));
+  };
   const lane = useMemo(() => lanes(arrows, flatSteps(w.steps).map((s) => s.id)), [arrows, w]);
   const gone = useMemo(() => new Set(missing.map((m) => `${m.from}/${m.index}`)), [missing]);
 
@@ -98,24 +116,34 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
   const focusAfter = (k?: Key) => (ok: boolean) => { if (ok && k !== undefined) refocus.current = k; };
   // Every move is one edit; a link the move turned backward gets its max, and the note says which.
   const capNote = (capped: string[]) => `Added max 3 to ${capped.length === 1 ? '1 link that now points' : `${capped.length} links that now point`} back: ${capped.join(', ')}.`;
-  const moved = (fn: (m: Workflow) => Workflow, focus?: Key) => {
+  // Moving, parking or deleting the top-level end makes the free blocks behind it run; say so.
+  const freeNote = (ids: string[]) => { const f = freedBy(w, ids); return f.length ? ` Without the end, the free block${f.length > 1 ? 's' : ''} ${f.map((i) => `\`${i}\``).join(', ')} now run${f.length > 1 ? '' : 's'}.` : ''; };
+  const moved = (fn: (m: Workflow) => Workflow, ids: string[]) => {
     let capped: string[] = [];
-    const sent = onEdit((m) => { const d = fn(m); if (d === m) return m; const r = capBackward(d); capped = r.capped; return r.w; }, { then: focusAfter(focus) });
-    if (sent && capped.length) onNote(capNote(capped));
+    const free = freeNote(ids);
+    const sent = onEdit((m) => { const d = fn(m); if (d === m) return m; const r = capBackward(d); capped = r.capped; return r.w; }, {
+      then: (ok) => {
+        focusAfter(ids[0] === undefined ? undefined : stepKey(ids[0]))(ok);
+        const said = `${capped.length ? capNote(capped) : ''}${ok ? free : ''}`.trim();
+        if (ok && said) onNote(said);
+      },
+    });
     return sent;
   };
   // detach / put back: one edit; the note says what happened and which links got a max
-  const flow = (ids: string[], one: (m: Workflow, id: string) => { w: Workflow; capped: string[] } | undefined, said: string) => {
+  const flow = (ids: string[], one: (m: Workflow, id: string) => { w: Workflow; capped: string[] } | undefined, said: string, lay?: (l: Layout) => Layout) => {
     let capped: string[] = [];
     onEdit((m) => { capped = []; return ids.reduce((acc, id) => { const r = one(acc, id); capped.push(...(r?.capped ?? [])); return r?.w ?? acc; }, m); }, {
+      ...(lay && { lay }),
       then: (ok) => { if (!ok) return; refocus.current = stepKey(ids[0]!); onNote(capped.length ? `${said} ${capNote(capped)}` : said); },
     });
   };
-  const move = (id: string, to: Place) => { moved((m) => moveStep(m, id, to), stepKey(id)); };
+  const move = (id: string, to: Place) => { moved((m) => moveStep(m, id, to), [id]); };
   // delete: focus goes to the next block in reading order, else the previous one, else the viewport
   const remove = (keys: Key[]) => {
     const next = neighbour(readingOrder(w, lay.loose), new Set([...keys, ...nestedKeys(w, new Set(keys))]));
-    onDelete(keys, focusAfter(next ?? 'view'));
+    const free = freeNote(stepIds(new Set(keys)));
+    onDelete(keys, (ok) => { focusAfter(next ?? 'view')(ok); if (ok && free) onNote(free.trim()); });
   };
 
   const one = (id?: string) => onSel(new Set(id === undefined ? [] : [stepKey(id)]), id);
@@ -148,6 +176,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
     const o = box(grabbed), z = camRef.current.zoom;
     const pts = r.steps.map((s) => { const b = box(s.id); return b && o ? { x: at.x + (b.left - o.left) / z, y: at.y + (b.top - o.top) / z } : at; });
     let keys: string[] = [];
+    const free = freeNote(r.steps.map((s) => s.id));
     onEdit(() => r.w, {
       lay: (l) => { const a = addLoose(l, r.steps, pts); keys = a.keys; return a.lay; },
       then: (ok) => {
@@ -155,7 +184,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
         onSel(new Set(keys.map((k) => `l:${k}`)));
         refocus.current = `l:${keys[0]}`;
         const n = r.lost.length;
-        onNote(`Parked ${r.steps.map((s) => `\`${s.id}\``).join(', ')}.${n ? ` Removed ${n} link${n > 1 ? 's' : ''}: ${r.lost.join(', ')}.` : ''} Ctrl+Z puts it back.`);
+        onNote(`Parked ${r.steps.map((s) => `\`${s.id}\``).join(', ')}.${n ? ` Removed ${n} link${n > 1 ? 's' : ''}: ${r.lost.join(', ')}.` : ''}${free} Ctrl+Z puts it back.`);
       },
     });
   };
@@ -188,6 +217,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
       then: (ok) => { if (ok && r?.ids[0] !== undefined) onNote(`\`${r.ids[0]}\` is now a free block: it runs only when a link points to it.`); },
     });
   };
+  live.current = { onEdit, onSel, onCam, link: linkLoose, w, sel };
   const copy = () => {
     const s = selfContained([...takeSteps(w, top()).taken, ...looseSel().map((l) => l.step)]);
     if (s.length) clip = s;
@@ -222,7 +252,15 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
   };
   const menuCtx = (m: { id: string }): MenuCtx => {
     const s = flatSteps(w.steps).find((x) => x.id === m.id);
-    return { count: sel.size, topLevel: !!s && placeOf(w, s.id)?.parent === undefined, free: freeIds.has(m.id), isEnd: s?.kind === 'end', clip: clip.length > 0 };
+    return { count: sel.size, topLevel: !!s && placeOf(w, s.id)?.parent === undefined, free: freeIds.has(m.id), isEnd: !!s && !!KINDS[s.kind].stops, clip: clip.length > 0 };
+  };
+  // One place decides what a point or an element is: the context menu and the Shift+F10 key both come here.
+  const openOn = (t: Element | null, at: Pt) => {
+    const ln = t?.closest<HTMLElement>('[data-link]'), lo = t?.closest<HTMLElement>('.sx-loose'), blk = t?.closest<HTMLElement>('.blk[data-id]');
+    if (ln) openMenu('link', `k:${ln.dataset.link}`, at, ln);
+    else if (lo) openMenu('loose', lo.dataset.loose!, at, lo);
+    else if (blk) openMenu('block', blk.dataset.id!, at, blk);
+    else openMenu('surface', '', at, view.current!);
   };
   const contextmenu = (e: MouseEv<HTMLDivElement>) => {
     const t = e.target as Element;
@@ -230,11 +268,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
     if (t.closest('input, textarea, select, .sx-zoom')) return; // the browser's own menu
     e.preventDefault();
     const r = view.current!.getBoundingClientRect(), at = { x: e.clientX - r.left, y: e.clientY - r.top };
-    const lo = t.closest<HTMLElement>('.sx-loose'), blk = t.closest<HTMLElement>('.blk[data-id]'), ln = t.closest<HTMLElement>('[data-link]');
-    if (ln) openMenu('link', `k:${ln.dataset.link}`, at, ln);
-    else if (lo) openMenu('loose', lo.dataset.loose!, at, lo);
-    else if (blk) openMenu('block', blk.dataset.id!, at, blk);
-    else openMenu('surface', '', at, view.current!);
+    openOn(t, at);
   };
   // a stack block never moves past the end, and a free block never above it: that would change what is free
   const last = (id: string) => {
@@ -258,7 +292,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
       const d = ev && ARROW[ev.key];
       if (!d) return;
       const keys = sel.has(ev.cur) ? [...sel] : [ev.cur];
-      onLayout((l) => moveItems(keys.some((k) => k.startsWith('s:')) ? { ...l, free: { ...Object.fromEntries(freeAt), ...l.free } } : l, keys, { x: d.x * NUDGE, y: d.y * NUDGE }));
+      onLayout((l) => moveItems(keys.some((k) => k.startsWith('s:')) ? { ...l, free: { ...Object.fromEntries(freePlaces()), ...l.free } } : l, keys, { x: d.x * NUDGE, y: d.y * NUDGE }));
     },
     pan: (_, ev) => {
       const d = ev && ARROW[ev.key], c = camRef.current;
@@ -286,15 +320,10 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
       if (keys.length) onEdit((m) => removeLinks(m, keys.map(parseLink)), { then: (ok) => { if (ok) { one(); view.current?.focus({ preventScroll: true }); } } });
     },
     menu: (id) => {
-      const vr = view.current!.getBoundingClientRect(), lo = id === '' ? document.activeElement?.closest<HTMLElement>('.sx-loose') : null;
-      if (id.startsWith('k:')) {
-        const ln = view.current!.querySelector<HTMLElement>(`[data-link="${CSS.escape(id.slice(2))}"]`);
-        if (ln) { const b = ln.getBoundingClientRect(); return openMenu('link', id, { x: b.left - vr.left, y: b.top - vr.top }, ln); }
-      }
-      const el = lo ?? (id === '' ? null : view.current!.querySelector<HTMLElement>(`.blk[data-id="${CSS.escape(id)}"]`));
-      if (!el) return openMenu('surface', '', { x: vr.width / 2, y: vr.height / 2 }, view.current!);
-      const b = el.getBoundingClientRect();
-      openMenu(lo ? 'loose' : 'block', lo ? lo.dataset.loose! : id, { x: b.left - vr.left, y: b.top - vr.top }, el);
+      const vr = view.current!.getBoundingClientRect(), q = (s: string) => view.current!.querySelector<HTMLElement>(s);
+      const el = id.startsWith('k:') ? q(`[data-link="${CSS.escape(id.slice(2))}"]`) : id === '' ? document.activeElement?.closest<HTMLElement>('.sx-loose') ?? null : q(`.blk[data-id="${CSS.escape(id)}"]`);
+      const b = el?.getBoundingClientRect();
+      openOn(el ?? null, b ? { x: b.left - vr.left, y: b.top - vr.top } : { x: vr.width / 2, y: vr.height / 2 });
     },
     // beside the script, at the block's height
     park: (id) => {
@@ -304,7 +333,13 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
       const o = toWorld(camRef.current, { x: s.right - vr.left, y: b.top - vr.top });
       parkIds(sel.has(stepKey(id)) ? top() : [id], id, { x: o.x + 40, y: o.y });
     },
-    detach: (id) => flow([id], detach, `\`${id}\` is now a free block: it runs only when a link points to it.`),
+    // the detached block gets a place of its own, beside the script at the height it stood (the stack closes up, so the same spot would cover the next block); the other free blocks keep theirs
+    detach: (id) => {
+      const q = (s: string) => view.current!.querySelector(s)?.getBoundingClientRect(), vr = view.current!.getBoundingClientRect();
+      const s = q('.sx-script'), b = q(`.blk[data-id="${CSS.escape(id)}"]`);
+      const at = s && b && toWorld(camRef.current, { x: s.right - vr.left + 40, y: b.top - vr.top }), others = Object.fromEntries(freePlaces());
+      flow([id], detach, `\`${id}\` is now a free block: it runs only when a link points to it.`, at && ((l) => ({ ...l, free: { ...others, ...l.free, [id]: at } })));
+    },
     attach: (id) => flow([id], attach, `\`${id}\` is back in the stack.`),
     putEnd: () => { const keys = [...sel].filter((k) => k.startsWith('l:')); if (keys.length) unparkTo(keys, { top: 'end' }); },
     editInText: (id) => {
@@ -346,7 +381,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
       if ('hex' in t && 'cond' in src) onEdit((m) => setCond(m, t.hex.id, t.hex.path, COND_KINDS[src.cond]!.fresh()));
       else if ('hit' in t && 'id' in src) {
         const ids = src.ids ?? [src.id];
-        moved((m) => dropSteps(m, ids, t.hit), stepKey(ids[0]!));
+        moved((m) => dropSteps(m, ids, t.hit), ids);
       } else if ('hit' in t && 'move' in src) {
         if (src.move[0]!.startsWith('s:')) flow(src.move.map((k) => k.slice(2)), (m, id) => attach(m, id, t.hit), 'Put back in the stack.');
         else unparkTo(src.move, t.hit);
@@ -390,11 +425,34 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
       timer = setTimeout(() => onCam(camRef.current), 250);
     };
     const key = (e: KeyboardEvent) => { if (e.key === ' ') space.current = e.type === 'keydown' && !isTyping((e.target as Element).tagName); };
+    const blur = () => { space.current = false; }; // a keyup that lands in another window must not leave Space held
     v.addEventListener('wheel', wheel, { passive: false });
     window.addEventListener('keydown', key);
     window.addEventListener('keyup', key);
-    return () => { v.removeEventListener('wheel', wheel); window.removeEventListener('keydown', key); window.removeEventListener('keyup', key); clearTimeout(timer); };
+    window.addEventListener('blur', blur);
+    return () => { v.removeEventListener('wheel', wheel); window.removeEventListener('keydown', key); window.removeEventListener('keyup', key); window.removeEventListener('blur', blur); clearTimeout(timer); };
   }, []);
+
+  // One window-level gesture at a time. `stop` drops its listeners and is also what a second press or an unmount calls; a release runs `done` after it.
+  const track = (move: (m: globalThis.PointerEvent) => void, done: (m: globalThis.PointerEvent) => void, onStop: () => void, esc: boolean) => {
+    gesture.current?.();
+    const stop = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', stop);
+      window.removeEventListener('keydown', key, true);
+      gesture.current = undefined;
+      onStop();
+    };
+    const up = (m: globalThis.PointerEvent) => { stop(); done(m); };
+    // capture + stop: the Escape that cancels a gesture must not also clear the selection
+    const key = (k: KeyboardEvent) => { if (k.key === 'Escape') { k.preventDefault(); k.stopPropagation(); stop(); } };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', stop);
+    if (esc) window.addEventListener('keydown', key, true);
+    gesture.current = stop;
+  };
 
   // Shift+drag on bare surface: a rectangle; on release every block fully inside it is selected (Ctrl adds).
   const startBox = (e: PointerEvent<HTMLDivElement>) => {
@@ -408,11 +466,8 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
       if (moved) setBox(rect(m));
     };
     const up = (m: globalThis.PointerEvent) => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', up);
-      setBox(undefined);
-      if (!moved) return add ? undefined : one();
+      const { w, sel, onSel } = live.current;
+      if (!moved) return add ? undefined : onSel(new Set());
       const c = camRef.current;
       const rects = [...view.current!.querySelectorAll<HTMLElement>('.blk[data-id], .sx-loose[data-loose]')].map((el) => {
         const r = el.getBoundingClientRect(), o = toWorld(c, { x: r.left - vr.left, y: r.top - vr.top });
@@ -421,9 +476,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
       const n = withoutNested(w, new Set([...boxSelect(rects, rect(m)), ...(add ? sel : [])]));
       onSel(n, stepIds(n).at(-1));
     };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-    window.addEventListener('pointercancel', up);
+    track(move, up, () => setBox(undefined), true);
   };
 
   // Press a handle and drag: a rubber band follows; releasing over another block in the file sets the link.
@@ -442,19 +495,8 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
       lk = to === undefined ? el?.closest<HTMLElement>('.sx-loose')?.dataset.loose : undefined;
       setBand({ a, b: at(m.clientX, m.clientY), to: to ?? (lk === undefined ? undefined : `l:${lk}`) });
     };
-    const stop = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', stop);
-      window.removeEventListener('keydown', esc);
-      setBand(undefined);
-    };
-    const up = () => { stop(); if (to) onEdit((m) => setLink(m, from, kind, to!)); else if (lk !== undefined) linkLoose(from, kind, lk); };
-    const esc = (k: KeyboardEvent) => { if (k.key === 'Escape') { k.preventDefault(); stop(); } };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-    window.addEventListener('pointercancel', stop);
-    window.addEventListener('keydown', esc);
+    const up = () => { if (to) live.current.onEdit((m) => setLink(m, from, kind, to!)); else if (lk !== undefined) live.current.link(from, kind, lk); };
+    track(move, up, () => setBand(undefined), true);
   };
 
   const down = (e: PointerEvent<HTMLDivElement>) => {
@@ -466,11 +508,8 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
       if (hat) drag.press(e.nativeEvent, { move: ['hat'] }, hat);
       else if (blk && fr && fr.dataset.zid === blk.dataset.id) {
         // a free block moves live like a loose one; the places of all free blocks are noted first
-        const k = `s:${blk.dataset.id}`, vr = view.current!.getBoundingClientRect();
-        base.current = new Map(tail.flatMap((s) => {
-          const b = view.current!.querySelector(`.sx-free[data-zid="${CSS.escape(s.id)}"]`)?.getBoundingClientRect();
-          return b ? [[s.id, toWorld(camRef.current, { x: b.left - vr.left, y: b.top - vr.top })] as const] : [];
-        }));
+        const k = `s:${blk.dataset.id}`;
+        base.current = freePlaces();
         drag.press(e.nativeEvent, { move: sel.has(k) ? [...sel].filter((x) => x.startsWith('s:') && freeIds.has(x.slice(2))) : [k] }, fr);
       }
       else if (lo) {
@@ -499,16 +538,10 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
       if (moved) set({ ...start, x: start.x + dx, y: start.y + dy });
     };
     const up = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', up);
-      setPanning(false);
-      if (moved) onCam(camRef.current);
-      else if (p.on === 'empty' && p.button === 0 && !p.space) one();
+      if (moved) live.current.onCam(camRef.current);
+      else if (p.on === 'empty' && p.button === 0 && !p.space) live.current.onSel(new Set());
     };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-    window.addEventListener('pointercancel', up);
+    track(move, up, () => setPanning(false), false);
   };
 
   return (

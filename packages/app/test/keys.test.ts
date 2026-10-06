@@ -6,9 +6,10 @@ const ev = (key: string, m: { ctrl?: boolean; shift?: boolean; alt?: boolean } =
 describe('keys', () => {
   it('every row matches its own event and no other row does', () => {
     for (const r of KEYS) {
-      const hits = KEYS.filter((x) => x.on === r.on && matchKey(ev(x.key, { ctrl: x.ctrl, shift: x.shift, alt: x.alt }), r.on) === r.act);
-      expect(matchKey(ev(r.key, { ctrl: r.ctrl, shift: r.shift, alt: r.alt }), r.on)).toBe(r.act);
-      expect(hits.length).toBeGreaterThan(0);
+      const e = ev(r.key, { ctrl: r.ctrl, shift: r.shift, alt: r.alt });
+      const hits = KEYS.filter((x) => (x.on === 'any' || x.on === r.on) && x.key.toLowerCase() === e.key.toLowerCase() && !!x.ctrl === e.ctrl && !!x.shift === e.shift && !!x.alt === e.alt);
+      expect(matchKey(e, r.on)).toBe(r.act);
+      expect(hits).toEqual([r]);
     }
   });
   it('no two rows share key, modifiers and target', () => {

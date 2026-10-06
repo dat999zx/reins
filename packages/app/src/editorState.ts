@@ -18,7 +18,7 @@ export interface EditorState {
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
-const LOOSE_KEEP = 100; // LOOSE_MAX in arrange.ts; that module imports this one
+export const LOOSE_MAX = 100;
 const LINKS: readonly string[] = ['next', 'on-pass', 'on-fail', 'retry', 'verify-against', 'hand-off'] satisfies LinkKind[];
 const str = (v: unknown): v is string => typeof v === 'string';
 
@@ -70,7 +70,7 @@ function cleanCanvas(raw: unknown, onDropped?: (n: number) => void): CanvasView 
     let dropped = 0;
     for (const l of loose) {
       const step = isObj(l) ? cleanStep(l.step) : undefined;
-      if (isObj(l) && step && str(l.key) && l.key !== '' && !keys.has(l.key) && isObj(l.at) && num(l.at.x) && num(l.at.y) && list.length < LOOSE_KEEP) {
+      if (isObj(l) && step && str(l.key) && l.key !== '' && !keys.has(l.key) && isObj(l.at) && num(l.at.x) && num(l.at.y) && list.length < LOOSE_MAX) {
         keys.add(l.key);
         list.push({ key: l.key, at: { x: l.at.x, y: l.at.y }, step });
       } else dropped++;
@@ -106,7 +106,7 @@ export const restoreStep = (stepId: string | undefined, steps: Array<{ id: strin
   stepId !== undefined && steps.some((s) => s.id === stepId) ? stepId : undefined;
 
 type Put = (cwd: string, state: EditorState) => Promise<unknown>;
-const realPut: Put = (cwd, state) => put('/api/editor-state', { cwd, state });
+const realPut: Put = (cwd, state) => put('/api/editor-state', { cwd, state }, { keepalive: true }); // survives the page closing: a pagehide flush
 
 export function makeSaver(cwd: string, send: Put = realPut, delayMs = 500, onError?: (e: Error) => void) {
   let on = false;

@@ -166,7 +166,6 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await expect.poll(() => states.count(), { timeout: W }).toBe(await steps.count());
     for (let i = 0; i < await states.count(); i++) expect(await states.nth(i).getAttribute('aria-label')).toMatch(/^done/);
     await steps.nth(1).getByRole('button').click();
-    await page.waitForTimeout(700); // the editor state is saved 500 ms after a change
     await page.reload();
     await rail.waitFor();
     await page.locator('.ebar b', { hasText: 'smoke.reins.md' }).waitFor();
@@ -234,7 +233,6 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await expect.poll(() => zoomLabel.innerText(), { timeout: W }).toBe('100%');
     await page.getByRole('button', { name: 'Zoom in' }).click();
     await expect.poll(() => zoomLabel.innerText(), { timeout: W }).toBe('125%');
-    await page.waitForTimeout(700); // the editor state is saved 500 ms after a change
     await page.reload();
     await rail.waitFor();
     await expect.poll(() => blocksTab.getAttribute('aria-selected'), { timeout: W }).toBe('true');
@@ -420,6 +418,14 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
       await textTab.click();
       return editor.inputValue();
     }, { timeout: W }).toContain('until: attempts > 5');
+    // a refused value stays in the pill, marked invalid; Escape brings the old value back
+    await blocksTab.click();
+    await num.fill('abc');
+    await num.press('Enter');
+    await expect.poll(() => num.getAttribute('aria-invalid'), { timeout: W }).toBe('true');
+    await num.press('Escape');
+    await expect.poll(() => num.getAttribute('aria-invalid'), { timeout: W }).toBeNull();
+    expect(await num.inputValue()).toBe('5');
     await expect.poll(async () => {
       await blocksTab.click();
       await row('repeat-1').locator('.sx-row').first().click();
@@ -607,7 +613,6 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     // 8e.2. dragging a step onto bare surface parks it (it leaves the file, the links into it go); dragging the loose block onto a slot puts it back; each is one undo step
     const park = async () => {
       await page.getByRole('button', { name: 'Fit' }).click();
-      await page.waitForTimeout(600); // the 300 ms preview debounce: an edit while the preview is stale is refused
       const g = (await row('ship').locator('.sx-grip').first().boundingBox())!;
       await drag({ x: g.x + g.width / 2, y: g.y + g.height / 2 }, await empty());
       await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(1);
@@ -645,7 +650,6 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     // 8e.4. right-click and keyboard menus: block, loose block, bare surface
     const menu = page.getByRole('menu');
     const buildCount = async () => ((await editor.inputValue()).match(/## phase build/g) ?? []).length;
-    await page.waitForTimeout(600); // the 300 ms preview debounce: an edit while the preview is stale is refused
     const rb = (await row('build').locator('.sx-row').first().boundingBox())!;
     await page.mouse.click(rb.x + rb.width / 2, rb.y + rb.height / 2, { button: 'right' });
     await menu.waitFor({ timeout: W });
@@ -692,7 +696,6 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
       return { x: m.a * q.x + m.c * q.y + m.e, y: m.b * q.x + m.d * q.y + m.f };
     })()`)) as { x: number; y: number };
     const draw = async () => {
-      await page.waitForTimeout(600); // the 300 ms preview debounce: an edit while the preview is stale is refused
       await row('ship').locator('.sx-row').first().hover();
       const hb = (await row('ship').locator('.sx-handle[data-lk="next"]').boundingBox())!;
       await drag(centre(hb), centre((await row('plan').locator('.sx-row').first().boundingBox())!));
@@ -710,8 +713,17 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     expect(await editor.inputValue()).toBe(textBeforeHat);
     await blocksTab.click();
     await draw();
+    // a block is the primary step when the arrow is clicked: the arrow must stay selected (it was dropped when the primary went away)
+    await row('build').locator('.sx-row').first().click();
+    await expect.poll(() => selected.count(), { timeout: W }).toBe(1);
     const at2 = await arrowAt();
+    // losing the primary step re-runs the preview, and the new model is what used to clear the arrow: wait for that reply, then look
+    const reply = page.waitForResponse((r) => r.url().includes('/preview'), { timeout: W }).catch(() => undefined);
     await page.mouse.click(at2.x, at2.y);
+    await reply;
+    await page.evaluate('new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))');
+    expect(await page.locator('[data-link="ship/0"].sx-lsel').count()).toBe(1);
+    expect(await selected.count()).toBe(0);
     await page.keyboard.press('Delete');
     await expect.poll(() => arrow.count(), { timeout: W }).toBe(0);
     await textTab.click();
@@ -722,18 +734,23 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await textTab.click();
     const b0 = await errs();
     await blocksTab.click();
-    await page.waitForTimeout(600);
     await row('plan').locator('.sx-row').first().click({ button: 'right' });
     await menu.getByRole('menuitem', { name: 'Detach as free block' }).click();
     await expect.poll(() => page.locator('.note').textContent(), { timeout: W }).toContain('max 3');
     await expect.poll(() => page.locator('.sx-free .blk[data-id="plan"]').count(), { timeout: W }).toBe(1);
+    // the detached block keeps the place it stood at; typing in a pill of a free block moves the arrows before any commit
+    await expect.poll(() => page.locator('.sx-free.sx-placed').count(), { timeout: W }).toBe(1);
+    const allD = () => page.locator('.sx-links path[d]').evaluateAll((ps) => ps.map((p) => (p as unknown as { getAttribute(n: string): string | null }).getAttribute('d')).join('|'));
+    const d0 = await allD();
+    await page.locator('.sx-free input').first().fill('a very long title that widens the block quite a lot');
+    await expect.poll(allD, { timeout: W }).not.toBe(d0);
+    await page.keyboard.press('Escape');
     await textTab.click();
     const detached = await editor.inputValue();
     expect(detached).toContain('## end');
     expect(detached.split('\n').filter((l) => l.startsWith('## ')).at(-1)).toBe('## phase plan');
     expect(await errs()).toBe(b0);
     await blocksTab.click();
-    await page.waitForTimeout(600);
     await workspace.focus();
     await page.keyboard.press('ControlOrMeta+Z');
     await expect.poll(() => page.locator('.sx-free').count(), { timeout: W }).toBe(0);
@@ -747,7 +764,6 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await page.mouse.move(spot2.x, spot2.y);
     await page.keyboard.press('ControlOrMeta+V');
     await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(1);
-    await page.waitForTimeout(600);
     await row('ship').locator('.sx-row').first().hover();
     const sb = (await row('ship').locator('.sx-handle[data-lk="next"]').boundingBox())!;
     await drag(centre(sb), centre((await looseBlocks.locator('.sx-row').first().boundingBox())!));
@@ -756,7 +772,6 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await textTab.click();
     expect(await editor.inputValue()).toMatch(/## phase ship\nnext: phase-\d+\n/);
     await blocksTab.click();
-    await page.waitForTimeout(600);
     await workspace.focus();
     await page.keyboard.press('ControlOrMeta+Z');
     await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(1);
@@ -794,6 +809,61 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await page.keyboard.press('Delete');
     await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(0);
     await expect.poll(() => focused('id'), { timeout: W }).toBe('run-1');
+    // 8e.9. Escape cancels a drag and keeps the selection; a detached block nudges by 20; a loose block's controls are inert;
+    // Fit covers the free and the loose blocks; deleting the end says which free blocks start to run
+    await workspace.focus();
+    await page.keyboard.press('Escape');
+    await row('build').locator('.sx-row').first().click();
+    await expect.poll(() => selected.count(), { timeout: W }).toBe(1);
+    const gb = centre((await row('build').locator('.sx-grip').first().boundingBox())!);
+    await page.mouse.move(gb.x, gb.y);
+    await page.mouse.down();
+    await page.mouse.move(gb.x + 60, gb.y + 60, { steps: 6 });
+    await page.keyboard.press('Escape');
+    await page.evaluate('new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))');
+    expect(await selected.count()).toBe(1);
+    await page.mouse.up();
+    // an edit's own reply is the preview of its text: no second, text-only preview may follow it (it re-synced every draft under the typing)
+    const seen: string[] = [];
+    const isText = (r: { url(): string; postData(): string | null }) => r.url().includes('/preview') && !JSON.parse(r.postData() ?? '{}').workflow;
+    page.on('request', (r) => { if (r.url().includes('/preview')) seen.push(isText(r) ? 'text' : 'edit'); });
+    await row('plan').locator('.sx-row').first().click({ button: 'right' });
+    await menu.getByRole('menuitem', { name: 'Detach as free block' }).click();
+    await expect.poll(() => page.locator('.sx-free.sx-placed').count(), { timeout: W }).toBe(1);
+    await page.waitForRequest(isText, { timeout: 1000 }).catch(() => undefined);
+    expect(seen.slice(seen.indexOf('edit') + 1)).not.toContain('text');
+    const freeLeft = async () => Number(/left:\s*(-?[\d.]+)px/.exec((await page.locator('.sx-free.sx-placed').first().getAttribute('style')) ?? '')?.[1]);
+    const f0 = await freeLeft();
+    await row('plan').focus();
+    await page.keyboard.press('Alt+ArrowRight');
+    await expect.poll(freeLeft, { timeout: W }).toBe(f0 + 20);
+    await page.keyboard.press('Alt+ArrowRight');
+    await expect.poll(freeLeft, { timeout: W }).toBe(f0 + 40);
+    await row('build').locator('.sx-row').first().click();
+    await page.keyboard.press('ControlOrMeta+C');
+    const spot6 = await empty();
+    await page.mouse.move(spot6.x, spot6.y);
+    await page.keyboard.press('ControlOrMeta+V');
+    await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(1);
+    expect(await looseBlocks.locator('input, select').count()).toBeGreaterThan(0);
+    expect(await looseBlocks.locator('input, select').evaluateAll((els) => els.every((e) => (e as unknown as { closest(s: string): unknown }).closest('[inert]') !== null))).toBe(true);
+    await page.keyboard.press('Tab');
+    expect(await page.evaluate(`!!document.activeElement.closest('.sx-loose') && ['INPUT', 'SELECT'].includes(document.activeElement.tagName)`)).toBe(false);
+    const wb = (await workspace.boundingBox())!, lg2 = centre((await looseBlocks.locator('.sx-grip').first().boundingBox())!);
+    await drag(lg2, { x: wb.x + wb.width - 90, y: wb.y + wb.height - 90 });
+    for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Zoom in' }).click();
+    await page.getByRole('button', { name: 'Fit view' }).click();
+    const inside = () => page.evaluate(`(() => {
+      const v = document.querySelector('[aria-label="Workspace"]').getBoundingClientRect();
+      return [...document.querySelectorAll('.sx-script, .sx-free, .sx-loose')].every((el) => { const b = el.getBoundingClientRect(); return b.left >= v.left - 1 && b.top >= v.top - 1 && b.right <= v.right + 1 && b.bottom <= v.bottom + 1; });
+    })()`);
+    await expect.poll(inside, { timeout: W }).toBe(true);
+    await looseBlocks.locator('.sx-row').first().click();
+    await page.keyboard.press('Delete');
+    await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(0);
+    await row('end-1').focus();
+    await page.keyboard.press('Delete');
+    await expect.poll(() => page.locator('.note').textContent(), { timeout: W }).toMatch(/free block `plan` now runs/);
     // 8d.z. save, so the buffer is clean before Chat (Playwright dismisses the leave confirm)
     await textTab.click();
     await editor.focus();
@@ -801,7 +871,6 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await page.getByRole('button', { name: 'Save', exact: true }).and(page.locator(':disabled')).waitFor();
 
     await page.getByRole('tab', { name: 'Chat' }).click();
-    await page.waitForTimeout(700);
 
     // 9. a reload brings the same session and its history back
     const before = page.url();

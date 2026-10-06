@@ -2,7 +2,7 @@ import type { Diagnostic, Step, Workflow } from '@reins/core';
 
 export type WireKind = 'next' | 'on-fail';
 
-export const edgeId = (from: string, index: number | 'order', to: string): string => `${from}>${index}>${to}`;
+export const edgeId = (from: string, index: number, to: string): string => `${from}>${index}>${to}`;
 
 export function flatSteps(steps: Step[]): Step[] {
   return steps.flatMap((s) => [s, ...flatSteps(s.kids ?? []), ...flatSteps(s.else ?? [])]);
