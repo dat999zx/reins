@@ -256,6 +256,14 @@ describe('setCond', () => {
     expect(printed(c)).toBe('tests pass and not attempts > 5');
     for (const m of [a, b, c]) check(m);
   });
+  it('sets a condition on a block whose condition was deleted', () => {
+    const bare = parse(`${TEXT}\n## repeat\nid: rr\nuntil: tests pass\nmax: 3\n`);
+    const noCond = structuredClone(bare);
+    delete find(noCond, 'rr').cond;
+    const m = setCond(noCond, 'rr', [], { t: 'approve' });
+    expect(printCond(find(m, 'rr').cond!)).toBe('you approve');
+    expect(parseWorkflow(printWorkflow(m)).diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+  });
   it('does nothing for a path that is not there, a step with no condition slot, or an unknown id', () => {
     expect(setCond(cw, 'g', ['b', 'b'], { t: 'approve' })).toBe(cw);
     expect(setCond(cw, 'g', ['a', 'a'], { t: 'approve' })).toBe(cw);

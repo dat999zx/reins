@@ -362,15 +362,44 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
       await textTab.click();
       return editor.inputValue();
     }, { timeout: W }).toContain('## run `npm run lint`');
-    // Escape reverts the draft and sends nothing
+    // Escape reverts the draft and sends nothing. Enter and blur after it must send nothing either; a later edit
+    // (the Always box) is the proof that every earlier request had landed, so the absence check is not vacuous.
     await blocksTab.click();
     await cmd.focus();
     await cmd.fill('discard me');
     await cmd.press('Escape');
     expect(await cmd.inputValue()).toBe('npm run lint');
+    await cmd.press('Enter');
     await cmd.blur();
-    await textTab.click();
+    await expect.poll(async () => {
+      await blocksTab.click();
+      const spot = await empty();
+      await page.mouse.click(spot.x, spot.y);
+      await always.fill('Escape check');
+      await always.blur();
+      await textTab.click();
+      return editor.inputValue();
+    }, { timeout: W }).toContain('always:\n  - Escape check\n');
     expect(await editor.inputValue()).not.toContain('discard me');
+    // Ctrl+S inside a pill commits the typed value first, then saves it
+    await blocksTab.click();
+    await cmd.fill('npm run lint -- --fix');
+    await cmd.press('ControlOrMeta+s');
+    await expect.poll(async () => {
+      await textTab.click();
+      const v = await editor.inputValue();
+      return v.includes('### run `npm run lint -- --fix`') || v.includes('## run `npm run lint -- --fix`');
+    }, { timeout: W }).toBe(true);
+    await expect.poll(() => page.getByRole('img', { name: 'unsaved changes' }).count(), { timeout: W }).toBe(0);
+    await blocksTab.click();
+    await expect.poll(async () => {
+      await cmd.fill('npm run lint');
+      await cmd.press('Enter');
+      await textTab.click();
+      const v = await editor.inputValue();
+      await blocksTab.click();
+      return v.includes('`npm run lint`');
+    }, { timeout: W }).toBe(true);
 
     // 8d.6. a condition picked on a hexagon, a number typed in its pill, and a Conditions card clicked, all land in the file
     await blocksTab.click();

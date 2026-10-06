@@ -54,6 +54,11 @@ describe('applyParam', () => {
   it.each(bad)('%s %j is refused', (t, v) => {
     expect(applyParam(atom(t), v)).toBeUndefined();
   });
+  it.each([['0', 0], ['007', 7]])('attempts %j gives n %j and round-trips', (v, n) => {
+    const c = applyParam(atom('attempts'), v);
+    expect(c).toEqual({ t: 'attempts', n });
+    expect(round(c!).cond).toEqual(c);
+  });
   it('accepts a 9 digit number', () => {
     expect(applyParam(atom('attempts'), '123456789')).toEqual({ t: 'attempts', n: 123456789 });
   });

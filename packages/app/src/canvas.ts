@@ -33,12 +33,12 @@ export function marksOf(w: Workflow, diags: Diagnostic[], text: string): { steps
   return { steps, wires, notes };
 }
 
-export function editStep(w: Workflow, id: string, fn: (s: Step) => void): Workflow {
+// `fn` returning false means the edit was refused: w comes back.
+export function editStep(w: Workflow, id: string, fn: (s: Step) => void | boolean): Workflow {
   const out = structuredClone(w);
   const st = flatSteps(out.steps).find((s) => s.id === id);
   if (!st) return w;
-  fn(st);
-  return out;
+  return fn(st) === false ? w : out;
 }
 
 export function setLink(w: Workflow, from: string, kind: WireKind, to: string): Workflow {

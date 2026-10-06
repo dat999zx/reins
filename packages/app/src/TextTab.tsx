@@ -59,6 +59,10 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   const pre = useRef<HTMLPreElement>(null);
   const gutter = useRef<HTMLDivElement>(null);
   const dirty = file !== null && text !== saved;
+  // a step that no longer exists cannot stay the primary (deleted with its parent, or removed in Text)
+  useEffect(() => {
+    if (stepId && prev?.workflow && prev.for === text && !flatSteps(prev.workflow.steps).some((s) => s.id === stepId)) setStepId(undefined);
+  }, [prev]);
   // `restore` is read at mount only; later changes to it are our own reports coming back.
   const first = useRef(restore);
   const wantStep = useRef<string | undefined>(undefined);
@@ -140,6 +144,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   textRef.current = text;
   layRef.current = lay;
   const busy = useRef(false);
+  const saveAfter = useRef(false); // Ctrl+S while a draft was committing: save the text that edit produces
   const confirmed = useRef(new Set<string>());
   // Canvas edits go model -> server print -> this same buffer. One at a time; a reply for another file or text is dropped.
   // ponytail: the 300 ms text preview fires once more for the new text and re-syncs every draft field, so text typed within ~300 ms of an edit is lost; debounce it away if it bites
@@ -157,7 +162,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
       const at = { file, text, lay };
       post<Preview>(`${base}/preview`, { path: file, workflow: next, ...(stepId ? { stepId } : {}) })
         .then((r) => {
-          if (fileRef.current !== at.file || textRef.current !== at.text || r.text === undefined) return o?.then?.(false);
+          if (fileRef.current !== at.file || textRef.current !== at.text || r.text === undefined) { saveAfter.current = false; return o?.then?.(false); }
           const laid = o?.lay ? o.lay(layRef.current) : layRef.current;
           const after = r.workflow ? pruneLayout(laid, r.workflow) : laid; // the place of a step that is no longer free goes
           hist.current = push(hist.current, { before: { text: at.text, lay: at.lay }, after: { text: r.text, lay: after } });
@@ -165,8 +170,9 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
           setPrev({ ...r, for: r.text });
           setLay(after);
           o?.then?.(true);
+          if (saveAfter.current) { saveAfter.current = false; void save(r.text); }
         })
-        .catch((e) => { setMsg((e as Error).message); o?.then?.(false); })
+        .catch((e) => { saveAfter.current = false; setMsg((e as Error).message); o?.then?.(false); })
         .finally(() => { busy.current = false; });
       return true;
     })();
@@ -206,15 +212,22 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
     else setMsg((m) => (/blocks selected\.$/.test(m) ? '' : m));
   }, [sels]);
 
-  const save = async () => {
+  const save = async (t = text) => {
     if (file === null) return;
     try {
-      await put(`${base}/workflow`, { path: file, text });
-      setSaved(text); setMsg('Saved.');
+      await put(`${base}/workflow`, { path: file, text: t });
+      setSaved(t); setMsg('Saved.');
       void refresh();
     } catch (e) {
       setMsg((e as Error).message);
     }
+  };
+  // Blurring the focused field commits its draft through edit(); the save then waits for that edit's text.
+  const saveWithDraft = () => {
+    const a = document.activeElement;
+    if (a instanceof HTMLElement && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA')) a.blur();
+    if (busy.current) saveAfter.current = true;
+    else void save();
   };
   const create = async () => {
     if (!NAME.test(name)) return setMsg('Use lowercase letters, digits and dashes, starting with a letter or digit.');
@@ -310,7 +323,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
             {visual && prev && !(prev.workflow && known) && <p className="hint">This file does not parse. Fix it in the Text tab.</p>}
             {visual && prev?.workflow && known && (
               <div className="canvaswrap" tabIndex={-1}
-                onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); } }}>
+                onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveWithDraft(); } }}>
                 <StatusCtx.Provider value={{ status, show: showStatus }}>
                   <Workspace key={file} w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} sel={sels} primary={stepId}
                     rev={prev} press={press} cam={canvas.current?.[file]?.cam} lay={lay}

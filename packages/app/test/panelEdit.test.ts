@@ -52,6 +52,21 @@ describe('panelEdit', () => {
     for (const bad of ['', '0', '-2', '1.5', 'x']) expect(r(bad)).toBe('3');
   });
 
+  it('says whether a field value was taken; a refused one changes nothing', () => {
+    const s = structuredClone(w().steps[1]!);
+    expect(applyField(s, 'max', 'x')).toBe(false);
+    expect(s).toEqual(w().steps[1]);
+    expect(applyField(s, 'max', '5')).toBe(true);
+    expect(applyField(s, 'title', 'x')).toBe(true);
+  });
+
+  it('editStep returns the same workflow when the edit is refused', () => {
+    const m = w();
+    expect(editStep(m, 'r', (s) => applyField(s, 'max', 'x'))).toBe(m);
+    expect(editStep(m, 'r', () => false)).toBe(m);
+    expect(editStep(m, 'r', () => undefined)).not.toBe(m);
+  });
+
   it('sets a link max as a number; empty or below 1 removes it', () => {
     const l = { kind: 'next' as const, to: 'r', max: 3 };
     applyLinkMax(l, '4');

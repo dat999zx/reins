@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type JSX, type KeyboardEvent } from 'react';
 import type { CardKind, Step, Workflow } from '@reins/core';
 import { CARD_KINDS, KINDS, type Field } from './canvasKinds.js';
 import { setAlways } from './blocks.js';
@@ -68,12 +68,12 @@ const INPUTS: Record<Field['input'], (p: InputProps) => JSX.Element> = {
 
 export function BlockPanel({ step, all, cond, turn, rev, onEdit, onEditInText, onDelete }: {
   step: Step; all: Step[]; cond?: string; turn?: string; rev: unknown;
-  onEdit: (fn: (w: Workflow) => Workflow) => void; onEditInText: () => void; onDelete?: () => void;
+  onEdit: (fn: (w: Workflow) => Workflow) => void; onEditInText: () => void; onDelete: () => void;
 }) {
   const k = KINDS[step.kind];
   const id = step.id;
   const others = all.filter((s) => s.id !== id).map((s) => s.id);
-  const change = (fn: (s: Step) => void) => onEdit((w) => editStep(w, id, fn));
+  const change = (fn: (s: Step) => void | boolean) => onEdit((w) => editStep(w, id, fn));
   const incoming = all.flatMap((s) => s.links.filter((l) => l.to === id).map((l) => ({ from: s.id, kind: l.kind })));
   const [kind, setKind] = useState<'next' | 'on-fail'>('next');
   const [target, setTarget] = useState('');
@@ -82,7 +82,7 @@ export function BlockPanel({ step, all, cond, turn, rev, onEdit, onEditInText, o
   return (
     <aside className="bpanel" aria-label="Block panel">
       <h3>{step.kind} <span className="faint">{id}</span></h3>
-      {onDelete && <button className="danger" onClick={onDelete}>Delete</button>}
+      <button className="danger" onClick={onDelete}>Delete</button>
 
       {k.fields.map((f) => {
         const Input = INPUTS[f.input];
@@ -162,11 +162,14 @@ export function WorkflowPanel({ w, rev, onEdit }: { w: Workflow; rev: unknown; o
 
 function Always({ w, rev, onEdit }: { w: Workflow; rev: unknown; onEdit: (fn: (w: Workflow) => Workflow) => void }) {
   const value = w.always.join('\n');
-  const [v, setV] = useDraft(value, rev);
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const dirty = useRef(false);
+  // Held while focused (a preview landing must not wipe the typing); re-synced on blur when nothing was typed.
+  const [v, setV] = useDraft(value, rev, () => document.activeElement === ref.current);
   return (
     <label className="always">Always
-      <textarea rows={Math.max(2, w.always.length + 1)} value={v} onChange={(e) => setV(e.target.value)}
-        onBlur={() => { if (v !== value) onEdit((m) => setAlways(m, v)); }} />
+      <textarea ref={ref} rows={Math.max(2, w.always.length + 1)} value={v} onChange={(e) => { dirty.current = true; setV(e.target.value); }}
+        onBlur={() => { if (dirty.current && v !== value) onEdit((m) => setAlways(m, v)); else setV(value); dirty.current = false; }} />
     </label>
   );
 }

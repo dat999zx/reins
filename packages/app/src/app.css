@@ -216,6 +216,7 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .sx-grip { align-self: stretch; width: 7px; min-height: 14px; margin: 0 -1px 0 -5px; cursor: grab; opacity: 0.35; background: radial-gradient(circle, #fff 1px, transparent 1.3px) 0 1px / 4px 4px; flex: none; }
 .sx-pill, .sx-code { display: inline-block; padding: 1px 8px; border-radius: 11px; background: rgb(255 255 255 / 0.94); color: #232428; font-size: 12px; line-height: 1.5; min-width: 3ch; }
 .sx-code { font-family: var(--mono); background: #15161a; color: #d7f0e6; border-radius: 5px; }
+input.sx-pill[aria-invalid], input.sx-code[aria-invalid], input.sx-pill[aria-invalid]:focus, input.sx-code[aria-invalid]:focus { box-shadow: 0 0 0 2px var(--bad); }
 .sx-num { font-family: var(--mono); }
 .sx-bold { font-weight: 600; }
 input.sx-pill, input.sx-code, input.sx-bold, select.sx-pill { box-sizing: border-box; max-width: 100%; min-width: 3ch; border: 0; margin: 0; font: inherit; font-size: 12px; line-height: 1.5; outline: none; cursor: text; }
