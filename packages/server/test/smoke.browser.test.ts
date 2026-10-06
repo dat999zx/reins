@@ -610,6 +610,47 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await blocksTab.click();
     await workspace.focus();
     await page.keyboard.press('Escape');
+    // 8e.4. right-click and keyboard menus: block, loose block, bare surface
+    const menu = page.getByRole('menu');
+    const buildCount = async () => ((await editor.inputValue()).match(/## phase build/g) ?? []).length;
+    await page.waitForTimeout(600); // the 300 ms preview debounce: an edit while the preview is stale is refused
+    const rb = (await row('build').locator('.sx-row').first().boundingBox())!;
+    await page.mouse.click(rb.x + rb.width / 2, rb.y + rb.height / 2, { button: 'right' });
+    await menu.waitFor({ timeout: W });
+    await menu.getByRole('menuitem', { name: 'Duplicate' }).click();
+    await textTab.click();
+    await expect.poll(buildCount, { timeout: W }).toBe(2);
+    await blocksTab.click();
+    await workspace.focus();
+    await page.keyboard.press('ControlOrMeta+Z');
+    await textTab.click();
+    await expect.poll(buildCount, { timeout: W }).toBe(1);
+    await blocksTab.click();
+    await row('plan').focus();
+    await page.keyboard.press('Shift+F10');
+    await menu.waitFor({ timeout: W });
+    expect(await page.evaluate('document.activeElement && document.activeElement.textContent')).toContain('Duplicate');
+    expect(await page.evaluate('document.activeElement && document.activeElement.getAttribute("role")')).toBe('menuitem');
+    await page.keyboard.press('Escape');
+    await expect.poll(() => menu.count(), { timeout: W }).toBe(0);
+    expect(await page.evaluate('document.activeElement && document.activeElement.dataset.id')).toBe('plan');
+    await row('plan').locator('.sx-row').first().click();
+    await page.keyboard.press('ControlOrMeta+C');
+    const spot4 = await empty();
+    await page.mouse.move(spot4.x, spot4.y);
+    await page.keyboard.press('ControlOrMeta+V');
+    await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(1);
+    const lb = (await looseBlocks.locator('.sx-row').first().boundingBox())!;
+    await page.mouse.click(lb.x + lb.width / 2, lb.y + lb.height / 2, { button: 'right' });
+    await menu.getByRole('menuitem', { name: 'Delete' }).click();
+    await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(0);
+    const spot5 = await empty();
+    await page.mouse.click(spot5.x, spot5.y, { button: 'right' });
+    await menu.getByRole('menuitem', { name: 'Select all' }).click();
+    await expect.poll(() => selected.count(), { timeout: W }).toBeGreaterThanOrEqual(3);
+    await workspace.focus();
+    await page.keyboard.press('Escape');
+    await expect.poll(() => selected.count(), { timeout: W }).toBe(0);
     // 8d.z. save, so the buffer is clean before Chat (Playwright dismisses the leave confirm)
     await textTab.click();
     await editor.focus();

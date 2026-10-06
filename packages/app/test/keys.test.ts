@@ -44,6 +44,13 @@ describe('keys', () => {
       expect(matchKey(ev(key), 'any')).toBeUndefined();
     }
   });
+  it('the ContextMenu key and Shift+F10 open the menu, from the viewport or a block', () => {
+    for (const on of ['any', 'block'] as const) {
+      expect(matchKey(ev('ContextMenu'), on)).toBe('menu');
+      expect(matchKey(ev('F10', { shift: true }), on)).toBe('menu');
+    }
+    expect(matchKey(ev('F10'), 'any')).toBeUndefined();
+  });
   it('an extra modifier does not match', () => {
     expect(matchKey(ev('z', { ctrl: true, alt: true }), 'any')).toBeUndefined();
     expect(matchKey(ev('Escape', { shift: true }), 'any')).toBeUndefined();

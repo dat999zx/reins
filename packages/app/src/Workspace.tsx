@@ -1,6 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as KeyEvent, type MutableRefObject, type PointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as KeyEvent, type MouseEvent as MouseEv, type MutableRefObject, type PointerEvent } from 'react';
 import type { Diagnostic, Step, Workflow } from '@reins/core';
 import { BlocksPane } from './BlocksPane.js';
+import { ContextMenu } from './ContextMenu.js';
+import { itemsFor, type MenuCtx, type MenuTarget } from './menus.js';
 import { addLoose, FULL, HOME, LOOSE_MAX, moveItems, park, removeLoose, selfContained, unpark } from './arrange.js';
 import { addStepAt, capBackward, dropPlace, dropSteps, duplicateSteps, moveStep, nestPlace, newId, placeOf, setCond, takeSteps, type Hit, type Place } from './blocks.js';
 import { KINDS } from './canvasKinds.js';
@@ -20,17 +22,18 @@ export type EditOpts = { lay?: (l: Layout) => Layout; then?: (applied: boolean) 
 const NATIVE = 'input, textarea, select, option, button, .sx-menu, .sx-zoom';
 const onOf = (t: Element): Press['on'] => (t.closest(NATIVE) ? 'input' : t.closest('.sx-hat') ? 'hat' : t.closest('.sx-loose') ? 'loose' : t.closest('.blk') ? 'block' : 'empty');
 
-export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, press, onEdit, onSel, onDelete, onCam, onLayout, onUndo, onRedo, onNote }: {
+export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, press, onEdit, onSel, onDelete, onCam, onLayout, onUndo, onRedo, onNote, onEditInText }: {
   w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; sel: Set<Key>; rev: unknown;
   cam?: Cam; lay: Layout; press: MutableRefObject<Start | undefined>;
   onEdit: (fn: (w: Workflow) => Workflow, o?: EditOpts) => boolean; onSel: (keys: Set<Key>, primary?: string) => void; onDelete: (keys: Key[]) => void; onCam: (c: Cam) => void;
-  onLayout: (fn: (l: Layout) => Layout) => boolean; onUndo: () => void; onRedo: () => void; onNote: (s: string) => void;
+  onLayout: (fn: (l: Layout) => Layout) => boolean; onUndo: () => void; onRedo: () => void; onNote: (s: string) => void; onEditInText: (line: number) => void;
 }) {
   const view = useRef<HTMLDivElement>(null);
   const [cam, setCam] = useState<Cam>(saved ?? { x: 0, y: 0, zoom: 1 });
   const camRef = useRef(cam);
   const [panning, setPanning] = useState(false);
   const [box, setBox] = useState<Rect>();
+  const [menu, setMenu] = useState<{ t: MenuTarget; id: string; at: Pt; opener: HTMLElement }>();
   const space = useRef(false);
   const set = (c: Cam) => { camRef.current = c; setCam(c); };
   const commit = (c: Cam) => { set(c); onCam(c); };
@@ -142,6 +145,27 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
     });
   };
 
+  // The menu is about one thing: select it first unless it is already selected. `at` is in view coordinates; a loose block's id is its key.
+  const openMenu = (t: MenuTarget, id: string, at: Pt, opener: HTMLElement) => {
+    if (t === 'block' && !sel.has(stepKey(id))) one(id);
+    if (t === 'loose' && !sel.has(`l:${id}`)) pickLoose(id, false);
+    setMenu({ t, id, at, opener });
+  };
+  const menuCtx = (m: { id: string }): MenuCtx => {
+    const s = flatSteps(w.steps).find((x) => x.id === m.id);
+    return { count: sel.size, topLevel: !!s && placeOf(w, s.id)?.parent === undefined, free: false, isEnd: s?.kind === 'end', clip: clip.length > 0 };
+  };
+  const contextmenu = (e: MouseEv<HTMLDivElement>) => {
+    const t = e.target as Element;
+    if (t.closest('.sx-menu')) return e.preventDefault(); // the ContextMenu key's event can land on the menu's new focus
+    if (t.closest('input, textarea, select, .sx-zoom')) return; // the browser's own menu
+    e.preventDefault();
+    const r = view.current!.getBoundingClientRect(), at = { x: e.clientX - r.left, y: e.clientY - r.top };
+    const lo = t.closest<HTMLElement>('.sx-loose'), blk = t.closest<HTMLElement>('.blk[data-id]');
+    if (lo) openMenu('loose', lo.dataset.loose!, at, lo);
+    else if (blk) openMenu('block', blk.dataset.id!, at, blk);
+    else openMenu('surface', '', at, view.current!);
+  };
   const last = (id: string) => {
     const at = placeOf(w, id);
     const list = at && (at.parent === undefined ? w.steps : flatSteps(w.steps).find((s) => s.id === at.parent)?.[at.branch]);
@@ -167,6 +191,23 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
     zoomOut: () => zoom(1 / ZOOM.step),
     zoomReset: () => zoom(1 / camRef.current.zoom),
     fit,
+    menu: (id) => {
+      const vr = view.current!.getBoundingClientRect(), lo = id === '' ? document.activeElement?.closest<HTMLElement>('.sx-loose') : null;
+      const el = lo ?? (id === '' ? null : view.current!.querySelector<HTMLElement>(`.blk[data-id="${CSS.escape(id)}"]`));
+      if (!el) return openMenu('surface', '', { x: vr.width / 2, y: vr.height / 2 }, view.current!);
+      const b = el.getBoundingClientRect();
+      openMenu(lo ? 'loose' : 'block', lo ? lo.dataset.loose! : id, { x: b.left - vr.left, y: b.top - vr.top }, el);
+    },
+    // beside the script, at the block's height
+    park: (id) => {
+      const q = (s: string) => view.current!.querySelector(s)?.getBoundingClientRect(), vr = view.current!.getBoundingClientRect();
+      const s = q('.sx-script'), b = q(`.blk[data-id="${CSS.escape(id)}"]`);
+      if (!s || !b) return;
+      const o = toWorld(camRef.current, { x: s.right - vr.left, y: b.top - vr.top });
+      parkIds(sel.has(stepKey(id)) ? top() : [id], id, { x: o.x + 40, y: o.y });
+    },
+    putEnd: () => { const keys = [...sel].filter((k) => k.startsWith('l:')); if (keys.length) unparkTo(keys, { top: 'end' }); },
+    editInText: (id) => onEditInText(flatSteps(w.steps).find((s) => s.id === id)?.pos?.line ?? 1),
   };
   const keydown = (e: KeyEvent<HTMLDivElement>) => {
     const t = e.target as HTMLElement;
@@ -309,7 +350,7 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
   return (
     <div ref={view} className={cx('sx-view', panning && 'sx-panning', drag.kind && 'sx-dragging', parking && 'sx-parking', drag.kind && drag.kind !== 'move' && !drag.ok && 'sx-nodrop')} role="region" aria-label="Workspace" tabIndex={0}
       style={{ backgroundPosition: `${cam.x}px ${cam.y}px`, backgroundSize: `${18 * cam.zoom}px ${18 * cam.zoom}px` }}
-      onKeyDown={keydown} onPointerDown={down} onPointerMove={(e) => { ptr.current = { x: e.clientX, y: e.clientY }; }} onPointerLeave={() => { ptr.current = undefined; }} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}>
+      onKeyDown={keydown} onContextMenu={contextmenu} onPointerDown={down} onPointerMove={(e) => { ptr.current = { x: e.clientX, y: e.clientY }; }} onPointerLeave={() => { ptr.current = undefined; }} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}>
       <div className="sx-world" style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.zoom})` }}>
         <BlocksPane w={w} steps={steps} diags={diags} text={text} sel={sel} rev={rev} condDrag={drag.kind === 'cond'} src={drag.src} over={drag.over}
           at={{ x: home.x + (hatMoving ? drag.d?.x ?? 0 : 0), y: home.y + (hatMoving ? drag.d?.y ?? 0 : 0) }} onEdit={onEdit} onSelect={pick} />
@@ -328,6 +369,8 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
         <button aria-label="Fit view" onClick={fit}>Fit</button>
         <button aria-label="Reset zoom" onClick={() => zoom(1 / camRef.current.zoom)}>1:1</button>
       </div>
+      {menu && <ContextMenu items={itemsFor(menu.t, menuCtx(menu))} at={menu.at} onRun={(act) => ACTS[act](menu.t === 'block' ? menu.id : '')}
+        onClose={(refocus) => { setMenu(undefined); if (refocus) (menu.opener.isConnected ? menu.opener : view.current)?.focus(); }} />}
     </div>
   );
 }

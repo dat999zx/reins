@@ -308,7 +308,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
                 <StatusCtx.Provider value={{ status, show: showStatus }}>
                   <Workspace key={file} w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} sel={sels}
                     rev={prev} press={press} cam={canvas.current?.[file]?.cam} lay={lay}
-                    onEdit={edit} onSel={(keys, primary) => { setSels(keys); setStepId(primary); }} onNote={setMsg} onDelete={del} onLayout={setLayout} onUndo={() => step(undo)} onRedo={() => step(redo)} onCam={(cam) => { if (restored) setView(file, { cam }); }} />
+                    onEdit={edit} onSel={(keys, primary) => { setSels(keys); setStepId(primary); }} onNote={setMsg} onEditInText={(line) => { pendingLine.current = line; onView('text'); }} onDelete={del} onLayout={setLayout} onUndo={() => step(undo)} onRedo={() => step(redo)} onCam={(cam) => { if (restored) setView(file, { cam }); }} />
                 </StatusCtx.Provider>
                 {sels.size > 1 ? (
                   <aside className="bpanel" aria-label="Selection panel">
