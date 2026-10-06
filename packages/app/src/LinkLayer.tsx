@@ -6,18 +6,22 @@ const OTHER = '#6f6e6b', BAD = '#e05d5a', WARN = '#cf9433';
 const colour = (a: LinkArrow) => (a.mark === 'error' ? BAD : a.mark === 'warning' ? WARN : WIRES[a.kind] ?? OTHER);
 const head = (c: string) => `sx-ah${c.slice(1)}`;
 
-// `rects` are measured inside the script (its own origin), so a hat drag only moves `at`.
-// `band` is the link being drawn, in world coordinates.
-export function LinkLayer({ arrows, rects, lanes, at, selected, band }: { arrows: LinkArrow[]; rects: Map<string, Rect>; lanes: Map<string, number>; at: Pt; selected?: string; band?: { a: Pt; b: Pt } }) {
+// `rects` and `band` are in world coordinates. `then` is the fall-through from a free block to the one under it.
+export function LinkLayer({ arrows, then, rects, lanes, selected, band }: { arrows: LinkArrow[]; then: Array<{ from: string; to: string }>; rects: Map<string, Rect>; lanes: Map<string, number>; selected?: string; band?: { a: Pt; b: Pt } }) {
   const colours = [...new Set(arrows.map(colour))];
   return (
     <svg className="sx-links" width="1" height="1">
       <defs>
+        <marker id="sx-ah-then" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" className="sx-then-head" /></marker>
         {colours.map((c) => (
           <marker key={c} id={head(c)} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill={c} /></marker>
         ))}
       </defs>
-      <g transform={`translate(${at.x} ${at.y})`}>
+      <g>
+        {then.map((t) => {
+          const f = rects.get(t.from), r = rects.get(t.to);
+          return f && r && <path key={`${t.from}>${t.to}`} className="sx-then" d={arrowPath(f, r, 0)} markerEnd="url(#sx-ah-then)" />;
+        })}
         {arrows.map((a) => {
           const f = rects.get(a.from), t = rects.get(a.to), key = `${a.from}/${a.index}`;
           if (!f || !t) return null;

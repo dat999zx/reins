@@ -182,6 +182,11 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 [data-kind='recall'].sx-card i, [data-kind='store'].sx-card i { border-radius: 50%; }
 .sx-script { position: absolute; display: flex; flex-direction: column; align-items: flex-start; cursor: default; }
 .sx-stack { display: flex; flex-direction: column; align-items: flex-start; }
+.sx-autofree { position: absolute; left: 100%; top: 0; margin-left: 80px; display: flex; flex-direction: column; align-items: flex-start; gap: 24px; }
+.sx-free { cursor: grab; }
+.sx-free.sx-placed { position: absolute; }
+.sx-free.sx-moving { pointer-events: none; opacity: 0.85; }
+.sx-free > .sx-stack > .sx-blk::after, .sx-free > .sx-stack > .sx-c > .sx-cfoot::after { content: none; }
 
 [data-kind='phase'], [data-kind='say'] { --c: var(--soft); }
 [data-kind='run'] { --c: var(--hard); }
@@ -266,6 +271,8 @@ select.sx-pill { cursor: pointer; }
 .sx-links { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
 .sx-links > g > g { outline: none; }
 .sx-links .sx-hit { pointer-events: stroke; cursor: pointer; }
+.sx-links .sx-then { fill: none; stroke: var(--line2); stroke-width: 1.5; stroke-dasharray: 4 4; pointer-events: none; }
+.sx-links .sx-then-head { fill: var(--line2); }
 .sx-links g:focus-visible > path:first-child { stroke-width: 3; }
 .sx-links text { font: 10px var(--sans); pointer-events: none; }
 .sx-links .sx-lsel > path:first-child { stroke: var(--brand); stroke-width: 3; }
@@ -277,7 +284,7 @@ select.sx-pill { cursor: pointer; }
 .sx-handle.sx-two[data-lk='on-fail'] { top: calc(50% + 1px); }
 :is(.sx-blk, .sx-chead):is(:hover, :focus) > .sx-row > .sx-handle, .sx-c:focus > .sx-chead > .sx-row > .sx-handle,
 .sx-blk.sx-sel > .sx-row > .sx-handle, .sx-c.sx-sel > .sx-chead > .sx-row > .sx-handle { opacity: 1; pointer-events: auto; }
-.blk.sx-linkover { outline: 2px solid var(--brand); outline-offset: 2px; }
+.blk.sx-linkover, .sx-loose.sx-linkover { outline: 2px solid var(--brand); outline-offset: 2px; }
 .sx-st { position: absolute; left: 100%; top: 50%; transform: translate(12px, -50%); white-space: nowrap; pointer-events: none; }
 .sx-st .sstate { background: var(--panel); }
 .sx-blk.sx-sel { box-shadow: inset 0 -2px 0 rgb(0 0 0 / 0.2), 0 0 0 2px var(--brand); }

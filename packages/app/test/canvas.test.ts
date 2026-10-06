@@ -128,3 +128,13 @@ describe('marksOf', () => {
     }
   });
 });
+describe('marksOf notes', () => {
+  it('keeps the message of a step-level diagnostic, per step', () => {
+    const w = parseWorkflow(`---\nreins: 1\nname: demo\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n## phase a\n\n## end\n\n## phase f\n`).workflow!;
+    const text = printWorkflow(w);
+    const f = flatSteps(w.steps).find((s) => s.id === 'f')!;
+    const { notes } = marksOf(w, [{ severity: 'warning', message: 'step `f` is never reached', pos: { line: f.pos!.line, col: 1 } }], text);
+    expect(notes.get('f')).toEqual(['step `f` is never reached']);
+    expect(notes.has('a')).toBe(false);
+  });
+});

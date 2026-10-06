@@ -1,13 +1,17 @@
 import type { Workflow } from '@reins/core';
+import { splitAtEnd } from './arrange.js';
 import { edgeId, flatSteps, type Mark } from './canvas.js';
 import type { Pt, Rect } from './surface.js';
 
 export type LinkRef = { from: string; index: number; kind: string; to: string };
 export type LinkArrow = LinkRef & { mark?: Mark };
 
-export function linksToDraw(w: Workflow, wires: Map<string, Mark>): { arrows: LinkArrow[]; missing: LinkRef[] } {
+export function linksToDraw(w: Workflow, wires: Map<string, Mark>): { arrows: LinkArrow[]; missing: LinkRef[]; then: Array<{ from: string; to: string }> } {
   const all = flatSteps(w.steps), ids = new Set(all.map((s) => s.id));
   const arrows: LinkArrow[] = [], missing: LinkRef[] = [];
+  // a free block with no `next` runs into the free block under it
+  const tail = splitAtEnd(w).tail;
+  const then = tail.flatMap((s, i) => (tail[i + 1] && s.kind !== 'end' && !s.links.some((l) => l.kind === 'next') ? [{ from: s.id, to: tail[i + 1]!.id }] : []));
   for (const s of all) {
     s.links.forEach((l, index) => {
       const ref = { from: s.id, index, kind: l.kind, to: l.to };
@@ -16,7 +20,7 @@ export function linksToDraw(w: Workflow, wires: Map<string, Mark>): { arrows: Li
       arrows.push(mark ? { ...ref, mark } : ref);
     });
   }
-  return { arrows, missing };
+  return { arrows, missing, then };
 }
 
 // From the right side of `from`; into the left side of `to` when it is clearly further right, else round the right of both (a bracket).

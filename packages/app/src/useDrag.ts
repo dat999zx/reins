@@ -3,7 +3,7 @@ import type { StepKind } from '@reins/core';
 import { DRAG_PX, hitOf, snapOf, zoneKey, type Target, type Zone } from './gesture.js';
 import { edgePan, toWorld, type Cam, type Pt } from './surface.js';
 
-export type Src = { id: string; ids?: string[] } | { kind: StepKind } | { cond: string } | { move: string[] }; // move: 'hat' and 'l:<key>' items, moved live
+export type Src = { id: string; ids?: string[] } | { kind: StepKind } | { cond: string } | { move: string[] }; // move: 'hat', 'l:<key>' and 's:<free step id>' items, moved live
 export type Start = (e: PointerEvent, src: Src, el: Element, group?: Element[]) => void;
 export type Over = { el: Zone; cls: string };
 type Live = { kind?: 'step' | 'cond' | 'move'; src?: Set<string>; over?: Over; ok?: boolean; d?: Pt; keys?: string[] };
@@ -31,7 +31,7 @@ export function useDrag(o: Opts) {
     const grab = { x: from.x - box.left, y: from.y - box.top };
     const zoom0 = oref.current.cam().zoom;
     const kind = 'move' in src ? 'move' : 'cond' in src ? 'cond' : 'step';
-    const looseMove = 'move' in src && src.move.every((k) => k.startsWith('l:')); // loose blocks move live and may land on a slot
+    const looseMove = 'move' in src && src.move.every((k) => /^[ls]:/.test(k)); // loose and free blocks move live and may land on a slot
     const card = 'kind' in src || 'cond' in src;
     const rel = (p: Pt) => { const r = oref.current.view.current!.getBoundingClientRect(); return { x: p.x - r.left, y: p.y - r.top }; };
     const start = toWorld(oref.current.cam(), rel(from));

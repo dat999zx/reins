@@ -3,8 +3,8 @@ import type { Diagnostic, Step, Workflow } from '@reins/core';
 import { BlocksPane } from './BlocksPane.js';
 import { ContextMenu } from './ContextMenu.js';
 import { itemsFor, type MenuCtx, type MenuTarget } from './menus.js';
-import { addLoose, FULL, HOME, LOOSE_MAX, moveItems, park, removeLoose, selfContained, unpark } from './arrange.js';
-import { addStepAt, capBackward, dropPlace, dropSteps, duplicateSteps, moveStep, nestPlace, newId, placeOf, setCond, takeSteps, type Hit, type Place } from './blocks.js';
+import { addLoose, attach, detach, ensureEnd, FULL, HOME, LOOSE_MAX, moveItems, park, removeLoose, selfContained, splitAtEnd, unpark } from './arrange.js';
+import { addStepAt, capBackward, dropPlace, dropSteps, duplicateSteps, moveStep, nestPlace, newId, placeOf, setCond, stackEnd, takeSteps, type Hit, type Place } from './blocks.js';
 import { KINDS } from './canvasKinds.js';
 import { flatSteps, marksOf, removeLinks, setLink, type WireKind } from './canvas.js';
 import { lanes, linksToDraw } from './arrows.js';
@@ -55,19 +55,20 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
   useLayoutEffect(() => { if (!saved) fit(); }, []);
 
   // Arrows: each block's first row, measured once per model change or size change in the script's own coordinates, so a hat drag or a zoom needs no measuring.
-  const [rects, setRects] = useState(new Map<string, Rect>());
+  // A block with a place of its own (a free block) is measured from its own origin, named by c.
+  const [rects, setRects] = useState(new Map<string, Rect & { c?: string }>());
   const measure = () => {
     const s = view.current?.querySelector<HTMLElement>('.sx-script');
     if (!s) return;
-    const o = s.getBoundingClientRect(), z = camRef.current.zoom, q = (v: number) => Math.round((v / z) * 100) / 100;
-    const next = new Map<string, Rect>();
-    for (const el of s.querySelectorAll<HTMLElement>('.blk[data-id]')) {
+    const z = camRef.current.zoom, q = (v: number) => Math.round((v / z) * 100) / 100;
+    const next = new Map<string, Rect & { c?: string }>();
+    for (const el of view.current!.querySelectorAll<HTMLElement>('.blk[data-id]')) {
+      const c = el.closest<HTMLElement>('.sx-placed'), o = (c ?? s).getBoundingClientRect();
       const b = el.getBoundingClientRect(), row = el.querySelector('.sx-row')?.getBoundingClientRect() ?? b;
-      next.set(el.dataset.id!, { x: q(b.left - o.left), y: q(row.top - o.top), w: q(b.width), h: q(row.height) });
+      next.set(el.dataset.id!, { x: q(b.left - o.left), y: q(row.top - o.top), w: q(b.width), h: q(row.height), ...(c && { c: c.dataset.zid }) });
     }
     setRects((p) => (JSON.stringify([...p]) === JSON.stringify([...next]) ? p : next));
   };
-  useLayoutEffect(measure, [w, diags, text]);
   useEffect(() => {
     const s = view.current!.querySelector('.sx-script');
     if (!s) return;
@@ -76,7 +77,10 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
     return () => ro.disconnect();
   }, []);
   const wires = useMemo(() => marksOf(w, diags, text).wires, [w, diags, text]);
-  const { arrows, missing } = useMemo(() => linksToDraw(w, wires), [w, wires]);
+  const { arrows, missing, then } = useMemo(() => linksToDraw(w, wires), [w, wires]);
+  const tail = useMemo(() => splitAtEnd(w).tail, [w]);
+  const freeIds = useMemo(() => new Set(tail.map((s) => s.id)), [tail]);
+  const base = useRef(new Map<string, Pt>()); // the world places of the free blocks when a press began
   const lane = useMemo(() => lanes(arrows, flatSteps(w.steps).map((s) => s.id)), [arrows, w]);
   const gone = useMemo(() => new Set(missing.map((m) => `${m.from}/${m.index}`)), [missing]);
 
@@ -93,6 +97,13 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
     const sent = onEdit((m) => { const d = fn(m); if (d === m) return m; const r = capBackward(d); capped = r.capped; return r.w; });
     if (sent && capped.length) onNote(capNote(capped));
     return sent;
+  };
+  // detach / put back: one edit; the note says what happened and which links got a max
+  const flow = (ids: string[], one: (m: Workflow, id: string) => { w: Workflow; capped: string[] } | undefined, said: string) => {
+    let capped: string[] = [];
+    onEdit((m) => { capped = []; return ids.reduce((acc, id) => { const r = one(acc, id); capped.push(...(r?.capped ?? [])); return r?.w ?? acc; }, m); }, {
+      then: (ok) => { if (!ok) return; refocus.current = ids[0]; onNote(capped.length ? `${said} ${capNote(capped)}` : said); },
+    });
   };
   const move = (id: string, to: Place) => { refocus.current = moved((m) => moveStep(m, id, to)) ? id : undefined; };
 
@@ -151,6 +162,20 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
       },
     });
   };
+  // A link drawn onto a loose block: it becomes a free block (behind the end) where it lay, and the link points to it.
+  const linkLoose = (from: string, kind: WireKind, key: string) => {
+    const l = (lay.loose ?? []).find((x) => x.key === key);
+    if (!l) return;
+    let r: ReturnType<typeof unpark> | undefined;
+    onEdit((m) => {
+      const e = ensureEnd(m);
+      r = unpark(e, [l.step], { branch: 'kids', index: e.steps.length });
+      return r.ids[0] === undefined ? m : setLink(r.w, from, kind, r.ids[0]);
+    }, {
+      lay: (x) => (r?.ids[0] === undefined ? x : { ...removeLoose(x, [key]), free: { ...x.free, [r.ids[0]]: l.at } }),
+      then: (ok) => { if (ok && r?.ids[0] !== undefined) onNote(`\`${r.ids[0]}\` is now a free block: it runs only when a link points to it.`); },
+    });
+  };
   const copy = () => {
     const s = selfContained([...takeSteps(w, top()).taken, ...looseSel().map((l) => l.step)]);
     if (s.length) clip = s;
@@ -185,7 +210,7 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
   };
   const menuCtx = (m: { id: string }): MenuCtx => {
     const s = flatSteps(w.steps).find((x) => x.id === m.id);
-    return { count: sel.size, topLevel: !!s && placeOf(w, s.id)?.parent === undefined, free: false, isEnd: s?.kind === 'end', clip: clip.length > 0 };
+    return { count: sel.size, topLevel: !!s && placeOf(w, s.id)?.parent === undefined, free: freeIds.has(m.id), isEnd: s?.kind === 'end', clip: clip.length > 0 };
   };
   const contextmenu = (e: MouseEv<HTMLDivElement>) => {
     const t = e.target as Element;
@@ -199,16 +224,17 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
     else if (blk) openMenu('block', blk.dataset.id!, at, blk);
     else openMenu('surface', '', at, view.current!);
   };
+  // a stack block never moves past the end, and a free block never above it: that would change what is free
   const last = (id: string) => {
     const at = placeOf(w, id);
     const list = at && (at.parent === undefined ? w.steps : flatSteps(w.steps).find((s) => s.id === at.parent)?.[at.branch]);
-    return !at || at.index === (list?.length ?? 0) - 1;
+    return !at || at.index === (list?.length ?? 0) - 1 || (at.parent === undefined && at.index === stackEnd(w) - 1);
   };
   // the block acts get the focused block's id; the others ignore it
   const ACTS: Record<ActName, (id: string) => void> = {
     delete: (id) => onDelete(id !== '' && !sel.has(stepKey(id)) ? [stepKey(id)] : [...withoutNested(w, sel)]),
     select: (id) => { if (id !== '') one(id); },
-    moveUp: (id) => { const at = placeOf(w, id); if (at && at.index > 0) move(id, { ...at, index: at.index - 1 }); },
+    moveUp: (id) => { const at = placeOf(w, id); if (at && at.index > (freeIds.has(id) ? stackEnd(w) + 1 : 0)) move(id, { ...at, index: at.index - 1 }); },
     moveDown: (id) => { const at = placeOf(w, id); if (at && !last(id)) move(id, { ...at, index: at.index + 2 }); },
     nestIn: (id) => { const to = nestPlace(w, id, 'in'); if (to) move(id, to); },
     nestOut: (id) => { const to = nestPlace(w, id, 'out'); if (to) move(id, to); },
@@ -247,6 +273,8 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
       const o = toWorld(camRef.current, { x: s.right - vr.left, y: b.top - vr.top });
       parkIds(sel.has(stepKey(id)) ? top() : [id], id, { x: o.x + 40, y: o.y });
     },
+    detach: (id) => flow([id], detach, `\`${id}\` is now a free block: it runs only when a link points to it.`),
+    attach: (id) => flow([id], attach, `\`${id}\` is back in the stack.`),
     putEnd: () => { const keys = [...sel].filter((k) => k.startsWith('l:')); if (keys.length) unparkTo(keys, { top: 'end' }); },
     editInText: (id) => {
       const l = id.startsWith('k:') ? parseLink(id) : undefined, s = flatSteps(w.steps).find((x) => x.id === (l?.from ?? id));
@@ -270,7 +298,11 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
     view, ghosts, cam: () => camRef.current, setCam: (c, save) => (save ? commit(c) : set(c)),
     legal: (src, t) => {
       if ('hex' in t) return 'cond' in src && setCond(w, t.hex.id, t.hex.path, { t: 'approve' }) !== w;
-      if ('move' in src) { const to = 'hit' in t ? dropPlace(w, t.hit) : undefined; return !!to && unpark(w, looseOf(src.move).map((l) => l.step), to).w !== w; }
+      if ('move' in src) {
+        const free = src.move.filter((k) => k.startsWith('s:')).map((k) => k.slice(2)), to = 'hit' in t ? dropPlace(w, t.hit) : undefined;
+        if (free.length) return 'hit' in t && free.every((id) => attach(w, id, t.hit));
+        return !!to && unpark(w, looseOf(src.move).map((l) => l.step), to).w !== w;
+      }
       if ('surface' in t) return 'kind' in src ? !!KINDS[src.kind].fresh : 'id' in src && park(w, src.ids ?? [src.id]).w !== w;
       if ('id' in src) return 'hit' in t && dropSteps(w, src.ids ?? [src.id], t.hit) !== w;
       const place = 'hit' in t ? dropPlace(w, t.hit) : undefined;
@@ -282,17 +314,29 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
       else if ('hit' in t && 'id' in src) {
         const ids = src.ids ?? [src.id];
         refocus.current = moved((m) => dropSteps(m, ids, t.hit)) ? ids[0] : undefined;
-      } else if ('hit' in t && 'move' in src) unparkTo(src.move, t.hit);
+      } else if ('hit' in t && 'move' in src) {
+        if (src.move[0]!.startsWith('s:')) flow(src.move.map((k) => k.slice(2)), (m, id) => attach(m, id, t.hit), 'Put back in the stack.');
+        else unparkTo(src.move, t.hit);
+      }
       else if ('surface' in t && 'id' in src) parkIds(src.ids ?? [src.id], src.id, pt);
       else if ('surface' in t && 'kind' in src) {
         stash([{ id: newId(w, src.kind), kind: src.kind, attrs: {}, cards: [], links: [], ...KINDS[src.kind].fresh!() }], [pt]);
       } else if (place && 'kind' in src && onEdit((m) => addStepAt(m, src.kind, place))) one(newId(w, src.kind));
     },
-    move: (keys, d) => { onLayout((l) => moveItems(l, keys, d)); },
+    move: (keys, d) => { onLayout((l) => moveItems(keys.some((k) => k.startsWith('s:')) ? { ...l, free: { ...Object.fromEntries(base.current), ...l.free } } : l, keys, d)); },
   });
+  const movingFree = new Set((drag.keys ?? []).filter((k) => k.startsWith('s:')).map((k) => k.slice(2)));
+  // a free block is placed from its saved place; while one is dragged, all of them stand where they were so nothing jumps
+  const freeAt = new Map<string, Pt>();
+  for (const s of tail) {
+    const p = lay.free?.[s.id] ?? (movingFree.size ? base.current.get(s.id) : undefined);
+    if (p) freeAt.set(s.id, movingFree.has(s.id) ? { x: p.x + (drag.d?.x ?? 0), y: p.y + (drag.d?.y ?? 0) } : p);
+  }
+  useLayoutEffect(measure, [w, diags, text, lay.free, drag.keys]);
   press.current = drag.press;
   const hatMoving = !!drag.keys?.includes('hat');
   const scriptAt = { x: home.x + (hatMoving ? drag.d?.x ?? 0 : 0), y: home.y + (hatMoving ? drag.d?.y ?? 0 : 0) };
+  const world = new Map([...rects].map(([id, r]): [string, Rect] => { const o = (r.c ? freeAt.get(r.c) : scriptAt) ?? scriptAt; return [id, { x: r.x + o.x, y: r.y + o.y, w: r.w, h: r.h }]; }));
   const parking = !!drag.src && !!drag.ok && !drag.over; // a step over bare surface: a release parks it
   useEffect(() => {
     if (!parking) return;
@@ -356,13 +400,14 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
     const vr = view.current!.getBoundingClientRect(), hb = h.getBoundingClientRect();
     const at = (x: number, y: number) => toWorld(camRef.current, { x: x - vr.left, y: y - vr.top });
     const a = at(hb.left + hb.width / 2, hb.top + hb.height / 2), x0 = e.clientX, y0 = e.clientY;
-    let to: string | undefined, moved = false;
+    let to: string | undefined, lk: string | undefined, moved = false;
     const move = (m: globalThis.PointerEvent) => {
       if (!moved && Math.hypot(m.clientX - x0, m.clientY - y0) < DRAG_PX) return;
       moved = true;
-      const over = document.elementFromPoint(m.clientX, m.clientY)?.closest<HTMLElement>('.blk[data-id]')?.dataset.id;
+      const el = document.elementFromPoint(m.clientX, m.clientY), over = el?.closest<HTMLElement>('.blk[data-id]')?.dataset.id;
       to = over === from ? undefined : over;
-      setBand({ a, b: at(m.clientX, m.clientY), to });
+      lk = to === undefined ? el?.closest<HTMLElement>('.sx-loose')?.dataset.loose : undefined;
+      setBand({ a, b: at(m.clientX, m.clientY), to: to ?? (lk === undefined ? undefined : `l:${lk}`) });
     };
     const stop = () => {
       window.removeEventListener('pointermove', move);
@@ -371,7 +416,7 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
       window.removeEventListener('keydown', esc);
       setBand(undefined);
     };
-    const up = () => { stop(); if (to) onEdit((m) => setLink(m, from, kind, to!)); };
+    const up = () => { stop(); if (to) onEdit((m) => setLink(m, from, kind, to!)); else if (lk !== undefined) linkLoose(from, kind, lk); };
     const esc = (k: KeyboardEvent) => { if (k.key === 'Escape') { k.preventDefault(); stop(); } };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -384,8 +429,17 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
     const g = pickGesture(p);
     if (g === 'pending') {
       const hat = (e.target as Element).closest<HTMLElement>('.sx-hat'), blk = (e.target as Element).closest<HTMLElement>('.blk');
-      const lo = (e.target as Element).closest<HTMLElement>('.sx-loose');
+      const lo = (e.target as Element).closest<HTMLElement>('.sx-loose'), fr = blk?.closest<HTMLElement>('.sx-free');
       if (hat) drag.press(e.nativeEvent, { move: ['hat'] }, hat);
+      else if (blk && fr && fr.dataset.zid === blk.dataset.id) {
+        // a free block moves live like a loose one; the places of all free blocks are noted first
+        const k = `s:${blk.dataset.id}`, vr = view.current!.getBoundingClientRect();
+        base.current = new Map(tail.flatMap((s) => {
+          const b = view.current!.querySelector(`.sx-free[data-zid="${CSS.escape(s.id)}"]`)?.getBoundingClientRect();
+          return b ? [[s.id, toWorld(camRef.current, { x: b.left - vr.left, y: b.top - vr.top })] as const] : [];
+        }));
+        drag.press(e.nativeEvent, { move: sel.has(k) ? [...sel].filter((x) => x.startsWith('s:') && freeIds.has(x.slice(2))) : [k] }, fr);
+      }
       else if (lo) {
         const k = `l:${lo.dataset.loose}`;
         drag.press(e.nativeEvent, { move: sel.has(k) ? [...sel].filter((x) => x.startsWith('l:')) : [k] }, lo);
@@ -430,11 +484,11 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
       onKeyDown={keydown} onContextMenu={contextmenu} onPointerDown={down} onPointerMove={(e) => { ptr.current = { x: e.clientX, y: e.clientY }; }} onPointerLeave={() => { ptr.current = undefined; }} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}>
       <div className="sx-world" style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.zoom})` }}>
         <BlocksPane w={w} steps={steps} diags={diags} text={text} sel={sel} rev={rev} condDrag={drag.kind === 'cond'} src={drag.src} over={drag.over} linkOver={band?.to}
-          at={scriptAt} missing={gone} onEdit={onEdit} onSelect={pick} />
-        <LinkLayer arrows={arrows} rects={rects} lanes={lane} at={scriptAt} selected={[...sel].find((k) => k.startsWith('k:'))?.slice(2)} band={band} />
+          at={scriptAt} missing={gone} free={{ at: freeAt, moving: movingFree }} onEdit={onEdit} onSelect={pick} />
+        <LinkLayer arrows={arrows} then={then} rects={world} lanes={lane} selected={[...sel].find((k) => k.startsWith('k:'))?.slice(2)} band={band} />
         {(lay.loose ?? []).map((l) => {
           const k = `l:${l.key}`, d = drag.keys?.includes(k) ? drag.d : undefined;
-          return <BlocksPane key={l.key} w={{ ...w, steps: [l.step] }} steps={[]} diags={[]} text="" sel={sel} rev={rev} at={{ x: l.at.x + (d?.x ?? 0), y: l.at.y + (d?.y ?? 0) }}
+          return <BlocksPane key={l.key} w={{ ...w, steps: [l.step] }} steps={[]} diags={[]} text="" sel={sel} rev={rev} at={{ x: l.at.x + (d?.x ?? 0), y: l.at.y + (d?.y ?? 0) }} linkOver={band?.to}
             loose={{ key: l.key, selected: sel.has(k), moving: !!drag.keys?.includes(k), onPick: (add) => pickLoose(l.key, add) }} onEdit={() => false} onSelect={() => {}} />;
         })}
         <div className="sx-ghosts" ref={ghosts} />

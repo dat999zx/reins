@@ -28,6 +28,19 @@ on-fail: plan (max 2)
 const parse = (links: string): Workflow => parseWorkflow(text(links)).workflow!;
 const none = new Map<string, Mark>();
 
+describe('then arrows', () => {
+  const thenOf = (body: string) => linksToDraw(parseWorkflow(`---\nreins: 1\nname: demo\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n${body}`).workflow!, none).then.map((t) => `${t.from}>${t.to}`);
+  it('joins consecutive free blocks; none into the first one, none from a block with next', () => {
+    expect(thenOf('## phase a\n\n## end\n\n## phase f1\n\n## phase f2\nnext: a\n\n## phase f3\n\n## phase f4\n')).toEqual(['f1>f2', 'f3>f4']);
+  });
+  it('a free end starts nothing', () => {
+    expect(thenOf('## phase a\n\n## end\n\n## phase f1\n\n## end\nid: e2\n\n## phase f3\n')).toEqual(['f1>e2']);
+  });
+  it('no end, no free blocks, no then', () => {
+    expect(thenOf('## phase a\n\n## phase b\n')).toEqual([]);
+  });
+});
+
 describe('linksToDraw', () => {
   it('keeps every kind, in step order, with the link index', () => {
     const { arrows } = linksToDraw(parse('next: build\nretry: build'), none);

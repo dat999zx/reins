@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseWorkflow, printWorkflow, type Step } from '@reins/core';
-import { addLoose, HOME, LOOSE_MAX, moveItems, nextKey, park, removeLoose, selfContained, stateBytes, unpark } from '../src/arrange.js';
+import { addLoose, attach, detach, ensureEnd, HOME, LOOSE_MAX, moveItems, nextKey, park, pruneLayout, removeLoose, selfContained, splitAtEnd, stateBytes, unpark } from '../src/arrange.js';
 import { flatSteps } from '../src/canvas.js';
 import type { Layout } from '../src/editorState.js';
 
@@ -172,5 +172,78 @@ describe('stateBytes', () => {
   it('is the UTF-8 length of the JSON', () => {
     expect(stateBytes({ a: 'é' })).toBe(new TextEncoder().encode('{"a":"é"}').length);
     expect(stateBytes({})).toBe(2);
+  });
+});
+
+describe('free blocks: the steps after the first top-level end', () => {
+  const wf = (body: string) => parseWorkflow(`${HEAD}${body}`).workflow!;
+  const ids = (l: Step[]) => l.map((s) => s.id);
+  const base = wf('## phase plan\n\n## phase build\n');
+  const withEnd = wf('## phase plan\n\n## end\n\n## phase fix\nnext: plan\n\n## phase other\n');
+  it('splitAtEnd cuts at the first top-level end; a nested end does not cut', () => {
+    const s = splitAtEnd(withEnd);
+    expect([ids(s.stack), s.end?.id, ids(s.tail)]).toEqual([['plan'], 'end-1', ['fix', 'other']]);
+    const none = splitAtEnd(base);
+    expect([ids(none.stack), none.end, none.tail]).toEqual([['plan', 'build'], undefined, []]);
+    const nested = wf('## phase a\n\n## repeat\nid: r\nuntil: tests pass\nmax: 3\n\n### end\n\n### phase z\n\n## phase b\n');
+    expect([ids(splitAtEnd(nested).stack), splitAtEnd(nested).tail]).toEqual([['a', 'r', 'b'], []]);
+  });
+  it('ensureEnd appends one end, once', () => {
+    const m = ensureEnd(base);
+    expect(m.steps.map((s) => s.kind)).toEqual(['phase', 'phase', 'end']);
+    expect(ensureEnd(m)).toBe(m);
+    expect(ensureEnd(withEnd)).toBe(withEnd);
+  });
+  it('detach moves a stack step behind the end and adds the end when missing', () => {
+    const r = detach(base, 'plan')!;
+    expect(r.w.steps.map((s) => s.id)).toEqual(['build', 'end-1', 'plan']);
+    expect(r.capped).toEqual([]);
+    expect(ids(splitAtEnd(detach(withEnd, 'plan')!.w).tail)).toEqual(['fix', 'other', 'plan']);
+  });
+  it('detach puts max 3 on a link that now points back, and says which', () => {
+    const w = wf('## phase a\n\n## phase b\nnext: a\n\n## phase c\n');
+    const r = detach(w, 'b')!;
+    expect(r.capped).toEqual(['`b` next → `a`']);
+    expect(r.w.steps.at(-1)!.links).toMatchObject([{ kind: 'next', to: 'a', max: 3 }]);
+    expect(detach(wf('## phase a\n\n## phase b\nnext: c\n\n## phase c\n'), 'b')!.capped).toEqual(['`b` next → `c`']);
+    expect(detach(wf('## phase a\n\n## phase b\n\n## phase c\n'), 'b')!.capped).toEqual([]);
+  });
+  it('detach refuses a nested step, a free step and the end', () => {
+    const nested = wf('## repeat\nid: r\nuntil: tests pass\nmax: 3\n\n### phase z\n');
+    expect(detach(nested, 'z')).toBeUndefined();
+    expect(detach(withEnd, 'fix')).toBeUndefined();
+    expect(detach(withEnd, 'end-1')).toBeUndefined();
+    expect(detach(withEnd, 'nope')).toBeUndefined();
+  });
+  it('attach puts a free step back before the end, or at a slot', () => {
+    expect(ids(attach(withEnd, 'fix')!.w.steps)).toEqual(['plan', 'fix', 'end-1', 'other']);
+    expect(ids(attach(withEnd, 'other', { block: 'plan', edge: 'before' })!.w.steps)).toEqual(['other', 'plan', 'end-1', 'fix']);
+  });
+  it('attach caps a link that now points back; refuses a stack step', () => {
+    const w = wf('## phase a\n\n## end\n\n## phase f\nnext: a\n');
+    const r = attach(w, 'f')!;
+    expect(r.capped).toEqual(['`f` next → `a`']);
+    expect(attach(w, 'a')).toBeUndefined();
+    expect(attach(base, 'plan')).toBeUndefined();
+  });
+  it('detach then attach brings the step back (the end stays)', () => {
+    const r = detach(base, 'plan')!;
+    expect(ids(attach(r.w, 'plan', { block: 'build', edge: 'before' })!.w.steps)).toEqual(['plan', 'build', 'end-1']);
+  });
+  it('pruneLayout drops free positions of steps that are no longer free; the same object when nothing goes', () => {
+    const lay: Layout = { script: { x: 1, y: 1 }, free: { fix: { x: 5, y: 6 }, gone: { x: 7, y: 8 }, plan: { x: 9, y: 9 } } };
+    const out = pruneLayout(lay, withEnd);
+    expect(out).toEqual({ script: { x: 1, y: 1 }, free: { fix: { x: 5, y: 6 } } });
+    expect(lay.free).toHaveProperty('gone');
+    const ok: Layout = { free: { fix: { x: 5, y: 6 } } };
+    expect(pruneLayout(ok, withEnd)).toBe(ok);
+    expect(pruneLayout({ free: { gone: { x: 1, y: 1 } } }, withEnd)).toEqual({});
+    expect(pruneLayout({}, withEnd)).toEqual({});
+  });
+  it('moveItems moves free positions by their s: key and leaves the others', () => {
+    const lay: Layout = { free: { a: { x: 1, y: 2 }, b: { x: 10, y: 20 } } };
+    expect(moveItems(lay, ['s:a'], { x: 5, y: 5 }).free).toEqual({ a: { x: 6, y: 7 }, b: { x: 10, y: 20 } });
+    expect(lay.free!.a).toEqual({ x: 1, y: 2 });
+    expect(moveItems({}, ['s:a'], { x: 5, y: 5 })).toEqual({});
   });
 });

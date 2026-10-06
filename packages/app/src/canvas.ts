@@ -12,13 +12,14 @@ export type Mark = 'error' | 'warning';
 
 const worse = (a?: Mark, b?: Mark) => (a === 'error' || b === 'error' ? 'error' : a ?? b);
 
-export function marksOf(w: Workflow, diags: Diagnostic[], text: string): { steps: Map<string, Mark>; wires: Map<string, Mark> } {
+export function marksOf(w: Workflow, diags: Diagnostic[], text: string): { steps: Map<string, Mark>; wires: Map<string, Mark>; notes: Map<string, string[]> } {
   const all = flatSteps(w.steps);
   // A diagnostic belongs to the heading it falls under; only a step's heading gets a mark.
   const headings = text.split('\n').flatMap((l, i) => (/^#{2,6}\s/.test(l) ? [i + 1] : []));
   const byLine = new Map(all.flatMap((s) => (s.pos ? [[s.pos.line, s] as const] : [])));
   const steps = new Map<string, Mark>();
   const wires = new Map<string, Mark>();
+  const notes = new Map<string, string[]>(); // a step's own messages, for its tooltip
   for (const d of diags) {
     const h = headings.filter((l) => l <= d.pos.line).pop();
     const st = h === undefined ? undefined : byLine.get(h);
@@ -27,8 +28,9 @@ export function marksOf(w: Workflow, diags: Diagnostic[], text: string): { steps
     const marks = i === -1 ? steps : wires;
     const key = i === -1 ? st.id : edgeId(st.id, i, st.links[i]!.to);
     marks.set(key, worse(marks.get(key), d.severity)!);
+    if (i === -1) notes.set(st.id, [...(notes.get(st.id) ?? []), d.message]);
   }
-  return { steps, wires };
+  return { steps, wires, notes };
 }
 
 export function editStep(w: Workflow, id: string, fn: (s: Step) => void): Workflow {

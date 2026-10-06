@@ -48,10 +48,16 @@ export function addStepAt(w: Workflow, kind: StepKind, to: Place): Workflow {
   return insertSteps(w, [{ id: newId(w, kind), kind, attrs: {}, cards: [], links: [], ...fresh() }], to);
 }
 
-export function addStep(w: Workflow, kind: StepKind, after?: string): Workflow {
+// The stack is the top-level steps before the first top-level `end`; what follows are free blocks.
+export const stackEnd = (w: Workflow): number => { const i = w.steps.findIndex((s) => s.kind === 'end'); return i === -1 ? w.steps.length : i; };
+
+// After a stack or nested step; anything else (no step, the end, a free block) lands before the end, never behind it.
+export function addPlace(w: Workflow, after?: string): Place {
   const at = after === undefined ? undefined : placeOf(w, after);
-  return addStepAt(w, kind, at ? { ...at, index: at.index + 1 } : { branch: 'kids', index: w.steps.length });
+  return at && (at.parent !== undefined || at.index < stackEnd(w)) ? { ...at, index: at.index + 1 } : { branch: 'kids', index: stackEnd(w) };
 }
+
+export const addStep = (w: Workflow, kind: StepKind, after?: string): Workflow => addStepAt(w, kind, addPlace(w, after));
 
 export type Hit = { block: string; edge: 'before' | 'after' | 'into' | 'else' } | { top: 'start' | 'end' } | { body: string; branch: 'kids' | 'else' };
 
@@ -64,7 +70,7 @@ function bodyStart(w: Workflow, id: string, branch: 'kids' | 'else'): Place | un
 
 // Where a drop lands: a pure function of the model and what the pointer is over.
 export function dropPlace(w: Workflow, hit: Hit): Place | undefined {
-  if ('top' in hit) return { branch: 'kids', index: hit.top === 'start' ? 0 : w.steps.length };
+  if ('top' in hit) return { branch: 'kids', index: hit.top === 'start' ? 0 : stackEnd(w) };
   if ('body' in hit) return bodyStart(w, hit.body, hit.branch);
   if (hit.edge === 'into' || hit.edge === 'else') return bodyStart(w, hit.block, hit.edge === 'into' ? 'kids' : 'else');
   const at = placeOf(w, hit.block);

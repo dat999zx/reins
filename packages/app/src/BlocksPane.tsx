@@ -7,6 +7,7 @@ import { setCond, type CondPath } from './blocks.js';
 import { applyField, fieldValue } from './panelEdit.js';
 import type { Pt } from './surface.js';
 import { stepKey, type Key } from './selection.js';
+import { splitAtEnd } from './arrange.js';
 import { zoneAttrs, zoneKey, type Zone } from './gesture.js';
 import type { Over } from './useDrag.js';
 import { Pill, StepPick } from './Pill.js';
@@ -15,15 +16,17 @@ import { StatusCtx, StepChips } from './StepChips.js';
 
 const LOOK = { code: 'code', str: 'pill', num: 'num', pill: 'pill' } as const satisfies Record<CondParam['look'], string>;
 
-export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, over, linkOver, at, missing, loose, onEdit, onSelect }: {
+export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, over, linkOver, at, missing, loose, free, onEdit, onSelect }: {
   w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; sel: Set<Key>; rev: unknown;
   condDrag?: boolean; src?: Set<string>; over?: Over; linkOver?: string; at: Pt;
   missing?: Set<string>; // `from/index` of links whose target does not exist: the only links shown as chips (the others are arrows)
   loose?: { key: string; selected: boolean; moving: boolean; onPick: (add: boolean) => void }; // w is then a wrapper of the one parked step: read-only, no ids, no zones
+  free?: { at: Map<string, Pt>; moving: Set<string> }; // the free blocks (steps behind the end) with a place of their own; the others stand in a column beside the script
   onEdit: (fn: (w: Workflow) => Workflow) => boolean; onSelect: (id: string, add: boolean) => void;
 }) {
   const conds = Object.fromEntries(steps.flatMap((s) => (s.cond === undefined ? [] : [[s.id, s.cond]])));
-  const marks = useMemo(() => (loose ? undefined : marksOf(w, diags, text).steps), [w, diags, text, !!loose]);
+  const found = useMemo(() => (loose ? undefined : marksOf(w, diags, text)), [w, diags, text, !!loose]);
+  const marks = found?.steps;
   const { status, show: showAll } = useContext(StatusCtx);
   const show = showAll && !loose;
   const za = (z: Zone) => (loose ? {} : zoneAttrs(z));
@@ -38,6 +41,8 @@ export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, ove
       className: cx('blk', shape, !loose && sel.has(stepKey(s.id)) && 'sx-sel', src?.has(s.id) && 'sx-dragsrc', !loose && linkOver === s.id && 'sx-linkover', info?.state && `sx-${info.state}`, mark && `mark-${mark}`),
       'data-id': loose ? undefined : s.id,
       'data-kind': s.kind,
+      title: found?.notes.get(s.id)?.join('\n'),
+      'aria-description': found?.notes.get(s.id)?.join(' '),
       tabIndex: loose ? -1 : 0,
       onClick: (e: MouseEvent) => { e.stopPropagation(); const add = e.shiftKey || e.ctrlKey || e.metaKey; if (loose) loose.onPick(add); else onSelect(s.id, add); },
     };
@@ -118,7 +123,8 @@ export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, ove
   };
 
   // A plain function, not a component: a component declared here would remount every block on each render.
-  const stack = (items: Step[], parent: string | undefined, branch: 'kids' | 'else'): ReactNode => (
+  // 	op: a free block's own list; its blocks are zones of the free block, not drop slots.
+  const stack = (items: Step[], parent: string | undefined, branch: 'kids' | 'else', top = false): ReactNode => (
     <div className="sx-stack" data-list={`${parent ?? ''}/${branch}`}>
       {items.map((s, n) => {
         const key = items.findIndex((x) => x.id === s.id) === n ? s.id : `${n}/${s.id}`; // a duplicate id is a validator error; keep the keys unique anyway
@@ -126,18 +132,18 @@ export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, ove
         const bp = blockProps(s, group ? 'sx-c' : 'sx-blk');
         // a stack block is one target, halves from the whole block (chips and pills included)
         if (!group) {
-          const z = zone({ type: s.kind === 'end' ? 'cap' : 'block', id: s.id });
+          const z = zone({ type: top ? 'free' : s.kind === 'end' ? 'cap' : 'block', id: s.id });
           return <div key={key} {...bp} {...z} className={cx(bp.className, z.className)}>{head(s)}</div>;
         }
         // ponytail: a drop on a body's own area, even beside its last child, lands first in that body (mockup behaviour); the snap bar shows it
-        const head_ = zone({ type: 'chead', id: s.id }), kids = zone({ type: 'body', id: s.id, branch: 'kids' }), els = zone({ type: 'body', id: s.id, branch: 'else' }), foot = zone({ type: 'foot', id: s.id });
+        const head_ = zone({ type: top ? 'free' : 'chead', id: s.id }), kids = zone({ type: 'body', id: s.id, branch: 'kids' }), els = zone({ type: 'body', id: s.id, branch: 'else' }), foot = zone({ type: top ? 'free' : 'foot', id: s.id });
         return (
           <div key={key} {...bp}>
             <div {...head_} className={cx('sx-chead', head_.className)}>{head(s)}</div>
             <div {...kids} className={cx('sx-cbody', kids.className)} data-body={`${s.id}/kids`}>{stack(s.kids ?? [], s.id, 'kids')}</div>
             {group === 'kids+else' && (
               <>
-                <div {...za({ type: 'mid', id: s.id })} className="sx-cmid">else</div>
+                <div {...za({ type: top ? 'free' : 'mid', id: s.id })} className="sx-cmid">else</div>
                 <div {...els} className={cx('sx-cbody', els.className)} data-body={`${s.id}/else`}>{stack(s.else ?? [], s.id, 'else')}</div>
               </>
             )}
@@ -150,18 +156,28 @@ export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, ove
 
   if (loose) {
     return (
-      <div className={cx('sx-loose', loose.selected && 'sx-sel', loose.moving && 'sx-moving')} style={{ left: at.x, top: at.y }} data-loose={loose.key} data-zone="loose" tabIndex={0} aria-label="Loose block">
+      <div className={cx('sx-loose', loose.selected && 'sx-sel', loose.moving && 'sx-moving', linkOver === `l:${loose.key}` && 'sx-linkover')} style={{ left: at.x, top: at.y }} data-loose={loose.key} data-zone="loose" tabIndex={0} aria-label="Loose block">
         <span className="sx-loose-tag">loose</span>
         {stack(w.steps, undefined, 'kids')}
       </div>
     );
   }
   const hat = zone({ type: 'hat' }), end = zone({ type: 'end' });
+  const { stack: inStack, end: cap, tail } = splitAtEnd(w);
+  const place = (s: Step) => free?.at.get(s.id);
+  const freeBlock = (s: Step) => {
+    const p = place(s);
+    return <div key={s.id} {...za({ type: 'free', id: s.id })} className={cx('sx-free', p && 'sx-placed', free?.moving.has(s.id) && 'sx-moving')} style={p && { left: p.x, top: p.y }}>{stack([s], undefined, 'kids', true)}</div>;
+  };
   return (
-    <div className={cx('sx-script', condDrag && 'sx-drag-cond')} style={{ left: at.x, top: at.y }}>
-      <div {...hat} className={cx('sx-blk', 'sx-hat', hat.className)}><b>{w.name}</b>{w.task && <span className="sx-pill">{w.task}</span>}</div>
-      {stack(w.steps, undefined, 'kids')}
-      <div {...end} className={cx('sx-endstrip', end.className)} />
-    </div>
+    <>
+      <div className={cx('sx-script', condDrag && 'sx-drag-cond')} style={{ left: at.x, top: at.y }}>
+        <div {...hat} className={cx('sx-blk', 'sx-hat', hat.className)}><b>{w.name}</b>{w.task && <span className="sx-pill">{w.task}</span>}</div>
+        {stack(cap ? [...inStack, cap] : inStack, undefined, 'kids')}
+        <div {...end} className={cx('sx-endstrip', end.className)} />
+        <div className="sx-autofree">{tail.filter((s) => !place(s)).map(freeBlock)}</div>
+      </div>
+      {tail.filter(place).map(freeBlock)}
+    </>
   );
 }

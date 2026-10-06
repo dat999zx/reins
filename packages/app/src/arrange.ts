@@ -1,5 +1,5 @@
 import type { Step, Workflow } from '@reins/core';
-import { capBackward, deleteSteps, insertSteps, takeSteps, withFreshIds, type Place } from './blocks.js';
+import { addStepAt, capBackward, deleteSteps, dropSteps, insertSteps, stackEnd, takeSteps, withFreshIds, type Hit, type Place } from './blocks.js';
 import { flatSteps } from './canvas.js';
 import type { Layout, Loose, Pt } from './editorState.js';
 
@@ -57,9 +57,42 @@ export function removeLoose(lay: Layout, keys: string[]): Layout {
   return { ...lay, loose: lay.loose.filter((l) => !keys.includes(l.key)) };
 }
 
-// keys: 'hat' and 'l:<key>'; the hat moves from its place or HOME.
+export function splitAtEnd(w: Workflow): { stack: Step[]; end?: Step; tail: Step[] } {
+  const i = stackEnd(w);
+  return { stack: w.steps.slice(0, i), end: w.steps[i], tail: w.steps.slice(i + 1) };
+}
+
+export const ensureEnd = (w: Workflow): Workflow => (stackEnd(w) < w.steps.length ? w : addStepAt(w, 'end', { branch: 'kids', index: w.steps.length }));
+
+// A stack step becomes a free block: behind the end (added when missing), reached only by links. Undefined for a nested, free or end step.
+export function detach(w: Workflow, id: string): { w: Workflow; capped: string[] } | undefined {
+  const i = w.steps.findIndex((s) => s.id === id);
+  if (i === -1 || i >= stackEnd(w)) return undefined;
+  const m = structuredClone(ensureEnd(w));
+  m.steps.push(...m.steps.splice(i, 1));
+  return capBackward(m);
+}
+
+// A free block goes back into the stack: before the end, or at the slot `hit` points to. Undefined for any other step.
+export function attach(w: Workflow, id: string, hit: Hit = { top: 'end' }): { w: Workflow; capped: string[] } | undefined {
+  if (!splitAtEnd(w).tail.some((s) => s.id === id)) return undefined;
+  const m = dropSteps(w, [id], hit);
+  return m === w ? undefined : capBackward(m);
+}
+
+// Saved places of steps that are no longer free are dropped; the same object when nothing goes.
+export function pruneLayout(lay: Layout, w: Workflow): Layout {
+  const free = new Set(splitAtEnd(w).tail.map((s) => s.id));
+  const keep = Object.entries(lay.free ?? {}).filter(([id]) => free.has(id));
+  if (keep.length === Object.keys(lay.free ?? {}).length) return lay;
+  const { free: _, ...rest } = lay;
+  return keep.length ? { ...rest, free: Object.fromEntries(keep) } : rest;
+}
+
+// keys: 'hat', 'l:<key>' and 's:<stepId>' (a free block with a saved place); the hat moves from its place or HOME.
 export function moveItems(lay: Layout, keys: string[], d: Pt): Layout {
   const out: Layout = { ...lay };
+  if (lay.free) out.free = Object.fromEntries(Object.entries(lay.free).map(([id, p]) => [id, keys.includes(`s:${id}`) ? { x: p.x + d.x, y: p.y + d.y } : p]));
   if (keys.includes('hat')) { const p = lay.script ?? HOME; out.script = { x: p.x + d.x, y: p.y + d.y }; }
   if (lay.loose) out.loose = lay.loose.map((l): Loose => (keys.includes(`l:${l.key}`) ? { ...l, at: { x: l.at.x + d.x, y: l.at.y + d.y } } : l));
   return out;

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { Diagnostic, StepKind, Workflow } from '@reins/core';
 import { addStep, deleteSteps, newId, setCond } from './blocks.js';
-import { FULL, removeLoose, STATE_MAX, stateBytes } from './arrange.js';
+import { FULL, pruneLayout, removeLoose, STATE_MAX, stateBytes } from './arrange.js';
 import { stepIds, stepKey, withoutNested, type Key } from './selection.js';
 import { COND_KINDS } from './condKinds.js';
 import { ApiError, get, post, put } from './api.js';
@@ -95,7 +95,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   useEffect(() => { onDirty(dirty); return () => onDirty(false); }, [dirty]);
   // The layout is written only while the buffer is clean: a discarded buffer must not leave layout changes behind.
   useEffect(() => {
-    if (restored && file !== null && !dirty) setView(file, { script: undefined, loose: undefined, ...lay });
+    if (restored && file !== null && !dirty) setView(file, { script: undefined, free: undefined, loose: undefined, ...lay });
   }, [lay, dirty]);
 
   const leave = () => !dirty || window.confirm('Discard unsaved changes?');
@@ -158,7 +158,8 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
       post<Preview>(`${base}/preview`, { path: file, workflow: next, ...(stepId ? { stepId } : {}) })
         .then((r) => {
           if (fileRef.current !== at.file || textRef.current !== at.text || r.text === undefined) return o?.then?.(false);
-          const after = o?.lay ? o.lay(layRef.current) : layRef.current;
+          const laid = o?.lay ? o.lay(layRef.current) : layRef.current;
+          const after = r.workflow ? pruneLayout(laid, r.workflow) : laid; // the place of a step that is no longer free goes
           hist.current = push(hist.current, { before: { text: at.text, lay: at.lay }, after: { text: r.text, lay: after } });
           setText(r.text);
           setPrev({ ...r, for: r.text });

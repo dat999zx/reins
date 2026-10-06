@@ -183,3 +183,14 @@ describe('makeSaver', () => {
     expect(onError.mock.calls[0]![0].message).toBe('413');
   });
 });
+
+describe('cleanEditorState free blocks', () => {
+  const P = '/w/a.reins.md';
+  const read = (free: unknown) => cleanEditorState({ canvas: { [P]: { free } } }).canvas![P]!.free;
+  it('keeps good positions and drops bad ones', () => {
+    expect(read({ fix: { x: 1, y: 2 }, bad: { x: 'a', y: 1 }, nan: { x: NaN, y: 1 }, half: { x: 1 }, str: 5 })).toEqual({ fix: { x: 1, y: 2 } });
+  });
+  it('drops free that is not an object, or that has nothing good in it', () => {
+    for (const f of [[], 'x', 5, null, {}, { a: 1 }]) expect(read(f)).toBeUndefined();
+  });
+});

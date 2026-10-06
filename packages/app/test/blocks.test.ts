@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseWorkflow, printCond, printWorkflow, validate, type Workflow } from '@reins/core';
 import { flatSteps } from '../src/canvas.js';
-import { addStep, addStepAt, capBackward, deleteStep, deleteSteps, dropPlace, dropSteps, duplicateSteps, insertSteps, moveStep, nestPlace, newId, placeOf, setAlways, setCond, takeSteps, withFreshIds } from '../src/blocks.js';
+import { addPlace, addStep, addStepAt, stackEnd, capBackward, deleteStep, deleteSteps, dropPlace, dropSteps, duplicateSteps, insertSteps, moveStep, nestPlace, newId, placeOf, setAlways, setCond, takeSteps, withFreshIds } from '../src/blocks.js';
 
 const HEAD = '---\nreins: 1\nname: demo\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n';
 const TEXT = `${HEAD}## phase plan
@@ -491,5 +491,31 @@ describe('duplicateSteps', () => {
     const back = parseWorkflow(text);
     expect(back.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
     expect(printWorkflow(back.workflow!)).toBe(text);
+  });
+});
+describe('the end of the stack', () => {
+  const wf = parseWorkflow(`${HEAD}## phase a\n\n## phase b\n\n## end\n\n## phase f\n`).workflow!;
+  const ids = (w: Workflow) => w.steps.map((s) => s.id);
+  it('stackEnd is the first top-level end, else the length', () => {
+    expect(stackEnd(wf)).toBe(2);
+    expect(stackEnd({ ...wf, steps: wf.steps.slice(0, 2) })).toBe(2);
+    expect(stackEnd({ ...wf, steps: [] })).toBe(0);
+  });
+  it('addPlace: after a stack step goes after it; anything else lands before the end', () => {
+    expect(addPlace(wf, 'a')).toEqual({ branch: 'kids', index: 1 });
+    expect(addPlace(wf)).toEqual({ branch: 'kids', index: 2 });
+    expect(addPlace(wf, 'end-1')).toEqual({ branch: 'kids', index: 2 });
+    expect(addPlace(wf, 'f')).toEqual({ branch: 'kids', index: 2 });
+    expect(addPlace(wf, 'nope')).toEqual({ branch: 'kids', index: 2 });
+  });
+  it('addStep never adds after the end', () => {
+    for (const after of [undefined, 'b', 'end-1', 'f']) {
+      const m = addStep(wf, 'phase', after);
+      expect(ids(m).indexOf('end-1')).toBeGreaterThan(ids(m).indexOf('phase-1'));
+    }
+  });
+  it('a drop on the end strip lands before the end', () => {
+    expect(dropPlace(wf, { top: 'end' })).toEqual({ branch: 'kids', index: 2 });
+    expect(ids(dropSteps(wf, ['a'], { top: 'end' }))).toEqual(['b', 'a', 'end-1', 'f']);
   });
 });

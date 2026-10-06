@@ -6,10 +6,21 @@ const acts = (items: Item[]) => items.map((i) => (i === '-' ? '-' : i.act));
 
 describe('menus', () => {
   it('a block gets the edit items, park and Edit in Text', () => {
-    expect(acts(itemsFor('block', ctx()))).toEqual(['duplicate', 'copy', 'cut', 'delete', '-', 'park', '-', 'editInText']);
+    expect(acts(itemsFor('block', ctx()))).toEqual(['duplicate', 'copy', 'cut', 'delete', '-', 'park', 'detach', '-', 'editInText']);
   });
   it('Edit in Text is single only; several blocks keep the rest and the separators stay tidy', () => {
     expect(acts(itemsFor('block', ctx({ count: 3 })))).toEqual(['duplicate', 'copy', 'cut', 'delete', '-', 'park']);
+  });
+  it('a stack block can be detached; a free block put back; the end and nested ones neither', () => {
+    expect(acts(itemsFor('block', ctx()))).toContain('detach');
+    expect(acts(itemsFor('block', ctx()))).not.toContain('attach');
+    expect(acts(itemsFor('block', ctx({ free: true })))).toContain('attach');
+    expect(acts(itemsFor('block', ctx({ free: true })))).not.toContain('detach');
+    expect(acts(itemsFor('block', ctx({ free: true })))).not.toContain('park');
+    for (const c of [ctx({ topLevel: false }), ctx({ isEnd: true }), ctx({ count: 2 })]) {
+      expect(acts(itemsFor('block', c))).not.toContain('detach');
+      expect(acts(itemsFor('block', c))).not.toContain('attach');
+    }
   });
   it('a loose block can be put into the script, and cannot be parked', () => {
     expect(acts(itemsFor('loose', ctx()))).toEqual(['duplicate', 'copy', 'cut', 'delete', '-', 'putEnd']);
