@@ -8,12 +8,20 @@ describe('history', () => {
     const h = push(emptyHistory(), e('a', 'b'));
     const u = undo(h, 'b');
     expect(u).not.toBe('stale');
-    if (!u || u === 'stale') return;
+    if (!u || u === 'stale') throw new Error('no undo');
     expect(u.to.text).toBe('a');
     expect(u.h.done).toHaveLength(0);
     const r = redo(u.h, 'a');
     expect(r && r !== 'stale' && r.to.text).toBe('b');
     expect(r && r !== 'stale' && r.h.done).toHaveLength(1);
+  });
+  it('undo and redo hand back the preview that matches the text', () => {
+    const h = push(emptyHistory(), { before: { text: 'a', lay: {}, prev: 'pa' }, after: { text: 'b', lay: {}, prev: 'pb' } });
+    const u = undo(h, 'b');
+    if (!u || u === 'stale') throw new Error('no undo');
+    expect(u.to.prev).toBe('pa');
+    const r = redo(u.h, 'a');
+    expect(r && r !== 'stale' && r.to.prev).toBe('pb');
   });
   it('an entry that changes neither text nor layout is ignored', () => {
     expect(push(emptyHistory(), e('a', 'a')).done).toHaveLength(0);

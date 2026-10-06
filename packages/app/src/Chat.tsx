@@ -68,7 +68,8 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
           <Composer key={sess.id} id={sess.id} cwd={sess.cwd} busy={busy} catalogue={catalogue} takeRefill={takeRefill} />
         </>
       ) : (
-        <TextTab view={tab} onView={onTab} sess={sess} restore={restore} onState={onState} onDirty={onDirty} onRun={() => onTab('chat')} />
+        restore === undefined ? <p className="hint">Loading…</p>
+          : <TextTab view={tab} onView={onTab} sess={sess} restore={restore} onState={onState} onDirty={onDirty} onRun={() => onTab('chat')} />
       )}
     </main>
   );

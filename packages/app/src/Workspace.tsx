@@ -249,7 +249,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
     return k === undefined || i < 0 ? undefined : k;
   };
   const ACTS: Record<ActName, (id: string, ev?: { key: string; cur: Key }) => void> = {
-    delete: (id) => remove(id !== '' && !sel.has(stepKey(id)) ? [stepKey(id)] : [...withoutNested(w, sel)]),
+    delete: (id, ev) => { const k = id !== '' ? stepKey(id) : ev?.cur.startsWith('l:') ? ev.cur : undefined; remove(k && !sel.has(k) ? [k] : [...withoutNested(w, sel)]); },
     focusPrev: (_, ev) => { const k = ev && walk(ev.cur, -1); if (k) elOf(k)?.focus({ preventScroll: true }); },
     focusNext: (_, ev) => { const k = ev && walk(ev.cur, 1); if (k) elOf(k)?.focus({ preventScroll: true }); },
     extendPrev: (_, ev) => { const k = ev && walk(ev.cur, -1); if (k) { onSel(new Set([...sel, ev.cur, k]), stepIds([k]).at(0) ?? primary); elOf(k)?.focus({ preventScroll: true }); } },
@@ -264,7 +264,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
       const d = ev && ARROW[ev.key], c = camRef.current;
       if (d) commit({ ...c, x: c.x - d.x * PAN, y: c.y - d.y * PAN });
     },
-    select: (id) => { if (id !== '') one(id); },
+    select: (id, ev) => { if (id !== '') one(id); else if (ev?.cur.startsWith('l:')) pickLoose(ev.cur.slice(2), false); },
     moveUp: (id) => { const at = placeOf(w, id); if (at && at.index > (freeIds.has(id) ? stackEnd(w) + 1 : 0)) move(id, { ...at, index: at.index - 1 }); },
     moveDown: (id) => { const at = placeOf(w, id); if (at && !last(id)) move(id, { ...at, index: at.index + 2 }); },
     nestIn: (id) => { const to = nestPlace(w, id, 'in'); if (to) move(id, to); },

@@ -48,7 +48,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
     const ids = new Set(prev?.workflow ? flatSteps(prev.workflow.steps).map((s) => s.id) : []);
     const loose = new Set((lay.loose ?? []).map((l) => `l:${l.key}`));
     setSels((s) => {
-      const keep = (k: Key) => (k.startsWith('s:') ? ids.has(k.slice(2)) : loose.has(k));
+      const keep = (k: Key) => (k.startsWith('s:') ? ids.has(k.slice(2)) : k.startsWith('l:') ? loose.has(k) : true);
       const n = stepId === undefined ? new Set([...s].filter((k) => !k.startsWith('s:') && keep(k))) : s.has(stepKey(stepId)) ? new Set([...s].filter(keep)) : new Set([stepKey(stepId)]);
       return n.size === s.size && [...n].every((k) => s.has(k)) ? s : n;
     });
@@ -159,13 +159,13 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
       if (next === prev.workflow) return false; // a no-op edit sends nothing
       if (o?.lay && tooBig(o.lay(lay))) { setMsg(FULL); return false; }
       busy.current = true;
-      const at = { file, text, lay };
+      const at = { file, text, lay, prev };
       post<Preview>(`${base}/preview`, { path: file, workflow: next, ...(stepId ? { stepId } : {}) })
         .then((r) => {
           if (fileRef.current !== at.file || textRef.current !== at.text || r.text === undefined) { saveAfter.current = false; return o?.then?.(false); }
           const laid = o?.lay ? o.lay(layRef.current) : layRef.current;
           const after = r.workflow ? pruneLayout(laid, r.workflow) : laid; // the place of a step that is no longer free goes
-          hist.current = push(hist.current, { before: { text: at.text, lay: at.lay }, after: { text: r.text, lay: after } });
+          hist.current = push(hist.current, { before: { text: at.text, lay: at.lay, prev: at.prev }, after: { text: r.text, lay: after, prev: { ...r, for: r.text } } });
           setText(r.text);
           setPrev({ ...r, for: r.text });
           setLay(after);
@@ -186,7 +186,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
     const next = fn(lay);
     if (busy.current || JSON.stringify(next) === JSON.stringify(lay)) return false;
     if (tooBig(next)) { setMsg(FULL); return false; }
-    hist.current = push(hist.current, { before: { text, lay }, after: { text, lay: next } });
+    hist.current = push(hist.current, { before: { text, lay, prev }, after: { text, lay: next, prev } });
     setLay(next);
     return true;
   };
@@ -195,7 +195,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
     if (busy.current || file === null) return false;
     const r = go(hist.current, text);
     if (r === 'stale') { hist.current = emptyHistory(); setMsg('Undo history was cleared because the text was edited in the Text tab.'); }
-    else if (r) { hist.current = r.h; setText(r.to.text); setLay(r.to.lay); return true; }
+    else if (r) { hist.current = r.h; setText(r.to.text); setLay(r.to.lay); if (r.to.prev) setPrev(r.to.prev as Preview); return true; }
     return false;
   };
   // ponytail: a step is added as a sibling after the selection; into a container only by dragging

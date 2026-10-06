@@ -793,7 +793,7 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await expect.poll(leftOf, { timeout: W }).toBe(left0 + 20);
     await page.keyboard.press('Delete');
     await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(0);
-    await expect.poll(() => focused('id'), { timeout: W }).toBe('phase-3');
+    await expect.poll(() => focused('id'), { timeout: W }).toBe('run-1');
     // 8d.z. save, so the buffer is clean before Chat (Playwright dismisses the leave confirm)
     await textTab.click();
     await editor.focus();

@@ -1,6 +1,6 @@
 import type { Layout } from './editorState.js';
 
-export type Snap = { text: string; lay: Layout };
+export type Snap = { text: string; lay: Layout; prev?: unknown }; // prev: the preview that matches `text`; not compared by changed()
 export type Entry = { before: Snap; after: Snap };
 export type History = { done: Entry[]; undone: Entry[] };
 
