@@ -279,6 +279,12 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await row('phase-1').focus();
     await page.keyboard.press('Delete');
     await expect.poll(() => row('phase-1').count(), { timeout: W }).toBe(0);
+    // undo brings the deleted block back, redo removes it again
+    await page.getByRole('region', { name: 'Workspace' }).focus();
+    await page.keyboard.press('ControlOrMeta+Z');
+    await row('phase-1').waitFor({ timeout: W });
+    await page.keyboard.press('ControlOrMeta+Shift+Z');
+    await expect.poll(() => row('phase-1').count(), { timeout: W }).toBe(0);
     await textTab.click();
     await expect.poll(() => editor.inputValue(), { timeout: W }).toBe(tidy);
     await blocksTab.click();
@@ -479,6 +485,10 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     const hat4 = await hatBox();
     expect(Math.abs(hat4.x - hat3.x - 120)).toBeLessThanOrEqual(2);
     expect(Math.abs(hat4.y - hat3.y - 60)).toBeLessThanOrEqual(2);
+    // 8e.0b. undo puts the script back
+    await page.getByRole('region', { name: 'Workspace' }).focus();
+    await page.keyboard.press('ControlOrMeta+Z');
+    await expect.poll(async () => { const h = await hatBox(); return Math.abs(h.x - hat3.x) <= 2 && Math.abs(h.y - hat3.y) <= 2; }, { timeout: W }).toBe(true);
     await textTab.click();
     expect(await editor.inputValue()).toBe(textBeforeHat);
     // 8d.z. save, so the buffer is clean before Chat (Playwright dismisses the leave confirm)

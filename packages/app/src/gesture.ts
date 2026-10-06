@@ -5,7 +5,6 @@ export type Press = {
 };
 export type GestureKind = 'none' | 'pan' | 'pending' | 'box' | 'link' | 'linkclick';
 export const DRAG_PX = 4;
-export const isTyping = (tag: string) => tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
 
 export function pickGesture(p: Press): GestureKind {
   if (p.on === 'outside') return 'none';

@@ -5,6 +5,7 @@ import { COND_KINDS } from './condKinds.js';
 import { ApiError, get, post, put } from './api.js';
 import { restoreFile, restoreStep, type CanvasView, type EditorState, type Layout, type Tab } from './editorState.js';
 import { highlight, lineOffset } from './highlight.js';
+import { emptyHistory, push, redo, undo } from './history.js';
 import type { Sess } from './state.js';
 import { runRows, stepStatus } from './stepStatus.js';
 import { BlockPanel, WorkflowPanel } from './BlockPanel.js';
@@ -23,6 +24,7 @@ interface Preview {
   for?: string; // the text this preview was made for
 }
 
+type EditOpts = { lay?: (l: Layout) => Layout; then?: (applied: boolean) => void };
 const NAME = /^[a-z0-9][a-z0-9-]*$/;
 const template = (name: string) =>
   `---\nreins: 1\nname: ${name}\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n## phase plan\n> Plan the change.\n\n## phase build\n> Make the change.\n`;
@@ -52,6 +54,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
   // The stored per-workflow view. A ref, so two writes in one tick (a camera and a layout) never overwrite each other.
   const canvas = useRef(restore?.canvas);
   const [lay, setLay] = useState<Layout>({});
+  const hist = useRef(emptyHistory()); // lives here, so it is gone after a reload and after the Chat tab unmounts this
   const press = useRef<Start | undefined>(undefined); // the workspace's drag engine, for the palette beside it
   const setView = (path: string, patch: Partial<CanvasView>) => {
     canvas.current = { ...canvas.current, [path]: { ...canvas.current?.[path], ...patch } };
@@ -90,7 +93,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
       const r = await get<{ path: string; text: string }>(`${base}/workflow?path=${encodeURIComponent(path)}`);
       const t = r.text.replace(/\r\n/g, '\n');
       const { cam: _cam, ...stored } = canvas.current?.[r.path] ?? {};
-      setFile(r.path); setText(t); setSaved(t); setStepId(undefined); setMsg(''); setPrev(null); setLay(stored);
+      setFile(r.path); setText(t); setSaved(t); setStepId(undefined); setMsg(''); setPrev(null); setLay(stored); hist.current = emptyHistory();
       return true;
     } catch (e) {
       setMsg((e as Error).message);
@@ -120,38 +123,57 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
 
   const fileRef = useRef(file);
   const textRef = useRef(text);
+  const layRef = useRef(lay);
   fileRef.current = file;
   textRef.current = text;
+  layRef.current = lay;
   const busy = useRef(false);
   const confirmed = useRef(new Set<string>());
   // Canvas edits go model -> server print -> this same buffer. One at a time; a reply for another file or text is dropped.
   // ponytail: the 300 ms text preview fires once more for the new text and re-syncs every draft field, so text typed within ~300 ms of an edit is lost; debounce it away if it bites
-  const edit = (fn: (w: Workflow) => Workflow) => {
-    if (busy.current || file === null || !prev?.workflow || prev.for !== text) return false;
-    if (prev.reformats && !confirmed.current.has(file)) {
-      if (!window.confirm('Editing here rewrites this file in the standard form. Comments, unknown lines, frontmatter comments and unknown keys, and custom order are not kept. Continue?')) return false;
-      confirmed.current.add(file);
-    }
-    const next = fn(prev.workflow);
-    if (next === prev.workflow) return false; // a no-op edit sends nothing
-    busy.current = true;
-    const at = { file, text };
-    post<Preview>(`${base}/preview`, { path: file, workflow: next, ...(stepId ? { stepId } : {}) })
-      .then((r) => {
-        if (fileRef.current !== at.file || textRef.current !== at.text || r.text === undefined) return;
-        setText(r.text);
-        setPrev({ ...r, for: r.text });
-      })
-      .catch((e) => setMsg((e as Error).message))
-      .finally(() => { busy.current = false; });
-    return true;
+  // `o.lay` changes the layout in the same undo step; `o.then` hears whether the reply landed.
+  const edit = (fn: (w: Workflow) => Workflow, o?: EditOpts) => {
+    const sent = (() => {
+      if (busy.current || file === null || !prev?.workflow || prev.for !== text) return false;
+      if (prev.reformats && !confirmed.current.has(file)) {
+        if (!window.confirm('Editing here rewrites this file in the standard form. Comments, unknown lines, frontmatter comments and unknown keys, and custom order are not kept. Continue?')) return false;
+        confirmed.current.add(file);
+      }
+      const next = fn(prev.workflow);
+      if (next === prev.workflow) return false; // a no-op edit sends nothing
+      busy.current = true;
+      const at = { file, text, lay };
+      post<Preview>(`${base}/preview`, { path: file, workflow: next, ...(stepId ? { stepId } : {}) })
+        .then((r) => {
+          if (fileRef.current !== at.file || textRef.current !== at.text || r.text === undefined) return o?.then?.(false);
+          const after = o?.lay ? o.lay(layRef.current) : layRef.current;
+          hist.current = push(hist.current, { before: { text: at.text, lay: at.lay }, after: { text: r.text, lay: after } });
+          setText(r.text);
+          setPrev({ ...r, for: r.text });
+          setLay(after);
+          o?.then?.(true);
+        })
+        .catch((e) => { setMsg((e as Error).message); o?.then?.(false); })
+        .finally(() => { busy.current = false; });
+      return true;
+    })();
+    if (!sent) o?.then?.(false);
+    return sent;
   };
   // A layout-only change: refused while an edit is in flight, nothing to do when it changes nothing.
   const setLayout = (fn: (l: Layout) => Layout) => {
     const next = fn(lay);
     if (busy.current || JSON.stringify(next) === JSON.stringify(lay)) return false;
+    hist.current = push(hist.current, { before: { text, lay }, after: { text, lay: next } });
     setLay(next);
     return true;
+  };
+  // Undo and redo restore the buffer and the layout from the snapshot; the server is not asked.
+  const step = (go: typeof undo) => {
+    if (busy.current || file === null) return;
+    const r = go(hist.current, text);
+    if (r === 'stale') { hist.current = emptyHistory(); setMsg('Undo history was cleared because the text was edited in the Text tab.'); }
+    else if (r) { hist.current = r.h; setText(r.to.text); setLay(r.to.lay); }
   };
   // ponytail: a step is added as a sibling after the selection; into a container only by dragging
   const add = (kind: StepKind) => { if (prev?.workflow && edit((w) => addStep(w, kind, stepId))) setStepId(newId(prev.workflow, kind)); };
@@ -266,7 +288,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
                 <StatusCtx.Provider value={{ status, show: showStatus }}>
                   <Workspace key={file} w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} selected={stepId}
                     rev={prev} press={press} cam={canvas.current?.[file]?.cam} lay={lay}
-                    onEdit={edit} onSelect={setStepId} onDelete={del} onLayout={setLayout} onCam={(cam) => { if (restored) setView(file, { cam }); }} />
+                    onEdit={edit} onSelect={setStepId} onDelete={del} onLayout={setLayout} onUndo={() => step(undo)} onRedo={() => step(redo)} onCam={(cam) => { if (restored) setView(file, { cam }); }} />
                 </StatusCtx.Provider>
                 {sel ? <BlockPanel key={sel.id} step={sel} all={flatSteps(prev.workflow.steps)} cond={prev.steps.find((s) => s.id === sel.id)?.cond}
                   turn={prev.turn} rev={prev} onEdit={edit} onDelete={() => del(sel.id)} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />

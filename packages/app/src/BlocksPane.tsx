@@ -1,9 +1,9 @@
-import { useContext, useMemo, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { useContext, useMemo, type MouseEvent, type ReactNode } from 'react';
 import type { Cond, Diagnostic, Step, Workflow } from '@reins/core';
 import { KINDS, type Token } from './canvasKinds.js';
 import { applyParam, COND_KINDS, type CondParam } from './condKinds.js';
 import { editStep, marksOf } from './canvas.js';
-import { nestPlace, placeOf, setCond, type CondPath, type Place } from './blocks.js';
+import { setCond, type CondPath } from './blocks.js';
 import { applyField, fieldValue } from './panelEdit.js';
 import type { Pt } from './surface.js';
 import { zoneAttrs, zoneKey, type Zone } from './gesture.js';
@@ -14,10 +14,10 @@ import { StatusCtx, StepChips } from './StepChips.js';
 
 const LOOK = { code: 'code', str: 'pill', num: 'num', pill: 'pill' } as const satisfies Record<CondParam['look'], string>;
 
-export function BlocksPane({ w, steps, diags, text, selected, rev, condDrag, src, over, at, onEdit, onSelect, onDelete, onMove }: {
+export function BlocksPane({ w, steps, diags, text, selected, rev, condDrag, src, over, at, onEdit, onSelect }: {
   w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; selected?: string; rev: unknown;
   condDrag?: boolean; src?: string; over?: Over; at: Pt;
-  onEdit: (fn: (w: Workflow) => Workflow) => boolean; onSelect: (id: string | undefined) => void; onDelete: (id: string) => void; onMove: (id: string, to: Place) => void;
+  onEdit: (fn: (w: Workflow) => Workflow) => boolean; onSelect: (id: string | undefined) => void;
 }) {
   const conds = Object.fromEntries(steps.flatMap((s) => (s.cond === undefined ? [] : [[s.id, s.cond]])));
   const marks = useMemo(() => marksOf(w, diags, text).steps, [w, diags, text]);
@@ -26,7 +26,7 @@ export function BlocksPane({ w, steps, diags, text, selected, rev, condDrag, src
   const ov = (z: Zone) => (over && zoneKey(over.el) === zoneKey(z) ? over.cls : undefined);
   const zone = (z: Zone) => ({ ...zoneAttrs(z), className: ov(z) });
   // Stack and C blocks share these attributes. A click stops here: it must not bubble to every enclosing C block.
-  const blockProps = (s: Step, shape: string, last: boolean) => {
+  const blockProps = (s: Step, shape: string) => {
     const info = show ? status[s.id] : undefined;
     const mark = marks.get(s.id);
     return {
@@ -35,17 +35,6 @@ export function BlocksPane({ w, steps, diags, text, selected, rev, condDrag, src
       'data-kind': s.kind,
       tabIndex: 0,
       onClick: (e: MouseEvent) => { e.stopPropagation(); onSelect(s.id); },
-      onKeyDown: (e: KeyboardEvent<HTMLElement>) => {
-        if (e.target !== e.currentTarget) return;
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(s.id); return; }
-        if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); onDelete(s.id); return; }
-        if (!e.altKey || !e.key.startsWith('Arrow')) return;
-        e.preventDefault(); // Alt+Left / Alt+Right are the browser's Back / Forward: always swallow them on a block
-        const at = placeOf(w, s.id);
-        const dest = { ArrowUp: at && at.index > 0 && { ...at, index: at.index - 1 }, ArrowDown: at && !last && { ...at, index: at.index + 2 },
-          ArrowRight: nestPlace(w, s.id, 'in'), ArrowLeft: nestPlace(w, s.id, 'out') }[e.key];
-        if (dest) onMove(s.id, dest);
-      },
     };
   };
 
@@ -124,7 +113,7 @@ export function BlocksPane({ w, steps, diags, text, selected, rev, condDrag, src
       {items.map((s, n) => {
         const key = items.findIndex((x) => x.id === s.id) === n ? s.id : `${n}/${s.id}`; // a duplicate id is a validator error; keep the keys unique anyway
         const group = KINDS[s.kind].group;
-        const bp = blockProps(s, group ? 'sx-c' : 'sx-blk', n === items.length - 1);
+        const bp = blockProps(s, group ? 'sx-c' : 'sx-blk');
         // a stack block is one target, halves from the whole block (chips and pills included)
         if (!group) {
           const z = zone({ type: s.kind === 'end' ? 'cap' : 'block', id: s.id });
