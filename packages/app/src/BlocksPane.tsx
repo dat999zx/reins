@@ -15,9 +15,10 @@ import { StatusCtx, StepChips } from './StepChips.js';
 
 const LOOK = { code: 'code', str: 'pill', num: 'num', pill: 'pill' } as const satisfies Record<CondParam['look'], string>;
 
-export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, over, at, loose, onEdit, onSelect }: {
+export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, over, at, missing, loose, onEdit, onSelect }: {
   w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; sel: Set<Key>; rev: unknown;
   condDrag?: boolean; src?: Set<string>; over?: Over; at: Pt;
+  missing?: Set<string>; // `from/index` of links whose target does not exist: the only links shown as chips (the others are arrows)
   loose?: { key: string; selected: boolean; moving: boolean; onPick: (add: boolean) => void }; // w is then a wrapper of the one parked step: read-only, no ids, no zones
   onEdit: (fn: (w: Workflow) => Workflow) => boolean; onSelect: (id: string, add: boolean) => void;
 }) {
@@ -94,16 +95,18 @@ export function BlocksPane({ w, steps, diags, text, sel, rev, condDrag, src, ove
 
   const head = (s: Step) => {
     const info = show ? status[s.id] : undefined;
+    // a loose block has no arrows, so it keeps all its link chips
+    const chips = s.links.flatMap((l, i) => (loose || missing?.has(`${s.id}/${i}`) ? [<span key={`l${i}`} className={cx('sx-mod sx-link', !loose && 'sx-missing')} data-lk={l.kind}>{l.kind} → {l.to}</span>] : []));
     return (
       <>
         <div className="sx-row">
           <span className="sx-grip" aria-hidden />
           {KINDS[s.kind].line.map((t, i) => token(s, t, i))}
         </div>
-        {(s.cards.length > 0 || s.links.length > 0) && (
+        {(s.cards.length > 0 || chips.length > 0) && (
           <div className="sx-mods">
             {s.cards.map((c, i) => <span key={`c${i}`} className="sx-mod">{c.kind}: {c.text}</span>)}
-            {s.links.map((l, i) => <span key={`l${i}`} className="sx-mod sx-link" data-lk={l.kind}>{l.kind} → {l.to}</span>)}
+            {chips}
           </div>
         )}
         <span className="sx-st">{info && <StepChips i={info} />}</span>

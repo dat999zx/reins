@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as KeyEvent, type MouseEvent as MouseEv, type MutableRefObject, type PointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as KeyEvent, type MouseEvent as MouseEv, type MutableRefObject, type PointerEvent } from 'react';
 import type { Diagnostic, Step, Workflow } from '@reins/core';
 import { BlocksPane } from './BlocksPane.js';
 import { ContextMenu } from './ContextMenu.js';
@@ -6,7 +6,9 @@ import { itemsFor, type MenuCtx, type MenuTarget } from './menus.js';
 import { addLoose, FULL, HOME, LOOSE_MAX, moveItems, park, removeLoose, selfContained, unpark } from './arrange.js';
 import { addStepAt, capBackward, dropPlace, dropSteps, duplicateSteps, moveStep, nestPlace, newId, placeOf, setCond, takeSteps, type Hit, type Place } from './blocks.js';
 import { KINDS } from './canvasKinds.js';
-import { flatSteps } from './canvas.js';
+import { flatSteps, marksOf } from './canvas.js';
+import { lanes, linksToDraw } from './arrows.js';
+import { LinkLayer } from './LinkLayer.js';
 import { COND_KINDS } from './condKinds.js';
 import type { Layout } from './editorState.js';
 import { cx } from './generic.js';
@@ -48,6 +50,32 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
     commit(fitBounds({ ...o, w: b.width / c.zoom, h: b.height / c.zoom }, { w: r.width, h: r.height }));
   };
   useLayoutEffect(() => { if (!saved) fit(); }, []);
+
+  // Arrows: each block's first row, measured once per model change or size change in the script's own coordinates, so a hat drag or a zoom needs no measuring.
+  const [rects, setRects] = useState(new Map<string, Rect>());
+  const measure = () => {
+    const s = view.current?.querySelector<HTMLElement>('.sx-script');
+    if (!s) return;
+    const o = s.getBoundingClientRect(), z = camRef.current.zoom, q = (v: number) => Math.round((v / z) * 100) / 100;
+    const next = new Map<string, Rect>();
+    for (const el of s.querySelectorAll<HTMLElement>('.blk[data-id]')) {
+      const b = el.getBoundingClientRect(), row = el.querySelector('.sx-row')?.getBoundingClientRect() ?? b;
+      next.set(el.dataset.id!, { x: q(b.left - o.left), y: q(row.top - o.top), w: q(b.width), h: q(row.height) });
+    }
+    setRects((p) => (JSON.stringify([...p]) === JSON.stringify([...next]) ? p : next));
+  };
+  useLayoutEffect(measure, [w, diags, text]);
+  useEffect(() => {
+    const s = view.current!.querySelector('.sx-script');
+    if (!s) return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(s);
+    return () => ro.disconnect();
+  }, []);
+  const wires = useMemo(() => marksOf(w, diags, text).wires, [w, diags, text]);
+  const { arrows, missing } = useMemo(() => linksToDraw(w, wires), [w, wires]);
+  const lane = useMemo(() => lanes(arrows, flatSteps(w.steps).map((s) => s.id)), [arrows, w]);
+  const gone = useMemo(() => new Set(missing.map((m) => `${m.from}/${m.index}`)), [missing]);
 
   // The model changes asynchronously (edit -> server print -> new w); focus follows the moved block once it re-renders.
   const refocus = useRef<string | undefined>(undefined);
@@ -248,6 +276,7 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
   });
   press.current = drag.press;
   const hatMoving = !!drag.keys?.includes('hat');
+  const scriptAt = { x: home.x + (hatMoving ? drag.d?.x ?? 0 : 0), y: home.y + (hatMoving ? drag.d?.y ?? 0 : 0) };
   const parking = !!drag.src && !!drag.ok && !drag.over; // a step over bare surface: a release parks it
   useEffect(() => {
     if (!parking) return;
@@ -353,7 +382,8 @@ export function Workspace({ w, steps, diags, text, sel, rev, cam: saved, lay, pr
       onKeyDown={keydown} onContextMenu={contextmenu} onPointerDown={down} onPointerMove={(e) => { ptr.current = { x: e.clientX, y: e.clientY }; }} onPointerLeave={() => { ptr.current = undefined; }} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}>
       <div className="sx-world" style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.zoom})` }}>
         <BlocksPane w={w} steps={steps} diags={diags} text={text} sel={sel} rev={rev} condDrag={drag.kind === 'cond'} src={drag.src} over={drag.over}
-          at={{ x: home.x + (hatMoving ? drag.d?.x ?? 0 : 0), y: home.y + (hatMoving ? drag.d?.y ?? 0 : 0) }} onEdit={onEdit} onSelect={pick} />
+          at={scriptAt} missing={gone} onEdit={onEdit} onSelect={pick} />
+        <LinkLayer arrows={arrows} rects={rects} lanes={lane} at={scriptAt} />
         {(lay.loose ?? []).map((l) => {
           const k = `l:${l.key}`, d = drag.keys?.includes(k) ? drag.d : undefined;
           return <BlocksPane key={l.key} w={{ ...w, steps: [l.step] }} steps={[]} diags={[]} text="" sel={sel} rev={rev} at={{ x: l.at.x + (d?.x ?? 0), y: l.at.y + (d?.y ?? 0) }}

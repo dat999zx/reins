@@ -222,6 +222,9 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('## phase plan\nnext: ship\n');
     expect(await editor.inputValue()).toContain('## phase build\nnext: ship\n');
     await blocksTab.click();
+    // 8c.2a. both links are drawn as arrows
+    await page.locator('[data-link="plan/0"][data-lk="next"]').waitFor({ state: 'attached', timeout: W });
+    await page.locator('[data-link="build/0"]').waitFor({ state: 'attached', timeout: W });
     await row('plan').locator('.sx-row').first().click();
     await page.keyboard.press('ControlOrMeta+S');
     await page.getByRole('status').getByText('Saved.').waitFor();
