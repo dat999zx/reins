@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseWorkflow, type Workflow } from '@reins/core';
 import { edgeId, type Mark } from '../src/canvas.js';
-import { arrowPath, labelAt, lanes, linksToDraw, type LinkArrow } from '../src/arrows.js';
+import { arrowPath, labelAt, labelW, lanes, linksToDraw, placeLabels, type LinkArrow } from '../src/arrows.js';
 
 const text = (links: string) => `---
 reins: 1
@@ -92,6 +92,23 @@ describe('labelAt', () => {
   });
   it('sits above the middle of an S-curve', () => {
     expect(labelAt(a, { x: 200, y: 80, w: 100, h: 20 }, 0)).toEqual({ x: 154, y: 46 });
+  });
+});
+
+describe('placeLabels', () => {
+  const at = (k: string, x: number, y: number, t = 'on fail') => ({ key: k, at: { x, y }, text: t });
+  const clash = (a: { x: number; y: number }, ta: string, b: { x: number; y: number }, tb: string) =>
+    Math.abs(a.x - b.x) < Math.max(labelW(ta), labelW(tb)) && Math.abs(a.y - b.y) < 12;
+  it('moves labels that would overprint apart, vertically', () => {
+    const m = placeLabels([at('a', 100, 50), at('b', 110, 50, 'retry'), at('c', 100, 52)]);
+    const [a, b, c] = ['a', 'b', 'c'].map((k) => m.get(k)!);
+    expect(clash(a, 'on fail', b, 'retry')).toBe(false);
+    expect(clash(a, 'on fail', c, 'on fail')).toBe(false);
+    expect(clash(b, 'retry', c, 'on fail')).toBe(false);
+  });
+  it('leaves labels that do not touch where they are', () => {
+    const m = placeLabels([at('a', 100, 50), at('b', 100, 90), at('c', 400, 50)]);
+    expect([m.get('a'), m.get('b'), m.get('c')]).toEqual([{ x: 100, y: 50 }, { x: 100, y: 90 }, { x: 400, y: 50 }]);
   });
 });
 

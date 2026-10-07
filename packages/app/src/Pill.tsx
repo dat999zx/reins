@@ -21,7 +21,7 @@ export function Pill({ label, value, look, rev, commit, valid, dead }: {
   }, () => document.activeElement === ref.current);
   const send = () => { if (dirty.current) line.done(); dirty.current = false; };
   return (
-    <input ref={ref} className={LOOKS[look]} aria-label={label} placeholder={ph} size={Math.max(3, (line.v || ph).length)} value={line.v}
+    <input ref={ref} className={LOOKS[look]} aria-label={label} placeholder={ph} size={Math.max(look === 'num' ? 2 : 3, (line.v || ph).length)} title={look === 'code' ? line.v : undefined} value={line.v}
       aria-invalid={bad || undefined} inert={dead}
       onChange={(e) => { dirty.current = true; setBad(false); line.setV(e.target.value); }}
       onBlur={() => { setBad(false); if (dirty.current) send(); else line.setV(value); }}

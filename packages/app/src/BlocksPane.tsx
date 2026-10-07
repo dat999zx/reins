@@ -112,7 +112,12 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, condDrag,
       <>
         <div className="sx-row">
           <span className="sx-grip" aria-hidden />
-          {KINDS[s.kind].line.map((t, i) => token(s, t, i))}
+          {KINDS[s.kind].line.map((t, i, all) => {
+            const next = all[i + 1];
+            if (typeof t === 'string' && next && typeof next === 'object') return null; // a word and its pill never separate: rendered together below
+            const prev = all[i - 1];
+            return typeof t === 'object' && typeof prev === 'string' ? <span key={i} className="sx-grp">{token(s, prev, i - 1)}{token(s, t, i)}</span> : token(s, t, i);
+          })}
           {!loose && !KINDS[s.kind].stops && (['next', ...(KINDS[s.kind].fails ? ['on-fail'] : [])] as const).map((k, _, all) => (
             <span key={k} className={cx('sx-handle', all.length > 1 && 'sx-two')} data-zid={s.id} data-lk={k} aria-hidden />
           ))}

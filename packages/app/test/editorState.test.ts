@@ -30,9 +30,9 @@ describe('cleanEditorState canvas', () => {
     const cam = { x: 0, y: 0, zoom: 1 };
     expect(cleanEditorState({ canvas: { [P]: { pos: { a: { x: 1, y: 2 } }, view: { x: 1, y: 1, zoom: 1 }, cam } } })).toEqual({ canvas: { [P]: { cam } } });
   });
-  it('clamps cam zoom to 25 %..200 %; drops a cam with zoom <= 0 or missing numbers', () => {
+  it('clamps cam zoom to 10 %..200 % (Fit may go to 10 %); drops a cam with zoom <= 0 or missing numbers', () => {
     expect(cleanEditorState({ canvas: { [P]: { cam: { x: 1, y: 2, zoom: 9 } } } })).toEqual({ canvas: { [P]: { cam: { x: 1, y: 2, zoom: 2 } } } });
-    expect(cleanEditorState({ canvas: { [P]: { cam: { x: 1, y: 2, zoom: 0.01 } } } })).toEqual({ canvas: { [P]: { cam: { x: 1, y: 2, zoom: 0.25 } } } });
+    expect(cleanEditorState({ canvas: { [P]: { cam: { x: 1, y: 2, zoom: 0.01 } } } })).toEqual({ canvas: { [P]: { cam: { x: 1, y: 2, zoom: 0.1 } } } });
     for (const cam of [{ x: 0, y: 0, zoom: 0 }, { x: 0, y: 0, zoom: -1 }, { x: 0, y: 0 }, { x: 'a', y: 0, zoom: 1 }, 5]) {
       expect(cleanEditorState({ canvas: { [P]: { cam } } })).toEqual({ canvas: { [P]: {} } });
     }

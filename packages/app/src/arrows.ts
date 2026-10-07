@@ -45,6 +45,22 @@ export function labelAt(from: Rect, to: Rect, lane: number): Pt {
   return curve ? { x: (x1 + to.x) / 2 + 4, y: (y1 + y2) / 2 - 4 } : { x: out + 4, y: (y1 + y2) / 2 + 4 };
 }
 
+export const labelW = (t: string) => t.length * 5.4 + 6;
+const LABEL_H = 12;
+
+// Labels that would overprint (x spans overlap and baselines are closer than a text line) are pushed down, in order, until they stand apart.
+export function placeLabels(items: Array<{ key: string; at: Pt; text: string }>): Map<string, Pt> {
+  const placed: Array<{ at: Pt; text: string }> = [];
+  const out = new Map<string, Pt>();
+  for (const it of items) {
+    const at = { ...it.at };
+    while (placed.some((p) => Math.abs(p.at.x - at.x) < Math.max(labelW(p.text), labelW(it.text)) && Math.abs(p.at.y - at.y) < LABEL_H)) at.y += LABEL_H;
+    placed.push({ at, text: it.text });
+    out.set(it.key, at);
+  }
+  return out;
+}
+
 // Arrows whose vertical spans touch (counted in rows of `order`) get different lanes, so they do not draw on top of each other.
 export function lanes(arrows: LinkArrow[], order: string[]): Map<string, number> {
   const items = arrows.map((a) => {

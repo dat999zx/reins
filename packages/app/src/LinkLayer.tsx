@@ -1,14 +1,19 @@
-import { arrowPath, labelAt, type LinkArrow } from './arrows.js';
+import { arrowPath, labelAt, labelW, placeLabels, type LinkArrow } from './arrows.js';
 import type { Pt, Rect } from './surface.js';
 
 const WIRES: Record<string, string> = { next: '#a3a19b', 'on-fail': '#e05d5a' };
 const OTHER = '#6f6e6b', BAD = '#e05d5a', WARN = '#cf9433';
 const colour = (a: LinkArrow) => (a.mark === 'error' ? BAD : a.mark === 'warning' ? WARN : WIRES[a.kind] ?? OTHER);
+const text = (a: LinkArrow) => (a.kind === 'on-fail' ? 'on fail' : a.kind);
 const head = (c: string) => `sx-ah${c.slice(1)}`;
 
 // `rects` and `band` are in world coordinates. `then` is the fall-through from a free block to the one under it.
 export function LinkLayer({ arrows, then, rects, lanes, selected, band }: { arrows: LinkArrow[]; then: Array<{ from: string; to: string }>; rects: Map<string, Rect>; lanes: Map<string, number>; selected?: string; band?: { a: Pt; b: Pt } }) {
   const colours = [...new Set(arrows.map(colour))];
+  const spots = placeLabels(arrows.flatMap((a) => {
+    const f = rects.get(a.from), t = rects.get(a.to);
+    return f && t && a.kind !== 'next' ? [{ key: `${a.from}/${a.index}`, at: labelAt(f, t, lanes.get(`${a.from}/${a.index}`) ?? 0), text: text(a) }] : [];
+  }));
   return (
     <svg className="sx-links" width="1" height="1">
       <defs>
@@ -30,7 +35,17 @@ export function LinkLayer({ arrows, then, rects, lanes, selected, band }: { arro
             <g key={key} className={selected === key ? 'sx-lsel' : undefined} data-link={key} data-lk={a.kind} role="button" tabIndex={0} aria-label={`${a.kind} link from ${a.from} to ${a.to}`}>
               <path d={d} fill="none" stroke={c} strokeWidth={1.5} strokeDasharray={a.mark === 'warning' ? '5 4' : WIRES[a.kind] ? undefined : '2 4'} markerEnd={`url(#${head(c)})`} />
               <path className="sx-hit" d={d} fill="none" stroke="transparent" strokeWidth={10} />
-              {a.kind !== 'next' && <text {...labelAt(f, t, lanes.get(key) ?? 0)} fill={c}>{a.kind === 'on-fail' ? 'on fail' : a.kind}</text>}
+            </g>
+          );
+        })}
+      </g>
+      <g className="sx-labels">
+        {arrows.map((a) => {
+          const key = `${a.from}/${a.index}`, p = spots.get(key);
+          return p && (
+            <g key={key}>
+              <rect className="sx-lback" x={p.x - 2} y={p.y - 9} width={labelW(text(a))} height={12} rx={2} />
+              <text {...p} fill={colour(a)}>{text(a)}</text>
             </g>
           );
         })}

@@ -805,7 +805,7 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     const leftOf = async () => Number(/left:\s*(-?[\d.]+)px/.exec((await looseBlocks.first().getAttribute('style')) ?? '')?.[1]);
     const left0 = await leftOf();
     await page.keyboard.press('Alt+ArrowRight');
-    await expect.poll(leftOf, { timeout: W }).toBe(left0 + 20);
+    await expect.poll(leftOf, { timeout: W }).toBeCloseTo(left0 + 20, 3); // the pasted spot is fractional now that Fit's zoom is
     await page.keyboard.press('Delete');
     await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(0);
     await expect.poll(() => focused('id'), { timeout: W }).toBe('run-1');
@@ -878,8 +878,11 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await page.mouse.move(sg.x, sg.y);
     await page.mouse.down();
     await page.mouse.move(sg.x + 30, sg.y + 30, { steps: 4 });
+    await page.waitForTimeout(300);
     const zb = centre((await page.getByRole('button', { name: 'Fit' }).boundingBox())!);
     await page.mouse.move(zb.x, zb.y, { steps: 8 });
+    const zb2 = centre((await page.getByRole('button', { name: 'Fit' }).boundingBox())!); // a note fading away can move the toolbar mid-drag
+    await page.mouse.move(zb2.x, zb2.y, { steps: 3 });
     await page.mouse.up();
     await page.waitForTimeout(300);
     expect(await looseBlocks.count()).toBe(loose10);
@@ -914,6 +917,30 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     // the two loose copies overlap, so a click may land on the other one: Delete acts on the focused loose block
     for (let i = 0; i < 2; i++) { await looseBlocks.first().focus(); await page.keyboard.press('Delete'); }
     await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(0);
+    // 8e.11. at 1000x700 after Fit the zoom toolbar covers no block, and the stacked inspector keeps a useful height
+    await page.setViewportSize({ width: 1000, height: 700 });
+    await row('build').locator('.sx-row').first().click();
+    await page.getByRole('button', { name: 'Fit view' }).click();
+    await page.waitForTimeout(400);
+    const geo = (await page.evaluate(`(() => {
+      const r = (el) => el.getBoundingClientRect();
+      const z = r(document.querySelector('.sx-zoom'));
+      const hit = [...document.querySelectorAll('.blk[data-id]')].filter((b) => { const q = r(b); return q.left < z.right && q.right > z.left && q.top < z.bottom && q.bottom > z.top; }).map((b) => b.dataset.id);
+      return { hit, panel: r(document.querySelector('aside[aria-label="Block panel"]')).height };
+    })()`)) as { hit: string[]; panel: number };
+    expect(geo.hit).toEqual([]);
+    expect(geo.panel).toBeGreaterThanOrEqual(180);
+    // 8e.12. the drag ghost of a repeat block shows the block's own condition, not the first option of the list
+    const cond12 = await page.getByRole('combobox', { name: 'Condition of repeat-1', exact: true }).inputValue();
+    expect(cond12).not.toBe('approve');
+    const rg = centre((await row('repeat-1').locator('.sx-grip').first().boundingBox())!);
+    await page.mouse.move(rg.x, rg.y);
+    await page.mouse.down();
+    await page.mouse.move(rg.x + 30, rg.y + 30, { steps: 6 });
+    await expect.poll(() => page.locator('.sx-ghost select[aria-label="Condition of repeat-1"]').inputValue(), { timeout: W }).toBe(cond12);
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    await page.setViewportSize({ width: 1280, height: 720 });
     // 8d.z. save, so the buffer is clean before Chat (Playwright dismisses the leave confirm)
     await textTab.click();
     await editor.focus();

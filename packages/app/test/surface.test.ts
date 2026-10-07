@@ -42,6 +42,13 @@ describe('surface', () => {
     expect(big.zoom).toBeCloseTo(720 / 1680, 9);
     expect(toScreen(big, { x: 0, y: 0 }).x).toBeCloseTo(40, 9);
   });
+  it('fitBounds may go below the manual minimum (to 10 %) for an overview; zooming out never zooms in', () => {
+    const view = { w: 800, h: 600 };
+    expect(fitBounds({ x: 0, y: 0, w: 4800, h: 100 }, view).zoom).toBeCloseTo(0.15, 9);
+    expect(fitBounds({ x: 0, y: 0, w: 99999, h: 100 }, view).zoom).toBe(0.1);
+    expect(zoomAt({ x: 0, y: 0, zoom: 0.1 }, { x: 5, y: 5 }, 1 / ZOOM.step).zoom).toBe(0.1);
+    expect(zoomAt({ x: 0, y: 0, zoom: 0.3 }, { x: 5, y: 5 }, 1 / ZOOM.step).zoom).toBe(0.25);
+  });
   it('edgePan is zero inside the margin and pushes toward the edge', () => {
     const view = { w: 800, h: 600 };
     expect(edgePan({ x: 400, y: 300 }, view)).toEqual({ x: 0, y: 0 });

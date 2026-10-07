@@ -25,6 +25,7 @@ const parseLink = (k: string) => { const i = k.lastIndexOf('/'); return { from: 
 export type EditOpts = { lay?: (l: Layout) => Layout; then?: (applied: boolean) => void };
 const ARROW: Record<string, Pt> = { ArrowUp: { x: 0, y: -1 }, ArrowDown: { x: 0, y: 1 }, ArrowLeft: { x: -1, y: 0 }, ArrowRight: { x: 1, y: 0 } };
 const NUDGE = 20, PAN = 40;
+const gridPx = (z: number) => { let s = 18 * z; while (s < 12) s *= 2; return s; }; // dots never closer than 12 px
 const NATIVE = 'input, textarea, select, option, button, .sx-menu, .sx-zoom';
 const onOf = (t: Element): Press['on'] => (t.closest(NATIVE) ? 'input' : t.closest('.sx-handle') ? 'handle' : t.closest('[data-link]') ? 'link' : t.closest('.sx-hat') ? 'hat' : t.closest('.sx-loose') ? 'loose' : t.closest('.blk') ? 'block' : 'empty');
 
@@ -60,7 +61,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
       return { ...o, w: b.width / c.zoom, h: b.height / c.zoom };
     });
     const b = boundsOf(all);
-    if (b) commit(fitBounds(b, { w: r.width, h: r.height }));
+    if (b) { const f = fitBounds(b, { w: r.width, h: r.height - 44 }, 24); commit({ ...f, y: f.y + 44 }); } // the top strip is the zoom toolbar: no block ends under it
   };
   useLayoutEffect(() => { if (!saved) fit(); }, []);
 
@@ -547,8 +548,8 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
   };
 
   return (
-    <div ref={view} className={cx('sx-view', panning && 'sx-panning', drag.kind && 'sx-dragging', parking && 'sx-parking', drag.kind && drag.kind !== 'move' && !drag.ok && 'sx-nodrop')} role="region" aria-label="Workspace" aria-describedby="sx-help" tabIndex={0}
-      style={{ backgroundPosition: `${cam.x}px ${cam.y}px`, backgroundSize: `${18 * cam.zoom}px ${18 * cam.zoom}px` }}
+    <div ref={view} className={cx('sx-view', sel.size > 1 && 'sx-multi', panning && 'sx-panning', drag.kind && 'sx-dragging', parking && 'sx-parking', drag.kind && drag.kind !== 'move' && !drag.ok && 'sx-nodrop')} role="region" aria-label="Workspace" aria-describedby="sx-help" tabIndex={0}
+      style={{ backgroundPosition: `${cam.x}px ${cam.y}px`, backgroundSize: `${gridPx(cam.zoom)}px ${gridPx(cam.zoom)}px` }}
       onKeyDown={keydown} onContextMenu={contextmenu} onPointerDown={down} onPointerMove={(e) => { ptr.current = { x: e.clientX, y: e.clientY }; }} onPointerLeave={() => { ptr.current = undefined; }} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}>
       <div className="sx-world" style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.zoom})` }}>
         <BlocksPane w={w} steps={steps} diags={diags} text={text} sel={sel} primary={primary} rev={rev} condDrag={drag.kind === 'cond'} src={drag.src} over={drag.over} linkOver={band?.to}

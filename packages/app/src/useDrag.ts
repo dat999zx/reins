@@ -76,6 +76,8 @@ export function useDrag(o: Opts) {
       if (kind !== 'move') {
         const clone = (n: Element) => {
           const c = n.cloneNode(true) as HTMLElement;
+          const live = n.querySelectorAll('select'); // a clone's <select> shows its first option: copy the live choice
+          c.querySelectorAll('select').forEach((s, i) => { s.value = live[i]!.value; });
           for (const x of [c, ...c.querySelectorAll('[data-id], [data-zone]')]) for (const a of ZONE_ATTRS) x.removeAttribute(a);
           return c;
         };

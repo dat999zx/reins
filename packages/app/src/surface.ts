@@ -1,14 +1,14 @@
 export type Pt = { x: number; y: number };
 export type Rect = { x: number; y: number; w: number; h: number };
 export type Cam = { x: number; y: number; zoom: number }; // screen = world * zoom + (x, y), in viewport pixels
-export const ZOOM = { min: 0.25, max: 2, step: 1.25, wheel: 1.1 };
+export const ZOOM = { min: 0.25, max: 2, step: 1.25, wheel: 1.1, fit: 0.1 }; // `fit`: the floor of Fit's overview, below the manual minimum
 
 export const toScreen = (c: Cam, p: Pt): Pt => ({ x: p.x * c.zoom + c.x, y: p.y * c.zoom + c.y });
 export const toWorld = (c: Cam, p: Pt): Pt => ({ x: (p.x - c.x) / c.zoom, y: (p.y - c.y) / c.zoom });
 export const clampZoom = (z: number) => Math.min(ZOOM.max, Math.max(ZOOM.min, z));
 
 export function zoomAt(c: Cam, at: Pt, factor: number): Cam {
-  const zoom = clampZoom(c.zoom * factor);
+  const zoom = factor < 1 ? Math.max(c.zoom * factor, Math.min(c.zoom, ZOOM.min)) : clampZoom(c.zoom * factor); // zooming out never zooms in from a Fit overview
   const w = toWorld(c, at);
   return { x: at.x - w.x * zoom, y: at.y - w.y * zoom, zoom };
 }
@@ -20,7 +20,7 @@ export function boundsOf(rects: Rect[]): Rect | undefined {
 }
 
 export function fitBounds(b: Rect, view: { w: number; h: number }, pad = 40): Cam {
-  const zoom = clampZoom(Math.min(1, (view.w - 2 * pad) / Math.max(b.w, 1), (view.h - 2 * pad) / Math.max(b.h, 1)));
+  const zoom = Math.max(ZOOM.fit, Math.min(1, (view.w - 2 * pad) / Math.max(b.w, 1), (view.h - 2 * pad) / Math.max(b.h, 1)));
   return { zoom, x: view.w / 2 - (b.x + b.w / 2) * zoom, y: view.h / 2 - (b.y + b.h / 2) * zoom };
 }
 

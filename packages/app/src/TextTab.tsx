@@ -159,7 +159,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
       if (file === null || !prev?.workflow) return false;
       if (busy.current || prev.for !== text) { setMsg(WAIT); return false; }
       if (prev.reformats && !confirmed.current.has(file)) {
-        if (!window.confirm('Editing here rewrites this file in the standard form. Comments, unknown lines, frontmatter comments and unknown keys, and custom order are not kept. Continue?')) return false;
+        if (!window.confirm('Editing in Blocks reformats this workflow file. Comments, unknown lines, frontmatter comments and unknown keys, and custom order are not kept. Continue?')) return false;
         confirmed.current.add(file);
       }
       const next = fn(prev.workflow);
@@ -312,7 +312,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
           {list.map((w) => (
             <li key={w.path}>
               <button aria-current={w.path === file ? 'true' : undefined} onClick={() => { if (w.path !== file) void open(w.path); }}>
-                {w.name} <span className="faint">{w.scope}</span>{w.diagnostics.some((d) => d.severity === 'error') && <span className="bad"> ●</span>}
+                <span className="sx-wfname" title={w.name}>{w.name}</span> <span className="faint">{w.scope}</span>{w.diagnostics.some((d) => d.severity === 'error') && <span className="bad"> ●</span>}
               </button>
             </li>
           ))}
@@ -324,7 +324,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
         {file === null ? <p className="hint">Pick a workflow, or make a new one.</p> : (
           <>
             <div className="ebar">
-              <b>{file.split(/[\\/]/).at(-1)}</b>{dirty && <span className="dirty" title="Unsaved changes" role="img" aria-label="unsaved changes"> ●</span>}
+              <b className="sx-wfname" title={file.split(/[\\/]/).at(-1)}>{file.split(/[\\/]/).at(-1)}</b>{dirty && <span className="dirty" title="Unsaved changes" role="img" aria-label="unsaved changes"> ●</span>}
               <span className="grow" />
               <button onClick={() => void save()} disabled={!dirty}>Save</button>
               <button className="primary" onClick={() => void run()} disabled={dirty}>Run</button>

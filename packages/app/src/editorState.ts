@@ -2,7 +2,7 @@ import type { Cond, LinkKind, Step } from '@reins/core';
 import { get, put } from './api.js';
 import { CARD_KINDS, KINDS } from './canvasKinds.js';
 import { COND_KINDS } from './condKinds.js';
-import { clampZoom, type Cam, type Pt } from './surface.js';
+import { ZOOM, type Cam, type Pt } from './surface.js';
 
 export type { Pt };
 export type Loose = { key: string; at: Pt; step: Step }; // one subtree parked on the surface; never in the file
@@ -63,7 +63,7 @@ function cleanCanvas(raw: unknown, onDropped?: (n: number) => void): CanvasView 
     const good = Object.entries(free).flatMap(([id, p]) => (isObj(p) && num(p.x) && num(p.y) ? [[id, { x: p.x, y: p.y }] as const] : []));
     if (good.length) out.free = Object.fromEntries(good);
   }
-  if (isObj(cam) && num(cam.x) && num(cam.y) && num(cam.zoom) && cam.zoom > 0) out.cam = { x: cam.x, y: cam.y, zoom: clampZoom(cam.zoom) };
+  if (isObj(cam) && num(cam.x) && num(cam.y) && num(cam.zoom) && cam.zoom > 0) out.cam = { x: cam.x, y: cam.y, zoom: Math.min(ZOOM.max, Math.max(ZOOM.fit, cam.zoom)) };
   if (isObj(script) && num(script.x) && num(script.y)) out.script = { x: script.x, y: script.y };
   if (Array.isArray(loose)) {
     const keys = new Set<string>(), list: Loose[] = [];
