@@ -26,6 +26,10 @@ describe('keys', () => {
     expect(matchKey(ev('Backspace'), 'block')).toBe('delete');
     expect(matchKey(ev('Delete'), 'any')).toBeUndefined();
   });
+  it('Delete and Backspace on the viewport delete the selection (Select all and a box leave the focus there)', () => {
+    expect(matchKey(ev('Delete'), 'view')).toBe('delete');
+    expect(matchKey(ev('Backspace'), 'view')).toBe('delete');
+  });
   it('Delete and Backspace on a link arrow delete the link', () => {
     expect(matchKey(ev('Delete'), 'link')).toBe('deleteLink');
     expect(matchKey(ev('Backspace'), 'link')).toBe('deleteLink');
@@ -81,7 +85,7 @@ describe('keys', () => {
   it('a free or loose block still answers the block keys', () => {
     expect(matchKey(ev('Delete'), 'positioned')).toBe('delete');
     expect(matchKey(ev('Enter'), 'positioned')).toBe('select');
-    expect(matchKey(ev('Delete'), 'view')).toBeUndefined();
+    expect(matchKey(ev('Enter'), 'view')).toBeUndefined();
   });
   it('an extra modifier does not match', () => {
     expect(matchKey(ev('z', { ctrl: true, alt: true }), 'any')).toBeUndefined();

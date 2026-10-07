@@ -44,7 +44,9 @@ export function useDrag(o: Opts) {
     const probe = (): { t?: Target; snap?: Over } => {
       const v = oref.current.view.current!, r = v.getBoundingClientRect();
       if (at.x < r.left || at.x > r.right || at.y < r.top || at.y > r.bottom) return {};
-      let z = document.elementFromPoint(at.x, at.y)?.closest<HTMLElement>('[data-zone]');
+      const el = document.elementFromPoint(at.x, at.y);
+      if (el?.closest('.sx-zoom')) return {}; // the toolbar floats over the surface: a release there cancels
+      let z = el?.closest<HTMLElement>('[data-zone]');
       if (z?.dataset.zone === 'hex' && kind !== 'cond') z = z.parentElement?.closest<HTMLElement>('[data-zone]'); // a step over a hexagon falls through to its block
       const zone = z && v.contains(z) ? zoneOf(z) : undefined;
       if (kind === 'cond' && zone?.type !== 'hex') return {};

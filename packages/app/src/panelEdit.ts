@@ -4,7 +4,7 @@ import type { FieldKey } from './canvasKinds.js';
 export const fieldValue = (s: Step, key: FieldKey): string =>
   (key === 'title' ? s.title : key === 'prompt' ? s.prompt : s.attrs[key]) ?? '';
 
-const validMax = (v: string) => /^\d+$/.test(v) && Number(v) >= 1;
+const validMax = (v: string) => /^\d+$/.test(v) && Number.isSafeInteger(Number(v)) && Number(v) >= 1;
 
 // Mutates the step (call it inside editStep, which clones). Empty text removes the field.
 // Returns false when the value is refused (nothing changed).

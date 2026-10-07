@@ -311,7 +311,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
         <ul>
           {list.map((w) => (
             <li key={w.path}>
-              <button aria-current={w.path === file ? 'true' : undefined} onClick={() => void open(w.path)}>
+              <button aria-current={w.path === file ? 'true' : undefined} onClick={() => { if (w.path !== file) void open(w.path); }}>
                 {w.name} <span className="faint">{w.scope}</span>{w.diagnostics.some((d) => d.severity === 'error') && <span className="bad"> ●</span>}
               </button>
             </li>

@@ -9,6 +9,8 @@ export const isTyping = (tag: string) => tag === 'INPUT' || tag === 'TEXTAREA' |
 export const KEYS: ReadonlyArray<Row> = [
   { key: 'Delete', on: 'block', act: 'delete' },
   { key: 'Backspace', on: 'block', act: 'delete' },
+  { key: 'Delete', on: 'view', act: 'delete' },
+  { key: 'Backspace', on: 'view', act: 'delete' },
   { key: 'Delete', on: 'link', act: 'deleteLink' },
   { key: 'Backspace', on: 'link', act: 'deleteLink' },
   { key: 'Enter', on: 'block', act: 'select' },

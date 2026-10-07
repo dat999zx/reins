@@ -49,7 +49,7 @@ describe('panelEdit', () => {
   it('writes max as a string; empty, zero, fractions and junk are not written', () => {
     const r = (v: string) => editStep(w(), 'r', (s) => applyField(s, 'max', v)).steps[1]!.attrs.max;
     expect(r('5')).toBe('5');
-    for (const bad of ['', '0', '-2', '1.5', 'x']) expect(r(bad)).toBe('3');
+    for (const bad of ['', '0', '-2', '1.5', 'x', '99999999999999999999']) expect(r(bad)).toBe('3');
   });
 
   it('says whether a field value was taken; a refused one changes nothing', () => {

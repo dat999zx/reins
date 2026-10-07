@@ -152,8 +152,10 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
     const k = stepKey(id), n = toggle(sel, k);
     onSel(n, n.has(k) ? id : stepIds(n).at(-1));
   };
-  const top = () => stepIds(withoutNested(w, sel));
-  const looseSel = () => (lay.loose ?? []).filter((l) => sel.has(`l:${l.key}`));
+  const top = (s: Set<Key> = sel) => stepIds(withoutNested(w, s));
+  const looseSel = (s: Set<Key> = sel) => (lay.loose ?? []).filter((l) => s.has(`l:${l.key}`));
+  // a key press acts on the focused block when that block is not part of the selection, else on the selection
+  const aim = (ev?: { cur: Key }): Set<Key> => (ev?.cur && !sel.has(ev.cur) ? new Set([ev.cur]) : sel);
   const pickLoose = (key: string, add: boolean) => {
     const k = `l:${key}`, n = add ? toggle(sel, k) : new Set([k]);
     onSel(n, add ? stepIds(n).at(-1) : undefined);
@@ -218,8 +220,8 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
     });
   };
   live.current = { onEdit, onSel, onCam, link: linkLoose, w, sel };
-  const copy = () => {
-    const s = selfContained([...takeSteps(w, top()).taken, ...looseSel().map((l) => l.step)]);
+  const copy = (at: Set<Key> = sel) => {
+    const s = selfContained([...takeSteps(w, top(at)).taken, ...looseSel(at).map((l) => l.step)]);
     if (s.length) clip = s;
     return s.length > 0;
   };
@@ -232,8 +234,8 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
     pasted.current = { ...base, n };
     stash(clip, clip.map((_, i) => ({ x: base.x + 24 * (n + i), y: base.y + 24 * (n + i) })));
   };
-  const duplicate = () => {
-    const ids = top(), lo = looseSel();
+  const duplicate = (at: Set<Key> = sel) => {
+    const ids = top(at), lo = looseSel(at);
     let made: string[] = [], keys: string[] = [];
     const parkLoose = (l: Layout) => { const r = addLoose(l, lo.map((x) => x.step), lo.map((x) => ({ x: x.at.x + 24, y: x.at.y + 24 }))); keys = r.keys; return r.lay; };
     if (!ids.length) return void (lo.length && onLayout(parkLoose) && (onSel(new Set(keys.map((k) => `l:${k}`))), (refocus.current = `l:${keys[0]}`)));
@@ -283,7 +285,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
     return k === undefined || i < 0 ? undefined : k;
   };
   const ACTS: Record<ActName, (id: string, ev?: { key: string; cur: Key }) => void> = {
-    delete: (id, ev) => { const k = id !== '' ? stepKey(id) : ev?.cur.startsWith('l:') ? ev.cur : undefined; remove(k && !sel.has(k) ? [k] : [...withoutNested(w, sel)]); },
+    delete: (id, ev) => { const k = id !== '' ? stepKey(id) : ev?.cur.startsWith('l:') ? ev.cur : undefined; if (!k && !sel.size) return; remove(k && !sel.has(k) ? [k] : [...withoutNested(w, sel)]); },
     focusPrev: (_, ev) => { const k = ev && walk(ev.cur, -1); if (k) elOf(k)?.focus({ preventScroll: true }); },
     focusNext: (_, ev) => { const k = ev && walk(ev.cur, 1); if (k) elOf(k)?.focus({ preventScroll: true }); },
     extendPrev: (_, ev) => { const k = ev && walk(ev.cur, -1); if (k) { onSel(new Set([...sel, ev.cur, k]), stepIds([k]).at(0) ?? primary); elOf(k)?.focus({ preventScroll: true }); } },
@@ -306,10 +308,10 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
     undo: () => { if (onUndo()) refocus.current = 'primary'; },
     redo: () => { if (onRedo()) refocus.current = 'primary'; },
     escape: () => one(),
-    copy: () => { copy(); },
-    cut: () => { if (copy()) remove([...withoutNested(w, sel)]); },
+    copy: (_, ev) => { copy(aim(ev)); },
+    cut: (_, ev) => { const at = aim(ev); if (copy(at)) remove([...withoutNested(w, at)]); },
     paste,
-    duplicate,
+    duplicate: (_, ev) => duplicate(aim(ev)),
     selectAll: () => { const n = allKeys(w, (lay.loose ?? []).map((l) => l.key)); onSel(n, stepIds(n).at(-1)); },
     zoomIn: () => zoom(ZOOM.step),
     zoomOut: () => zoom(1 / ZOOM.step),

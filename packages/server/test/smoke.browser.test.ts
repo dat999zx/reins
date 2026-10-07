@@ -864,6 +864,55 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await row('end-1').focus();
     await page.keyboard.press('Delete');
     await expect.poll(() => page.locator('.note').textContent(), { timeout: W }).toMatch(/free block `plan` now runs/);
+    // 8e.10. verification fixes: a release over the zoom toolbar cancels; Delete after Select all removes the selection;
+    // Ctrl+D / Ctrl+X act on the focused loose block, not on the selected step; Max beyond a safe integer is refused
+    await workspace.focus();
+    await page.keyboard.press('Escape');
+    await textTab.click();
+    const text10 = await editor.inputValue();
+    await blocksTab.click();
+    await page.waitForTimeout(600);
+    const loose10 = await looseBlocks.count();
+    const sg = centre((await row('plan').locator('.sx-grip').first().boundingBox())!);
+    // the press selects the block and may swap the side panel, which moves the toolbar: measure it once the drag runs
+    await page.mouse.move(sg.x, sg.y);
+    await page.mouse.down();
+    await page.mouse.move(sg.x + 30, sg.y + 30, { steps: 4 });
+    const zb = centre((await page.getByRole('button', { name: 'Fit' }).boundingBox())!);
+    await page.mouse.move(zb.x, zb.y, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+    expect(await looseBlocks.count()).toBe(loose10);
+    await textTab.click();
+    expect(await editor.inputValue()).toBe(text10);
+    await blocksTab.click();
+    await page.waitForTimeout(600);
+    await row('plan').locator('.sx-row').first().click();
+    await page.keyboard.press('ControlOrMeta+C');
+    const spot10 = await empty();
+    await page.mouse.move(spot10.x, spot10.y);
+    await page.keyboard.press('ControlOrMeta+V');
+    await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(1);
+    await row('build').locator('.sx-row').first().click();
+    await looseBlocks.first().focus();
+    await page.keyboard.press('ControlOrMeta+D');
+    await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(2);
+    await textTab.click();
+    expect(await editor.inputValue()).toBe(text10);
+    await blocksTab.click();
+    await workspace.focus();
+    await page.keyboard.press('ControlOrMeta+A');
+    await page.keyboard.press('Delete');
+    await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(0);
+    await page.keyboard.press('ControlOrMeta+Z');
+    await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(2);
+    await textTab.click();
+    expect(await editor.inputValue()).toBe(text10);
+    await blocksTab.click();
+    await workspace.focus();
+    await page.keyboard.press('Escape');
+    for (let i = 0; i < 2; i++) { await looseBlocks.first().click(); await page.keyboard.press('Delete'); }
+    await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(0);
     // 8d.z. save, so the buffer is clean before Chat (Playwright dismisses the leave confirm)
     await textTab.click();
     await editor.focus();
