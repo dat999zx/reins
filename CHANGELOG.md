@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com). Versions: [SemVer](https
 ## Unreleased
 
 - New step kind `end` (`## end`): stops the workflow; steps after it run only when a link jumps to them.
+- Blocks is now one pan and zoom workspace: drag the background to pan, wheel to zoom, Shift+drag to box-select. Scratch-style blocks snap into a stack; steps after an `end` are free blocks joined by drawn links. Loose blocks park ideas outside the file. Undo and redo, copy and paste, right-click menus and keyboard routes for every action.
+- The Map tab is gone; tabs are Chat, Blocks and Text.
 
 ## 0.1.2
 
