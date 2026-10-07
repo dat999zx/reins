@@ -911,7 +911,8 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await blocksTab.click();
     await workspace.focus();
     await page.keyboard.press('Escape');
-    for (let i = 0; i < 2; i++) { await looseBlocks.first().click(); await page.keyboard.press('Delete'); }
+    // the two loose copies overlap, so a click may land on the other one: Delete acts on the focused loose block
+    for (let i = 0; i < 2; i++) { await looseBlocks.first().focus(); await page.keyboard.press('Delete'); }
     await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(0);
     // 8d.z. save, so the buffer is clean before Chat (Playwright dismisses the leave confirm)
     await textTab.click();
