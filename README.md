@@ -82,6 +82,7 @@ reins run --resume <runId>      pick a run back up
 reins check <file>              validate a workflow
 reins print <file> [--write]    print it in standard form
 reins doctor                    check Node, SQLite and Claude Code
+reins --version                 print the version
 reins serve [--port <n>]        the local server, without opening a browser
 ```
 
