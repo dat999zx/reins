@@ -9,10 +9,12 @@ const STATE: Record<StepState, { text: string; words: string }> = {
   done: { text: '✓', words: 'done' },
   waiting: { text: 'waiting for you', words: 'waiting for you' },
   stuck: { text: 'out of attempts', words: 'out of attempts' },
+  failed: { text: 'failed', words: 'failed' },
 };
 
 export function StepChips({ i }: { i: StepInfo }) {
-  const st = i.state && STATE[i.state];
+  const base = i.state && STATE[i.state];
+  const st = base && i.why ? { text: `${base.text} (${i.why})`, words: `${base.words} (${i.why})` } : base;
   const tries = i.attempts === undefined ? undefined : i.state === 'stuck' ? `${i.attempts} tries used` : `attempt ${i.attempts + 1}`;
   const cost = i.cost > 0 ? `$${i.cost.toFixed(4)}` : undefined;
   const text = [st && st.text, tries, cost].filter(Boolean);

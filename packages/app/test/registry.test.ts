@@ -10,7 +10,13 @@ const ctx = { sess, act: { answer: async () => {}, resume: () => {} } };
 
 describe('row registry', () => {
   it('collects one renderer per file in rows/', () => {
-    for (const t of ['message', 'engine', 'question', 'receipt', 'run_started', 'say']) expect(rowTypes()).toContain(t);
+    for (const t of ['message', 'engine', 'question', 'receipt', 'run_started', 'say', 'step_started']) expect(rowTypes()).toContain(t);
+  });
+
+  it('draws a step start as a divider and hides command_result', () => {
+    expect(JSON.stringify(renderRow(row('step_started', { step: 'plan', parents: [] }), ctx))).toMatch(/sx-stepdiv.*"step ","plan"/);
+    expect(hidden.has('command_result')).toBe(true);
+    expect(renderRow(row('command_result', { step: 'run-1', exitCode: 1 }), ctx)).toBeNull();
   });
 
   it('draws a type with no file through the generic renderer, naming the type', () => {

@@ -149,7 +149,8 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .sstate.active { border-color: var(--brand); color: var(--brand); }
 .sstate.waiting { border-color: var(--gate); color: var(--gate); padding: 0 7px; border-radius: 9px; }
 .sstate.done { border-color: var(--ok); color: var(--ok); }
-.sstate.stuck, .sstate.bad { border-color: var(--bad); color: var(--bad); }
+.sstate.stuck, .sstate.bad, .sstate.failed { border-color: var(--bad); color: var(--bad); }
+.sx-stepdiv { color: var(--mute); }
 @media (prefers-reduced-motion: no-preference) {
   .sstate.active { animation: sstate-pulse 1.6s ease-in-out infinite; }
   @keyframes sstate-pulse { 50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 30%, transparent); } }
