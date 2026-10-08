@@ -9,6 +9,7 @@ export default defineConfig({
   test: {
     passWithNoTests: true,
     environment: 'node',
+    fileParallelism: false,
     // Server tests spawn real child processes (fake claude, MCP server); on a busy Windows box that
     // outruns vitest's 5 s default and flakes. Nothing here should need more than this.
     testTimeout: 30_000,

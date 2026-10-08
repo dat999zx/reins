@@ -6,7 +6,7 @@ import { ApiError, get, initToken, post, stream } from './api.js';
 import { Chat } from './Chat.js';
 import { loadEditorState, makeSaver, type EditorState, type Tab } from './editorState.js';
 import { Rail } from './Rail.js';
-import { afterOf, initial, loadSessions, reduceAll, takeRefill, type SessionView, type State } from './state.js';
+import { afterOf, finishReplay, initial, loadSessions, reduceAll, takeRefill, type SessionView, type State } from './state.js';
 
 const loadedAt = Date.now();
 type Engines = Array<{ id: string } & EngineProbe>;
@@ -64,6 +64,11 @@ export function App() {
       flush();
       es = stream(afterOf(stRef.current));
       es.onopen = () => setReconnecting(false);
+      es.addEventListener('replay_done', () => {
+        clearTimeout(timer);
+        flush();
+        commit(finishReplay(stRef.current));
+      });
       es.onmessage = (m) => {
         buffer.push(JSON.parse(m.data));
         // A timer, not requestAnimationFrame: rAF never fires in a background tab, so a waiting badge would never show.

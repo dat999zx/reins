@@ -284,6 +284,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     const write = (row: LogRow) => { res.write(`data: ${JSON.stringify(row)}\n\n`); };
     // Replay and subscribe in one tick, so no row can fall between the two.
     for (const id of sessions.keys()) for (const row of o.store.readLog(id, after.get(id) ?? 0)) write(row);
+    res.write('event: replay_done\ndata: {}\n\n');
     subs.add(write);
     const beat = setInterval(() => res.write(': heartbeat\n\n'), o.heartbeatMs ?? 15_000);
     req.on('close', () => { clearInterval(beat); subs.delete(write); });

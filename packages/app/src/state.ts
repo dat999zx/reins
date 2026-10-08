@@ -1,14 +1,15 @@
 import type { LogRow } from '@reins/server/store.js';
 import type { SessionStatus } from '@reins/server/session.js';
 
-export interface Call { result?: unknown; refused?: string }
+export interface Call { result?: unknown; refused?: string; ms?: number }
 export interface Sess {
   id: string; cwd: string; autoApprove: boolean; status: SessionStatus; rows: LogRow[]; lastSeq: number; lastTs: number; cost: number;
   explicitTitle?: string; firstMessage?: string;
+  replaySeq?: number;
   open: string[]; answers: Record<string, string>; closed: Record<string, string>;
-  detached: string[]; calls: Record<number, Call>; queue: Array<{ seq: number; tool: string }>; refill?: string;
+  detached: string[]; calls: Record<number, Call>; queue: Array<{ seq: number; tool: string; ts: number }>; refill?: string;
 }
-export interface State { sessions: Record<string, Sess> }
+export interface State { sessions: Record<string, Sess>; replayed?: boolean }
 export interface SessionView { id: string; cwd: string; title?: string; autoApprove: boolean; status: SessionStatus; createdAt?: number; updatedAt?: number }
 
 export const initial = (): State => ({ sessions: {} });
@@ -23,10 +24,17 @@ export function loadSessions(state: State, views: SessionView[]): State {
   const sessions = { ...state.sessions };
   for (const v of views) {
     if (sessions[v.id]) continue;
-    sessions[v.id] = { ...blank(v.id), cwd: v.cwd, autoApprove: v.autoApprove, status: v.status, ...(v.title ? { explicitTitle: v.title } : {}) };
+    sessions[v.id] = { ...blank(v.id), ...(state.replayed ? { replaySeq: 0 } : {}), cwd: v.cwd, autoApprove: v.autoApprove, status: v.status, ...(v.title ? { explicitTitle: v.title } : {}) };
   }
-  return { sessions };
+  return { ...state, sessions };
 }
+
+/** Freeze history only after the SSE replay marker, not its first 16ms batch. */
+export function finishReplay(state: State): State {
+  if (state.replayed) return state;
+  return { ...state, replayed: true, sessions: Object.fromEntries(Object.entries(state.sessions).map(([id, s]) => [id, { ...s, replaySeq: s.lastSeq }])) };
+}
+export const isFresh = (sess: Sess, seq: number, seenSeq = 0): boolean => seq > Math.max(sess.replaySeq ?? Infinity, seenSeq);
 
 function apply(s: Sess, row: LogRow, loadedAt: number): Sess {
   const n: Sess = { ...s, lastSeq: row.seq, lastTs: row.ts };
@@ -68,13 +76,13 @@ function apply(s: Sess, row: LogRow, loadedAt: number): Sess {
       if (row.ts >= loadedAt && Array.isArray(x.cards)) n.refill = x.cards.join('\n\n');
       break;
     case 'engine':
-      if (x.type === 'tool_call') n.queue = [...s.queue, { seq: row.seq, tool: x.tool }];
+      if (x.type === 'tool_call') n.queue = [...s.queue, { seq: row.seq, tool: x.tool, ts: row.ts }];
       else if (x.type === 'tool_result' || x.type === 'refusal') {
         const at = x.type === 'refusal' ? 0 : s.queue.findIndex((c) => c.tool === x.tool);
         const call = s.queue[at];
         if (call) {
           n.queue = s.queue.filter((_, i) => i !== at);
-          n.calls = { ...s.calls, [call.seq]: x.type === 'refusal' ? { refused: x.reason } : { result: x.output } };
+          n.calls = { ...s.calls, [call.seq]: { ...(x.type === 'refusal' ? { refused: x.reason } : { result: x.output }), ms: row.ts - call.ts } };
         }
       }
       break;
@@ -89,19 +97,19 @@ export function reduceAll(state: State, rows: LogRow[], loadedAt: number): State
   const sessions = { ...state.sessions };
   const copied = new Set<string>();
   for (const row of rows) {
-    let s = sessions[row.sessionId] ?? blank(row.sessionId);
+    let s = sessions[row.sessionId] ?? { ...blank(row.sessionId), ...(state.replayed ? { replaySeq: 0 } : {}) };
     if (row.seq <= s.lastSeq) continue;
     if (!copied.has(s.id)) { s = { ...s, rows: [...s.rows] }; copied.add(s.id); }
     sessions[s.id] = apply(s, row, loadedAt);
   }
-  return copied.size ? { sessions } : state;
+  return copied.size ? { ...state, sessions } : state;
 }
 
 export function takeRefill(state: State, id: string, input: string): { state: State; text: string } {
   const s = state.sessions[id];
   if (!s?.refill || input !== '') return { state, text: input };
   const { refill, ...rest } = s;
-  return { state: { sessions: { ...state.sessions, [id]: rest } }, text: refill };
+  return { state: { ...state, sessions: { ...state.sessions, [id]: rest } }, text: refill };
 }
 
 export const title = (s: Sess) => s.explicitTitle || s.firstMessage || 'New chat';

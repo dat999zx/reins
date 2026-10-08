@@ -17,7 +17,7 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
 }) {
   const base = `/api/sessions/${sess.id}`;
   const log = useRef<HTMLDivElement>(null);
-  const stick = useRef(true);
+  const [stick, setStick] = useState(true);
   const [fresh, setFresh] = useState(false);
   const [open, setOpen] = useState<Record<string, boolean>>({}); // the user's open / closed choice per knot, in memory
   const [reveal, setReveal] = useState<{ runId: string; id: string; n: number }>();
@@ -60,9 +60,19 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
   useLayoutEffect(() => {
     const el = log.current;
     if (!el) return;
-    if (stick.current) el.scrollTop = el.scrollHeight;
+    if (stick) el.scrollTop = el.scrollHeight;
     else setFresh(true);
   }, [sess.rows.length, tab]);
+
+  useLayoutEffect(() => {
+    const el = log.current;
+    const content = el?.querySelector('.sx-rein');
+    if (!stick || !el || !content) return;
+    const observer = new ResizeObserver(() => { el.scrollTop = el.scrollHeight; });
+    observer.observe(content);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [stick, tab]);
 
   return (
     <main className="chat">
@@ -90,10 +100,11 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
             onToggle={(key, next) => setOpen((o) => ({ ...o, [key]: next }))} onBlock={toBlock}
             onScroll={(e) => {
               const el = e.currentTarget;
-              stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-              if (stick.current) setFresh(false);
+              const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+              setStick(bottom);
+              if (bottom) setFresh(false);
             }} />
-          {fresh && <button className="pill" onClick={() => { stick.current = true; setFresh(false); log.current!.scrollTop = log.current!.scrollHeight; }}>new activity ↓</button>}
+          {fresh && <button className="pill" onClick={() => { setStick(true); setFresh(false); log.current!.scrollTop = log.current!.scrollHeight; }}>Jump to live ↓</button>}
           <Composer key={sess.id} id={sess.id} cwd={sess.cwd} busy={busy} catalogue={catalogue} takeRefill={takeRefill} />
         </>
       ) : (

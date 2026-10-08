@@ -292,6 +292,41 @@ describe('feed: words', () => {
 });
 
 describe('feed: 500 rows', () => {
+  it('reports twenty warmed calls over exactly 500 rows, including results and refusals', () => {
+    reset();
+    const rows: LogRow[] = [];
+    for (let t = 0; t < 20; t++) {
+      rows.push(plain('message', { text: `Synthetic turn ${t}` }));
+      for (let j = 0; j < 8; j++) rows.push(eng({ type: 'text', text: `Turn ${t} line ${j}` }));
+      rows.push(eng({ type: 'tool_call', tool: 'Read', input: {} }), eng({ type: 'tool_result', tool: 'Read', output: 'x' }),
+        eng({ type: 'tool_call', tool: 'Edit', input: {} }), eng({ type: 'refusal', reason: 'read-only' }));
+      for (let j = 0; j < 7; j++) rows.push(eng({ type: 'text', text: `Turn ${t} tail ${j}` }));
+      rows.push(plain('turn_ended', { cost: .01 }));
+    }
+    rows.push(started(Array.from({ length: 6 }, (_, i) => ({ id: `s${i}`, kind: 'phase', title: `Step ${i}` }))));
+    for (let i = 0; i < 6; i++) {
+      rows.push(ss(`s${i}`), row('turn_started', { step: `s${i}` }));
+      for (let j = 0; j < (i === 0 ? 25 : 6); j++) rows.push(eng({ type: 'text', text: `Step ${i} bead ${j}` }, 'r1'));
+      rows.push(row('turn_ended', { step: `s${i}`, cost: .01 }));
+    }
+    rows.push(row('run_finished', {}), row('receipt', {}), plain('message', { text: 'Last synthetic turn' }),
+      eng({ type: 'tool_call', tool: 'Read', input: {} }), eng({ type: 'tool_result', tool: 'Read', output: 'x' }), eng({ type: 'text', text: 'LAST-500' }));
+    expect(rows).toHaveLength(500);
+    const s = reduceAll(initial(), rows, 0).sessions.s1!;
+    const merged = mergeOutput(rows), view = runView(s);
+    const draw = () => feed(merged, view, new Set());
+    const f = draw();
+    expect(f.pieces).toHaveLength(43);
+    const strand = f.pieces.find((p) => p.type === 'run') as Extract<Piece, { type: 'run' }>;
+    expect(knots(strand).at(-1)?.key).toBe('r1:6');
+    expect(knots(strand).at(-1)?.beads).toHaveLength(6);
+    expect((f.pieces.at(-1) as Extract<Piece, { type: 'turn' }>).knot.beads.at(-1)?.seq).toBe(500);
+    const began = performance.now();
+    for (let i = 0; i < 20; i++) draw();
+    const average = (performance.now() - began) / 20;
+    console.info(`Batch 4 feed(500 rows), warmed 20-call average: ${average.toFixed(3)} ms`);
+    expect(average).toBeLessThan(2000);
+  });
   it('walks a 500-row log, keeps the last row, and reports the time', () => {
     reset();
     const rows: LogRow[] = [];

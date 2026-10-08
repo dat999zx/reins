@@ -11,6 +11,28 @@ const ctx = { sess, act: { answer: async () => {}, resume: () => {} } };
 const text = (n: unknown) => renderToStaticMarkup(n as never).replace(/<[^>]+>/g, '');
 
 describe('row registry', () => {
+  it('keeps generic JSON out of the summary and agent text out of live regions', () => {
+    const html = renderToStaticMarkup(renderRow(row('new_event', { secret: 123 }), ctx));
+    expect(html).toMatch(/<summary>new event<\/summary>/);
+    expect(html).toContain('<pre>');
+    expect(renderToStaticMarkup(renderRow(row('engine', { type: 'text', text: 'hello' }), ctx))).not.toContain('aria-live');
+  });
+
+  it('tools mount output lazily, show timing, and spin only in the running knot', () => {
+    const r = row('engine', { type: 'tool_call', tool: 'Read', input: { path: 'file' } });
+    const html = (c: typeof ctx & { running?: boolean }) => renderToStaticMarkup(renderRow(r, c));
+    expect(html(ctx)).not.toContain('<pre');
+    expect(html(ctx)).not.toContain('sx-spin');
+    expect(html({ ...ctx, running: true })).toContain('sx-spin');
+    expect(html({ ...ctx, sess: { ...sess, calls: { 1: { result: 'ok', ms: 400 } } } })).toContain('✓ 0.4 s');
+    expect(html({ ...ctx, sess: { ...sess, calls: { 1: { refused: 'read-only', ms: 400 } } } })).toContain('✗ blocked');
+  });
+
+  it('output collapses behind its last nonempty line', () => {
+    const html = renderToStaticMarkup(renderRow(row('command_output', { chunk: 'first\nlast\n' }), ctx));
+    expect(html).toMatch(/<details[^>]*output/);
+    expect(html).toContain('<summary>output · last</summary>');
+  });
   it('collects one renderer per file in rows/', () => {
     for (const t of ['message', 'engine', 'question', 'receipt', 'run_started', 'say', 'step_started']) expect(rowTypes()).toContain(t);
   });

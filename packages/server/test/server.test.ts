@@ -230,6 +230,21 @@ describe('state, probing and sessions (3b.6 1526-1528, 1543)', () => {
 });
 
 describe('the SSE stream (3b.6 1539, 1553)', () => {
+  it('marks the replay boundary after all history and before live rows, without logging a control row', async () => {
+    const w = await boot();
+    const id = await w.session();
+    w.store.appendLog(id, { type: 'note', data: { text: 'history' } });
+    const count = w.store.readLog(id).length;
+    const s = openStream(w.srv);
+    await until(() => s.events.length > 0);
+    expect(s.events).toEqual([{ event: 'replay_done', rows: count }]);
+    expect(s.rows).toEqual(w.store.readLog(id));
+    const live = await w.session();
+    await until(() => s.rows.some((r) => r.sessionId === live));
+    expect(s.events).toHaveLength(1);
+    expect(s.rows.slice(count).every((r) => r.sessionId === live)).toBe(true);
+    expect(w.store.readLog(id)).toHaveLength(count);
+  });
   it('replays from after=<session>:<seq>, follows live, replays an unknown session from 0, and delivers new sessions', async () => {
     const w = await boot();
     const id = await w.session();

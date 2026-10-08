@@ -6,7 +6,10 @@ import { drawable, hidden } from './rows/hidden.js';
 import type { Sess } from './state.js';
 
 export interface Actions { answer(questionId: string, answer: string): Promise<void>; resume(runId: string): void }
-export interface Ctx { sess: Sess; act: Actions; card?: Map<number, CardState> }
+export interface Ctx {
+  sess: Sess; act: Actions; card?: Map<number, CardState>;
+  thinking?: { heads: Set<number>; now?: number }; running?: boolean; seenSeq?: number;
+}
 export interface RowDef { type: string; render(row: LogRow, ctx: Ctx): ReactNode }
 
 const defs = new Map(Object.values(import.meta.glob<RowDef>('./rows/*.tsx', { eager: true })).map((m) => [m.type, m]));

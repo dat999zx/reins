@@ -422,3 +422,43 @@ input.sx-num { min-width: 2.5ch; padding: 1px 6px; text-align: center; }
 .sx-track > .sx-bead::before { content: ''; position: absolute; left: -17px; top: 10px; width: 12px; border-top: 2px dotted var(--line2); }
 .sx-feed .msg.agent { font-size: 13px; line-height: 1.5; color: var(--ink); }
 .sx-knots > .sx-bead:last-child .receipt { margin-top: 4px; }
+
+/* Live beads hang from the rein; motion belongs only to its working end. */
+.log.sx-feed { scroll-padding-top: 40px; }
+.sx-feed { padding-top: 0; }
+.sx-nowbar { position: sticky; top: 0; z-index: 5; background: var(--bg); }
+.sx-nowbar:has(button) { padding: 3px 0 3px 34px; min-height: 40px; }
+.sx-nowbar > [role='status'] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.sx-nowbar button { min-height: 34px; padding: 5px 10px; background: var(--panel); color: var(--ink); border-color: var(--line2); }
+.sx-kbtn { flex: 0 1 auto; }
+.sx-knotrow { flex-wrap: wrap; }
+.sx-kstate, .sx-kbtn[aria-expanded='false'] .sx-kstate { color: var(--mute); }
+.sx-track { content-visibility: auto; contain-intrinsic-size: auto 120px; }
+.sx-track > .sx-bead::before { content: none; }
+.sx-hmark { left: 11.5px; }
+.sx-feed :is(.muted, .faint, .arg, .output, .tool pre, .receipt dt) { color: var(--mute); }
+.sx-feed pre { max-height: 240px; overflow: auto; }
+.sx-feed details > summary { cursor: pointer; overflow-wrap: anywhere; }
+.sx-feed details.output > summary { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sx-took { display: inline-block; margin-left: 8px; color: var(--mute); }
+.sx-spin { display: inline-block; width: 11px; height: 11px; border: 2px solid var(--mute); border-right-color: transparent; border-radius: 50%; vertical-align: middle; }
+.sx-wave { display: inline-block; color: var(--c, var(--brand)); margin-right: 4px; }
+.sx-working { color: var(--mute); font-size: 12px; }
+.sx-seg { overflow: hidden; width: 2px; }
+.sx-knot[data-state='waiting'] > .sx-knotrow > .sx-seg { width: 3px; background: var(--gate); }
+.sx-knot[data-state='waiting'] > .sx-knotrow::before { top: 26px; left: calc(12px + var(--depth) * 14px); height: 2px; width: 9px; background: var(--gate); }
+.sx-knot[data-state='failed'] > .sx-knotrow > .sx-seg, .sx-knot[data-state='stopped'] > .sx-knotrow > .sx-seg { background: color-mix(in srgb, var(--bad) 60%, var(--strap)); }
+.sx-knot[data-state='stuck'] > .sx-knotrow > .sx-seg { background: repeating-linear-gradient(to bottom, var(--bad) 0 5px, transparent 5px 9px); }
+.sx-knot[data-state='paused'] > .sx-knotrow > .sx-seg { background: repeating-linear-gradient(to bottom, var(--gate) 0 5px, transparent 5px 9px); }
+.sx-knot[data-running='true'] > .sx-knotrow > .sx-dot { box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px color-mix(in srgb, var(--c, var(--mute)) 45%, transparent); }
+.sx-knot[data-state='done'] > .sx-knotrow > .sx-dot { background: color-mix(in srgb, var(--c, var(--mute)) 60%, var(--strap)); }
+@media (prefers-reduced-motion: no-preference) {
+  .sx-new { animation: sx-bead-in 160ms ease-out; }
+  .sx-knot[data-running='true'] > .sx-knotrow > .sx-seg::after { content: ''; position: absolute; inset: 0 0 auto; height: 24px; background: var(--c, var(--mute)); animation: sx-flow 1.6s linear infinite; }
+  .sx-wave { animation: sx-breathe 1.6s ease-in-out infinite; }
+  .sx-spin { animation: sx-spin 1s linear infinite; }
+}
+@keyframes sx-bead-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes sx-flow { from { transform: translateY(-24px); opacity: .3; } to { transform: translateY(160px); opacity: 1; } }
+@keyframes sx-breathe { 0%, 100% { opacity: .5; transform: scaleY(.8); } 50% { opacity: 1; transform: scaleY(1.2); } }
+@keyframes sx-spin { to { transform: rotate(360deg); } }
