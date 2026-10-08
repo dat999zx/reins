@@ -9,7 +9,8 @@ import { restoreFile, restoreStep, type CanvasView, type EditorState, type Layou
 import { highlight, lineOffset } from './highlight.js';
 import { emptyHistory, push, redo, undo } from './history.js';
 import type { Sess } from './state.js';
-import { firstRowOf, sameSteps, type RunView } from './runState.js';
+import { didNotStart, firstRowOf, PHASE, sameSteps, stepPos, type RunView } from './runState.js';
+import { RunDock } from './RunDock.js';
 import type { Actions } from './rows.js';
 import { BlockPanel, WorkflowPanel } from './BlockPanel.js';
 import { flatSteps } from './canvas.js';
@@ -35,10 +36,11 @@ const toWorkspace = (ok: boolean) => { if (ok) document.querySelector<HTMLElemen
 const template = (name: string) =>
   `---\nreins: 1\nname: ${name}\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n## phase plan\n> Plan the change.\n\n## phase build\n> Make the change.\n`;
 
-export function TextTab({ view, onView, sess, run, restore, onState, onDirty, onRun, reveal, onRevealed, onChat }: {
-  view: Exclude<Tab, 'chat'>; onView: (t: 'text') => void;
+export function TextTab({ view, onView, sess, run, act, restore, onState, onDirty, onRun, reveal, onRevealed, onChat, dockOpen, onDockOpen }: {
+  view: Exclude<Tab, 'chat'>; onView: (t: Exclude<Tab, 'chat'>) => void;
   sess: Sess; run: RunView; act: Actions; restore?: EditorState; onState: (patch: Partial<EditorState>) => void; onDirty: (dirty: boolean) => void; onRun: () => void;
   reveal?: { runId: string; id: string; n: number }; onRevealed: () => void; onChat: (step?: string) => void;
+  dockOpen: boolean; onDockOpen(o: boolean): void;
 }) {
   const base = `/api/sessions/${sess.id}`;
   const [list, setList] = useState<Listed[]>([]);
@@ -61,6 +63,12 @@ export function TextTab({ view, onView, sess, run, restore, onState, onDirty, on
   }, [stepId, prev?.workflow, lay.loose]);
   const [name, setName] = useState('');
   const [msg, setMsg] = useState('');
+  const [starting, setStarting] = useState<{ seq: number }>();
+  const [dismissed, setDismissed] = useState<string>();
+  const sessionBusy = sess.status === 'running' || sess.status === 'waiting';
+  useEffect(() => {
+    if (starting && sess.rows.some((r) => r.seq > starting.seq && r.type === 'run_started')) setStarting(undefined);
+  }, [sess.rows, starting]);
   const ta = useRef<HTMLTextAreaElement>(null);
   const pre = useRef<HTMLPreElement>(null);
   const gutter = useRef<HTMLDivElement>(null);
@@ -254,7 +262,10 @@ export function TextTab({ view, onView, sess, run, restore, onState, onDirty, on
       setMsg(e instanceof ApiError && e.status === 409 ? 'A workflow with that name already exists.' : (e as Error).message);
     }
   };
-  const startRun = () => post(`${base}/run`, { path: file }).then(onRun).catch((e) => setMsg(e.message));
+  const startRun = () => {
+    if (view === 'blocks') { setStarting({ seq: sess.lastSeq }); onDockOpen(true); setDismissed(undefined); }
+    return post(`${base}/run`, { path: file }).then(() => { if (view === 'text') onRun(); }).catch((e) => { setStarting(undefined); setMsg(e.message); });
+  };
 
   const marks = useMemo(() => {
     const m = new Map<number, 'error' | 'warning'>();
@@ -267,7 +278,10 @@ export function TextTab({ view, onView, sess, run, restore, onState, onDirty, on
   const match = run.stepsAtStart ? same : !dirty;
   const ours = prev?.name !== undefined && prev.name === run.workflow;
   const showStatus = ours && match;
-  const stale = ours && run.stepsAtStart !== undefined && !!prev?.workflow && !same;
+  const showDock = starting !== undefined || ((dismissed === undefined || dismissed !== run.runId) && (ours || run.phase === 'busy' || (!prev?.workflow && (run.live || PHASE[run.phase].ended))));
+  const refused = starting && didNotStart(sess.rows, starting.seq);
+  const startWords = refused ? refused === 'The run did not start.' ? refused : `The run did not start: ${refused}` : starting ? 'Starting the run…' : undefined;
+  const now = showStatus && run.live ? [...run.current].reverse().find((id) => prev?.steps.some((s) => s.id === id)) : undefined;
   // The knot's "Blocks ↗" from Chat: consumed once, and only when the preview of the open buffer is here (it starts empty and arrives after a delay).
   // ponytail: for a step of a workflow that is not open, or of an earlier run, it only says so; it never opens the file.
   const consumed = useRef<number | undefined>(undefined);
@@ -343,14 +357,23 @@ export function TextTab({ view, onView, sess, run, restore, onState, onDirty, on
         {view === 'blocks' && prev?.workflow && known && <Palette onAdd={add} onCond={cond} press={press} />}
       </aside>
       <section className="editor">
-        {view === 'blocks' && stale && <p className="sx-dockline" role="note">The file changed since this run started; marks are hidden.</p>}
+        {view === 'blocks' && (showDock ? <RunDock run={run} sess={sess} act={act} budget={prev?.workflow?.budget}
+          pos={showStatus && prev?.workflow ? stepPos(prev.workflow, run.current) : undefined} match={!ours || match}
+          open={dockOpen} onOpen={onDockOpen} starting={startWords} onChat={() => onChat()} onDismiss={() => setDismissed(run.runId)} />
+          : sess.status === 'waiting' ? <p className="sx-dockline">The agent is waiting for you in Chat. <button onClick={() => onChat()}>Chat</button></p>
+          : run.live ? <p className="sx-dockline">A run of `{run.workflow}` is going. <button onClick={() => {
+            const entry = list.find((w) => w.name === run.workflow);
+            if (entry) void open(entry.path); else setMsg(`Open \`${run.workflow}\` from the list.`);
+          }}>Open it</button></p> : null)}
         {file === null ? <p className="hint">Pick a workflow, or make a new one.</p> : (
           <>
             <div className="ebar">
               <b className="sx-wfname" title={file.split(/[\\/]/).at(-1)}>{file.split(/[\\/]/).at(-1)}</b>{dirty && <span className="dirty" title="Unsaved changes" role="img" aria-label="unsaved changes"> ●</span>}
               <span className="grow" />
               <button onClick={() => void save()} disabled={!dirty}>Save</button>
-              <button className="primary" onClick={() => void startRun()} disabled={dirty}>Run</button>
+              {view === 'text' && run.phase === 'waiting' && <><span role="status">Waiting for you. Answer in Blocks or Chat.</span><button onClick={() => onView('blocks')}>Blocks</button></>}
+              <button className="primary" onClick={() => void startRun()} disabled={dirty || sessionBusy}
+                title={dirty ? 'Save first: a run uses the saved file.' : sessionBusy ? 'A run or a chat turn is going. Stop it first.' : undefined}>Run</button>
             </div>
             {visual && prev && !(prev.workflow && known) && <p className="hint">This file does not parse. Fix it in the Text tab.</p>}
             {visual && prev?.workflow && known && (
@@ -398,7 +421,7 @@ export function TextTab({ view, onView, sess, run, restore, onState, onDirty, on
               <h3>What the agent receives</h3>
               <ol>
                 {(prev?.steps ?? []).map((s) => (
-                  <li key={s.id} style={{ paddingLeft: s.depth * 14 }}>
+                  <li key={s.id} className={s.id === now ? 'sx-now-step' : undefined} aria-current={s.id === now ? 'step' : undefined} style={{ paddingLeft: s.depth * 14 }}>
                     <button aria-pressed={s.id === stepId} onClick={() => setStepId(s.id)}>{s.kind}{s.title ? ` ${s.title}` : ''}</button>
                     {/* ponytail: a use step gets no chip; its inlined steps run as block/id, which no listed id matches */}
                     {showStatus && run.steps[s.id] && <StepChips i={run.steps[s.id]!} />}

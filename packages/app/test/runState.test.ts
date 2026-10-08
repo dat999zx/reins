@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { LogRow } from '@reins/server/store.js';
 import { initial, reduceAll } from '../src/state.js';
-import { PHASE, firstRowOf, runView, sameSteps, type RunPhase } from '../src/runState.js';
+import { PHASE, didNotStart, firstRowOf, meter, runView, sameSteps, stepPos, type RunPhase } from '../src/runState.js';
+import { parseWorkflow } from '@reins/core';
 import { runRows, stepStatus } from '../src/stepStatus.js';
 
 let seq = 0;
@@ -17,6 +18,49 @@ const sess = (rows: LogRow[]) => reduceAll(initial(), rows, 0).sessions.s1!;
 const view = (rows: LogRow[]) => runView(sess(rows));
 const ask = (id: string, kind: string, runId = 'r1') => row('question', { id, kind, prompt: 'p' }, runId);
 const reset = () => { seq = 0; };
+
+describe('dock facts', () => {
+  it('latest line includes say and turn failures', () => {
+    reset();
+    expect(view([started(), text('agent'), row('say', { text: 'budget used' })]).last?.text).toBe('budget used');
+    expect(view([started(), row('turn_failed', { error: 'engine died' })]).last?.text).toBe('engine died');
+  });
+  const w = parseWorkflow('---\nreins: 1\nname: demo\nbudget: { turns: 40, minutes: 30, usd: 4 }\nalways: []\n---\n\n## phase plan\n> Plan.\n\n## repeat\nid: loop\nuntil: tests pass\nmax: 2\n\n### phase build\n> Build.\n\n## use demo\nid: use-1\n\n## end\n').workflow!;
+  it('counts top-level headers, including containers, use and end', () => {
+    expect(stepPos(w, ['plan'])).toEqual({ n: 1, m: 4 });
+    expect(stepPos(w, ['loop', 'build'])).toEqual({ n: 2, m: 4 });
+    expect(stepPos(w, ['build'])).toEqual({ n: 2, m: 4 });
+    expect(stepPos(w, ['use-1', 'blk/plan'])).toEqual({ n: 3, m: 4 });
+    expect(stepPos(w, ['missing'])).toBeUndefined();
+    expect(stepPos(w, [])).toBeUndefined();
+  });
+  it.each([[31, 'ok'], [32, 'near'], [40, 'over']] as const)('turn meter at %i', (turns, level) => {
+    const v = view([started()]); v.turns = turns;
+    expect(meter(v, w.budget, 0)[0]).toMatchObject({ key: 'turns', level, enforced: true });
+    expect(meter(v, w.budget, 0)[0]!.text).toContain(`${turns} / 40 turns`);
+  });
+  it('minutes and money report unenforced limits; ended time freezes; absent usd stays absent', () => {
+    const v = view([started()]); v.startedAt = 0; v.cost = 5;
+    const items = meter(v, w.budget, 31 * 60_000);
+    for (const item of items.slice(1)) expect(item).toMatchObject({ level: 'over', enforced: false, text: expect.stringContaining('over (not enforced)') });
+    v.endedTs = 60_000;
+    expect(meter(v, { turns: 40, minutes: 30 }, 31 * 60_000)).toEqual([
+      { key: 'turns', text: '0 / 40 turns', level: 'ok', enforced: true },
+      { key: 'minutes', text: '1m 00s / 30m', level: 'ok', enforced: false },
+    ]);
+  });
+  it('does not report a refused start before a busy-to-idle transition', () => {
+    reset(); const before = status('idle');
+    expect(didNotStart([before], before.seq)).toBeUndefined();
+    const working = status('running');
+    expect(didNotStart([before, working], before.seq)).toBeUndefined();
+    const note = plain('note', { text: 'The workflow is not trusted, so it did not run.' });
+    const idle = status('idle');
+    expect(didNotStart([before, working, note, idle], before.seq)).toBe('The workflow is not trusted, so it did not run.');
+    expect(didNotStart([before, working, started(), note, idle], before.seq)).toBeUndefined();
+    expect(didNotStart([before, working, idle], before.seq)).toBe('The run did not start.');
+  });
+});
 
 describe('runView phase', () => {
   it('none: no rows with a run, idle', () => {

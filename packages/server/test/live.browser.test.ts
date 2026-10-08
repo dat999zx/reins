@@ -63,6 +63,7 @@ describe.skipIf(skip)('live run e2e', () => {
     const folderB = tmpDir();
     fs.mkdirSync(path.join(folderA, '.reins', 'workflows'), { recursive: true });
     fs.writeFileSync(path.join(folderA, '.reins', 'workflows', 'live.reins.md'), LIVE('node --version'));
+    fs.writeFileSync(path.join(folderA, '.reins', 'workflows', 'live2.reins.md'), LIVE('node -v').replace('name: live\n', 'name: live2\n'));
     const folders = [folderA, folderB];
     store = openStore(':memory:');
     srv = await startServer({
@@ -264,6 +265,50 @@ describe.skipIf(skip)('live run e2e', () => {
     await expect.poll(() => log.locator('.sx-nowbar [role="status"]').innerText()).toBe('');
     await firstGate.locator('.sx-kbtn').click();
     expect(await firstGate.locator('.sx-new').count()).toBe(0);
+    // L2. Run from Blocks stays here; held tool and gate questions use the same cards in the dock.
+    await page.locator('.chead .status.idle').waitFor();
+    await tab('Blocks').click();
+    await page.locator('.wflist button', { has: page.locator('.sx-wfname', { hasText: /^live2$/ }) }).click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await expect.poll(() => tab('Blocks').getAttribute('aria-selected')).toBe('true');
+    const dock = page.getByRole('region', { name: 'Run', exact: true });
+    const dockCard = (kind: string) => dock.getByRole('region', { name: `${kind} question` });
+    const chip = (id: string, state: string) => page.locator(`.blk[data-id="${id}"] .sstate[aria-label^="${state}"]`).first();
+    await dockCard('trust').getByRole('button', { name: 'Trust', exact: true }).click();
+    await dockCard('tool').waitFor();
+    await chip('plan', 'running').waitFor();
+    await dock.getByRole('status').getByText('Waiting for you · tool question', { exact: false }).waitFor();
+    expect(await page.getByRole('button', { name: 'Run', exact: true }).getAttribute('title')).toBe('A run or a chat turn is going. Stop it first.');
+    expect(await page.getByRole('button', { name: 'Run', exact: true }).isDisabled()).toBe(true);
+    await tab('Text').click();
+    await page.locator('.receives li[aria-current="step"]').getByRole('button', { name: 'phase plan' }).waitFor();
+    await tab('Blocks').click();
+    // allow every tool question until the gate shows; a card that goes away between the look and the click is not an error
+    await expect.poll(async () => {
+      if (await dockCard('gate').isVisible()) return true;
+      const allow = dockCard('tool').getByRole('button', { name: 'Allow', exact: true });
+      if (await allow.isVisible()) await allow.click({ timeout: 2000 }).catch(() => undefined);
+      return false;
+    }, { timeout: 30_000 }).toBe(true);
+    await dock.getByRole('status').getByText('Waiting for you', { exact: false }).waitFor();
+    await tab('Text').click();
+    await page.locator('.ebar [role="status"]', { hasText: 'Waiting for you. Answer in Blocks or Chat.' }).waitFor();
+    await page.locator('.ebar').getByRole('button', { name: 'Blocks', exact: true }).click();
+    await page.reload();
+    await dockCard('gate').waitFor();
+    await chip('gate-1', 'waiting').waitFor();
+    await dockCard('gate').getByRole('button', { name: 'Approve', exact: true }).click();
+    await expect.poll(() => page.evaluate('!!document.activeElement?.closest(".sx-dock")')).toBe(true);
+    await chip('gate-2', 'waiting').waitFor();
+    await dockCard('gate').getByRole('button', { name: 'Approve', exact: true }).click();
+    await dock.getByRole('status').getByText('Done ·', { exact: false }).waitFor();
+    await tab('Text').click();
+    const editor = page.getByRole('textbox', { name: 'Workflow text' });
+    await editor.fill(`${await editor.inputValue()} `);
+    await tab('Blocks').click();
+    expect(await page.getByRole('button', { name: 'Run', exact: true }).getAttribute('title')).toBe('Save first: a run uses the saved file.');
+    await tab('Text').click();
+    await editor.press('ControlOrMeta+S');
     expect(errors).toEqual([]);
   }, T);
 });

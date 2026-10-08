@@ -146,6 +146,20 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .turn { white-space: pre-wrap; background: #16171a; border: 1px solid var(--line); border-radius: 5px; padding: 8px; color: var(--mute); }
 .note { color: var(--mute); }
 .sx-dockline { margin: 0; color: var(--mute); font-size: 12.5px; line-height: 1.5; }
+.sx-dock { flex: none; min-width: 0; max-height: min(45vh, 300px); overflow: auto; border: 1px solid var(--line2); border-radius: 6px; background: var(--panel); padding: 2px 10px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.sx-dock > .sx-dockline { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; min-height: 26px; }
+.sx-dockstatus { color: var(--ink); flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }
+.sx-dockline button { flex: none; white-space: nowrap; padding-block: 2px; }
+.sx-docknotice { color: var(--mute); font-size: 12.5px; line-height: 1.5; flex: 0 1 auto; }
+.sx-meter { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sx-dockbody { display: grid; gap: 6px; }
+.sx-dockbody .qcard { margin: 0; }
+.sx-latest { margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--mute); }
+.sx-dockreceipt { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; }
+.sx-dockreceipt > div { display: flex; gap: 6px; }
+.sx-dockreceipt dt { color: var(--mute); }
+.sx-dockreceipt dd { margin: 0; }
+.receives li.sx-now-step { box-shadow: inset 3px 0 0 var(--brand); }
 .sstate { display: inline-block; font: 600 10.5px/1.6 var(--sans); padding: 0 7px; margin-left: 6px; border: 1px solid var(--line2); border-radius: 9px; color: var(--mute); }
 .sstate.active { border-color: var(--brand); color: var(--brand); }
 .sstate.waiting { border-color: var(--gate); color: var(--gate); padding: 0 7px; border-radius: 9px; }

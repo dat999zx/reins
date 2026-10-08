@@ -1,4 +1,5 @@
-import type { Receipt } from '@reins/core';
+import type { Receipt, Workflow } from '@reins/core';
+import { flatSteps } from './canvas.js';
 import type { LogRow } from '@reins/server/store.js';
 import { openQuestions, type Sess } from './state.js';
 import { runRows, stepStatus, type StepMap } from './stepStatus.js';
@@ -90,6 +91,8 @@ const FOLD: Record<string, Fold> = {
   },
   turn_started: (r, x, v, a) => { setStep(r, x, v, a); a.inTurn = true; },
   gate_paused: setStep,
+  say: (r, x, v) => { v.last = { seq: r.seq, text: String(x.text ?? '') }; },
+  turn_failed: (r, x, v) => { v.last = { seq: r.seq, text: String(x.error ?? '') }; },
   turn_ended: (_r, x, v) => { v.turns += 1; if (typeof x.cost === 'number') v.cost += x.cost; },
   card_queued: (_r, x, v) => {
     if ((x.kind === 'steer' || x.kind === 'now') && x.source !== 'auto') v.cards.push({ text: String(x.card ?? ''), kind: x.kind, state: 'queued' });
@@ -155,4 +158,34 @@ export function firstRowOf(v: RunView, rows: LogRow[], step: string): number | u
   const have = new Set(rows.map((r) => r.seq));
   for (const [seq, id] of v.stepOf) if (id === step && have.has(seq)) return seq;
   return undefined;
+}
+
+export function stepPos(w: Workflow, current: string[]): Pos | undefined {
+  const i = w.steps.findIndex((s) => flatSteps([s]).some((k) => current.includes(k.id)));
+  return i < 0 ? undefined : { n: i + 1, m: w.steps.length };
+}
+
+export type MeterItem = { key: 'turns' | 'minutes' | 'usd'; text: string; level: 'ok' | 'near' | 'over'; enforced: boolean };
+export function meter(v: RunView, budget: Workflow['budget'], now: number): MeterItem[] {
+  const ms = Math.max(0, (v.endedTs ?? now) - (v.startedAt ?? now));
+  const seconds = Math.floor(ms / 1000);
+  const values: Array<{ key: MeterItem['key']; used: number; limit: number; text: string }> = [
+    { key: 'turns', used: v.turns, limit: budget.turns, text: `${v.turns} / ${budget.turns} turns` },
+    { key: 'minutes', used: ms / 60_000, limit: budget.minutes, text: `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s / ${budget.minutes}m` },
+    ...(budget.usd === undefined ? [] : [{ key: 'usd' as const, used: v.cost, limit: budget.usd, text: `$${v.cost.toFixed(2)} / $${budget.usd.toFixed(2)}` }]),
+  ];
+  return values.map(({ key, used, limit, text }) => {
+    const level = used >= limit ? 'over' : used >= limit * 0.8 ? 'near' : 'ok';
+    const enforced = key === 'turns';
+    return { key, text: text + (level === 'over' ? enforced ? ' · turn budget used: the run stops' : ' · over (not enforced)' : ''), level, enforced };
+  });
+}
+
+export function didNotStart(rows: LogRow[], afterSeq: number): string | undefined {
+  const after = rows.filter((r) => r.seq > afterSeq);
+  if (after.some((r) => r.type === 'run_started')) return undefined;
+  const busy = after.findIndex((r) => r.type === 'status' && ['running', 'waiting'].includes(data(r).status));
+  if (busy < 0 || !after.slice(busy + 1).some((r) => r.type === 'status' && data(r).status === 'idle')) return undefined;
+  const note = after.filter((r) => r.type === 'note' && typeof data(r).text === 'string').at(-1);
+  return note ? String(data(note).text) : 'The run did not start.';
 }

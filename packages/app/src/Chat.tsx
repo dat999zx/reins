@@ -19,6 +19,7 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
   const log = useRef<HTMLDivElement>(null);
   const [stick, setStick] = useState(true);
   const [fresh, setFresh] = useState(false);
+  const [dockOpen, setDockOpen] = useState(false);
   const [open, setOpen] = useState<Record<string, boolean>>({}); // the user's open / closed choice per knot, in memory
   const [reveal, setReveal] = useState<{ runId: string; id: string; n: number }>();
   const [focus, setFocus] = useState<{ key: string; n: number }>();
@@ -39,6 +40,7 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
   };
   // Show in Chat: the newest run's last knot of that step opens and takes the focus
   const onChat = (step?: string) => {
+    if (step === undefined) { setStick(true); setFresh(false); }
     const strand = f.pieces.find((p) => p.type === 'run' && p.newest);
     const k = step === undefined || strand?.type !== 'run' ? undefined : strand.items.flatMap((i) => ('knot' in i ? [i.knot] : [])).filter((x) => x.step === step).at(-1);
     if (k) {
@@ -110,7 +112,7 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
       ) : (
         restore === undefined ? <p className="hint">Loading…</p>
           : <TextTab view={tab} onView={onTab} sess={sess} run={run} act={act} restore={restore} onState={onState} onDirty={onDirty} onRun={() => onTab('chat')}
-            reveal={reveal} onRevealed={() => setReveal(undefined)} onChat={onChat} />
+            reveal={reveal} onRevealed={() => setReveal(undefined)} onChat={onChat} dockOpen={dockOpen} onDockOpen={setDockOpen} />
       )}
     </main>
   );
