@@ -1,16 +1,16 @@
 import { createContext } from 'react';
 import type { RunPhase } from './runState.js';
-import type { StepInfo, StepMap, StepState } from './stepStatus.js';
+import { STATE_WORDS, type StepInfo, type StepMap, type StepState } from './stepStatus.js';
 
 // Status comes through a context, not props: a streamed row must not rebuild the blocks mid-drag.
 export const StatusCtx = createContext<{ status: StepMap; show: boolean; ended?: { id: string; phase: RunPhase }; thinking?: number }>({ status: {}, show: false });
 
 const STATE: Record<StepState, { text: string; words: string }> = {
-  active: { text: 'running', words: 'running' },
-  done: { text: '✓', words: 'done' },
-  waiting: { text: 'waiting for you', words: 'waiting for you' },
-  stuck: { text: 'out of attempts', words: 'out of attempts' },
-  failed: { text: 'failed', words: 'failed' },
+  active: { text: STATE_WORDS.active, words: STATE_WORDS.active },
+  done: { text: '✓', words: STATE_WORDS.done },
+  waiting: { text: STATE_WORDS.waiting, words: STATE_WORDS.waiting },
+  stuck: { text: STATE_WORDS.stuck, words: STATE_WORDS.stuck },
+  failed: { text: STATE_WORDS.failed, words: STATE_WORDS.failed },
 };
 
 export function StepChips({ i }: { i: StepInfo }) {

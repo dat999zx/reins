@@ -66,9 +66,9 @@ const INPUTS: Record<Field['input'], (p: InputProps) => JSX.Element> = {
   ),
 };
 
-export function BlockPanel({ step, all, cond, turn, rev, onEdit, onEditInText, onDelete }: {
+export function BlockPanel({ step, all, cond, turn, rev, onEdit, onEditInText, onShowInChat, onDelete }: {
   step: Step; all: Step[]; cond?: string; turn?: string; rev: unknown;
-  onEdit: (fn: (w: Workflow) => Workflow) => void; onEditInText: () => void; onDelete: () => void;
+  onEdit: (fn: (w: Workflow) => Workflow) => void; onEditInText: () => void; onShowInChat?: () => void; onDelete: () => void;
 }) {
   const k = KINDS[step.kind];
   const id = step.id;
@@ -83,6 +83,7 @@ export function BlockPanel({ step, all, cond, turn, rev, onEdit, onEditInText, o
     <aside className="bpanel" aria-label="Block panel">
       <h3>{step.kind} <span className="faint">{id}</span></h3>
       <button className="danger" onClick={onDelete}>Delete</button>
+      {onShowInChat && <button onClick={onShowInChat}>Show in Chat</button>}
 
       {k.fields.map((f) => {
         const Input = INPUTS[f.input];

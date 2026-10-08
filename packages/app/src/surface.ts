@@ -35,3 +35,10 @@ export function edgePan(p: Pt, view: { w: number; h: number }, margin = 40, max 
 }
 
 export const inside = (i: Rect, o: Rect) => i.x >= o.x && i.y >= o.y && i.x + i.w <= o.x + o.w && i.y + i.h <= o.y + o.h;
+
+// Where the camera must go to show a block: nowhere when it is already inside the view (past margin on every side), else centred at the same zoom.
+export function reveal(cam: Cam, r: Rect, view: { w: number; h: number }, margin = 44): Cam | undefined {
+  const a = toScreen(cam, r), z = cam.zoom;
+  if (a.x >= margin && a.y >= margin && a.x + r.w * z <= view.w - margin && a.y + r.h * z <= view.h - margin) return undefined;
+  return { zoom: z, x: view.w / 2 - (r.x + r.w / 2) * z, y: view.h / 2 - (r.y + r.h / 2) * z };
+}

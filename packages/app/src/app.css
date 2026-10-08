@@ -338,3 +338,87 @@ input.sx-num { min-width: 2.5ch; padding: 1px 6px; text-align: center; }
   .cols { grid-template-columns: 200px minmax(0, 1fr); }
   .texttab { grid-template-columns: 168px minmax(0, 1fr); }
 }
+
+/* The Reins feed (Chat log). The run is a rein: a stitched strap down the left. Each step is a knot tied over it, in its block's colour;
+   the thread after the knot is that colour while the step runs, and fades to a muted tone when it is done. What the agent does hangs off the knot as beads. */
+.sx-feed { display: block; padding: 14px 16px 22px 0; scroll-padding-top: 8px; }
+.sx-feed:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.sx-feed :is(.muted, .tool pre, .receipt dt) { color: var(--mute); }
+.sx-hint { padding-left: 34px; }
+.sx-rein { position: relative; --strap: #2a2c32; --stitch: #50545f; }
+.sx-rein::before { content: ''; position: absolute; left: 14px; top: 0; bottom: 0; width: 4px; border-radius: 2px; background: repeating-linear-gradient(to bottom, var(--stitch) 0 5px, var(--strap) 5px 7px); }
+.sx-rein > li { position: relative; margin-top: 12px; }
+.sx-rein > li:first-child { margin-top: 0; }
+
+/* a message you sent: a leather tag tied to the strap */
+.sx-note { padding-left: 34px; }
+.sx-note::before { content: ''; position: absolute; left: 11px; top: 9px; width: 8px; height: 8px; transform: rotate(45deg); background: var(--bg); border: 2px solid var(--brand); box-shadow: 0 0 0 3px var(--bg); z-index: 2; }
+.sx-note .msg.user { align-self: auto; max-width: none; display: block; background: var(--raised); border: 1px solid var(--line2); border-left: 3px solid var(--brand); border-radius: 3px 9px 9px 3px; padding: 6px 11px; }
+.sx-note .msg.user .txt { color: var(--ink); }
+
+/* loose beads between the pieces: a trust question before the run, a note, a closed session */
+.sx-rein > .sx-bead, .sx-knots > .sx-bead { padding-left: 34px; }
+
+/* a plain chat turn: a ring on the strap and its beads under it; no toggle */
+.sx-turn { padding-left: 34px; --sc: var(--mute); }
+.sx-turn::before { content: ''; position: absolute; left: 10px; top: 7px; width: 7px; height: 7px; border-radius: 50%; border: 2px solid var(--sc); background: var(--bg); box-shadow: 0 0 0 3px var(--bg); z-index: 2; }
+.sx-turn[data-state='running'] { --sc: var(--brand); }
+.sx-turn[data-state='failed'] { --sc: var(--bad); }
+.sx-turn[data-state='stopped'] { --sc: var(--faint); }
+.sx-khead { margin: 0; padding: 2px 0 3px; font: 600 12.5px/1.45 var(--sans); text-transform: none; letter-spacing: 0; color: var(--ink); }
+.sx-kstate { color: var(--sc, var(--mute)); font-weight: 600; }
+.sx-ktitle { font-weight: 600; color: var(--ink); }
+.sx-krest { color: var(--mute); font-weight: 400; }
+
+/* a workflow run */
+.sx-head { position: relative; display: flex; flex-wrap: wrap; align-items: baseline; padding: 4px 0 6px 34px; font-size: 12.5px; color: var(--mute); }
+.sx-head b { color: var(--ink); }
+.sx-hwords { white-space: pre-wrap; }
+.sx-hnote { flex-basis: 100%; font-size: 11.5px; color: var(--mute); margin-top: 2px; }
+.sx-hmark { position: absolute; left: 8px; top: 8px; width: 9px; height: 9px; transform: rotate(45deg); background: var(--brand); box-shadow: 0 0 0 3px var(--bg), 0 0 0 4.5px color-mix(in srgb, var(--brand) 50%, transparent); z-index: 2; }
+.sx-strand[data-state='stopped'] .sx-hmark, .sx-strand[data-state='failed'] .sx-hmark, .sx-strand[data-state='stuck'] .sx-hmark { background: var(--bad); box-shadow: 0 0 0 3px var(--bg), 0 0 0 4.5px color-mix(in srgb, var(--bad) 50%, transparent); }
+.sx-strand[data-state='done'] .sx-hmark { background: var(--mute); box-shadow: 0 0 0 3px var(--bg); }
+
+/* a knot: dot and thread are drawn inside the knot's own left padding, so nothing it draws sits outside its box */
+.sx-knot { position: relative; --depth: 0; --sc: var(--mute); padding-left: calc(34px + var(--depth) * 14px); }
+.sx-knot[data-state='running'] { --sc: var(--brand); }
+.sx-knot[data-state='waiting'], .sx-knot[data-state='paused'] { --sc: var(--gate); }
+.sx-knot[data-state='done'] { --sc: var(--ok); }
+.sx-knot[data-state='failed'], .sx-knot[data-state='stuck'], .sx-knot[data-state='stopped'] { --sc: var(--bad); }
+.sx-knot + .sx-knot { margin-top: 2px; }
+.sx-knotrow { display: flex; align-items: flex-start; gap: 8px; }
+.sx-knotrow::before { content: ''; position: absolute; left: 16px; top: 11px; width: calc(var(--depth) * 14px); height: 3px; background: var(--line2); }
+.sx-kbtn { flex: 1; min-width: 0; text-align: left; background: none; border-color: transparent; padding: 3px 8px; border-radius: 6px; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.sx-kbtn:hover { background: var(--raised); }
+.sx-kbtn[aria-disabled='true'] { cursor: default; }
+.sx-kbtn[aria-disabled='true']:hover { background: none; }
+.sx-kbtn[aria-disabled='true'] .sx-chev { opacity: 0.35; }
+.sx-chev { display: inline-block; width: 0; height: 0; margin-left: 8px; vertical-align: middle; border: 4px solid transparent; border-left: 5px solid var(--mute); border-right-width: 0; }
+.sx-kbtn[aria-expanded='true'] .sx-chev { transform: rotate(90deg); }
+.sx-kblk { flex: none; margin-top: 3px; padding: 0 9px; border-radius: 999px; background: none; border-color: var(--line2); color: var(--mute); font-size: 11px; line-height: 1.7; }
+.sx-kblk:hover { color: var(--ink); border-color: var(--mute); }
+.sx-kblk[aria-disabled='true'] { opacity: 0.55; cursor: default; }
+.sx-kblk[aria-disabled='true']:hover { color: var(--mute); border-color: var(--line2); }
+
+.sx-seg { position: absolute; left: calc(14px + var(--depth) * 14px); top: 12px; bottom: -6px; width: 4px; border-radius: 2px; background: color-mix(in srgb, var(--c, var(--mute)) 38%, var(--strap)); }
+.sx-knot[data-state='running'] > .sx-seg { background: var(--c, var(--brand)); }
+.sx-knot[data-state='waiting'] > .sx-seg { background: var(--gate); }
+.sx-knot[data-state='waiting'] > .sx-seg::after { content: ''; position: absolute; left: -4px; top: 14px; width: 12px; height: 2px; background: var(--gate); }
+.sx-knot[data-state='failed'] > .sx-seg, .sx-knot[data-state='stopped'] > .sx-seg { background: color-mix(in srgb, var(--bad) 60%, var(--strap)); }
+.sx-knot[data-state='stuck'] > .sx-seg { background: repeating-linear-gradient(to bottom, var(--bad) 0 5px, transparent 5px 9px); }
+.sx-knot[data-state='paused'] > .sx-seg { background: repeating-linear-gradient(to bottom, var(--gate) 0 5px, transparent 5px 9px); }
+
+.sx-dot { position: absolute; left: calc(9.5px + var(--depth) * 14px); top: 6px; width: 13px; height: 13px; border-radius: 50%; z-index: 2; background: var(--c, var(--mute)); box-shadow: 0 0 0 3px var(--bg); }
+.sx-knot[data-state='running'] > .sx-dot { box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px color-mix(in srgb, var(--c, var(--brand)) 45%, transparent); }
+.sx-knot[data-state='done'] > .sx-dot { background: color-mix(in srgb, var(--c, var(--mute)) 50%, var(--strap)); }
+.sx-m-ring { background: var(--bg); border: 3px solid var(--gate); }
+.sx-m-broken { background: var(--bg); border: 3px solid var(--bad); border-top-color: transparent; border-bottom-color: transparent; transform: rotate(45deg); box-shadow: none; }
+.sx-m-square { left: calc(10.5px + var(--depth) * 14px); top: 7px; width: 11px; height: 11px; border-radius: 2px; background: var(--bad); }
+.sx-m-hollow { background: var(--bg); border: 2px solid var(--gate); box-shadow: 0 0 0 3px var(--bg), 0 0 0 4.5px color-mix(in srgb, var(--gate) 55%, transparent); }
+
+/* what hangs off a knot */
+.sx-track { display: grid; gap: 6px; padding: 3px 0 10px; }
+.sx-track > .sx-bead { position: relative; min-width: 0; }
+.sx-track > .sx-bead::before { content: ''; position: absolute; left: -17px; top: 10px; width: 12px; border-top: 2px dotted var(--line2); }
+.sx-feed .msg.agent { font-size: 13px; line-height: 1.5; color: var(--ink); }
+.sx-knots > .sx-bead:last-child .receipt { margin-top: 4px; }

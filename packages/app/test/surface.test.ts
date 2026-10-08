@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { boundsOf, clampZoom, edgePan, fitBounds, inside, toScreen, toWorld, zoomAt, ZOOM, type Cam } from '../src/surface.js';
+import { boundsOf, clampZoom, edgePan, fitBounds, inside, reveal, toScreen, toWorld, zoomAt, ZOOM, type Cam } from '../src/surface.js';
 
 const cam: Cam = { x: 30, y: -20, zoom: 1.5 };
 
@@ -61,5 +61,27 @@ describe('surface', () => {
     const outer = { x: 0, y: 0, w: 100, h: 100 };
     expect(inside({ x: 10, y: 10, w: 20, h: 20 }, outer)).toBe(true);
     expect(inside({ x: 90, y: 10, w: 20, h: 20 }, outer)).toBe(false);
+  });
+});
+
+describe('reveal', () => {
+  const view = { w: 800, h: 600 };
+  const c: Cam = { x: 10, y: 20, zoom: 1.25 };
+  it('a block fully inside the view (past the margin) needs no move', () => {
+    expect(reveal(c, { x: 100, y: 100, w: 200, h: 80 }, view)).toBeUndefined();
+  });
+  it('a block outside is centred at the same zoom', () => {
+    const r = { x: 2000, y: -900, w: 200, h: 80 };
+    const n = reveal(c, r, view)!;
+    expect(n.zoom).toBe(c.zoom);
+    const mid = toScreen(n, { x: r.x + r.w / 2, y: r.y + r.h / 2 });
+    expect(mid.x).toBeCloseTo(400, 9);
+    expect(mid.y).toBeCloseTo(300, 9);
+  });
+  it('a block inside the view but inside the margin is moved too', () => {
+    const r = { x: -5, y: 100, w: 50, h: 40 };
+    expect(toScreen(c, r).x).toBeGreaterThan(0);
+    expect(reveal(c, r, view)).toBeDefined();
+    expect(reveal(c, r, view, 0)).toBeUndefined();
   });
 });

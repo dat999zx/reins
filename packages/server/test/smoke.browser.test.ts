@@ -84,6 +84,7 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await sendText('what does upload.mjs do?');
     await page.locator('.msg.agent', { hasText: 'ONE' }).waitFor();
     await idle();
+    await page.getByRole('heading', { name: /^Turn 1 · done/ }).waitFor();
 
     // 4. a tool question: Deny with a reason
     await sendText('change upload');

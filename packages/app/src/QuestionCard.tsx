@@ -44,7 +44,7 @@ export function QuestionCard({ row, sess, answer }: { row: LogRow; sess: Sess; a
     answer(q.id, a).catch((e) => { setBusy(false); setErr(e instanceof ApiError && e.status === 409 ? 'already answered' : String(e.message ?? e)); });
   };
   return (
-    <section className={`qcard ${q.kind}`} ref={ref} aria-label={`${q.kind} question`}>
+    <section className={`qcard ${q.kind}`} ref={ref} aria-label={`${q.kind} question`} data-qid={q.id}>
       <div className="qprompt"><span className="kind">{q.kind}</span> {q.prompt}</div>
       {detail !== null && <pre className="qdetail">{detail}</pre>}
       <div className="btns">{actionsFor(q.kind).map((a) => <ActionView key={a.label} a={a} send={send} disabled={busy} />)}</div>

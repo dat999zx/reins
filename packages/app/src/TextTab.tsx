@@ -9,7 +9,7 @@ import { restoreFile, restoreStep, type CanvasView, type EditorState, type Layou
 import { highlight, lineOffset } from './highlight.js';
 import { emptyHistory, push, redo, undo } from './history.js';
 import type { Sess } from './state.js';
-import { sameSteps, type RunView } from './runState.js';
+import { firstRowOf, sameSteps, type RunView } from './runState.js';
 import type { Actions } from './rows.js';
 import { BlockPanel, WorkflowPanel } from './BlockPanel.js';
 import { flatSteps } from './canvas.js';
@@ -29,14 +29,16 @@ interface Preview {
 
 const NAME = /^[a-z0-9][a-z0-9-]*$/;
 const WAIT = 'Still applying the last change. Try again.';
+const EARLIER = 'An earlier run: only the newest run links to its blocks.';
 // the panel's Delete button goes away with the block, so the focus goes back to the workspace
 const toWorkspace = (ok: boolean) => { if (ok) document.querySelector<HTMLElement>('.sx-view')?.focus({ preventScroll: true }); };
 const template = (name: string) =>
   `---\nreins: 1\nname: ${name}\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n## phase plan\n> Plan the change.\n\n## phase build\n> Make the change.\n`;
 
-export function TextTab({ view, onView, sess, run, restore, onState, onDirty, onRun }: {
+export function TextTab({ view, onView, sess, run, restore, onState, onDirty, onRun, reveal, onRevealed, onChat }: {
   view: Exclude<Tab, 'chat'>; onView: (t: 'text') => void;
   sess: Sess; run: RunView; act: Actions; restore?: EditorState; onState: (patch: Partial<EditorState>) => void; onDirty: (dirty: boolean) => void; onRun: () => void;
+  reveal?: { runId: string; id: string; n: number }; onRevealed: () => void; onChat: (step?: string) => void;
 }) {
   const base = `/api/sessions/${sess.id}`;
   const [list, setList] = useState<Listed[]>([]);
@@ -266,6 +268,22 @@ export function TextTab({ view, onView, sess, run, restore, onState, onDirty, on
   const ours = prev?.name !== undefined && prev.name === run.workflow;
   const showStatus = ours && match;
   const stale = ours && run.stepsAtStart !== undefined && !!prev?.workflow && !same;
+  // The knot's "Blocks ↗" from Chat: consumed once, and only when the preview of the open buffer is here (it starts empty and arrives after a delay).
+  // ponytail: for a step of a workflow that is not open, or of an earlier run, it only says so; it never opens the file.
+  const consumed = useRef<number | undefined>(undefined);
+  const [go, setGo] = useState<{ id: string; n: number }>();
+  useEffect(() => {
+    if (!reveal || reveal.n === consumed.current) return;
+    if (file === null ? !restored : prev?.for !== text) return;
+    consumed.current = reveal.n;
+    onRevealed();
+    const has = !!prev?.workflow && flatSteps(prev.workflow.steps).some((s) => s.id === reveal.id);
+    if (reveal.runId !== run.runId) setMsg(EARLIER);
+    else if (ours && !showStatus) setMsg('The file changed since this run started.');
+    else if (!ours || !has) setMsg(`\`${reveal.id}\` is a step of \`${run.workflow}\`, which is not open. Open it from the list.`);
+    else { setStepId(reveal.id); setGo({ id: reveal.id, n: reveal.n }); }
+  }, [reveal?.n, file, prev, text, restored]);
+  const ran = (id: string) => firstRowOf(run, sess.rows, id) !== undefined;
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); }
@@ -341,7 +359,7 @@ export function TextTab({ view, onView, sess, run, restore, onState, onDirty, on
                 <StatusCtx.Provider value={{ status: run.steps, show: showStatus }}>
                   <Workspace key={file} w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} sel={sels} primary={stepId}
                     rev={prev} press={press} cam={canvas.current?.[file]?.cam} lay={lay}
-                    onEdit={edit} onSel={(keys, primary) => { setSels(keys); setStepId(primary); }} onNote={setMsg} onEditInText={(line) => { pendingLine.current = line; onView('text'); }} onDelete={del} onLayout={setLayout} onUndo={() => step(undo)} onRedo={() => step(redo)} onCam={(cam) => { if (restored) setView(file, { cam }); }} />
+                    onEdit={edit} onSel={(keys, primary) => { setSels(keys); setStepId(primary); }} onNote={setMsg} onEditInText={(line) => { pendingLine.current = line; onView('text'); }} onDelete={del} onLayout={setLayout} onUndo={() => step(undo)} onRedo={() => step(redo)} reveal={go} ran={ran} onShowInChat={onChat} onCam={(cam) => { if (restored) setView(file, { cam }); }} />
                 </StatusCtx.Provider>
                 {sels.size > 1 ? (
                   <aside className="bpanel" aria-label="Selection panel">
@@ -349,7 +367,7 @@ export function TextTab({ view, onView, sess, run, restore, onState, onDirty, on
                     <button className="danger" onClick={() => del([...withoutNested(prev.workflow!, sels)], toWorkspace)}>Delete</button>
                   </aside>
                 ) : sel ? <BlockPanel key={sel.id} step={sel} all={flatSteps(prev.workflow.steps)} cond={prev.steps.find((s) => s.id === sel.id)?.cond}
-                  turn={prev.turn} rev={prev} onEdit={edit} onDelete={() => del([stepKey(sel.id)], toWorkspace)} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />
+                  turn={prev.turn} rev={prev} onEdit={edit} onShowInChat={ran(sel.id) ? () => onChat(sel.id) : undefined} onDelete={() => del([stepKey(sel.id)], toWorkspace)} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />
                   : [...sels].some((k) => k.startsWith('l:')) ? <aside className="bpanel" aria-label="Loose block"><p className="hint">Loose block: not part of the workflow, never runs. Drag it into the script to use it.</p></aside>
                   : <WorkflowPanel w={prev.workflow} rev={prev} onEdit={edit} />}
               </div>

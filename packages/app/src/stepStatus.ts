@@ -1,6 +1,9 @@
 import type { LogRow } from '@reins/server/store.js';
 
 export type StepState = 'active' | 'done' | 'waiting' | 'stuck' | 'failed';
+// One vocabulary for a step's state: the feed's knots, the block chips, the dock and the Text list all read it.
+export const STATE_WORDS: Record<StepState | 'stopped' | 'paused', string> =
+  { active: 'running', done: 'done', waiting: 'waiting for you', stuck: 'out of attempts', failed: 'failed', stopped: 'stopped', paused: 'left paused' };
 export interface StepInfo { state?: StepState; attempts?: number; refusals: number; cost: number; why?: string }
 export type StepMap = Record<string, StepInfo>;
 

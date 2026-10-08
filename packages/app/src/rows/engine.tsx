@@ -22,12 +22,9 @@ export const engineEvents = new Map<EngineEvent['type'], Render>([
       </details>
     );
   }],
-  ['tool_result', () => null],
   ['refusal', (e) => <div className="row bad">refused: {e.reason}</div>],
   ['card_delivered', (e) => chip(e)],
   ['error', (e) => <div className="row bad">{e.message}</div>],
-  ['hook', () => null],
-  ['cost', () => null],
 ]);
 
 export const type = 'engine';

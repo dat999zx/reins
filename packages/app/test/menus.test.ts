@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import type { ActName } from '../src/keys.js';
 import { itemsFor, MENUS, type Item, type MenuCtx } from '../src/menus.js';
 
-const ctx = (c: Partial<MenuCtx> = {}): MenuCtx => ({ count: 1, topLevel: true, free: false, isEnd: false, clip: false, ...c });
+const ctx = (c: Partial<MenuCtx> = {}): MenuCtx => ({ count: 1, topLevel: true, free: false, isEnd: false, clip: false, ran: false, ...c });
 const acts = (items: Item[]) => items.map((i) => (i === '-' ? '-' : i.act));
 
 describe('menus', () => {
@@ -31,6 +32,13 @@ describe('menus', () => {
   it('the surface offers Paste only with a clipboard', () => {
     expect(acts(itemsFor('surface', ctx()))).toEqual(['selectAll', '-', 'fit', 'zoomReset']);
     expect(acts(itemsFor('surface', ctx({ clip: true })))).toEqual(['paste', 'selectAll', '-', 'fit', 'zoomReset']);
+  });
+  it('Show in Chat is offered for one block that ran, before Edit in Text, and is an ActName'  , () => {
+    expect(acts(itemsFor('block', ctx({ ran: true })))).toEqual(['duplicate', 'copy', 'cut', 'delete', '-', 'park', 'detach', '-', 'showInChat', 'editInText']);
+    expect(acts(itemsFor('block', ctx()))).not.toContain('showInChat');
+    expect(acts(itemsFor('block', ctx({ ran: true, count: 2 })))).not.toContain('showInChat');
+    const act: ActName = 'showInChat';
+    expect(act).toBe('showInChat');
   });
   it('no menu starts or ends with a separator, or has two in a row', () => {
     for (const t of Object.keys(MENUS) as Array<keyof typeof MENUS>) for (const c of [ctx(), ctx({ count: 2 }), ctx({ clip: true })]) {

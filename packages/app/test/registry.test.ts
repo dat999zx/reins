@@ -1,12 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import type { LogRow } from '@reins/server/store.js';
-import { hidden, renderRow, rowTypes } from '../src/rows.js';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { drawable, hidden, renderRow, rowTypes } from '../src/rows.js';
 import { engineEvents } from '../src/rows/engine.js';
 import { initial, reduce } from '../src/state.js';
 
 const row = (type: string, data: unknown = {}): LogRow => ({ sessionId: 's', seq: 1, ts: 1, type, data });
 const sess = reduce(initial(), row('note'), 0).sessions.s!;
 const ctx = { sess, act: { answer: async () => {}, resume: () => {} } };
+const text = (n: unknown) => renderToStaticMarkup(n as never).replace(/<[^>]+>/g, '');
 
 describe('row registry', () => {
   it('collects one renderer per file in rows/', () => {
@@ -41,5 +43,27 @@ describe('row registry', () => {
     expect(renderRow(row('engine', { type: 'cost', usd: 1 }), ctx)).toBeNull();
     expect(engineEvents.has('text')).toBe(true);
     expect(renderRow(row('engine', { type: 'brand_new' }), ctx)).not.toBeNull();
+  });
+});
+describe('drawable and card words', () => {
+  it('drawable is false for every hidden type and the silent engine events, true for engine text', () => {
+    for (const t of hidden) expect(drawable(row(t))).toBe(false);
+    for (const t of ['tool_result', 'hook', 'cost']) expect(drawable(row('engine', { type: t }))).toBe(false);
+    expect(drawable(row('engine', { type: 'text', text: 'x' }))).toBe(true);
+    expect(drawable(row('note', { text: 'x' }))).toBe(true);
+  });
+
+  it('renderRow returns null exactly when drawable is false', () => {
+    const rows = [row('status'), row('command_result'), row('engine', { type: 'tool_result' }), row('engine', { type: 'hook' }), row('engine', { type: 'cost' }),
+      row('engine', { type: 'text', text: 'x' }), row('note', { text: 'x' }), row('some_new_run_event', {}), row('engine', { type: 'brand_new' })];
+    for (const r of rows) expect(renderRow(r, ctx) === null).toBe(!drawable(r));
+  });
+
+  it('a queued card says what happened to it, and only its text without a state', () => {
+    const q = row('card_queued', { card: 'x', kind: 'steer' });
+    expect(text(renderRow(q, { ...ctx, card: new Map([[q.seq, { state: 'mid-turn' as const }]]) }))).toBe('steer card x · card delivered (mid-turn)');
+    expect(text(renderRow(q, { ...ctx, card: new Map([[q.seq, { state: 'mid-turn' as const, landed: 'build' }]]) }))).toBe('steer card x · card delivered (mid-turn) · in build');
+    expect(text(renderRow(q, ctx))).toBe('steer card x');
+    expect(text(renderRow(q, { ...ctx, card: new Map([[q.seq, { state: 'bogus' as never }]]) }))).toBe('steer card x');
   });
 });

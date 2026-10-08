@@ -4,7 +4,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium, type Browser, type Page } from 'playwright';
+import { chromium, type Browser, type Locator, type Page } from 'playwright';
 import { claudeEngine } from '../src/claude/engine.js';
 import { startServer, type Server } from '../src/server.js';
 import { openStore, type Store } from '../src/store.js';
@@ -117,6 +117,12 @@ describe.skipIf(skip)('live run e2e', () => {
     await textChip('gate-1', 'waiting').waitFor();
 
     await tab('Chat').click();
+    // held at gate-1: its knot holds the open question, so it is forced open and its toggle says why it does nothing
+    const gate1 = page.getByRole('region', { name: 'Run log' }).getByRole('button', { name: /^Step wait until \(gate-1\)/ });
+    expect(await gate1.getAttribute('aria-disabled')).toBe('true');
+    await gate1.click({ force: true });
+    expect(await gate1.getAttribute('aria-expanded')).toBe('true');
+    await card('gate').waitFor();
     await card('gate').getByRole('button', { name: 'Approve' }).click();
     await tab('Text').click();
     await textChip('gate-2', 'waiting').waitFor();
@@ -125,6 +131,53 @@ describe.skipIf(skip)('live run e2e', () => {
     await page.getByRole('region', { name: 'Receipt for live' }).waitFor();
     await page.locator('.chead .status.idle').waitFor();
 
+    // L1. The Reins feed: a region of knots, collapsed when done; names are unique; Blocks ↗ and Show in Chat go both ways
+    const log = page.getByRole('region', { name: 'Run log' });
+    await log.waitFor();
+    const knot = (name: RegExp) => log.getByRole('button', { name });
+    const planKnot = knot(/^Step plan · done/);
+    // `has` is relative to the li: a locator that starts at `log` would match nothing inside it
+    const planLi = log.locator('li.sx-knot', { has: page.getByRole('button', { name: /^Step plan · done/ }) });
+    const expanded = (k: Locator) => k.getAttribute('aria-expanded');
+    await expect.poll(() => expanded(planKnot), { timeout: W }).toBe('false');
+    expect(await planKnot.getAttribute('aria-controls')).toBeNull();
+    expect(await planLi.locator('.msg.agent').count()).toBe(0);
+    await planKnot.click();
+    await expect.poll(() => expanded(planKnot), { timeout: W }).toBe('true');
+    const track = await planKnot.getAttribute('aria-controls');
+    expect(await page.locator(`ol[id="${track}"]`).count()).toBe(1);
+    await planLi.locator('.msg.agent', { hasText: 'ONE' }).waitFor();
+    await planKnot.click();
+    await expect.poll(() => expanded(planKnot), { timeout: W }).toBe('false');
+    for (const name of [/^Step wait until \(gate-1\) · done/, /^Step wait until \(gate-2\) · done/, /^Step run command \(run-1\) · done/]) {
+      expect(await knot(name).count()).toBe(1);
+    }
+    // every knot open: no raw JSON in any line
+    const strand = log.locator('li.sx-strand');
+    for (const t of await strand.locator('.sx-kbtn').all()) if ((await expanded(t)) === 'false') await t.click();
+    expect(await strand.locator('.sx-kbtn[aria-expanded="false"]').count()).toBe(0);
+    expect(await log.locator('.row', { hasText: '{"step"' }).count()).toBe(0);
+    const lastKnot = await strand.locator('li.sx-knot').last().boundingBox();
+    const receipt = await log.getByRole('region', { name: 'Receipt for live' }).boundingBox();
+    expect(receipt!.y).toBeGreaterThan(lastKnot!.y);
+    // Blocks ↗: the Blocks tab selects the block and gives it the focus
+    await log.getByRole('button', { name: 'Show plan in Blocks' }).click();
+    await expect.poll(() => tab('Blocks').getAttribute('aria-selected'), { timeout: W }).toBe('true');
+    await page.locator('.blk[data-id="plan"][aria-current="true"]').waitFor();
+    await expect.poll(() => page.evaluate('document.activeElement && document.activeElement.dataset.id'), { timeout: W }).toBe('plan');
+    // Show in Chat: the block's menu opens that step's knot and focuses its toggle
+    await page.locator('.blk[data-id="build"]').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Show in Chat' }).click();
+    await expect.poll(() => tab('Chat').getAttribute('aria-selected'), { timeout: W }).toBe('true');
+    const buildKnot = knot(/^Step build/);
+    await buildKnot.waitFor();
+    await expect.poll(() => page.evaluate('document.activeElement && document.activeElement.classList.contains("sx-kbtn") && document.activeElement.closest("li").dataset.knot'), { timeout: W })
+      .toBe(await buildKnot.locator('xpath=ancestor::li[1]').getAttribute('data-knot'));
+    expect(await expanded(buildKnot)).toBe('true');
+    const logBox = await log.boundingBox();
+    const buildBox = await buildKnot.boundingBox();
+    expect(buildBox!.y).toBeGreaterThanOrEqual(logBox!.y);
+    expect(buildBox!.y + buildBox!.height).toBeLessThanOrEqual(logBox!.y + logBox!.height);
     expect(errors).toEqual([]);
   }, T);
 });

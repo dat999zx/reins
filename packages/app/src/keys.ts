@@ -1,4 +1,4 @@
-export type ActName = 'delete' | 'select' | 'moveUp' | 'moveDown' | 'nestIn' | 'nestOut' | 'undo' | 'redo' | 'escape' | 'zoomIn' | 'zoomOut' | 'zoomReset' | 'fit' | 'selectAll' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'menu' | 'park' | 'detach' | 'attach' | 'putEnd' | 'editInText' | 'deleteLink' | 'focusPrev' | 'focusNext' | 'extendPrev' | 'extendNext' | 'nudge' | 'pan';
+export type ActName = 'delete' | 'select' | 'moveUp' | 'moveDown' | 'nestIn' | 'nestOut' | 'undo' | 'redo' | 'escape' | 'zoomIn' | 'zoomOut' | 'zoomReset' | 'fit' | 'selectAll' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'menu' | 'park' | 'detach' | 'attach' | 'putEnd' | 'editInText' | 'showInChat' | 'deleteLink' | 'focusPrev' | 'focusNext' | 'extendPrev' | 'extendNext' | 'nudge' | 'pan';
 // 'positioned' is a free or loose block (it answers the block keys too); 'view' is the viewport itself
 export type On = 'block' | 'positioned' | 'link' | 'view' | 'any';
 type Row = { key: string; ctrl?: true; shift?: true; alt?: true; on: On; act: ActName };

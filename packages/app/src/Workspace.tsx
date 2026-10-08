@@ -15,7 +15,7 @@ import { cx } from './generic.js';
 import { DRAG_PX, pickGesture, type Press } from './gesture.js';
 import { isTyping, matchKey, type ActName, type On } from './keys.js';
 import { allKeys, boxSelect, neighbour, nestedKeys, readingOrder, stepIds, stepKey, toggle, withoutNested, type Key } from './selection.js';
-import { boundsOf, fitBounds, toWorld, ZOOM, zoomAt, type Cam, type Pt, type Rect } from './surface.js';
+import { boundsOf, fitBounds, reveal as revealCam, toWorld, ZOOM, zoomAt, type Cam, type Pt, type Rect } from './surface.js';
 import { useDrag, type Start } from './useDrag.js';
 
 // ponytail: in-app clipboard, lost on reload; the system clipboard if it matters
@@ -29,9 +29,10 @@ const gridPx = (z: number) => { let s = 18 * z; while (s < 12) s *= 2; return s;
 const NATIVE = 'input, textarea, select, option, button, .sx-menu, .sx-zoom';
 const onOf = (t: Element): Press['on'] => (t.closest(NATIVE) ? 'input' : t.closest('.sx-handle') ? 'handle' : t.closest('[data-link]') ? 'link' : t.closest('.sx-hat') ? 'hat' : t.closest('.sx-loose') ? 'loose' : t.closest('.blk') ? 'block' : 'empty');
 
-export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved, lay, press, onEdit, onSel, onDelete, onCam, onLayout, onUndo, onRedo, onNote, onEditInText }: {
+export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved, lay, press, reveal, ran, onShowInChat, onEdit, onSel, onDelete, onCam, onLayout, onUndo, onRedo, onNote, onEditInText }: {
   w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; sel: Set<Key>; primary?: string; rev: unknown;
   cam?: Cam; lay: Layout; press: MutableRefObject<Start | undefined>;
+  reveal?: { id: string; n: number }; ran?: (id: string) => boolean; onShowInChat?: (id: string) => void; // reveal: bring this block into view and focus it (Chat's "Blocks ↗")
   onEdit: (fn: (w: Workflow) => Workflow, o?: EditOpts) => boolean; onSel: (keys: Set<Key>, primary?: string) => void; onDelete: (keys: Key[], then?: (applied: boolean) => void) => void; onCam: (c: Cam) => void;
   onLayout: (fn: (l: Layout) => Layout) => boolean; onUndo: () => boolean; onRedo: () => boolean; onNote: (s: string) => void; onEditInText: (line: number) => void;
 }) {
@@ -114,6 +115,15 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
     refocus.current = undefined;
     if (k !== undefined) (k === 'view' ? view.current : elOf(k) ?? view.current)?.focus({ preventScroll: true });
   }, [w, lay]);
+  // Chat's "Blocks ↗": the block comes into view (clear of the toolbar strip) and takes the focus directly; the refocus above runs only on [w, lay].
+  useEffect(() => {
+    const el = reveal && elOf(stepKey(reveal.id));
+    if (!el) return;
+    const vr = size(), b = el.getBoundingClientRect(), c = camRef.current, o = toWorld(c, { x: b.left - vr.left, y: b.top - vr.top });
+    const next = revealCam(c, { ...o, w: b.width / c.zoom, h: b.height / c.zoom }, { w: vr.width, h: vr.height });
+    if (next) commit(next);
+    el.focus({ preventScroll: true });
+  }, [reveal?.n]);
   const focusAfter = (k?: Key) => (ok: boolean) => { if (ok && k !== undefined) refocus.current = k; };
   // Every move is one edit; a link the move turned backward gets its max, and the note says which.
   const capNote = (capped: string[]) => `Added max 3 to ${capped.length === 1 ? '1 link that now points' : `${capped.length} links that now point`} back: ${capped.join(', ')}.`;
@@ -255,7 +265,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
   };
   const menuCtx = (m: { id: string }): MenuCtx => {
     const s = flatSteps(w.steps).find((x) => x.id === m.id);
-    return { count: sel.size, topLevel: !!s && placeOf(w, s.id)?.parent === undefined, free: freeIds.has(m.id), isEnd: !!s && !!KINDS[s.kind].stops, clip: clip.length > 0 };
+    return { count: sel.size, topLevel: !!s && placeOf(w, s.id)?.parent === undefined, free: freeIds.has(m.id), isEnd: !!s && !!KINDS[s.kind].stops, clip: clip.length > 0, ran: !!ran?.(m.id) };
   };
   // One place decides what a point or an element is: the context menu and the Shift+F10 key both come here.
   const openOn = (t: Element | null, at: Pt) => {
@@ -345,6 +355,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
     },
     attach: (id) => flow([id], attach, `\`${id}\` is back in the stack.`),
     putEnd: () => { const keys = [...sel].filter((k) => k.startsWith('l:')); if (keys.length) unparkTo(keys, { top: 'end' }); },
+    showInChat: (id) => onShowInChat?.(id),
     editInText: (id) => {
       const l = id.startsWith('k:') ? parseLink(id) : undefined, s = flatSteps(w.steps).find((x) => x.id === (l?.from ?? id));
       onEditInText((l && s?.links[l.index]?.pos?.line) || s?.pos?.line || 1);

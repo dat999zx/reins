@@ -1,7 +1,7 @@
 import type { ActName } from './keys.js';
 
 export type MenuTarget = 'block' | 'loose' | 'link' | 'surface';
-export type MenuCtx = { count: number; topLevel: boolean; free: boolean; isEnd: boolean; clip: boolean };
+export type MenuCtx = { count: number; topLevel: boolean; free: boolean; isEnd: boolean; clip: boolean; ran: boolean };
 export type Item = { label: string; act: ActName; hint?: string; when?: (c: MenuCtx) => boolean } | '-';
 
 const edit: Item[] = [
@@ -19,6 +19,7 @@ export const MENUS: Record<MenuTarget, Item[]> = {
     { label: 'Detach as free block', act: 'detach', when: (c) => c.count === 1 && c.topLevel && !c.free && !c.isEnd },
     { label: 'Put back in the stack', act: 'attach', when: (c) => c.free },
     '-',
+    { label: 'Show in Chat', act: 'showInChat', when: (c) => c.count === 1 && c.ran },
     { label: 'Edit in Text', act: 'editInText', when: (c) => c.count === 1 },
   ],
   loose: [...edit, { label: 'Put into script at the end', act: 'putEnd' }],
