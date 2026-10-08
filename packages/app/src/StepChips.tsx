@@ -1,8 +1,9 @@
 import { createContext } from 'react';
+import type { RunPhase } from './runState.js';
 import type { StepInfo, StepMap, StepState } from './stepStatus.js';
 
 // Status comes through a context, not props: a streamed row must not rebuild the blocks mid-drag.
-export const StatusCtx = createContext<{ status: StepMap; show: boolean }>({ status: {}, show: false });
+export const StatusCtx = createContext<{ status: StepMap; show: boolean; ended?: { id: string; phase: RunPhase }; thinking?: number }>({ status: {}, show: false });
 
 const STATE: Record<StepState, { text: string; words: string }> = {
   active: { text: 'running', words: 'running' },

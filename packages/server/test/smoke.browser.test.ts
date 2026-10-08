@@ -245,7 +245,8 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await page.locator('.ebar b', { hasText: 'smoke.reins.md' }).waitFor();
     await row('ship').waitFor();
     expect(await page.locator('.blk').evaluateAll((els) => els.map((e) => (e as unknown as { dataset: { id: string } }).dataset.id))).toEqual(['plan', 'build', 'ship']);
-    await expect.poll(() => page.locator('.blk .sstate[aria-label^="done"]').count(), { timeout: W }).toBe(2);
+    await expect.poll(() => page.locator('.blk .sstate[aria-label^="done"]').count(), { timeout: W }).toBe(0);
+    await page.getByRole('note').getByText('The file changed since this run started').waitFor();
     await expect.poll(() => page.locator('.sx-hat').innerText(), { timeout: W }).toContain('smoke');
     await row('plan').locator('.sx-row').first().click();
     await panel.locator('h3', { hasText: 'plan' }).waitFor();

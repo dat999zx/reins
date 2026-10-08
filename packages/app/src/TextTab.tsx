@@ -9,7 +9,8 @@ import { restoreFile, restoreStep, type CanvasView, type EditorState, type Layou
 import { highlight, lineOffset } from './highlight.js';
 import { emptyHistory, push, redo, undo } from './history.js';
 import type { Sess } from './state.js';
-import { runRows, stepStatus } from './stepStatus.js';
+import { sameSteps, type RunView } from './runState.js';
+import type { Actions } from './rows.js';
 import { BlockPanel, WorkflowPanel } from './BlockPanel.js';
 import { flatSteps } from './canvas.js';
 import { KINDS } from './canvasKinds.js';
@@ -33,9 +34,9 @@ const toWorkspace = (ok: boolean) => { if (ok) document.querySelector<HTMLElemen
 const template = (name: string) =>
   `---\nreins: 1\nname: ${name}\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n## phase plan\n> Plan the change.\n\n## phase build\n> Make the change.\n`;
 
-export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }: {
+export function TextTab({ view, onView, sess, run, restore, onState, onDirty, onRun }: {
   view: Exclude<Tab, 'chat'>; onView: (t: 'text') => void;
-  sess: Sess; restore?: EditorState; onState: (patch: Partial<EditorState>) => void; onDirty: (dirty: boolean) => void; onRun: () => void;
+  sess: Sess; run: RunView; act: Actions; restore?: EditorState; onState: (patch: Partial<EditorState>) => void; onDirty: (dirty: boolean) => void; onRun: () => void;
 }) {
   const base = `/api/sessions/${sess.id}`;
   const [list, setList] = useState<Listed[]>([]);
@@ -251,7 +252,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
       setMsg(e instanceof ApiError && e.status === 409 ? 'A workflow with that name already exists.' : (e as Error).message);
     }
   };
-  const run = () => post(`${base}/run`, { path: file }).then(onRun).catch((e) => setMsg(e.message));
+  const startRun = () => post(`${base}/run`, { path: file }).then(onRun).catch((e) => setMsg(e.message));
 
   const marks = useMemo(() => {
     const m = new Map<number, 'error' | 'warning'>();
@@ -259,9 +260,12 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
     return m;
   }, [prev]);
   const lines = useMemo(() => highlight(text), [text]);
-  const latest = useMemo(() => runRows(sess.rows), [sess.rows]);
-  const status = useMemo(() => stepStatus(latest.rows), [latest]);
-  const showStatus = prev?.name !== undefined && prev.name === latest.workflow && !dirty;
+  // ponytail: marks hide when the file's (id, kind) list differs from the run's (default ids are positional); a run logged before that list existed keeps the clean-buffer rule.
+  const same = run.stepsAtStart !== undefined && !!prev?.workflow && sameSteps(flatSteps(prev.workflow.steps).map((s) => ({ id: s.id, kind: s.kind })), run.stepsAtStart);
+  const match = run.stepsAtStart ? same : !dirty;
+  const ours = prev?.name !== undefined && prev.name === run.workflow;
+  const showStatus = ours && match;
+  const stale = ours && run.stepsAtStart !== undefined && !!prev?.workflow && !same;
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); }
@@ -321,19 +325,20 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
         {view === 'blocks' && prev?.workflow && known && <Palette onAdd={add} onCond={cond} press={press} />}
       </aside>
       <section className="editor">
+        {view === 'blocks' && stale && <p className="sx-dockline" role="note">The file changed since this run started; marks are hidden.</p>}
         {file === null ? <p className="hint">Pick a workflow, or make a new one.</p> : (
           <>
             <div className="ebar">
               <b className="sx-wfname" title={file.split(/[\\/]/).at(-1)}>{file.split(/[\\/]/).at(-1)}</b>{dirty && <span className="dirty" title="Unsaved changes" role="img" aria-label="unsaved changes"> ●</span>}
               <span className="grow" />
               <button onClick={() => void save()} disabled={!dirty}>Save</button>
-              <button className="primary" onClick={() => void run()} disabled={dirty}>Run</button>
+              <button className="primary" onClick={() => void startRun()} disabled={dirty}>Run</button>
             </div>
             {visual && prev && !(prev.workflow && known) && <p className="hint">This file does not parse. Fix it in the Text tab.</p>}
             {visual && prev?.workflow && known && (
               <div className="canvaswrap" tabIndex={-1}
                 onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveWithDraft(); } }}>
-                <StatusCtx.Provider value={{ status, show: showStatus }}>
+                <StatusCtx.Provider value={{ status: run.steps, show: showStatus }}>
                   <Workspace key={file} w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} sel={sels} primary={stepId}
                     rev={prev} press={press} cam={canvas.current?.[file]?.cam} lay={lay}
                     onEdit={edit} onSel={(keys, primary) => { setSels(keys); setStepId(primary); }} onNote={setMsg} onEditInText={(line) => { pendingLine.current = line; onView('text'); }} onDelete={del} onLayout={setLayout} onUndo={() => step(undo)} onRedo={() => step(redo)} onCam={(cam) => { if (restored) setView(file, { cam }); }} />
@@ -378,7 +383,7 @@ export function TextTab({ view, onView, sess, restore, onState, onDirty, onRun }
                   <li key={s.id} style={{ paddingLeft: s.depth * 14 }}>
                     <button aria-pressed={s.id === stepId} onClick={() => setStepId(s.id)}>{s.kind}{s.title ? ` ${s.title}` : ''}</button>
                     {/* ponytail: a use step gets no chip; its inlined steps run as block/id, which no listed id matches */}
-                    {showStatus && status[s.id] && <StepChips i={status[s.id]!} />}
+                    {showStatus && run.steps[s.id] && <StepChips i={run.steps[s.id]!} />}
                   </li>
                 ))}
               </ol>

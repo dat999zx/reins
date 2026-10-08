@@ -4,6 +4,7 @@ import { post } from './api.js';
 import { Composer } from './Composer.js';
 import type { EditorState, Tab } from './editorState.js';
 import { renderRow, type Actions } from './rows.js';
+import { runView } from './runState.js';
 import { TextTab } from './TextTab.js';
 import { mergeOutput, title, type Sess } from './state.js';
 
@@ -18,6 +19,7 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
   const [fresh, setFresh] = useState(false);
   const rows = useMemo(() => mergeOutput(sess.rows), [sess.rows]);
   const busy = sess.status === 'running' || sess.status === 'waiting';
+  const run = useMemo(() => runView(sess), [sess]);
 
   const act: Actions = {
     answer: async (questionId, answer) => { await post(`${base}/answer`, { questionId, answer }); },
@@ -69,7 +71,7 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
         </>
       ) : (
         restore === undefined ? <p className="hint">Loading…</p>
-          : <TextTab view={tab} onView={onTab} sess={sess} restore={restore} onState={onState} onDirty={onDirty} onRun={() => onTab('chat')} />
+          : <TextTab view={tab} onView={onTab} sess={sess} run={run} act={act} restore={restore} onState={onState} onDirty={onDirty} onRun={() => onTab('chat')} />
       )}
     </main>
   );
