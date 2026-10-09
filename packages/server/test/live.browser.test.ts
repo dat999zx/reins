@@ -17,7 +17,7 @@ const skip = !fs.existsSync(INDEX) && !process.env.CI;
 
 const T = 120_000;
 const W = 15_000;
-const P = { fixture: 'claude-2.1.281-turns.jsonl', turn: 0, delayMs: 60 };
+const P = { fixture: 'claude-2.1.281-turns-thinking.jsonl', turn: 0, delayMs: 60 };
 const B = { fixture: 'claude-2.1.281-card-marker-hook.jsonl', delayMs: 60 };
 const H = { fixture: 'claude-2.1.281-approval-allow-hold.jsonl', approve: true };
 
@@ -181,6 +181,17 @@ describe.skipIf(skip)('live run e2e', () => {
     const buildBox = await buildKnot.boundingBox();
     expect(buildBox!.y).toBeGreaterThanOrEqual(logBox!.y);
     expect(buildBox!.y + buildBox!.height).toBeLessThanOrEqual(logBox!.y + logBox!.height);
+
+    // L6. The plan turn thought (the derived fixture): one line for the whole burst, a count and never text, and no "working…" bead beside it
+    const l0 = log.locator(`li.sx-strand[data-run="${await strand.getAttribute('data-run')}"]`);
+    const l0Plan = l0.locator('li.sx-knot', { has: page.getByRole('button', { name: /^Step plan · done/ }) });
+    if ((await expanded(l0Plan.getByRole('button', { name: /^Step plan/ }))) === 'false') await l0Plan.getByRole('button', { name: /^Step plan/ }).click();
+    await l0Plan.locator('.msg.agent', { hasText: 'ONE' }).waitFor();
+    expect(await l0Plan.locator('.row.think').count()).toBe(1);
+    expect(await l0Plan.locator('.row.think').innerText()).toBe('thought ~1,509 tokens');
+    expect(await l0Plan.locator('.sx-working').count()).toBe(0);
+    expect(await log.locator('.row', { hasText: '"thinking"' }).count()).toBe(0);
+
     // L1b: correctness on a scrollable replay; the 500-row measurements run manually in spike/verify/live/perf.mjs.
     expect(await log.locator('.sx-nowbar [role="status"]').count()).toBe(1);
     const c = await fetch(new URL('/api/sessions', srv.url), { method: 'POST', headers: { Authorization: `Bearer ${srv.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd: folderB, engine: 'claude' }) }).then(async (r) => { expect(r.ok).toBe(true); return r.json(); }) as { id: string };

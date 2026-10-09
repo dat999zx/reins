@@ -41,6 +41,8 @@ export type EngineEvent =
   | { type: 'card_delivered'; card: string; channel: 'mid-turn' | 'next-turn' }
   | { type: 'cost'; usd: number }
   | { type: 'error'; message: string }
+  // The agent's running thinking estimate for this turn; claude sends no thinking text, only a count.
+  | { type: 'thinking'; tokens: number }
   // One adapter-side control call (a hook or an approval), so every call lands in the run log.
   | { type: 'hook'; event: string; tool?: string; decision: string; reason?: string };
 

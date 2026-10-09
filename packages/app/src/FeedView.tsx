@@ -1,7 +1,7 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject, type UIEvent } from 'react';
 import { isOpen, KNOT, knotName, knotParts, type Feed as FeedData, type Knot, type Piece } from './feed.js';
 import { renderRow, type Actions, type Ctx } from './rows.js';
-import { PHASE, type RunView } from './runState.js';
+import { PHASE, thinkingWords, type RunView } from './runState.js';
 import { isFresh, type Sess } from './state.js';
 
 // ponytail: five cues only; ink-in, glow, clip-on, pop and tool icons were cut for v1 (review); history never animates (replay boundary and seq at mount). Open / closed choices live in Chat's memory; a collapsed knot renders no beads, so find-in-page does not see them.
@@ -24,8 +24,10 @@ export function Elapsed({ since }: { since: number }): ReactNode {
 function Beads({ rows, ctx, working = false }: { rows: Knot['beads']; ctx: BeadCtx; working?: boolean }) {
   const last = rows.at(-1);
   const text = last?.type === 'engine' && (last.data as { type: string }).type === 'text';
+  // the live thinking head is itself the indicator ("thinking… ~N tokens"); a past head ("thought") is not
+  const thinking = last !== undefined && ctx.thinking?.now === last.seq;
   return <>{rows.map((row) => <Bead row={row} ctx={ctx} key={row.seq} />)}
-    {working && !text && <li className="sx-bead sx-working"><span className="sx-wave" aria-hidden="true">⌁</span> working…</li>}
+    {working && !text && !thinking && <li className="sx-bead sx-working"><span className="sx-wave" aria-hidden="true">⌁</span> working…</li>}
   </>;
 }
 
@@ -67,7 +69,7 @@ const KnotView = memo(function KnotView({ k, newest, open, ctx, note, onToggle, 
   && a.k.running === b.k.running && a.k.end === b.k.end && a.k.why === b.k.why && a.k.cost === b.k.cost
   && a.k.tools.count === b.k.tools.count && a.newest === b.newest && a.k.beads.length === b.k.beads.length
   && a.k.beads.every((r, i) => r === b.k.beads[i] && a.ctx.card?.get(r.seq)?.state === b.ctx.card?.get(r.seq)?.state && a.ctx.card?.get(r.seq)?.landed === b.ctx.card?.get(r.seq)?.landed)
-  && a.ctx.sess.calls === b.ctx.sess.calls && a.ctx.sess.answers === b.ctx.sess.answers && a.ctx.sess.closed === b.ctx.sess.closed);
+  && a.ctx.thinking?.now === b.ctx.thinking?.now && a.ctx.sess.calls === b.ctx.sess.calls && a.ctx.sess.answers === b.ctx.sess.answers && a.ctx.sess.closed === b.ctx.sess.closed);
 
 function Strand({ s, run, ctx, open, onToggle, onBlock }: {
   s: Run; run: RunView; ctx: BeadCtx; open: Record<string, boolean>; onToggle(key: string, next: boolean): void; onBlock(runId: string, step: string): void;
@@ -109,8 +111,8 @@ const PIECES: { [T in Piece['type']]: (p: Extract<Piece, { type: T }>, c: PieceP
 };
 
 /** The Chat log as a rein: notes, plain turns and workflow strands of knots, beads under each knot. Thin: the grouping is feed.ts. */
-export function Feed({ f, sess, run, act, open, onToggle, onBlock, logRef, onScroll }: {
-  f: FeedData; sess: Sess; run: RunView; act: Actions; open: Record<string, boolean>; onToggle(key: string, next: boolean): void;
+export function Feed({ f, sess, run, act, thinking, open, onToggle, onBlock, logRef, onScroll }: {
+  f: FeedData; sess: Sess; run: RunView; act: Actions; thinking: NonNullable<Ctx['thinking']>; open: Record<string, boolean>; onToggle(key: string, next: boolean): void;
   onBlock(runId: string, step: string): void;
   logRef: RefObject<HTMLDivElement | null>; onScroll(e: UIEvent<HTMLDivElement>): void;
 }) {
@@ -123,8 +125,8 @@ export function Feed({ f, sess, run, act, open, onToggle, onBlock, logRef, onScr
     onBlock: (runId: string, step: string) => handlers.current.onBlock(runId, step),
     act: { answer: (qid: string, answer: string) => handlers.current.act.answer(qid, answer), resume: (rid: string) => handlers.current.act.resume(rid) },
   }), []);
-  const c: PieceProps = { ctx: { sess, act: stable.act, card: f.cards, seenSeq: seenSeq.current, animated: animated.current }, run, open, onToggle: stable.onToggle, onBlock: stable.onBlock };
-  const now = f.now ? `Now: ${f.now.title} · ${KNOT[f.now.state].words}` : '';
+  const c: PieceProps = { ctx: { sess, act: stable.act, card: f.cards, seenSeq: seenSeq.current, animated: animated.current, thinking }, run, open, onToggle: stable.onToggle, onBlock: stable.onBlock };
+  const now = f.now ? `Now: ${f.now.title} · ${KNOT[f.now.state].words}${run.thinking !== undefined ? ` · ${thinkingWords(run.thinking)}` : ''}` : '';
   const jump = () => {
     const target = f.now && logRef.current?.querySelector<HTMLElement>(`[data-knot="${CSS.escape(f.now.key)}"] :is(.sx-kbtn, .sx-khead)`);
     if (target) { target.scrollIntoView({ block: 'start' }); target.focus({ preventScroll: true }); }

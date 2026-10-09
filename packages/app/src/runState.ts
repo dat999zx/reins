@@ -20,6 +20,7 @@ export interface RunView {
   turns: number; cost: number; startedAt?: number; endedTs?: number;
   last?: { seq: number; text: string };
   stepOf: Map<number, string>;
+  thinking?: number;                 // tokens, while the newest engine row of the live run is a thinking row
 }
 
 type Data = Record<string, any>;
@@ -34,6 +35,7 @@ const tail = (v: RunView) => [
   ...(v.startedAt !== undefined && v.endedTs !== undefined ? [clock(v.endedTs - v.startedAt)] : []),
   `$${v.cost.toFixed(4)}`,
 ];
+export const thinkingWords = (tokens: number) => `thinking… ~${tokens.toLocaleString('en-US')} tokens`;
 const where = (word: string, v: RunView) => (v.endedAt ? `${word} at \`${v.endedAt}\`` : word);
 
 // ponytail: the newest run only; a history picker would pass a run id. Cards are matched by text, first in first out; `cards_unsent` by position (it has no run id).
@@ -41,7 +43,7 @@ export const PHASE: Record<RunPhase, { words: (v: RunView, pos?: Pos) => string;
   none: { words: () => '', ended: false, resumable: false },
   busy: { words: () => 'The agent is working (not a workflow run).', ended: false, resumable: false },
   running: {
-    words: (v, pos) => `${v.current.length ? `Running \`${v.current.at(-1)}\`` : 'Running'}${pos ? ` · step ${pos.n} of ${pos.m}` : ''}`,
+    words: (v, pos) => `${v.current.length ? `Running \`${v.current.at(-1)}\`` : 'Running'}${pos ? ` · step ${pos.n} of ${pos.m}` : ''}${v.thinking !== undefined ? ` · ${thinkingWords(v.thinking)}` : ''}`,
     ended: false, resumable: false,
   },
   waiting: {
@@ -109,6 +111,27 @@ const FOLD: Record<string, Fold> = {
 };
 const END = new Set(['run_finished', 'run_stopped', 'run_detached']);
 
+const thinkingRow = (r: LogRow) => r.type === 'engine' && data(r).type === 'thinking';
+
+/** Seqs of the last thinking row of each burst: the thinking rows of one run with no other engine row between them. The parser emits several per burst; only the head draws. */
+export function thinkingHeads(rows: LogRow[]): Set<number> {
+  const heads = new Set<number>();
+  let prev: LogRow | undefined;
+  for (const r of rows) {
+    if (r.type !== 'engine') continue;
+    if (prev && thinkingRow(prev) && thinkingRow(r) && prev.runId === r.runId) heads.delete(prev.seq);
+    if (thinkingRow(r)) heads.add(r.seq);
+    prev = r;
+  }
+  return heads;
+}
+
+/** The newest engine row, when it is a thinking row: the agent is thinking right now (if the session is busy). */
+export function thinkingNow(rows: LogRow[]): { seq: number; tokens: number } | undefined {
+  const r = rows.filter((x) => x.type === 'engine').at(-1);
+  return r && thinkingRow(r) && typeof data(r).tokens === 'number' ? { seq: r.seq, tokens: data(r).tokens } : undefined;
+}
+
 export function runView(s: Sess): RunView {
   const { rows, workflow, live } = runRows(s.rows);
   const v: RunView = {
@@ -128,7 +151,11 @@ export function runView(s: Sess): RunView {
     if (r.type === 'receipt' || r.type === 'run_detached') closeAt = r.seq;
   }
   v.went = a.started.flatMap((to, i) => (i > 0 && a.started[i - 1] !== to ? [{ from: a.started[i - 1]!, to }] : []));
-  if (live) delete v.endedTs;
+  if (live) {
+    delete v.endedTs;
+    const t = thinkingNow(rows);
+    if (t) v.thinking = t.tokens;
+  }
 
   if (closeAt >= 0) {
     for (const r of s.rows) {

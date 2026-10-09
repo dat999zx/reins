@@ -67,6 +67,23 @@ describe('row registry', () => {
     expect(renderRow(row('engine', { type: 'brand_new' }), ctx)).not.toBeNull();
   });
 });
+describe('thinking row', () => {
+  const t = (tokens: number, seq: number) => ({ ...row('engine', { type: 'thinking', tokens }), seq });
+  const heads = new Set([2]);
+
+  it('is a registered engine event; only a burst head draws', () => {
+    expect(engineEvents.has('thinking')).toBe(true);
+    expect(renderRow(t(50, 1), ctx)).toBeNull();
+    expect(renderRow(t(50, 1), { ...ctx, thinking: { heads } })).toBeNull();
+    expect(drawable(t(50, 1))).toBe(true);
+  });
+
+  it('says thinking… while it is the live head and thought after, with a grouped count', () => {
+    expect(text(renderRow(t(1650, 2), { ...ctx, thinking: { heads, now: 2 } }))).toBe('⌁thinking… ~1,650 tokens');
+    expect(text(renderRow(t(1509, 2), { ...ctx, thinking: { heads } }))).toBe('thought ~1,509 tokens');
+    expect(text(renderRow(t(1509, 2), { ...ctx, thinking: { heads, now: 9 } }))).toBe('thought ~1,509 tokens');
+  });
+});
 describe('drawable and card words', () => {
   it('drawable is false for every hidden type and the silent engine events, true for engine text', () => {
     for (const t of hidden) expect(drawable(row(t))).toBe(false);

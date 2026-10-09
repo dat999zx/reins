@@ -478,7 +478,8 @@ input.sx-num { min-width: 2.5ch; padding: 1px 6px; text-align: center; }
 .sx-took { display: inline-block; margin-left: 8px; color: var(--mute); }
 .sx-spin { display: inline-block; width: 11px; height: 11px; border: 2px solid var(--mute); border-right-color: transparent; border-radius: 50%; vertical-align: middle; }
 .sx-wave { display: inline-block; color: var(--c, var(--brand)); margin-right: 4px; }
-.sx-working { color: var(--mute); font-size: 12px; }
+.sx-working, .sx-feed .row.think { color: var(--mute); font-size: 12px; }
+.sx-bead:empty { display: none; }
 .sx-seg { overflow: hidden; width: 2px; }
 .sx-knot[data-state='waiting'] > .sx-knotrow > .sx-seg { width: 3px; background: var(--gate); }
 .sx-knot[data-state='waiting'] > .sx-knotrow::before { top: 26px; left: calc(12px + var(--depth) * 14px); height: 2px; width: 9px; background: var(--gate); }

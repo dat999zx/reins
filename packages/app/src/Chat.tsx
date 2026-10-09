@@ -6,7 +6,7 @@ import type { EditorState, Tab } from './editorState.js';
 import { Feed } from './FeedView.js';
 import { feed } from './feed.js';
 import type { Actions } from './rows.js';
-import { runView } from './runState.js';
+import { runView, thinkingHeads, thinkingNow } from './runState.js';
 import { TextTab } from './TextTab.js';
 import { mergeOutput, title, type Sess } from './state.js';
 
@@ -29,6 +29,8 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
   const busy = sess.status === 'running' || sess.status === 'waiting';
   const run = useMemo(() => runView(sess), [sess]);
   const f = useMemo(() => feed(rows, run, new Set(sess.open)), [rows, run, sess.open]);
+  // only the head of a thinking burst draws; it says "thinking…" while it is the newest engine row of a busy session
+  const thinking = useMemo(() => { const now = thinkingNow(sess.rows); return { heads: thinkingHeads(sess.rows), ...(busy && now ? { now: now.seq } : {}) }; }, [sess]);
 
   const act: Actions = {
     answer: async (questionId, answer) => { await post(`${base}/answer`, { questionId, answer }); },
@@ -100,7 +102,7 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
       </div>
       {tab === 'chat' ? (
         <>
-          <Feed f={f} sess={sess} run={run} act={act} open={open} logRef={log}
+          <Feed f={f} sess={sess} run={run} act={act} thinking={thinking} open={open} logRef={log}
             onToggle={(key, next) => setOpen((o) => ({ ...o, [key]: next }))} onBlock={toBlock}
             onScroll={(e) => {
               const el = e.currentTarget;

@@ -3,6 +3,7 @@ import type { EngineEvent } from '@reins/core';
 import type { LogRow } from '@reins/server/store.js';
 import { generic, short } from '../generic.js';
 import type { Ctx } from '../rows.js';
+import { thinkingWords } from '../runState.js';
 
 type Render = (e: any, row: LogRow, ctx: Ctx) => ReactNode;
 
@@ -32,6 +33,10 @@ export const engineEvents = new Map<EngineEvent['type'], Render>([
   ['refusal', (e) => <div className="row bad">refused: {e.reason}</div>],
   ['card_delivered', (e) => chip(e)],
   ['error', (e) => <div className="row bad">{e.message}</div>],
+  // the parser emits several rows per burst (a growing count, never the text): only the burst's head draws
+  ['thinking', (e, row, ctx) => !ctx.thinking?.heads.has(row.seq) ? null
+    : ctx.thinking.now === row.seq ? <div className="row think"><span className="sx-wave" aria-hidden="true">⌁</span>{thinkingWords(e.tokens)}</div>
+      : <div className="row think">thought ~{e.tokens.toLocaleString('en-US')} tokens</div>],
 ]);
 
 export const type = 'engine';

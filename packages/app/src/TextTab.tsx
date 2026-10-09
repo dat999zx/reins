@@ -391,7 +391,7 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
             {visual && prev?.workflow && known && (
               <div className="canvaswrap" tabIndex={-1}
                 onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveWithDraft(); } }}>
-                <StatusCtx.Provider value={{ status: run.steps, show: showStatus, ended }}>
+                <StatusCtx.Provider value={{ status: run.steps, show: showStatus, ended, ...(run.thinking !== undefined ? { thinking: run.thinking } : {}) }}>
                   <Workspace key={file} w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} sel={sels} primary={stepId}
                     rev={prev} press={press} cam={canvas.current?.[file]?.cam} lay={lay}
                     onEdit={edit} onSel={(keys, primary) => { setSels(keys); setStepId(primary); }} onNote={setMsg} onEditInText={(line) => { pendingLine.current = line; onView('text'); }} onDelete={del} onLayout={setLayout} onUndo={() => step(undo)} onRedo={() => step(redo)} reveal={go} ran={ran} onShowInChat={onChat} follow={following ? now : undefined} went={went} onUserCam={onUserCam} onCam={(cam) => { if (restored) setView(file, { cam }); }} />

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { LogRow } from '@reins/server/store.js';
 import { initial, reduceAll } from '../src/state.js';
-import { PHASE, didNotStart, firstRowOf, meter, runView, sameSteps, stepPos, type RunPhase } from '../src/runState.js';
+import { PHASE, didNotStart, firstRowOf, meter, runView, sameSteps, stepPos, thinkingHeads, type RunPhase } from '../src/runState.js';
 import { parseWorkflow } from '@reins/core';
 import { runRows, stepStatus } from '../src/stepStatus.js';
 
@@ -280,6 +280,38 @@ describe('runView facts', () => {
     reset();
     const rows = [started(), ss('plan'), row('turn_ended', { step: 'plan', cost: 0.1 }), ss('gate-1'), row('gate_paused', { step: 'gate-1' })];
     expect(view(rows).steps).toEqual(stepStatus(runRows(rows).rows));
+  });
+});
+
+describe('thinking', () => {
+  const think = (tokens: number, runId = 'r1') => row('engine', { type: 'thinking', tokens }, runId);
+
+  it('thinkingHeads: consecutive thinking rows are one burst whose last seq is the head; other engine rows split bursts', () => {
+    reset();
+    const a = think(50), b = think(317), c = think(575), t = text('hi'), d = think(700);
+    expect([...thinkingHeads([started(), a, b, c, t, d])]).toEqual([c.seq, d.seq]);
+    expect([...thinkingHeads([a, b, status('running'), c])]).toEqual([c.seq]);
+    const tool = row('engine', { type: 'tool_result', tool: 'Read', output: '' });
+    expect([...thinkingHeads([a, tool, b])]).toEqual([a.seq, b.seq]);
+    expect([...thinkingHeads([think(5, 'r1'), think(6, 'r2')])]).toHaveLength(2);
+    expect(thinkingHeads([]).size).toBe(0);
+  });
+
+  it('RunView.thinking is the head tokens only while it is the run newest engine row and the run is live', () => {
+    reset();
+    const live = [status('running'), started(), ss('plan'), think(50), think(317)];
+    expect(view(live).thinking).toBe(317);
+    expect(view([...live, text('answer')]).thinking).toBeUndefined();
+    expect(view([...live, row('engine', { type: 'cost', usd: 1 })]).thinking).toBeUndefined();
+    expect(view([...live, row('run_finished'), status('idle')]).thinking).toBeUndefined();
+    expect(view([started(), ss('plan'), text('a')]).thinking).toBeUndefined();
+  });
+
+  it('PHASE.running.words adds the count only while thinking', () => {
+    reset();
+    const v = view([status('running'), started(), ss('plan'), think(1509)]);
+    expect(PHASE.running.words(v)).toBe('Running `plan` · thinking… ~1,509 tokens');
+    expect(PHASE.running.words(view([status('running'), started(), ss('plan')]))).toBe('Running `plan`');
   });
 });
 
