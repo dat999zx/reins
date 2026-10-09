@@ -154,6 +154,13 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .sx-meter { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .sx-dockbody { display: grid; gap: 6px; }
 .sx-dockbody .qcard { margin: 0; }
+.sx-steer { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sx-steer textarea { flex: 1 1 200px; min-width: 0; resize: none; }
+.sx-steer button { padding-block: 2px; }
+.sx-cards { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 0; padding: 0; list-style: none; color: var(--mute); }
+.sx-cards li { min-width: 0; }
+.sx-cardtext { display: inline-block; max-width: 28ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; color: var(--ink); }
+.sx-cardstate { font-weight: 600; }
 .sx-latest { margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--mute); }
 .sx-dockreceipt { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; }
 .sx-dockreceipt > div { display: flex; gap: 6px; }

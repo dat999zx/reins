@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { Diagnostic } from '@reins/core';
 import type { TagEntry } from '@reins/server/tags.js';
-import { ApiError, get, post } from './api.js';
+import { ApiError, get, post, sendCard } from './api.js';
 import { chipsToTags, missingArg, pickerFor, takeTag, type Chip } from './tags.js';
 
 interface Listed { path: string; name: string; scope: string }
@@ -51,7 +51,7 @@ export function Composer({ id, cwd, busy, catalogue, takeRefill }: { id: string;
       }
       const runPath = /^\/run\s+(.+)$/.exec(body)?.[1];
       if (runPath) await post(`/api/sessions/${id}/run`, { path: runPath.trim() });
-      else if (body === '/stop') await post(`/api/sessions/${id}/card`, { kind: 'stop', text: '' });
+      else if (body === '/stop') await sendCard(id, 'stop');
       else {
         if (chips.length && busy) return flash('Tags start a new run; wait until the session is idle.');
         const missing = missingArg(chips, catalogue);
@@ -67,7 +67,7 @@ export function Composer({ id, cwd, busy, catalogue, takeRefill }: { id: string;
   }
 
   const card = (kind: 'now' | 'stop') =>
-    post(`/api/sessions/${id}/card`, { kind, text: kind === 'stop' ? '' : text.trim() }).then(() => { if (kind === 'now') setText(''); }).catch(fail);
+    sendCard(id, kind, kind === 'stop' ? '' : text.trim()).then(() => { if (kind === 'now') setText(''); }).catch(fail);
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (picker) {

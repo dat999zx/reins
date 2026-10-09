@@ -36,11 +36,11 @@ const toWorkspace = (ok: boolean) => { if (ok) document.querySelector<HTMLElemen
 const template = (name: string) =>
   `---\nreins: 1\nname: ${name}\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n## phase plan\n> Plan the change.\n\n## phase build\n> Make the change.\n`;
 
-export function TextTab({ view, onView, sess, run, act, restore, onState, onDirty, onRun, reveal, onRevealed, onChat, dockOpen, onDockOpen }: {
+export function TextTab({ view, onView, sess, run, act, restore, onState, onDirty, onRun, reveal, onRevealed, onChat, dockOpen, onDockOpen, dismissed, onDismiss }: {
   view: Exclude<Tab, 'chat'>; onView: (t: Exclude<Tab, 'chat'>) => void;
   sess: Sess; run: RunView; act: Actions; restore?: EditorState; onState: (patch: Partial<EditorState>) => void; onDirty: (dirty: boolean) => void; onRun: () => void;
   reveal?: { runId: string; id: string; n: number }; onRevealed: () => void; onChat: (step?: string) => void;
-  dockOpen: boolean; onDockOpen(o: boolean): void;
+  dockOpen: boolean; onDockOpen(o: boolean): void; dismissed?: string; onDismiss(runId?: string): void;
 }) {
   const base = `/api/sessions/${sess.id}`;
   const [list, setList] = useState<Listed[]>([]);
@@ -64,7 +64,6 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
   const [name, setName] = useState('');
   const [msg, setMsg] = useState('');
   const [starting, setStarting] = useState<{ seq: number }>();
-  const [dismissed, setDismissed] = useState<string>();
   const sessionBusy = sess.status === 'running' || sess.status === 'waiting';
   useEffect(() => {
     if (starting && sess.rows.some((r) => r.seq > starting.seq && r.type === 'run_started')) setStarting(undefined);
@@ -236,7 +235,9 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
     if (file === null) return;
     try {
       await put(`${base}/workflow`, { path: file, text: t });
-      setSaved(t); setMsg('Saved.');
+      setSaved(t);
+      setMsg(run.live && run.workflow === prev?.name
+        ? 'Saved. The run that is going keeps the version it started with; this change applies to the next run.' : 'Saved.');
       void refresh();
     } catch (e) {
       setMsg((e as Error).message);
@@ -263,7 +264,7 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
     }
   };
   const startRun = () => {
-    if (view === 'blocks') { setStarting({ seq: sess.lastSeq }); onDockOpen(true); setDismissed(undefined); }
+    if (view === 'blocks') { setStarting({ seq: sess.lastSeq }); onDockOpen(true); }
     return post(`${base}/run`, { path: file }).then(() => { if (view === 'text') onRun(); }).catch((e) => { setStarting(undefined); setMsg(e.message); });
   };
 
@@ -277,8 +278,9 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
   const same = run.stepsAtStart !== undefined && !!prev?.workflow && sameSteps(flatSteps(prev.workflow.steps).map((s) => ({ id: s.id, kind: s.kind })), run.stepsAtStart);
   const match = run.stepsAtStart ? same : !dirty;
   const ours = prev?.name !== undefined && prev.name === run.workflow;
-  const showStatus = ours && match;
-  const showDock = starting !== undefined || ((dismissed === undefined || dismissed !== run.runId) && (ours || run.phase === 'busy' || (!prev?.workflow && (run.live || PHASE[run.phase].ended))));
+  const gone = run.runId !== undefined && run.runId === dismissed && PHASE[run.phase].ended; // a resumed run (same id) is not ended, so it comes back
+  const showStatus = ours && match && !gone;
+  const showDock = starting !== undefined || (!gone && (ours || run.phase === 'busy' || (!prev?.workflow && (run.live || PHASE[run.phase].ended))));
   const refused = starting && didNotStart(sess.rows, starting.seq);
   const startWords = refused ? refused === 'The run did not start.' ? refused : `The run did not start: ${refused}` : starting ? 'Starting the run…' : undefined;
   const now = showStatus && run.live ? [...run.current].reverse().find((id) => prev?.steps.some((s) => s.id === id)) : undefined;
@@ -359,7 +361,7 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
       <section className="editor">
         {view === 'blocks' && (showDock ? <RunDock run={run} sess={sess} act={act} budget={prev?.workflow?.budget}
           pos={showStatus && prev?.workflow ? stepPos(prev.workflow, run.current) : undefined} match={!ours || match}
-          open={dockOpen} onOpen={onDockOpen} starting={startWords} onChat={() => onChat()} onDismiss={() => setDismissed(run.runId)} />
+          open={dockOpen} onOpen={onDockOpen} starting={startWords} onChat={() => onChat()} onDismiss={() => onDismiss(run.runId)} />
           : sess.status === 'waiting' ? <p className="sx-dockline">The agent is waiting for you in Chat. <button onClick={() => onChat()}>Chat</button></p>
           : run.live ? <p className="sx-dockline">A run of `{run.workflow}` is going. <button onClick={() => {
             const entry = list.find((w) => w.name === run.workflow);

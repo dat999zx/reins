@@ -309,6 +309,44 @@ describe.skipIf(skip)('live run e2e', () => {
     expect(await page.getByRole('button', { name: 'Run', exact: true }).getAttribute('title')).toBe('Save first: a run uses the saved file.');
     await tab('Text').click();
     await editor.press('ControlOrMeta+S');
+    const note = (re: RegExp) => page.locator('.note[role="status"]', { hasText: re });
+    await note(/^Saved\.$/).waitFor();
+
+    // L3. Steer from the dock, a save during a run says it applies next time, Stop and Dismiss in the dock.
+    await tab('Blocks').click();
+    await page.locator('.wflist button', { has: page.locator('.sx-wfname', { hasText: /^live$/ }) }).click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await chip('gate-1', 'waiting').waitFor();
+    await tab('Text').click();
+    await editor.fill(`${await editor.inputValue()}\n`);
+    await editor.press('ControlOrMeta+S');
+    await note(/applies to the next run/).waitFor();
+    await tab('Blocks').click();
+    const steer = dock.getByRole('textbox', { name: 'Steer the agent' });
+    await steer.fill('use pnpm');
+    await steer.press('Enter');
+    await expect.poll(() => steer.inputValue()).toBe('');
+    await tab('Chat').click();
+    await log.getByText('steer card use pnpm', { exact: false }).waitFor();
+    await page.getByRole('textbox', { name: 'Message' }).fill('End with PINEAPPLE.');
+    await page.getByRole('textbox', { name: 'Message' }).press('Enter');
+    await tab('Blocks').click();
+    const sent = dock.getByRole('list', { name: 'Cards sent' }).getByRole('listitem');
+    await sent.filter({ hasText: 'use pnpm' }).getByText('queued').waitFor();
+    await sent.filter({ hasText: 'End with PINEAPPLE.' }).getByText('queued').waitFor();
+    await dockCard('gate').getByRole('button', { name: 'Approve', exact: true }).click();
+    await chip('gate-2', 'waiting').waitFor();
+    await sent.filter({ hasText: 'use pnpm' }).getByText('delivered').waitFor();
+    await sent.filter({ hasText: 'End with PINEAPPLE.' }).getByText('delivered').waitFor();
+    await dock.locator('.sx-steer').getByRole('button', { name: 'Stop', exact: true }).click(); // the gate card has its own Stop
+    await dock.getByRole('status').getByText('Stopped at `gate-2`', { exact: false }).waitFor();
+    await dock.getByRole('button', { name: 'Dismiss', exact: true }).click();
+    expect(await page.locator('.blk .sstate').count()).toBe(0);
+    expect(await dock.count()).toBe(0);
+    await tab('Chat').click();
+    await tab('Blocks').click();
+    expect(await page.locator('.blk .sstate').count()).toBe(0);
+    expect(await dock.count()).toBe(0);
     expect(errors).toEqual([]);
   }, T);
 });

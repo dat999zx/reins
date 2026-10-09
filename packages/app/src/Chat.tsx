@@ -20,6 +20,8 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
   const [stick, setStick] = useState(true);
   const [fresh, setFresh] = useState(false);
   const [dockOpen, setDockOpen] = useState(false);
+  // ponytail: Dismiss is in memory; a reload shows the last run's marks again.
+  const [dismissed, setDismissed] = useState<string>();
   const [open, setOpen] = useState<Record<string, boolean>>({}); // the user's open / closed choice per knot, in memory
   const [reveal, setReveal] = useState<{ runId: string; id: string; n: number }>();
   const [focus, setFocus] = useState<{ key: string; n: number }>();
@@ -112,7 +114,7 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
       ) : (
         restore === undefined ? <p className="hint">Loading…</p>
           : <TextTab view={tab} onView={onTab} sess={sess} run={run} act={act} restore={restore} onState={onState} onDirty={onDirty} onRun={() => onTab('chat')}
-            reveal={reveal} onRevealed={() => setReveal(undefined)} onChat={onChat} dockOpen={dockOpen} onDockOpen={setDockOpen} />
+            reveal={reveal} onRevealed={() => setReveal(undefined)} onChat={onChat} dockOpen={dockOpen} onDockOpen={setDockOpen} dismissed={dismissed} onDismiss={setDismissed} />
       )}
     </main>
   );
