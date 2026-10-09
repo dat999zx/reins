@@ -129,6 +129,12 @@ export function mergeOutput(rows: LogRow[]): LogRow[] {
 
 export const folderName = (cwd: string) => cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? cwd;
 
+// The browser tab's title: a hidden tab says that a session needs you.
+export const pageTitle = (st: State) => {
+  const n = railGroups(st).waiting.length;
+  return n ? `(${n}) waiting · Reins` : 'Reins';
+};
+
 export function railGroups(st: State) {
   const all = Object.values(st.sessions);
   const byNew = (a: Sess, b: Sess) => b.lastTs - a.lastTs;

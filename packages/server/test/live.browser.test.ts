@@ -64,6 +64,8 @@ describe.skipIf(skip)('live run e2e', () => {
     fs.mkdirSync(path.join(folderA, '.reins', 'workflows'), { recursive: true });
     fs.writeFileSync(path.join(folderA, '.reins', 'workflows', 'live.reins.md'), LIVE('node --version'));
     fs.writeFileSync(path.join(folderA, '.reins', 'workflows', 'live2.reins.md'), LIVE('node -v').replace('name: live\n', 'name: live2\n'));
+    fs.mkdirSync(path.join(folderB, '.reins', 'workflows'), { recursive: true });
+    fs.writeFileSync(path.join(folderB, '.reins', 'workflows', 'other.reins.md'), '---\nreins: 1\nname: other\nbudget: { turns: 40, minutes: 30, usd: 4.00 }\nalways: []\n---\n\n## phase solo\n> Do it.\n\n## gate\nuntil: you approve\n');
     const folders = [folderA, folderB];
     store = openStore(':memory:');
     srv = await startServer({
@@ -387,6 +389,12 @@ describe.skipIf(skip)('live run e2e', () => {
     await pan(80, 0);
     await expect.poll(() => follow.getAttribute('aria-pressed')).toBe('false');
     await note(/^Stopped following the run\./).waitFor();
+    // a reload starts following again (Follow is a page choice, not a stored one); a press in the view stops it once more
+    await page.reload();
+    await dockCard('tool').waitFor();
+    await expect.poll(() => follow.getAttribute('aria-pressed')).toBe('true');
+    await pan(80, 0);
+    await expect.poll(() => follow.getAttribute('aria-pressed')).toBe('false');
     for (let i = 0; i < 8 && !(await apart('gate-1')); i++) await pan(-250, -250); // the next stop stands outside the view
     expect(await apart('gate-1')).toBe(true);
     await expect.poll(async () => {
@@ -404,6 +412,100 @@ describe.skipIf(skip)('live run e2e', () => {
     await chip('gate-2', 'waiting').waitFor();
     await dockCard('gate').getByRole('button', { name: 'Approve', exact: true }).click();
     await dock.getByRole('status').getByText('Done ·', { exact: false }).waitFor();
+
+    // L5. Two sessions at once: B waits on a gate while A sits finished. Neither shows the other's run; the page title counts the waiting one.
+    const sid = () => page.evaluate(`new URLSearchParams(location.hash.slice(1)).get('s')`) as Promise<string>;
+    const goA = () => rail.locator('.group', { has: page.locator('header', { hasText: path.basename(folderA) }) }).locator('button.item').click();
+    const idA = await sid();
+    await page.keyboard.press('ControlOrMeta+O');
+    await expect.poll(sid).not.toBe(idA);
+    const idB = await sid();
+    await tab('Blocks').click();
+    await page.locator('.wflist button', { has: page.locator('.sx-wfname', { hasText: /^other$/ }) }).click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await dockCard('trust').getByRole('button', { name: 'Trust', exact: true }).click();
+    await dockCard('gate').waitFor();
+    await chip('gate-1', 'waiting').waitFor();
+    await expect.poll(() => page.title()).toBe('(1) waiting · Reins');
+    // A, finished: its own run, none of B's
+    await goA();
+    expect(await sid()).toBe(idA);
+    await tab('Blocks').click();
+    await dock.getByRole('status').getByText('Done ·', { exact: false }).waitFor();
+    await chip('plan', 'done').waitFor();
+    await dock.getByRole('button', { name: 'Show the run' }).waitFor(); // B's dock was open: that choice stays with B
+    expect(await dockCard('gate').count()).toBe(0);
+    expect(await page.locator('.blk[data-id="solo"]').count()).toBe(0);
+    expect(await page.title()).toBe('(1) waiting · Reins'); // B's, seen from A
+    await tab('Chat').click();
+    await log.waitFor();
+    expect(await knot(/solo/).count()).toBe(0);
+    expect(await log.getByRole('button', { name: 'Approve' }).count()).toBe(0);
+    expect(await log.locator('.sx-nowbar [role="status"]').innerText()).toBe('');
+    // B, waiting: its own run, none of A's
+    await page.getByRole('list', { name: 'Waiting for you' }).locator('button.item').click();
+    expect(await sid()).toBe(idB);
+    await tab('Chat').click();
+    await knot(/^Step solo · done/).waitFor();
+    expect(await knot(/^Step plan/).count()).toBe(0);
+    await expect.poll(() => log.locator('.sx-nowbar [role="status"]').innerText()).toBe('Now: wait until · waiting for you');
+    expect(await log.getByRole('button', { name: 'Approve' }).count()).toBe(1);
+    // live regions: the feed's Now line is the only one in the log, no row announces itself, and a knot's name holds its visible text
+    await knot(/^Step solo · done/).click(); // open, so its rows are mounted and the check below can fail
+    await log.locator('.msg.agent').first().waitFor();
+    expect(await log.locator('[aria-live], [role="alert"], [role="log"]').count()).toBe(0);
+    expect(await log.locator('[role="status"]').count()).toBe(1);
+    const kbtns = await log.locator('.sx-kbtn').all();
+    expect(kbtns.length).toBe(2);
+    for (const k of kbtns) {
+      const name = ((await k.getAttribute('aria-label')) ?? '').toLowerCase();
+      for (const word of (await k.innerText()).toLowerCase().split(/[\s·]+/).filter((x) => /^[a-z]{3,}$/.test(x))) expect(name, `knot name "${name}" lacks "${word}"`).toContain(word);
+    }
+    await tab('Blocks').click();
+    await dockCard('gate').waitFor();
+    await dock.getByRole('status').getByText('Waiting for you', { exact: false }).waitFor();
+    expect(await dock.getByRole('status').innerText()).not.toContain('Done');
+    await chip('solo', 'done').waitFor();
+    expect(await page.locator('.blk[data-id="plan"]').count()).toBe(0);
+    expect(await dock.locator('[aria-live], [role="alert"]').count()).toBe(0);
+    expect(await dock.locator('[role="status"]').count()).toBe(1);
+    // reload with B waiting: the title comes back from the replay
+    await page.reload();
+    await expect.poll(() => page.title()).toBe('(1) waiting · Reins');
+    expect(await sid()).toBe(idB);
+    if ((await tab('Blocks').getAttribute('aria-selected')) !== 'true') await tab('Blocks').click();
+    await dockCard('gate').waitFor();
+    // Escape in the steer box does not clear the canvas selection
+    const steerB = dock.getByRole('textbox', { name: 'Steer the agent' });
+    await page.locator('.blk[data-id="solo"]').click();
+    await expect.poll(() => page.locator('.blk[data-id="solo"].sx-sel').count()).toBe(1);
+    await steerB.focus();
+    await steerB.press('Escape');
+    expect(await page.locator('.blk[data-id="solo"].sx-sel').count()).toBe(1);
+    // keyboard: from the canvas back to the dock's toggle (Shift+Tab), Enter toggles it, Tab reaches the steer box
+    const focused = (re: string) => page.evaluate(`!!document.activeElement && new RegExp(${JSON.stringify(re)}).test(document.activeElement.closest('.sx-dockline') ? document.activeElement.textContent : document.activeElement.getAttribute('aria-label') ?? '')`);
+    await page.locator('[aria-label="Workspace"]').focus();
+    let back = 0;
+    while (!(await focused('the run$')) && back++ < 8) await page.keyboard.press('Shift+Tab');
+    expect(back).toBeLessThanOrEqual(8);
+    const toggle = dock.getByRole('button', { name: /the run$/ });
+    const wasOpen = await toggle.getAttribute('aria-expanded');
+    await page.keyboard.press('Enter');
+    await expect.poll(() => toggle.getAttribute('aria-expanded')).not.toBe(wasOpen);
+    if ((await toggle.getAttribute('aria-expanded')) !== 'true') await page.keyboard.press('Enter');
+    await expect.poll(() => toggle.getAttribute('aria-expanded')).toBe('true');
+    let fwd = 0;
+    while (!(await focused('^Steer the agent$')) && fwd++ < 6) await page.keyboard.press('Tab');
+    expect(await focused('^Steer the agent$')).toBe(true);
+    // Stop in B: B's title and dock change, A's do not
+    await dock.locator('.sx-steer').getByRole('button', { name: 'Stop', exact: true }).click();
+    await dock.getByRole('status').getByText('Stopped at `gate-1`', { exact: false }).waitFor();
+    await expect.poll(() => page.title()).toBe('Reins');
+    await goA();
+    expect(await sid()).toBe(idA);
+    await tab('Blocks').click();
+    await dock.getByRole('status').getByText('Done ·', { exact: false }).waitFor();
+    expect(await dock.getByRole('status').innerText()).not.toContain('Stopped');
     expect(errors).toEqual([]);
   }, T);
 });

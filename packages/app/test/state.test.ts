@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { LogRow } from '@reins/server/store.js';
 import {
-  afterOf, finishReplay, initial, isFresh, loadSessions, mergeOutput, openQuestions, railGroups, reduce, reduceAll, takeRefill, title, type State,
+  afterOf, finishReplay, initial, isFresh, loadSessions, mergeOutput, openQuestions, pageTitle, railGroups, reduce, reduceAll, takeRefill, title, type State,
 } from '../src/state.js';
 
 const S = 's1';
@@ -227,5 +227,17 @@ describe('selectors', () => {
     expect(g.groups.map((x) => x.name)).toEqual(['two', 'one', 'one']);
     expect(g.groups.map((x) => x.cwd)).toEqual(['D:\\p\\two', '/x/one', 'D:\\p\\one']);
     expect(g.groups[2]!.sessions.map((s) => s.id)).toEqual(['a']);
+    expect(pageTitle(st)).toBe('(1) waiting · Reins');
+  });
+
+  it('the page title counts the sessions waiting for you', () => {
+    seq = 0;
+    const mk = (id: string, status: string) => [
+      row('session_created', { id, cwd: `D:\\p\\${id}`, engine: 'claude', autoApprove: false }, { sessionId: id, seq: 1 }),
+      row('status', { status }, { sessionId: id, seq: 2 }),
+    ];
+    expect(pageTitle(fold([...mk('a', 'idle'), ...mk('b', 'running')]))).toBe('Reins');
+    expect(pageTitle(fold([...mk('a', 'waiting'), ...mk('b', 'running')]))).toBe('(1) waiting · Reins');
+    expect(pageTitle(fold([...mk('a', 'waiting'), ...mk('b', 'waiting')]))).toBe('(2) waiting · Reins');
   });
 });

@@ -6,7 +6,7 @@ import { ApiError, get, initToken, post, stream } from './api.js';
 import { Chat } from './Chat.js';
 import { loadEditorState, makeSaver, type EditorState, type Tab } from './editorState.js';
 import { Rail } from './Rail.js';
-import { afterOf, finishReplay, initial, loadSessions, reduceAll, takeRefill, type SessionView, type State } from './state.js';
+import { afterOf, finishReplay, initial, loadSessions, pageTitle, reduceAll, takeRefill, type SessionView, type State } from './state.js';
 
 const loadedAt = Date.now();
 type Engines = Array<{ id: string } & EngineProbe>;
@@ -155,6 +155,9 @@ export function App() {
       else flash((e as Error).message);
     }
   };
+  // above the early returns: a token-less or loading page keeps the title of the last state, never a hook-order change
+  const title = pageTitle(st);
+  useEffect(() => { document.title = title; }, [title]);
   const newRef = useRef(newSession);
   newRef.current = newSession;
   useEffect(() => {
