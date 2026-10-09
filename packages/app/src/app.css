@@ -166,12 +166,19 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .sx-dockreceipt > div { display: flex; gap: 6px; }
 .sx-dockreceipt dt { color: var(--mute); }
 .sx-dockreceipt dd { margin: 0; }
+.sx-dockline button[aria-pressed='true'] { border-color: var(--brand); color: var(--brand); }
 .receives li.sx-now-step { box-shadow: inset 3px 0 0 var(--brand); }
 .sstate { display: inline-block; font: 600 10.5px/1.6 var(--sans); padding: 0 7px; margin-left: 6px; border: 1px solid var(--line2); border-radius: 9px; color: var(--mute); }
 .sstate.active { border-color: var(--brand); color: var(--brand); }
 .sstate.waiting { border-color: var(--gate); color: var(--gate); padding: 0 7px; border-radius: 9px; }
 .sstate.done { border-color: var(--ok); color: var(--ok); }
-.sstate.stuck, .sstate.bad, .sstate.failed { border-color: var(--bad); color: var(--bad); }
+.sstate.stuck, .sstate.bad, .sstate.failed, .sstate.stopped { border-color: var(--bad); color: var(--bad); }
+.sstate.paused { border-color: var(--gate); color: var(--gate); }
+.sstate.active::before { content: '▶ '; }
+.sstate.waiting::before, .sstate.sx-ended.paused::before { content: '⏸ '; }
+.sstate.failed::before, .sstate.sx-ended.failed::before { content: '✗ '; }
+.sstate.stuck::before { content: '⚠ '; }
+.sstate.sx-ended::before { content: '■ '; }
 .sx-stepdiv { color: var(--mute); }
 @media (prefers-reduced-motion: no-preference) {
   .sstate.active { animation: sstate-pulse 1.6s ease-in-out infinite; }
@@ -319,15 +326,22 @@ select.sx-pill { cursor: pointer; }
 .sx-blk.sx-sel { box-shadow: inset 0 -2px 0 rgb(0 0 0 / 0.2), 0 0 0 2px var(--brand); }
 .sx-c.sx-sel { box-shadow: 0 0 0 2px var(--brand); border-radius: 6px; }
 .sx-blk:focus-visible, .sx-c:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-.sx-active { outline: 2px solid var(--brand); outline-offset: 2px; }
-.sx-waiting { outline: 2px solid var(--gate); outline-offset: 2px; }
-.sx-stuck { outline: 2px solid var(--bad); outline-offset: 2px; }
+/* The state cue is a child span: ::before is the drop bar, ::after the notch, the outline is the focus ring and the error mark. Colours are the feed knots'. */
+.sx-cue { position: absolute; inset: -4px; border-radius: 9px; pointer-events: none; z-index: 3; }
+.sx-cue-active { border: 2px solid var(--brand); }
+.sx-cue-waiting { border: 3px dashed var(--gate); }
+.sx-cue-failed { border: 3px solid var(--bad); }
+.sx-cue-stuck { border: 3px double var(--bad); }
+.sx-cue-ended-stopped, .sx-cue-ended-failed { border-left: 4px solid var(--bad); }
+.sx-cue-ended-paused { border-left: 4px solid var(--gate); }
+@media (prefers-reduced-motion: no-preference) {
+  .sx-cue-active { animation: sx-cue-pulse 1.4s ease-in-out infinite; }
+  @keyframes sx-cue-pulse { 50% { opacity: 0.45; } }
+}
+.sx-links .sx-went > path:first-child, .sx-links path.sx-went { stroke-width: 3; }
 .blk.mark-error { outline: 2px solid var(--bad); outline-offset: 1px; }
 .blk.mark-warning { outline: none; }
 .sx-blk.mark-warning > .sx-row::after, .sx-c.mark-warning > .sx-chead > .sx-row::after { content: '⚠'; font-size: 11px; color: #ffd27a; text-shadow: 0 0 2px #000; }
-.blk.sx-active { outline: 2px solid var(--brand); outline-offset: 2px; }
-.blk.sx-waiting { outline: 2px solid var(--gate); outline-offset: 2px; }
-.blk.sx-stuck { outline: 2px solid var(--bad); outline-offset: 2px; }
 .blk:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .always { display: grid; gap: 3px; color: var(--mute); }
 .always textarea { resize: vertical; font-family: var(--mono); font-size: 11.5px; }

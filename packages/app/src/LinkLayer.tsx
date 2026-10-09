@@ -1,4 +1,5 @@
 import { arrowPath, labelAt, labelW, placeLabels, type LinkArrow } from './arrows.js';
+import { cx } from './generic.js';
 import type { Pt, Rect } from './surface.js';
 
 const WIRES: Record<string, string> = { next: '#a3a19b', 'on-fail': '#e05d5a' };
@@ -8,7 +9,7 @@ const text = (a: LinkArrow) => (a.kind === 'on-fail' ? 'on fail' : a.kind);
 const head = (c: string) => `sx-ah${c.slice(1)}`;
 
 // `rects` and `band` are in world coordinates. `then` is the fall-through from a free block to the one under it.
-export function LinkLayer({ arrows, then, rects, lanes, selected, band }: { arrows: LinkArrow[]; then: Array<{ from: string; to: string }>; rects: Map<string, Rect>; lanes: Map<string, number>; selected?: string; band?: { a: Pt; b: Pt } }) {
+export function LinkLayer({ arrows, then, rects, lanes, selected, band, went }: { arrows: LinkArrow[]; then: Array<{ from: string; to: string }>; rects: Map<string, Rect>; lanes: Map<string, number>; selected?: string; band?: { a: Pt; b: Pt }; went?: Set<string> }) {
   const colours = [...new Set(arrows.map(colour))];
   const spots = placeLabels(arrows.flatMap((a) => {
     const f = rects.get(a.from), t = rects.get(a.to);
@@ -25,14 +26,15 @@ export function LinkLayer({ arrows, then, rects, lanes, selected, band }: { arro
       <g>
         {then.map((t) => {
           const f = rects.get(t.from), r = rects.get(t.to);
-          return f && r && <path key={`${t.from}>${t.to}`} className="sx-then" d={arrowPath(f, r, 0)} markerEnd="url(#sx-ah-then)" />;
+          const key = `${t.from}>${t.to}`;
+          return f && r && <path key={key} className={cx('sx-then', went?.has(key) && 'sx-went')} d={arrowPath(f, r, 0)} markerEnd="url(#sx-ah-then)" />;
         })}
         {arrows.map((a) => {
           const f = rects.get(a.from), t = rects.get(a.to), key = `${a.from}/${a.index}`;
           if (!f || !t) return null;
           const d = arrowPath(f, t, lanes.get(key) ?? 0), c = colour(a);
           return (
-            <g key={key} className={selected === key ? 'sx-lsel' : undefined} data-link={key} data-lk={a.kind} role="button" tabIndex={0} aria-label={`${a.kind} link from ${a.from} to ${a.to}`}>
+            <g key={key} className={cx(selected === key && 'sx-lsel', went?.has(key) && 'sx-went')} data-link={key} data-lk={a.kind} role="button" tabIndex={0} aria-label={`${a.kind} link from ${a.from} to ${a.to}${went?.has(key) ? ', taken by the run' : ''}`}>
               <path d={d} fill="none" stroke={c} strokeWidth={1.5} strokeDasharray={a.mark === 'warning' ? '5 4' : WIRES[a.kind] ? undefined : '2 4'} markerEnd={`url(#${head(c)})`} />
               <path className="sx-hit" d={d} fill="none" stroke="transparent" strokeWidth={10} />
             </g>

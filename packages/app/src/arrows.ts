@@ -24,6 +24,15 @@ export function linksToDraw(w: Workflow, wires: Map<string, Mark>): { arrows: Li
   return { arrows, missing, then };
 }
 
+// The arrows a run went along: `from/index` of a link, `from>to` of a then-arrow, for each consecutive pair of started steps.
+export function taken(arrows: LinkArrow[], then: Array<{ from: string; to: string }>, went: Array<{ from: string; to: string }>): Set<string> {
+  const pairs = new Set(went.map((p) => `${p.from}>${p.to}`));
+  return new Set([
+    ...arrows.filter((a) => pairs.has(`${a.from}>${a.to}`)).map((a) => `${a.from}/${a.index}`),
+    ...then.map((t) => `${t.from}>${t.to}`).filter((k) => pairs.has(k)),
+  ]);
+}
+
 // From the right side of `from`; into the left side of `to` when it is clearly further right, else round the right of both (a bracket).
 const geo = (from: Rect, to: Rect, lane: number) => {
   const x1 = from.x + from.w, x2 = to.x + to.w;

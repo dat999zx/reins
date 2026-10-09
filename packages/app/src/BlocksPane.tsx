@@ -12,7 +12,7 @@ import { zoneAttrs, zoneKey, type Zone } from './gesture.js';
 import type { Over } from './useDrag.js';
 import { Pill, StepPick } from './Pill.js';
 import { cx } from './generic.js';
-import { StatusCtx, StepChips } from './StepChips.js';
+import { ENDED, StatusCtx, StepChips } from './StepChips.js';
 
 const LOOK = { code: 'code', str: 'pill', num: 'num', pill: 'pill' } as const satisfies Record<CondParam['look'], string>;
 
@@ -27,7 +27,7 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, condDrag,
   const conds = Object.fromEntries(steps.flatMap((s) => (s.cond === undefined ? [] : [[s.id, s.cond]])));
   const found = useMemo(() => (loose ? undefined : marksOf(w, diags, text)), [w, diags, text, !!loose]);
   const marks = found?.steps;
-  const { status, show: showAll } = useContext(StatusCtx);
+  const { status, show: showAll, ended, thinking } = useContext(StatusCtx);
   const show = showAll && !loose;
   const dead = !!loose || undefined; // a loose block is read-only: its controls are inert, the block itself still takes clicks
   const za = (z: Zone) => (loose ? {} : zoneAttrs(z));
@@ -36,6 +36,12 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, condDrag,
   const zone = (z: Zone) => ({ ...za(z), className: ov(z) });
   // Stack and C blocks share these attributes. A click stops here: it must not bubble to every enclosing C block.
   const name = (s: Step) => `${KINDS[s.kind].card?.label ?? s.kind} ${s.id}`;
+  // The state cue is a child span, not a pseudo-element: ::before is the drop bar and ::after the notch. The ended mark is the same span.
+  const stopped = (s: Step) => (show && ended?.id === s.id ? ended : undefined);
+  const cue = (s: Step) => {
+    const state = show ? status[s.id]?.state : undefined, end = stopped(s);
+    return (state || end) && <span className={cx('sx-cue', state && `sx-cue-${state}`, end && `sx-cue-ended-${end.phase}`)} aria-hidden />;
+  };
   const blockProps = (s: Step, shape: string, free = false) => {
     const info = show ? status[s.id] : undefined;
     const mark = marks?.get(s.id);
@@ -105,7 +111,7 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, condDrag,
   };
 
   const head = (s: Step) => {
-    const info = show ? status[s.id] : undefined;
+    const info = show ? status[s.id] : undefined, end = stopped(s);
     // a loose block has no arrows, so it keeps all its link chips
     const chips = s.links.flatMap((l, i) => (loose || missing?.has(`${s.id}/${i}`) ? [<span key={`l${i}`} className={cx('sx-mod sx-link', !loose && 'sx-missing')} data-lk={l.kind}>{l.kind} → {l.to}</span>] : []));
     return (
@@ -128,7 +134,10 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, condDrag,
             {chips}
           </div>
         )}
-        <span className="sx-st">{info && <StepChips i={info} />}</span>
+        <span className="sx-st">
+          {info && <StepChips i={info} thinking={info.state === 'active' && !KINDS[s.kind].group ? thinking : undefined} />}
+          {end && <span className={`sstate sx-ended ${end.phase}`} role="img" aria-label={ENDED[end.phase]}>{ENDED[end.phase]}</span>}
+        </span>
       </>
     );
   };
@@ -144,12 +153,13 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, condDrag,
         // a stack block is one target, halves from the whole block (chips and pills included)
         if (!group) {
           const z = zone({ type: top ? 'free' : KINDS[s.kind].stops ? 'cap' : 'block', id: s.id });
-          return <div key={key} {...bp} {...z} className={cx(bp.className, z.className)}>{head(s)}</div>;
+          return <div key={key} {...bp} {...z} className={cx(bp.className, z.className)}>{cue(s)}{head(s)}</div>;
         }
         // ponytail: a drop on a body's own area, even beside its last child, lands first in that body (mockup behaviour); the snap bar shows it
         const head_ = zone({ type: top ? 'free' : 'chead', id: s.id }), kids = zone({ type: 'body', id: s.id, branch: 'kids' }), els = zone({ type: 'body', id: s.id, branch: 'else' }), foot = zone({ type: top ? 'free' : 'foot', id: s.id });
         return (
           <div key={key} {...bp}>
+            {cue(s)}
             <div {...head_} className={cx('sx-chead', head_.className)}>{head(s)}</div>
             <div {...kids} className={cx('sx-cbody', kids.className)} data-body={`${s.id}/kids`}>{stack(s.kids ?? [], s.id, 'kids')}</div>
             {group === 'kids+else' && (

@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { parseWorkflow, type Workflow } from '@reins/core';
 import { edgeId, type Mark } from '../src/canvas.js';
-import { arrowPath, labelAt, labelW, lanes, linksToDraw, placeLabels, type LinkArrow } from '../src/arrows.js';
+import { LinkLayer } from '../src/LinkLayer.js';
+import { arrowPath, labelAt, labelW, lanes, linksToDraw, placeLabels, taken, type LinkArrow } from '../src/arrows.js';
 
 const text = (links: string) => `---
 reins: 1
@@ -126,5 +129,39 @@ describe('lanes', () => {
   it('reuses lane 0 for spans that do not touch, whichever way the arrow points', () => {
     const m = lanes([l('a', 'b'), l('d', 'c')], order);
     expect([m.get('a/0'), m.get('d/0')]).toEqual([0, 0]);
+  });
+});
+
+describe('taken', () => {
+  const arrow = (from: string, to: string, index = 0): LinkArrow => ({ from, index, kind: 'next', to });
+  it('marks a link the run went along', () => {
+    expect([...taken([arrow('a', 'b')], [], [{ from: 'a', to: 'b' }])]).toEqual(['a/0']);
+  });
+  it('does not mark a pair with no link, nor a link the run did not take', () => {
+    expect(taken([arrow('a', 'b')], [], [{ from: 'a', to: 'c' }]).size).toBe(0);
+    expect(taken([arrow('a', 'b'), arrow('a', 'c', 1)], [], [{ from: 'a', to: 'c' }])).toEqual(new Set(['a/1']));
+  });
+  it('marks a then-arrow by its from>to key', () => {
+    expect([...taken([], [{ from: 'x', to: 'y' }], [{ from: 'x', to: 'y' }])]).toEqual(['x>y']);
+  });
+  it('ignores a reversed pair', () => {
+    expect(taken([arrow('a', 'b')], [{ from: 'a', to: 'b' }], [{ from: 'b', to: 'a' }]).size).toBe(0);
+  });
+});
+describe('LinkLayer: arrows taken', () => {
+  const rect = (y: number) => ({ x: 0, y, w: 100, h: 20 });
+  const rects = new Map([['a', rect(0)], ['b', rect(60)], ['x', rect(120)], ['y', rect(180)]]);
+  const html = (went?: Set<string>) => renderToStaticMarkup(createElement(LinkLayer, {
+    arrows: [{ from: 'a', index: 0, kind: 'next', to: 'b' }], then: [{ from: 'x', to: 'y' }], rects, lanes: new Map(), ...(went ? { went } : {}),
+  }));
+  it('marks a taken link and then-arrow, and says so in the link name', () => {
+    const out = html(new Set(['a/0', 'x>y']));
+    expect(out).toContain('next link from a to b, taken by the run');
+    expect(out.match(/sx-went/g)?.length).toBe(2);
+  });
+  it('marks nothing without a taken set', () => {
+    const out = html();
+    expect(out).not.toContain('sx-went');
+    expect(out).not.toContain('taken by the run');
   });
 });

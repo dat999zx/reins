@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { Diagnostic, StepKind, Workflow } from '@reins/core';
 import { addStep, deleteSteps, newId, setCond } from './blocks.js';
 import { FULL, pruneLayout, removeLoose, STATE_MAX, stateBytes } from './arrange.js';
@@ -18,7 +18,7 @@ import { KINDS } from './canvasKinds.js';
 import { Workspace, type EditOpts } from './Workspace.js';
 import { Palette } from './Palette.js';
 import type { Start } from './useDrag.js';
-import { StatusCtx, StepChips } from './StepChips.js';
+import { ENDED, StatusCtx, StepChips } from './StepChips.js';
 
 interface Listed { path: string; name: string; scope: 'project' | 'user'; diagnostics: Diagnostic[] }
 interface Step { id: string; kind: string; title?: string; depth: number; cond?: string }
@@ -30,7 +30,8 @@ interface Preview {
 
 const NAME = /^[a-z0-9][a-z0-9-]*$/;
 const WAIT = 'Still applying the last change. Try again.';
-const EARLIER = 'An earlier run: only the newest run links to its blocks.';
+const STOPPED = 'Stopped following the run. Press Follow to follow it again.';
+const EARLIER ='An earlier run: only the newest run links to its blocks.';
 // the panel's Delete button goes away with the block, so the focus goes back to the workspace
 const toWorkspace = (ok: boolean) => { if (ok) document.querySelector<HTMLElement>('.sx-view')?.focus({ preventScroll: true }); };
 const template = (name: string) =>
@@ -264,6 +265,7 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
     }
   };
   const startRun = () => {
+    setFollowing(true);
     if (view === 'blocks') { setStarting({ seq: sess.lastSeq }); onDockOpen(true); }
     return post(`${base}/run`, { path: file }).then(() => { if (view === 'text') onRun(); }).catch((e) => { setStarting(undefined); setMsg(e.message); });
   };
@@ -281,6 +283,14 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
   const gone = run.runId !== undefined && run.runId === dismissed && PHASE[run.phase].ended; // a resumed run (same id) is not ended, so it comes back
   const showStatus = ours && match && !gone;
   const showDock = starting !== undefined || (!gone && (ours || run.phase === 'busy' || (!prev?.workflow && (run.live || PHASE[run.phase].ended))));
+  // Follow: the canvas keeps the running block in view until the user moves the camera (onUserCam), or presses Follow again.
+  const [following, setFollowing] = useState(true);
+  const userCam = useRef<() => void>(undefined);
+  userCam.current = () => { if (following && showStatus && run.live) { setFollowing(false); setMsg(STOPPED); } };
+  const onUserCam = useCallback(() => userCam.current?.(), []);
+  const went = useMemo(() => (showStatus ? run.went : undefined), [run.runId, run.went.length, showStatus]);
+  const endedPhase = run.phase in ENDED ? run.phase as keyof typeof ENDED : undefined;
+  const ended = showStatus && run.endedAt && endedPhase ? { id: run.endedAt, phase: endedPhase } : undefined;
   const refused = starting && didNotStart(sess.rows, starting.seq);
   const startWords = refused ? refused === 'The run did not start.' ? refused : `The run did not start: ${refused}` : starting ? 'Starting the run…' : undefined;
   const now = showStatus && run.live ? [...run.current].reverse().find((id) => prev?.steps.some((s) => s.id === id)) : undefined;
@@ -361,7 +371,7 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
       <section className="editor">
         {view === 'blocks' && (showDock ? <RunDock run={run} sess={sess} act={act} budget={prev?.workflow?.budget}
           pos={showStatus && prev?.workflow ? stepPos(prev.workflow, run.current) : undefined} match={!ours || match}
-          open={dockOpen} onOpen={onDockOpen} starting={startWords} onChat={() => onChat()} onDismiss={() => onDismiss(run.runId)} />
+          open={dockOpen} onOpen={onDockOpen} starting={startWords} following={following} onFollow={showStatus ? (on) => { setFollowing(on); if (on) setMsg((m) => (m === STOPPED ? '' : m)); } : undefined} onChat={() => onChat()} onDismiss={() => onDismiss(run.runId)} />
           : sess.status === 'waiting' ? <p className="sx-dockline">The agent is waiting for you in Chat. <button onClick={() => onChat()}>Chat</button></p>
           : run.live ? <p className="sx-dockline">A run of `{run.workflow}` is going. <button onClick={() => {
             const entry = list.find((w) => w.name === run.workflow);
@@ -381,10 +391,10 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
             {visual && prev?.workflow && known && (
               <div className="canvaswrap" tabIndex={-1}
                 onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveWithDraft(); } }}>
-                <StatusCtx.Provider value={{ status: run.steps, show: showStatus }}>
+                <StatusCtx.Provider value={{ status: run.steps, show: showStatus, ended }}>
                   <Workspace key={file} w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} sel={sels} primary={stepId}
                     rev={prev} press={press} cam={canvas.current?.[file]?.cam} lay={lay}
-                    onEdit={edit} onSel={(keys, primary) => { setSels(keys); setStepId(primary); }} onNote={setMsg} onEditInText={(line) => { pendingLine.current = line; onView('text'); }} onDelete={del} onLayout={setLayout} onUndo={() => step(undo)} onRedo={() => step(redo)} reveal={go} ran={ran} onShowInChat={onChat} onCam={(cam) => { if (restored) setView(file, { cam }); }} />
+                    onEdit={edit} onSel={(keys, primary) => { setSels(keys); setStepId(primary); }} onNote={setMsg} onEditInText={(line) => { pendingLine.current = line; onView('text'); }} onDelete={del} onLayout={setLayout} onUndo={() => step(undo)} onRedo={() => step(redo)} reveal={go} ran={ran} onShowInChat={onChat} follow={following ? now : undefined} went={went} onUserCam={onUserCam} onCam={(cam) => { if (restored) setView(file, { cam }); }} />
                 </StatusCtx.Provider>
                 {sels.size > 1 ? (
                   <aside className="bpanel" aria-label="Selection panel">

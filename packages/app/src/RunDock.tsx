@@ -12,6 +12,7 @@ const CARD_STATE: Record<RunCard['state'], string> = { queued: 'queued', deliver
 export function RunDock(p: {
   run: RunView; sess: Sess; act: Actions; budget?: Workflow['budget']; pos?: Pos;
   match: boolean; open: boolean; onOpen(o: boolean): void; starting?: string; onChat(): void; onDismiss(): void;
+  following: boolean; onFollow?(on: boolean): void; // absent when the open file is not the run's or no longer matches: there is nothing to follow
 }): ReactNode {
   const { run, sess, act, open, onOpen } = p;
   const id = useId();
@@ -60,6 +61,7 @@ export function RunDock(p: {
       {/* an ended run's status line already says its turns, time and cost */}
       {!phase.ended && items.map((i) => <span key={i.key} className={`sx-meter ${i.level === 'ok' ? '' : 'warn'}`} title={i.text}>{i.text}</span>)}
       {!p.match && run.stepsAtStart && <span className="sx-docknotice" role="note">The file changed since this run started; marks are hidden.</span>}
+      {run.live && p.onFollow && <button aria-pressed={p.following} title="Keep the running block in view" onClick={() => p.onFollow!(!p.following)}>Follow</button>}
       <button onClick={p.onChat}>Chat</button>
       <button ref={toggle} aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => onOpen(!open)}>{open ? 'Hide the run' : 'Show the run'}</button>
     </div>

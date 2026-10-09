@@ -297,6 +297,7 @@ describe.skipIf(skip)('live run e2e', () => {
     await page.reload();
     await dockCard('gate').waitFor();
     await chip('gate-1', 'waiting').waitFor();
+    expect(await page.locator('.blk[data-id="gate-1"] > .sx-cue.sx-cue-waiting').count()).toBe(1); // the state cue, a child span of the block
     await dockCard('gate').getByRole('button', { name: 'Approve', exact: true }).click();
     await expect.poll(() => page.evaluate('!!document.activeElement?.closest(".sx-dock")')).toBe(true);
     await chip('gate-2', 'waiting').waitFor();
@@ -340,6 +341,8 @@ describe.skipIf(skip)('live run e2e', () => {
     await sent.filter({ hasText: 'End with PINEAPPLE.' }).getByText('delivered').waitFor();
     await dock.locator('.sx-steer').getByRole('button', { name: 'Stop', exact: true }).click(); // the gate card has its own Stop
     await dock.getByRole('status').getByText('Stopped at `gate-2`', { exact: false }).waitFor();
+    await expect.poll(() => page.locator('.blk[data-id="gate-2"] .sx-ended').innerText()).toBe('stopped here');
+    expect(await page.locator('.blk[data-id="gate-2"] > .sx-cue.sx-cue-ended-stopped').count()).toBe(1);
     await dock.getByRole('button', { name: 'Dismiss', exact: true }).click();
     expect(await page.locator('.blk .sstate').count()).toBe(0);
     expect(await dock.count()).toBe(0);
@@ -347,6 +350,60 @@ describe.skipIf(skip)('live run e2e', () => {
     await tab('Blocks').click();
     expect(await page.locator('.blk .sstate').count()).toBe(0);
     expect(await dock.count()).toBe(0);
+
+    // L4. Follow keeps the running block in view until the user moves the camera; pressing Follow brings it back.
+    const view = page.locator('.sx-view');
+    const block = (id: string) => page.locator(`.blk[data-id="${id}"]`);
+    const inside = async (id: string) => {
+      const b = await block(id).boundingBox(), v = await view.boundingBox();
+      return !!b && !!v && b.x >= v.x && b.y >= v.y && b.x + b.width <= v.x + v.width && b.y + b.height <= v.y + v.height;
+    };
+    const apart = async (id: string) => {
+      const b = await block(id).boundingBox(), v = await view.boundingBox();
+      return !!b && !!v && (b.x + b.width < v.x || b.y + b.height < v.y || b.x > v.x + v.width || b.y > v.y + v.height);
+    };
+    // a point of bare surface (the view itself is the element there), then a drag from it
+    const pan = async (dx: number, dy: number) => {
+      const s = await page.evaluate(`(() => {
+        const v = document.querySelector('.sx-view'), r = v.getBoundingClientRect();
+        for (let y = r.top + 60; y < r.bottom - 60; y += 20) for (let x = r.right - 30; x > r.left + 30; x -= 20) if (document.elementFromPoint(x, y) === v) return { x, y };
+        return null;
+      })()`) as { x: number; y: number } | null;
+      expect(s).not.toBeNull();
+      await page.mouse.move(s!.x, s!.y);
+      await page.mouse.down();
+      await page.mouse.move(Math.max(5, s!.x + dx), Math.max(5, s!.y + dy), { steps: 6 });
+      await page.mouse.up();
+    };
+    for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Zoom in' }).click();
+    for (let i = 0; i < 6 && !(await apart('plan')); i++) await pan(-250, -150);
+    expect(await apart('plan')).toBe(true);
+    expect(await note(/Stopped following/).count()).toBe(0); // no run is going: moving the camera is not "stopping Follow"
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await dockCard('tool').waitFor();
+    const follow = dock.getByRole('button', { name: 'Follow', exact: true });
+    await expect.poll(() => inside('plan')).toBe(true);
+    expect(await follow.getAttribute('aria-pressed')).toBe('true');
+    await pan(80, 0);
+    await expect.poll(() => follow.getAttribute('aria-pressed')).toBe('false');
+    await note(/^Stopped following the run\./).waitFor();
+    for (let i = 0; i < 8 && !(await apart('gate-1')); i++) await pan(-250, -250); // the next stop stands outside the view
+    expect(await apart('gate-1')).toBe(true);
+    await expect.poll(async () => {
+      if (await chip('gate-1', 'waiting').isVisible()) return true;
+      const allow = dockCard('tool').getByRole('button', { name: 'Allow', exact: true });
+      if (await allow.isVisible()) await allow.click({ timeout: 2000 }).catch(() => undefined);
+      return false;
+    }, { timeout: 30_000 }).toBe(true);
+    // Follow off: the running block was not brought along. Follow on again brings it.
+    expect(await apart('gate-1')).toBe(true);
+    await follow.click();
+    expect(await follow.getAttribute('aria-pressed')).toBe('true');
+    await expect.poll(() => inside('gate-1')).toBe(true);
+    await dockCard('gate').getByRole('button', { name: 'Approve', exact: true }).click();
+    await chip('gate-2', 'waiting').waitFor();
+    await dockCard('gate').getByRole('button', { name: 'Approve', exact: true }).click();
+    await dock.getByRole('status').getByText('Done ·', { exact: false }).waitFor();
     expect(errors).toEqual([]);
   }, T);
 });
