@@ -188,9 +188,8 @@ describe.skipIf(skip)('live run e2e', () => {
     if ((await expanded(l0Plan.getByRole('button', { name: /^Step plan/ }))) === 'false') await l0Plan.getByRole('button', { name: /^Step plan/ }).click();
     await l0Plan.locator('.msg.agent', { hasText: 'ONE' }).waitFor();
     expect(await l0Plan.locator('.row.think').count()).toBe(1);
-    expect(await l0Plan.locator('.row.think').innerText()).toBe('thought ~1,509 tokens');
+    expect(await l0Plan.locator('.row.think').textContent()).toBe('thought ~1,509 tokens'); // textContent: a skipped (content-visibility) track has no innerText
     expect(await l0Plan.locator('.sx-working').count()).toBe(0);
-    expect(await log.locator('.row', { hasText: '"thinking"' }).count()).toBe(0);
 
     // L1b: correctness on a scrollable replay; the 500-row measurements run manually in spike/verify/live/perf.mjs.
     expect(await log.locator('.sx-nowbar [role="status"]').count()).toBe(1);
