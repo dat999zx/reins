@@ -179,12 +179,12 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     return ok({ workflows: [...list(path.join(cwd, '.reins', 'workflows'), 'project'), ...list(path.join(o.dir, 'workflows'), 'user')] });
   }
 
-  let picking = false;
+  let picking: AbortController | undefined;
   async function pick(res: http.ServerResponse): Promise<Reply> {
     if (!o.pickFolder) return fail(501, 'This machine has no folder picker.');
-    if (picking) return fail(409, 'A folder dialog is already open.');
-    picking = true;
-    const ac = new AbortController();
+    // A new click replaces a dialog that is stuck or lost behind a window, instead of locking the picker out.
+    picking?.abort();
+    const ac = (picking = new AbortController());
     res.on('close', () => { if (!res.writableEnded) ac.abort(); });
     try {
       const p = await o.pickFolder(ac.signal);
@@ -192,7 +192,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     } catch (e) {
       return fail(501, e instanceof Error ? e.message : 'No folder picker is available.');
     } finally {
-      picking = false;
+      if (picking === ac) picking = undefined;
     }
   }
 
@@ -284,6 +284,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     const write = (row: LogRow) => { res.write(`data: ${JSON.stringify(row)}\n\n`); };
     // Replay and subscribe in one tick, so no row can fall between the two.
     for (const id of sessions.keys()) for (const row of o.store.readLog(id, after.get(id) ?? 0)) write(row);
+    res.write('event: replay_done\ndata: {}\n\n');
     subs.add(write);
     const beat = setInterval(() => res.write(': heartbeat\n\n'), o.heartbeatMs ?? 15_000);
     req.on('close', () => { clearInterval(beat); subs.delete(write); });

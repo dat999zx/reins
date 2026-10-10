@@ -1,9 +1,12 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { TagEntry } from '@reins/server/tags.js';
 import { post } from './api.js';
 import { Composer } from './Composer.js';
 import type { EditorState, Tab } from './editorState.js';
-import { renderRow, type Actions } from './rows.js';
+import { Feed } from './FeedView.js';
+import { feed } from './feed.js';
+import type { Actions } from './rows.js';
+import { runView, thinkingHeads, thinkingNow } from './runState.js';
 import { TextTab } from './TextTab.js';
 import { mergeOutput, title, type Sess } from './state.js';
 
@@ -14,22 +17,68 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
 }) {
   const base = `/api/sessions/${sess.id}`;
   const log = useRef<HTMLDivElement>(null);
-  const stick = useRef(true);
+  const [stick, setStick] = useState(true);
   const [fresh, setFresh] = useState(false);
+  const [dockOpen, setDockOpen] = useState(false);
+  // ponytail: Dismiss is in memory; a reload shows the last run's marks again.
+  const [dismissed, setDismissed] = useState<string>();
+  const [open, setOpen] = useState<Record<string, boolean>>({}); // the user's open / closed choice per knot, in memory
+  const [reveal, setReveal] = useState<{ runId: string; id: string; n: number }>();
+  const [focus, setFocus] = useState<{ key: string; n: number }>();
   const rows = useMemo(() => mergeOutput(sess.rows), [sess.rows]);
   const busy = sess.status === 'running' || sess.status === 'waiting';
+  const run = useMemo(() => runView(sess), [sess]);
+  const f = useMemo(() => feed(rows, run, new Set(sess.open)), [rows, run, sess.open]);
+  // only the head of a thinking burst draws; it says "thinking…" while it is the newest engine row of a busy session
+  const thinking = useMemo(() => { const now = thinkingNow(sess.rows); return { heads: thinkingHeads(sess.rows), ...(busy && now ? { now: now.seq } : {}) }; }, [sess]);
 
   const act: Actions = {
     answer: async (questionId, answer) => { await post(`${base}/answer`, { questionId, answer }); },
     resume: (runId) => { post(`${base}/resume`, { runId }).catch((e) => onError(e.message)); },
   };
 
+  // Blocks ↗ on a knot: the Blocks tab shows that step of that run (TextTab checks the run is still the newest and the file still matches)
+  const toBlock = (runId: string, step: string) => {
+    setReveal((p) => ({ runId, id: step, n: (p?.n ?? 0) + 1 }));
+    onTab('blocks');
+  };
+  // Show in Chat: the newest run's last knot of that step opens and takes the focus
+  const onChat = (step?: string) => {
+    if (step === undefined) { setStick(true); setFresh(false); }
+    const strand = f.pieces.find((p) => p.type === 'run' && p.newest);
+    const k = step === undefined || strand?.type !== 'run' ? undefined : strand.items.flatMap((i) => ('knot' in i ? [i.knot] : [])).filter((x) => x.step === step).at(-1);
+    if (k) {
+      setOpen((o) => ({ ...o, [k.key]: true }));
+      setFocus((p) => ({ key: k.key, n: (p?.n ?? 0) + 1 }));
+    }
+    onTab('chat');
+  };
+
+  // Show in Chat: the knot's toggle comes into view and takes the focus, once. Here, not in Feed: the Composer (a later child) focuses itself on mount and would win.
+  useEffect(() => {
+    if (!focus || tab !== 'chat') return;
+    const el = log.current?.querySelector<HTMLElement>(`[data-knot="${CSS.escape(focus.key)}"] .sx-kbtn`);
+    el?.scrollIntoView({ block: 'start' });
+    el?.focus({ preventScroll: true });
+    setFocus(undefined);
+  }, [focus?.n, tab]);
+
   useLayoutEffect(() => {
     const el = log.current;
     if (!el) return;
-    if (stick.current) el.scrollTop = el.scrollHeight;
+    if (stick) el.scrollTop = el.scrollHeight;
     else setFresh(true);
   }, [sess.rows.length, tab]);
+
+  useLayoutEffect(() => {
+    const el = log.current;
+    const content = el?.querySelector('.sx-rein');
+    if (!stick || !el || !content) return;
+    const observer = new ResizeObserver(() => { el.scrollTop = el.scrollHeight; });
+    observer.observe(content);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [stick, tab]);
 
   return (
     <main className="chat">
@@ -47,28 +96,27 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
         <button disabled={sess.status === 'closed'} onClick={() => { if (window.confirm('Close this session?')) post(`${base}/close`).catch((e) => onError(e.message)); }}>Close</button>
       </header>
       <div className="tabs" role="tablist">
-        {(['chat', 'canvas', 'blocks', 'text'] as const).map((t) => (
-          <button key={t} role="tab" aria-selected={tab === t} onClick={() => onTab(t)}>{{ chat: 'Chat', canvas: 'Canvas', blocks: 'Blocks', text: 'Text' }[t]}</button>
+        {(['chat', 'blocks', 'text'] as const).map((t) => (
+          <button key={t} role="tab" aria-selected={tab === t} onClick={() => onTab(t)}>{{ chat: 'Chat', blocks: 'Blocks', text: 'Text' }[t]}</button>
         ))}
       </div>
       {tab === 'chat' ? (
         <>
-          <div className="log" ref={log} onScroll={(e) => {
-            const el = e.currentTarget;
-            stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-            if (stick.current) setFresh(false);
-          }}>
-            {rows.length === 0 && <p className="hint">Say something to start.</p>}
-            {rows.map((r) => {
-              const el = renderRow(r, { sess, act });
-              return el === null ? null : <div className="entry" key={r.seq}>{el}</div>;
-            })}
-          </div>
-          {fresh && <button className="pill" onClick={() => { stick.current = true; setFresh(false); log.current!.scrollTop = log.current!.scrollHeight; }}>new activity ↓</button>}
+          <Feed f={f} sess={sess} run={run} act={act} thinking={thinking} open={open} logRef={log}
+            onToggle={(key, next) => setOpen((o) => ({ ...o, [key]: next }))} onBlock={toBlock}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+              setStick(bottom);
+              if (bottom) setFresh(false);
+            }} />
+          {fresh && <button className="pill" onClick={() => { setStick(true); setFresh(false); log.current!.scrollTop = log.current!.scrollHeight; }}>Jump to live ↓</button>}
           <Composer key={sess.id} id={sess.id} cwd={sess.cwd} busy={busy} catalogue={catalogue} takeRefill={takeRefill} />
         </>
       ) : (
-        <TextTab view={tab} onView={onTab} sess={sess} restore={restore} onState={onState} onDirty={onDirty} onRun={() => onTab('chat')} />
+        restore === undefined ? <p className="hint">Loading…</p>
+          : <TextTab view={tab} onView={onTab} sess={sess} run={run} act={act} restore={restore} onState={onState} onDirty={onDirty} onRun={() => onTab('chat')}
+            reveal={reveal} onRevealed={() => setReveal(undefined)} onChat={onChat} dockOpen={dockOpen} onDockOpen={setDockOpen} dismissed={dismissed} onDismiss={setDismissed} />
       )}
     </main>
   );

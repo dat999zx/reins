@@ -6,7 +6,7 @@ import { ApiError, get, initToken, post, stream } from './api.js';
 import { Chat } from './Chat.js';
 import { loadEditorState, makeSaver, type EditorState, type Tab } from './editorState.js';
 import { Rail } from './Rail.js';
-import { afterOf, initial, loadSessions, reduceAll, takeRefill, type SessionView, type State } from './state.js';
+import { afterOf, finishReplay, initial, loadSessions, pageTitle, reduceAll, takeRefill, type SessionView, type State } from './state.js';
 
 const loadedAt = Date.now();
 type Engines = Array<{ id: string } & EngineProbe>;
@@ -64,6 +64,11 @@ export function App() {
       flush();
       es = stream(afterOf(stRef.current));
       es.onopen = () => setReconnecting(false);
+      es.addEventListener('replay_done', () => {
+        clearTimeout(timer);
+        flush();
+        commit(finishReplay(stRef.current));
+      });
       es.onmessage = (m) => {
         buffer.push(JSON.parse(m.data));
         // A timer, not requestAnimationFrame: rAF never fires in a background tab, so a waiting badge would never show.
@@ -81,11 +86,15 @@ export function App() {
   }, [token]);
 
   // Editor state per cwd. The saver stays silent until the stored state has loaded, so an early change can't overwrite it.
-  // ponytail: a change made in the last 500 ms before a reload or close is lost; add a pagehide flush if that bites
   const [editor, setEditor] = useState<Record<string, EditorState>>({});
   const editorRef = useRef(editor);
   editorRef.current = editor;
   const saver = useRef<{ cwd: string; s: ReturnType<typeof makeSaver> } | undefined>(undefined);
+  useEffect(() => {
+    const flush = () => saver.current?.s.flush();
+    window.addEventListener('pagehide', flush);
+    return () => window.removeEventListener('pagehide', flush);
+  }, []);
   const view = useRef({ selected, tab });
   view.current = { selected, tab };
   const cwd = selected ? st.sessions[selected]?.cwd : undefined;
@@ -93,13 +102,13 @@ export function App() {
   useEffect(() => {
     if (!cwd) return;
     saver.current?.s.flush();
-    const s = makeSaver(cwd);
+    const s = makeSaver(cwd, undefined, undefined, (e) => flash(`Could not save the workspace layout: ${e.message}`));
     saver.current = { cwd, s };
     const known = editorRef.current[cwd];
     if (known) return s.ready(known);
     const at = view.current;
     let off = false;
-    void loadEditorState(cwd).then((state) => {
+    void loadEditorState(cwd, (n) => flash(`${n} loose block${n === 1 ? '' : 's'} could not be read and ${n === 1 ? 'was' : 'were'} dropped.`)).then((state) => {
       if (off) return;
       const same = view.current.selected === at.selected && view.current.tab === at.tab;
       const merged = same ? state : { ...state, tab: view.current.tab };
@@ -146,6 +155,9 @@ export function App() {
       else flash((e as Error).message);
     }
   };
+  // above the early returns: a token-less or loading page keeps the title of the last state, never a hook-order change
+  const title = pageTitle(st);
+  useEffect(() => { document.title = title; }, [title]);
   const newRef = useRef(newSession);
   newRef.current = newSession;
   useEffect(() => {

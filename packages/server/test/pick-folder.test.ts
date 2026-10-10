@@ -19,12 +19,6 @@ async function boot(pickFolder?: ServerOptions['pickFolder']) {
   return { srv, pick };
 }
 
-const deferred = <T>() => {
-  let resolve!: (v: T) => void;
-  const promise = new Promise<T>((r) => { resolve = r; });
-  return { promise, resolve };
-};
-
 describe('POST /api/pick-folder', () => {
   it('returns { path } for a picked folder', async () => {
     const dir = tmpDir();
@@ -67,19 +61,21 @@ describe('POST /api/pick-folder', () => {
     expect(b.json).toEqual({ error: 'no folder picker found' });
   });
 
-  it('409 for a second call while the first dialog is open, then it works again', async () => {
-    const gate = deferred<string | null>();
-    let calls = 0;
+  it('a second call replaces a dialog that is still open', async () => {
+    const signals: AbortSignal[] = [];
     const dir = tmpDir();
-    const x = await boot(() => (++calls === 1 ? gate.promise : Promise.resolve(dir)));
+    const x = await boot((signal) => {
+      signals.push(signal);
+      return signals.length === 1
+        ? new Promise<string | null>((resolve) => signal.addEventListener('abort', () => resolve(null)))
+        : Promise.resolve(dir);
+    });
     const first = x.pick();
-    await until(() => calls === 1);
+    await until(() => signals.length === 1);
     const second = await x.pick();
-    expect(second.status).toBe(409);
-    expect(typeof second.json.error).toBe('string');
-    expect(calls).toBe(1);
-    gate.resolve(dir);
-    expect((await first).json).toEqual({ path: dir });
+    expect(signals[0]!.aborted).toBe(true);
+    expect(second.json).toEqual({ path: dir });
+    expect((await first).json).toEqual({ cancelled: true });
     expect((await x.pick()).json).toEqual({ path: dir });
   });
 

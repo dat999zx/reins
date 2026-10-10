@@ -11,6 +11,7 @@ import use from './use.js';
 import recall from './recall.js';
 import store from './store.js';
 import handoff from './handoff.js';
+import end from './end.js';
 
 export interface HeadingCtx { line: number; col: number; push(d: Diagnostic): void }
 export interface CompileCtx {
@@ -53,7 +54,7 @@ export interface NodeType {
 }
 
 export const NODES = new Map<string, NodeType>(
-  [phase, say, run, gate, repeat, ifNode, verify, use, recall, store, handoff].map((n) => [n.kind, n]),
+  [phase, say, run, gate, repeat, ifNode, verify, use, recall, store, handoff, end].map((n) => [n.kind, n]),
 );
 
 export function defaultId(step: { kind: string; title?: string }, counters: Record<string, number>): string {
@@ -76,3 +77,4 @@ export { default as useNode } from './use.js';
 export { default as recallNode } from './recall.js';
 export { default as storeNode } from './store.js';
 export { default as handoffNode } from './handoff.js';
+export { default as endNode } from './end.js';

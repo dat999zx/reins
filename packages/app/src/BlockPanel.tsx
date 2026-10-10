@@ -1,6 +1,7 @@
-import { useEffect, useState, type JSX } from 'react';
+import { useEffect, useRef, useState, type JSX, type KeyboardEvent } from 'react';
 import type { CardKind, Step, Workflow } from '@reins/core';
 import { CARD_KINDS, KINDS, type Field } from './canvasKinds.js';
+import { setAlways } from './blocks.js';
 import { editStep, removeLinks, setLink } from './canvas.js';
 import { applyField, applyLinkMax, fieldValue } from './panelEdit.js';
 
@@ -8,19 +9,31 @@ type InputProps = { label: string; value: string; ids: string[]; rev: unknown; c
 
 // A field shows a draft while typing and commits on blur / Enter. It re-syncs from the model after every
 // preview (`rev`), so a commit the editor dropped never leaves a value the model does not have.
-export function useDraft(value: string, rev: unknown) {
+// `hold` keeps the reset back while it returns true (a pill being typed in).
+export function useDraft(value: string, rev: unknown, hold?: () => boolean) {
   const [v, setV] = useState(value);
-  useEffect(() => setV(value), [value, rev]);
+  useEffect(() => { if (!hold?.()) setV(value); }, [value, rev]);
   return [v, setV] as const;
 }
 
-const line = (type: 'text' | 'number', mono?: boolean) => function LineInput({ label, value, rev, commit }: InputProps) {
-  const [v, setV] = useDraft(value, rev);
+// The draft + commit-when-changed + Enter-commits of a one-line field.
+export function useLine(value: string, rev: unknown, commit: (v: string) => void, hold?: () => boolean) {
+  const [v, setV] = useDraft(value, rev, hold);
   const done = () => { if (v !== value) commit(v); };
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') done(); };
+  return { v, setV, done, onKeyDown };
+}
+
+export function StepOptions({ value, ids }: { value: string; ids: string[] }) {
+  return <>{[...new Set(['', value, ...ids])].map((id) => <option key={id} value={id}>{id || '(none)'}</option>)}</>;
+}
+
+const line = (type: 'text' | 'number', mono?: boolean) => function LineInput({ label, value, rev, commit }: InputProps) {
+  const { v, setV, done, onKeyDown } = useLine(value, rev, commit);
   return (
     <label className="bfield">{label}
       <input type={type} min={type === 'number' ? 1 : undefined} className={mono ? 'mono' : undefined} value={v}
-        onChange={(e) => setV(e.target.value)} onBlur={done} onKeyDown={(e) => { if (e.key === 'Enter') done(); }} />
+        onChange={(e) => setV(e.target.value)} onBlur={done} onKeyDown={onKeyDown} />
     </label>
   );
 };
@@ -47,20 +60,20 @@ const INPUTS: Record<Field['input'], (p: InputProps) => JSX.Element> = {
   step: ({ label, value, ids, commit }) => (
     <label className="bfield">{label}
       <select value={value} onChange={(e) => commit(e.target.value)}>
-        {[...new Set(['', value, ...ids])].map((id) => <option key={id} value={id}>{id || '(none)'}</option>)}
+        <StepOptions value={value} ids={ids} />
       </select>
     </label>
   ),
 };
 
-export function BlockPanel({ step, all, cond, turn, rev, onEdit, onEditInText, onDelete }: {
+export function BlockPanel({ step, all, cond, turn, rev, onEdit, onEditInText, onShowInChat, onDelete }: {
   step: Step; all: Step[]; cond?: string; turn?: string; rev: unknown;
-  onEdit: (fn: (w: Workflow) => Workflow) => void; onEditInText: () => void; onDelete?: () => void;
+  onEdit: (fn: (w: Workflow) => Workflow) => void; onEditInText: () => void; onShowInChat?: () => void; onDelete: () => void;
 }) {
   const k = KINDS[step.kind];
   const id = step.id;
   const others = all.filter((s) => s.id !== id).map((s) => s.id);
-  const change = (fn: (s: Step) => void) => onEdit((w) => editStep(w, id, fn));
+  const change = (fn: (s: Step) => void | boolean) => onEdit((w) => editStep(w, id, fn));
   const incoming = all.flatMap((s) => s.links.filter((l) => l.to === id).map((l) => ({ from: s.id, kind: l.kind })));
   const [kind, setKind] = useState<'next' | 'on-fail'>('next');
   const [target, setTarget] = useState('');
@@ -69,7 +82,8 @@ export function BlockPanel({ step, all, cond, turn, rev, onEdit, onEditInText, o
   return (
     <aside className="bpanel" aria-label="Block panel">
       <h3>{step.kind} <span className="faint">{id}</span></h3>
-      {onDelete && <button className="danger" onClick={onDelete}>Delete</button>}
+      <button className="danger" onClick={onDelete}>Delete</button>
+      {onShowInChat && <button onClick={onShowInChat}>Show in Chat</button>}
 
       {k.fields.map((f) => {
         const Input = INPUTS[f.input];
@@ -134,6 +148,30 @@ export function BlockPanel({ step, all, cond, turn, rev, onEdit, onEditInText, o
         <pre className="turn">{turn ?? 'This step sends no turn.'}</pre>
       </section>
     </aside>
+  );
+}
+
+export function WorkflowPanel({ w, rev, onEdit }: { w: Workflow; rev: unknown; onEdit: (fn: (w: Workflow) => Workflow) => void }) {
+  return (
+    <aside className="bpanel" aria-label="Workflow panel">
+      <h3>{w.name}</h3>
+      {w.task && <div className="bfield">Task<span className="sx-faint">{w.task}</span></div>}
+      <Always w={w} rev={rev} onEdit={onEdit} />
+    </aside>
+  );
+}
+
+function Always({ w, rev, onEdit }: { w: Workflow; rev: unknown; onEdit: (fn: (w: Workflow) => Workflow) => void }) {
+  const value = w.always.join('\n');
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const dirty = useRef(false);
+  // Held while focused (a preview landing must not wipe the typing); re-synced on blur when nothing was typed.
+  const [v, setV] = useDraft(value, rev, () => document.activeElement === ref.current);
+  return (
+    <label className="always">Always
+      <textarea ref={ref} rows={Math.max(2, w.always.length + 1)} value={v} onChange={(e) => { dirty.current = true; setV(e.target.value); }}
+        onBlur={() => { if (dirty.current && v !== value) onEdit((m) => setAlways(m, v)); else setV(value); dirty.current = false; }} />
+    </label>
   );
 }
 

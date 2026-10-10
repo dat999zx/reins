@@ -13,3 +13,7 @@ docs/
 packages/server/app/
 packages/server/README.md
 packages/server/CHANGELOG.md
+
+# raw claude stream sample: its init line holds local paths; the tests use the derived claude-2.1.281-turns-thinking.jsonl
+spike/fixtures/claude-2.1.281-thinking-sample.jsonl
+spike/tmp/

@@ -8,6 +8,10 @@ const WINDOWS_SCRIPT = `try {
 using System;
 using System.Runtime.InteropServices;
 public static class ReinsPick {
+  [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+  [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
+  // A background process may not take focus; a synthetic Alt press lifts that lock, so the dialog is not left behind the browser.
+  public static void Front(IntPtr h) { keybd_event(0x12, 0, 0, UIntPtr.Zero); keybd_event(0x12, 0, 2, UIntPtr.Zero); SetForegroundWindow(h); }
   [ComImport, Guid("DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7")] class FileOpenDialog {}
   [ComImport, Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   interface IShellItem {
@@ -55,12 +59,12 @@ public static class ReinsPick {
   [Console]::OutputEncoding = New-Object Text.UTF8Encoding $false
   $owner = New-Object System.Windows.Forms.Form
   $owner.TopMost = $true; $owner.ShowInTaskbar = $false; $owner.Opacity = 0
-  $owner.Show(); $owner.Activate()
+  $owner.Show(); [ReinsPick]::Front($owner.Handle)
   $path = $null
   $code = [ReinsPick]::Run($owner.Handle, [ref]$path)
   if ($code -eq 0) { [Console]::Out.Write($path) }
   exit $code
-} catch { exit 2 }
+} catch { [Console]::Error.Write($_.Exception.Message); exit 2 }
 `;
 
 type Candidate = [command: string, args: string[]];
@@ -121,7 +125,7 @@ export async function pickFolder(
     if ('missing' in r) continue;
     if (signal.aborted) return null;
     const verdict = pickerExit(platform, r.code, r.signal, r.stderr);
-    if (verdict === 'reject') throw new Error(`The folder picker failed${r.code !== null ? ` (exit ${r.code})` : ''}.`);
+    if (verdict === 'reject') throw new Error(`The folder picker failed${r.code !== null ? ` (exit ${r.code})` : ''}${r.stderr.trim() ? `: ${r.stderr.trim().slice(0, 300)}` : ''}.`);
     return verdict === 'path' ? parsePickerOutput(r.stdout) : null;
   }
   throw new Error(`No folder picker found${platform === 'linux' ? ' (install zenity or kdialog)' : ''}.`);

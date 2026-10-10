@@ -96,9 +96,14 @@ export function compileTurn(step: Step, ctx: CompileTurnContext): string {
   return sections.join('\n\n') + '\n';
 }
 
+/** A step that starts at an instruction index: its id and the ids of the steps around it, outermost first. */
+export interface StepStart { step: string; parents: string[] }
+
+/** `starts`, when given, is filled: first instruction index -> the steps that start there, outermost first. */
 export function compileProgram(
   w: Workflow,
-  resolveBlock?: (name: string) => Workflow | undefined
+  resolveBlock?: (name: string) => Workflow | undefined,
+  starts?: Map<number, StepStart[]>
 ): Instr[] {
   const instrs: Instr[] = [];
   const stepToIndex = new Map<string, number>();
@@ -114,9 +119,16 @@ export function compileProgram(
     resolveBlock,
   };
 
+  const open: string[] = [];
   function compileStep(step: Step) {
-    stepToIndex.set(step.id, instrs.length);
+    const from = instrs.length;
+    stepToIndex.set(step.id, from);
+    const parents = [...open];
+    open.push(step.id);
     NODES.get(step.kind)?.compile(step, ctx);
+    open.pop();
+    // The inner step finishes first, so the outer one is put in front of it.
+    if (starts && instrs.length > from) starts.set(from, [{ step: step.id, parents }, ...(starts.get(from) ?? [])]);
     const next = step.links.find((l) => l.kind === 'next');
     if (next) {
       const jump = ctx.push<Extract<Instr, { op: 'JUMP' }>>({

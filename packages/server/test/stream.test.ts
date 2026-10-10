@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import type { EngineEvent } from '@reins/core';
 import { createStreamParser, type StreamOut } from '../src/claude/stream.js';
 
 const FIX = path.resolve(__dirname, '../../../spike/fixtures');
@@ -14,6 +15,7 @@ function replay(name: string) {
   const seq: string[] = [];
   for (const o of outs) {
     for (const e of o.events) {
+      if (e.type === 'thinking') continue; // the count is tested on its own below; these sequences are about tools, text and results
       if (e.type === 'tool_call' || e.type === 'tool_result') seq.push(`${e.type}:${e.tool}`);
       else seq.push(e.type);
     }
@@ -79,5 +81,47 @@ describe('stream parser on every recorded fixture', () => {
   it('sigint: a stream cut off mid-turn has no result', () => {
     const r = replay('claude-2.1.281-sigint.jsonl');
     expect(r.seq).toEqual(['tool_call:PowerShell']);
+  });
+});
+
+describe('thinking tokens', () => {
+  const tokens = (events: EngineEvent[]) => events.flatMap((e) => (e.type === 'thinking' ? [e.tokens] : []));
+  const line = (e: number) => ({ type: 'system', subtype: 'thinking_tokens', estimated_tokens: e, estimated_tokens_delta: e });
+  const feed = (...ms: unknown[]) => { const parse = createStreamParser(); return ms.flatMap((m) => parse(m).events); };
+  const block = (b: unknown) => ({ type: 'assistant', message: { content: [b] } });
+
+  it('the derived fixture: one event per burst start, all before the text, none for the empty blocks', () => {
+    const r = replay('claude-2.1.281-turns-thinking.jsonl');
+    expect(tokens(r.events)).toEqual([50, 317, 575, 844, 1121, 1509]);
+    expect(r.events.map((e) => e.type)).toEqual(['thinking', 'thinking', 'thinking', 'thinking', 'thinking', 'thinking', 'text']);
+    expect(r.results).toHaveLength(1);
+  });
+
+  it('card-marker-hook: a tool call, one thinking 50, then the text', () => {
+    const r = replay('claude-2.1.281-card-marker-hook.jsonl');
+    const types = r.events.map((e) => e.type);
+    const i = types.indexOf('thinking');
+    expect(types.slice(i - 2, i + 2)).toEqual(['tool_call', 'tool_result', 'thinking', 'text']);
+    expect(tokens(r.events)).toEqual([50]);
+  });
+
+  it('one long burst emits its start and each further 1,000 tokens', () => {
+    const lines = Array.from({ length: 21 }, (_, i) => line(50 + i * 100));
+    expect(tokens(feed(...lines))).toEqual([50, 1050, 2050]);
+  });
+
+  it('a result line resets the count: the next turn starts at its own first estimate', () => {
+    const parse = createStreamParser();
+    const first = [line(50), line(900), line(40)].flatMap((m) => parse(m).events);
+    parse({ type: 'result', result: 'x', total_cost_usd: 0 });
+    expect(tokens(first)).toEqual([50, 940]);
+    expect(tokens([line(60), line(70)].flatMap((m) => parse(m).events))).toEqual([60]);
+  });
+
+  it('a text or tool block closes the burst; an empty thinking block does not', () => {
+    const empty = block({ type: 'thinking', thinking: '', signature: 's' });
+    expect(tokens(feed(line(50), line(200), empty, line(260)))).toEqual([50]);
+    expect(tokens(feed(line(50), line(200), block({ type: 'text', text: 'hi' }), line(260)))).toEqual([50, 460]);
+    expect(tokens(feed(line(50), line(200), block({ type: 'tool_use', id: 't', name: 'Read', input: {} }), line(30)))).toEqual([50, 230]);
   });
 });

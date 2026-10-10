@@ -1,4 +1,4 @@
-import type { Step, StepKind, Workflow } from '@reins/core';
+import type { Cond, Step, StepKind, Workflow } from '@reins/core';
 import { flatSteps } from './canvas.js';
 import { KINDS } from './canvasKinds.js';
 
@@ -26,24 +26,60 @@ export function placeOf(w: Workflow, id: string): Place | undefined {
   return look(w.steps);
 }
 
-export function newId(w: Workflow, kind: StepKind): string {
+// every id the workflow uses or points at
+const takenIds = (w: Workflow) => {
   const all = flatSteps(w.steps);
-  const taken = new Set([...all.map((s) => s.id), ...all.flatMap((s) => s.links.map((l) => l.to)), ...all.flatMap((s) => (s.attrs.against ? [s.attrs.against] : []))]);
+  return new Set([...all.map((s) => s.id), ...all.flatMap((s) => s.links.map((l) => l.to)), ...all.flatMap((s) => (s.attrs.against ? [s.attrs.against] : []))]);
+};
+
+export function newId(w: Workflow, kind: StepKind): string {
+  const taken = takenIds(w);
   let n = 1;
   while (taken.has(`${kind}-${n}`)) n++;
   return `${kind}-${n}`;
 }
 
-export function addStep(w: Workflow, kind: StepKind, after?: string): Workflow {
+export function insertSteps(w: Workflow, steps: Step[], to: Place): Workflow {
+  const m = structuredClone(w);
+  const list = listIn(m, to);
+  if (!list) return w;
+  list.splice(Math.max(0, Math.min(to.index, list.length)), 0, ...structuredClone(steps));
+  return m;
+}
+
+export function addStepAt(w: Workflow, kind: StepKind, to: Place): Workflow {
   const fresh = KINDS[kind].fresh;
   if (!fresh) return w;
-  const step: Step = { id: newId(w, kind), kind, attrs: {}, cards: [], links: [], ...fresh() };
+  return insertSteps(w, [{ id: newId(w, kind), kind, attrs: {}, cards: [], links: [], ...fresh() }], to);
+}
+
+// The stack is the top-level steps before the first top-level `end`; what follows are free blocks.
+export const stackEnd = (w: Workflow): number => { const i = w.steps.findIndex((s) => s.kind === 'end'); return i === -1 ? w.steps.length : i; };
+
+// After a stack or nested step; anything else (no step, the end, a free block) lands before the end, never behind it.
+export function addPlace(w: Workflow, after?: string): Place {
   const at = after === undefined ? undefined : placeOf(w, after);
-  const m = structuredClone(w);
-  const list = at ? listIn(m, at) : m.steps;
-  if (!list) return w;
-  list.splice(at ? at.index + 1 : list.length, 0, step);
-  return m;
+  return at && (at.parent !== undefined || at.index < stackEnd(w)) ? { ...at, index: at.index + 1 } : { branch: 'kids', index: stackEnd(w) };
+}
+
+export const addStep = (w: Workflow, kind: StepKind, after?: string): Workflow => addStepAt(w, kind, addPlace(w, after));
+
+export type Hit = { block: string; edge: 'before' | 'after' | 'into' | 'else' } | { top: 'start' | 'end' } | { body: string; branch: 'kids' | 'else' };
+
+// The first slot of a block's own body, only if its kind has that body. Reads the model; never `listIn`, which mutates.
+function bodyStart(w: Workflow, id: string, branch: 'kids' | 'else'): Place | undefined {
+  const s = flatSteps(w.steps).find((x) => x.id === id);
+  const group = s && KINDS[s.kind].group;
+  return group && (branch === 'kids' || group === 'kids+else') ? { parent: id, branch, index: 0 } : undefined;
+}
+
+// Where a drop lands: a pure function of the model and what the pointer is over.
+export function dropPlace(w: Workflow, hit: Hit): Place | undefined {
+  if ('top' in hit) return { branch: 'kids', index: hit.top === 'start' ? 0 : stackEnd(w) };
+  if ('body' in hit) return bodyStart(w, hit.body, hit.branch);
+  if (hit.edge === 'into' || hit.edge === 'else') return bodyStart(w, hit.block, hit.edge === 'into' ? 'kids' : 'else');
+  const at = placeOf(w, hit.block);
+  return at && { ...at, index: at.index + (hit.edge === 'after' ? 1 : 0) };
 }
 
 export function moveStep(w: Workflow, id: string, to: Place): Workflow {
@@ -63,6 +99,19 @@ export function moveStep(w: Workflow, id: string, to: Place): Workflow {
   return m;
 }
 
+// Where Alt+Right (in) or Alt+Left (out) sends a step: the end of the container before it, or the slot just after its parent.
+export function nestPlace(w: Workflow, id: string, dir: 'in' | 'out'): Place | undefined {
+  const at = placeOf(w, id);
+  if (!at) return undefined;
+  if (dir === 'out') {
+    const p = at.parent === undefined ? undefined : placeOf(w, at.parent);
+    return p && { ...p, index: p.index + 1 };
+  }
+  const list = at.parent === undefined ? w.steps : flatSteps(w.steps).find((s) => s.id === at.parent)?.[at.branch];
+  const prev = list?.[at.index - 1];
+  return prev && KINDS[prev.kind].group ? { parent: prev.id, branch: 'kids', index: prev.kids?.length ?? 0 } : undefined;
+}
+
 export function deleteStep(w: Workflow, id: string): Workflow {
   const at = placeOf(w, id);
   const target = flatSteps(w.steps).find((s) => s.id === id);
@@ -76,6 +125,94 @@ export function deleteStep(w: Workflow, id: string): Workflow {
     s.links = s.links.filter((l) => !gone.has(l.to));
     if (gone.has(s.attrs.against ?? '')) delete s.attrs.against;
   }
+  return m;
+}
+
+export const deleteSteps = (w: Workflow, ids: string[]): Workflow => ids.reduce((m, id) => deleteStep(m, id), w);
+
+// Cut the steps (with their subtrees) out of a clone, in document order; a step inside another taken step goes with it. Links stay as they are.
+export function takeSteps(w: Workflow, ids: string[]): { w: Workflow; taken: Step[] } {
+  const want = new Set(ids), taken: Step[] = [], m = structuredClone(w);
+  const strip = (list: Step[]): Step[] => list.filter((s) => {
+    if (want.has(s.id)) { taken.push(s); return false; }
+    if (s.kids) s.kids = strip(s.kids);
+    if (s.else) s.else = strip(s.else);
+    return true;
+  });
+  m.steps = strip(m.steps);
+  return { w: m, taken };
+}
+
+// Move several steps to where a pointer hit points. The same workflow when nothing would change or the hit is on a moved step or inside one.
+export function dropSteps(w: Workflow, ids: string[], hit: Hit): Workflow {
+  const { w: rest, taken } = takeSteps(w, ids);
+  const anchor = 'block' in hit ? hit.block : 'body' in hit ? hit.body : undefined;
+  if (!taken.length || (anchor !== undefined && flatSteps(taken).some((s) => s.id === anchor))) return w;
+  const place = dropPlace(rest, hit);
+  const m = place && insertSteps(rest, taken, place);
+  return !m || m === rest || JSON.stringify(m) === JSON.stringify(w) ? w : m;
+}
+
+// Clones of `steps` whose ids are free in `w`: a taken id gets `<kind>-<n>`, links and `against` inside the call follow it, links outside stay.
+export function withFreshIds(w: Workflow, steps: Step[]): Step[] {
+  const used = takenIds(w);
+  const out = structuredClone(steps), flat = flatSteps(out), rename = new Map<string, string>(), own = new Map<Step, string>();
+  // the first step with a free id keeps it; a taken id, or an id met earlier in this call, gets a new one
+  const taken = new Set(used), dup: Step[] = [];
+  for (const s of flat) { if (taken.has(s.id)) dup.push(s); else taken.add(s.id); }
+  for (const s of dup) {
+    let n = 1;
+    while (taken.has(`${s.kind}-${n}`)) n++;
+    own.set(s, `${s.kind}-${n}`);
+    if (used.has(s.id) && !rename.has(s.id)) rename.set(s.id, `${s.kind}-${n}`);
+    taken.add(`${s.kind}-${n}`);
+  }
+  for (const s of flat) {
+    for (const l of s.links) l.to = rename.get(l.to) ?? l.to;
+    if (s.attrs.against) s.attrs.against = rename.get(s.attrs.against) ?? s.attrs.against;
+  }
+  for (const s of flat) s.id = own.get(s) ?? s.id;
+  return out;
+}
+
+// A copy of each step (with its subtree) right after its original; a step inside another chosen step is not copied twice.
+export function duplicateSteps(w: Workflow, ids: string[]): { w: Workflow; ids: string[] } {
+  const src = takeSteps(w, ids).taken;
+  if (!src.length) return { w, ids: [] };
+  const copies = withFreshIds(w, src);
+  let m = w;
+  for (let i = src.length - 1; i >= 0; i--) {
+    const at = placeOf(w, src[i]!.id)!;
+    m = insertSteps(m, [copies[i]!], { ...at, index: at.index + 1 });
+  }
+  return { w: m, ids: copies.map((c) => c.id) };
+}
+// A link that points at its own step or one before it needs a max (the validator's rule, as setLink applies it).
+export function capBackward(w: Workflow): { w: Workflow; capped: string[] } {
+  const m = structuredClone(w), all = flatSteps(m.steps), order = all.map((s) => s.id), capped: string[] = [];
+  for (const [i, s] of all.entries()) for (const l of s.links) {
+    const j = order.indexOf(l.to);
+    if (j !== -1 && j <= i && l.max === undefined) { l.max = 3; capped.push(`\`${s.id}\` ${l.kind} → \`${l.to}\``); }
+  }
+  return capped.length ? { w: m, capped } : { w, capped };
+}
+
+export type CondPath = Array<'a' | 'b'>;
+
+// Replace the condition node at `path` of a step that has a condition slot; the same `w` when there is no such node.
+export function setCond(w: Workflow, id: string, path: CondPath, cond: Cond): Workflow {
+  const m = structuredClone(w);
+  const step = flatSteps(m.steps).find((s) => s.id === id);
+  if (!step || !KINDS[step.kind].line.includes('cond')) return w;
+  let holder = step as unknown as Record<string, Cond | undefined>;
+  let key = 'cond';
+  for (const hop of path) {
+    const c = holder[key];
+    if (!c || !(hop in c)) return w;
+    holder = c as unknown as Record<string, Cond | undefined>;
+    key = hop;
+  }
+  holder[key] = cond;
   return m;
 }
 

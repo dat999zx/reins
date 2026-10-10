@@ -1,8 +1,12 @@
 import type { Workflow, Step, Cond } from './model.js';
-import { compileProgram, compileTurn, type Instr, type Policy } from './compile.js';
+import { compileProgram, compileTurn, type Instr, type Policy, type StepStart } from './compile.js';
 import type { Engine, EngineSession, TurnResult } from './fake-engine.js';
 import { CARDS } from './cards/index.js';
 import { evalCond, evalCondSync, type EvalCtx } from './cond.js';
+
+/** Document order, as validate.ts collects steps: a step, its kids, then its else. */
+const flatSteps = (steps: Step[]): Step[] =>
+  steps.flatMap((s) => [s, ...flatSteps(s.kids ?? []), ...flatSteps(s.else ?? [])]);
 
 export type RunStatus = 'running' | 'paused' | 'done' | 'stopped';
 
@@ -39,6 +43,8 @@ export interface RunEventRecord {
     | 'run_finished'
     | 'turn_started'
     | 'turn_ended'
+    | 'step_started'
+    | 'command_result'
     | 'tool_call'
     | 'refusal'
     | 'card_queued'
@@ -111,6 +117,7 @@ export class Run {
   pauseReason?: PauseReason;
 
   private program: Instr[] = [];
+  private starts = new Map<number, StepStart[]>();
   private programCounter = 0;
   private loopCounters = new Map<string, number>();
   private linkCounters = new Map<string, number>();
@@ -159,14 +166,17 @@ export class Run {
     this.borrowed = opts.session;
     this.engineSession = opts.session;
 
-    this.program = compileProgram(this.workflow, this.resolveBlock);
+    this.program = compileProgram(this.workflow, this.resolveBlock, this.starts);
 
     // Initialize auto cards as armed
     for (const auto of this.workflow.autos) {
       this.autoArmed.set(auto.id, true);
     }
 
-    this.logEvent('run_started', { workflow: this.workflow.name });
+    this.logEvent('run_started', {
+      workflow: this.workflow.name,
+      steps: flatSteps(this.workflow.steps).map((s) => ({ id: s.id, kind: s.kind, ...(s.title ? { title: s.title } : {}) })),
+    });
   }
 
   private logEvent(type: RunEventRecord['type'], data: any) {
@@ -456,7 +466,8 @@ export class Run {
     const currentStepId = isAtStep ? (currentInstr as any).step : this.lastStepId;
 
     this.workflow = newWorkflow;
-    this.program = compileProgram(newWorkflow, this.resolveBlock);
+    this.starts = new Map();
+    this.program = compileProgram(newWorkflow, this.resolveBlock, this.starts);
 
     if (currentStepId) {
       const stepExists = this.findStepById(newWorkflow.steps, currentStepId);
@@ -587,6 +598,9 @@ export class Run {
       return this.status;
     }
 
+    // ponytail: a step re-run after a stop card or REINS: blocked reports its start again; a TURN that hits the run turn budget reports its start, then pauses
+    for (const s of this.starts.get(this.programCounter) ?? []) this.logEvent('step_started', s);
+
     const instr = this.program[this.programCounter]!;
 
     switch (instr.op) {
@@ -716,6 +730,7 @@ export class Run {
       case 'RUN': {
         const cmdRes = await this.commandRunner(instr.cmd);
         this.recordCommandResult(instr.cmd, cmdRes.exitCode, cmdRes.stdout || cmdRes.stderr);
+        this.logEvent('command_result', { step: instr.step, exitCode: cmdRes.exitCode });
 
         if (cmdRes.exitCode === 0) {
           if (instr.repeatCond && instr.loopExit !== undefined) {

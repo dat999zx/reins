@@ -117,7 +117,8 @@ describe('reins run against fake-claude', () => {
     expect(gp).toBeGreaterThan(0);
     expect(ga).toBeGreaterThan(gp);
     expect(evs.slice(gp, ga).filter((e) => e.type === 'turn_started').map((e) => e.data.step)).toEqual(['gate-1']);
-    expect(evs[ga + 1]).toMatchObject({ type: 'turn_started', data: { step: 'implement' } });
+    expect(evs[ga + 1]).toMatchObject({ type: 'step_started', data: { step: 'implement' } });
+    expect(evs[ga + 2]).toMatchObject({ type: 'turn_started', data: { step: 'implement' } });
     // the now card interrupted implement and was followed as the next turn; the guard held
     const nowIdx = evs.findIndex((e) => e.type === 'card_delivered' && e.data.channel === 'interrupt' && e.data.kind === 'now');
     expect(stepOf(evs, nowIdx)).toBe('implement');

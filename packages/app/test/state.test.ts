@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { LogRow } from '@reins/server/store.js';
 import {
-  afterOf, initial, loadSessions, mergeOutput, openQuestions, railGroups, reduce, reduceAll, takeRefill, title, type State,
+  afterOf, finishReplay, initial, isFresh, loadSessions, mergeOutput, openQuestions, pageTitle, railGroups, reduce, reduceAll, takeRefill, title, type State,
 } from '../src/state.js';
 
 const S = 's1';
@@ -12,6 +12,34 @@ const row = (type: string, data: unknown = {}, o: { runId?: string; ts?: number;
 const fold = (rows: LogRow[], loadedAt = 0, from: State = initial()) => rows.reduce((st, r) => reduce(st, r, loadedAt), from);
 const eng = (data: object, o = {}) => row('engine', data, o);
 const created = (extra: object = {}) => row('session_created', { id: S, cwd: 'D:\\p\\one', engine: 'claude', autoApprove: false, ...extra });
+
+describe('initial replay boundary', () => {
+  it('keeps both batches of replay rows still until and after the replay finishes', () => {
+    seq = 0;
+    const first = reduceAll(initial(), [created(), eng({ type: 'text', text: 'first' }, { ts: 9999999999999 })], 0);
+    expect(first.sessions[S]!.rows.some((r) => isFresh(first.sessions[S]!, r.seq))).toBe(false);
+    const second = reduceAll(first, [eng({ type: 'tool_call', tool: 'Read' }), eng({ type: 'text', text: 'second' })], 0);
+    expect(second.sessions[S]!.rows.some((r) => isFresh(second.sessions[S]!, r.seq))).toBe(false);
+    const loaded = finishReplay(second);
+    expect(loaded.sessions[S]!.rows.some((r) => isFresh(loaded.sessions[S]!, r.seq))).toBe(false);
+    expect(first.sessions[S]!.replaySeq).toBeUndefined();
+  });
+
+  it('marks rows after replay fresh, preserves the boundary through state changes, and respects mount seq', () => {
+    seq = 0;
+    let loaded = finishReplay(reduceAll(initial(), [created()], 0));
+    loaded = loadSessions(loaded, [{ id: 's2', cwd: 'c', autoApprove: false, status: 'idle' }]);
+    const live = eng({ type: 'text', text: 'live' }, { ts: 0 });
+    const fresh = reduceAll(loaded, [live, row('cards_unsent', { cards: ['x'] })], 0);
+    const consumed = takeRefill(fresh, S, '').state;
+    expect(isFresh(consumed.sessions[S]!, live.seq)).toBe(true);
+    expect(isFresh(consumed.sessions[S]!, live.seq, live.seq)).toBe(false);
+    expect(finishReplay(consumed)).toBe(consumed);
+    const newRow = row('engine', { type: 'text', text: 'new session' }, { sessionId: 's2', seq: 1 });
+    const newer = reduceAll(consumed, [newRow], 0);
+    expect(isFresh(newer.sessions.s2!, newRow.seq)).toBe(true);
+  });
+});
 
 describe('reduce', () => {
   it('reduceAll matches reduce row by row, dedupes inside a batch, and never mutates the state it was given', () => {
@@ -114,6 +142,15 @@ describe('reduce', () => {
 });
 
 describe('tool pairing', () => {
+  it('times results and refusals from their FIFO call timestamps', () => {
+    seq = 0;
+    const a = eng({ type: 'tool_call', tool: 'Read' }, { ts: 1000 });
+    const b = eng({ type: 'tool_call', tool: 'Read' }, { ts: 1100 });
+    const s = fold([a, b, eng({ type: 'tool_result', tool: 'Read', output: 'first' }, { ts: 1400 }),
+      eng({ type: 'refusal', reason: 'blocked' }, { ts: 1700 })]).sessions[S]!;
+    expect(s.calls[a.seq]).toEqual({ result: 'first', ms: 400 });
+    expect(s.calls[b.seq]).toEqual({ refused: 'blocked', ms: 600 });
+  });
   const call = (tool: string, o = {}) => eng({ type: 'tool_call', tool, input: { f: 1 } }, o);
   const result = (tool: string, output: unknown = 'ok') => eng({ type: 'tool_result', tool, output });
   const refusal = (reason: string) => eng({ type: 'refusal', reason });
@@ -124,8 +161,8 @@ describe('tool pairing', () => {
     const r1 = refusal('read-only');
     const c2 = call('Edit');
     const s = fold([c1, r1, c2, result('Edit', 'done')]).sessions[S]!;
-    expect(s.calls[c1.seq]).toEqual({ refused: 'read-only' });
-    expect(s.calls[c2.seq]).toEqual({ result: 'done' });
+    expect(s.calls[c1.seq]).toEqual({ refused: 'read-only', ms: 1 });
+    expect(s.calls[c2.seq]).toEqual({ result: 'done', ms: 1 });
   });
 
   it('matches a result by tool, so a sub-agent result stays off the parent Task', () => {
@@ -133,8 +170,8 @@ describe('tool pairing', () => {
     const task = call('Task');
     const read = call('Read');
     const s = fold([task, read, result('Read', 'file'), result('Task', 'summary')]).sessions[S]!;
-    expect(s.calls[read.seq]).toEqual({ result: 'file' });
-    expect(s.calls[task.seq]).toEqual({ result: 'summary' });
+    expect(s.calls[read.seq]).toEqual({ result: 'file', ms: 1 });
+    expect(s.calls[task.seq]).toEqual({ result: 'summary', ms: 3 });
   });
 
   it('gives a result to the oldest open call with that tool', () => {
@@ -142,7 +179,7 @@ describe('tool pairing', () => {
     const a = call('Read');
     const b = call('Read');
     const s = fold([a, b, result('Read', 'first')]).sessions[S]!;
-    expect(s.calls[a.seq]).toEqual({ result: 'first' });
+    expect(s.calls[a.seq]).toEqual({ result: 'first', ms: 2 });
     expect(s.calls[b.seq]).toBeUndefined();
   });
 
@@ -190,5 +227,17 @@ describe('selectors', () => {
     expect(g.groups.map((x) => x.name)).toEqual(['two', 'one', 'one']);
     expect(g.groups.map((x) => x.cwd)).toEqual(['D:\\p\\two', '/x/one', 'D:\\p\\one']);
     expect(g.groups[2]!.sessions.map((s) => s.id)).toEqual(['a']);
+    expect(pageTitle(st)).toBe('(1) waiting · Reins');
+  });
+
+  it('the page title counts the sessions waiting for you', () => {
+    seq = 0;
+    const mk = (id: string, status: string) => [
+      row('session_created', { id, cwd: `D:\\p\\${id}`, engine: 'claude', autoApprove: false }, { sessionId: id, seq: 1 }),
+      row('status', { status }, { sessionId: id, seq: 2 }),
+    ];
+    expect(pageTitle(fold([...mk('a', 'idle'), ...mk('b', 'running')]))).toBe('Reins');
+    expect(pageTitle(fold([...mk('a', 'waiting'), ...mk('b', 'running')]))).toBe('(1) waiting · Reins');
+    expect(pageTitle(fold([...mk('a', 'waiting'), ...mk('b', 'waiting')]))).toBe('(2) waiting · Reins');
   });
 });

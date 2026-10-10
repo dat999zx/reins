@@ -26,16 +26,39 @@ describe('KINDS', () => {
   it('CARD_KINDS is the core cards without whenever-only kinds, in order', () => {
     expect(CARD_KINDS).toEqual([...CARDS.values()].filter((c) => !c.delivery).map((c) => c.kind));
   });
-  it('sub gives the second line', () => {
-    expect(KINDS.run.sub(step('run', { attrs: { cmd: 'npm test' } }))).toBe('npm test');
-    expect(KINDS.gate.sub(step('gate'), 'tests pass')).toBe('until tests pass');
-    expect(KINDS.verify.sub(step('verify', { attrs: { against: 'plan' } }))).toBe('against plan');
-    expect(KINDS.use.sub(step('use', { attrs: { use: 'lint-fix' } }))).toBe('lint-fix');
-    expect(KINDS.repeat.sub(step('repeat', { attrs: { max: '3' } }), 'tests pass')).toBe('until tests pass · max 3');
-    expect(KINDS.if.sub(step('if'), 'tests pass')).toBe('if tests pass');
-    expect(KINDS.handoff.sub(step('handoff', { attrs: { to: 'bob' } }))).toBe('bob');
-    expect(KINDS.recall.sub(step('recall', { attrs: { knowl: 'k' } }))).toBe('k');
-    expect(KINDS.say.sub(step('say', { prompt: `${'a'.repeat(50)}\nsecond` }))).toBe('a'.repeat(40));
+  it('only end stops the workflow', () => {
+    expect((Object.keys(KINDS) as StepKind[]).filter((k) => KINDS[k].stops)).toEqual(['end']);
+  });
+  it('only use has sub', () => {
+    expect((Object.keys(KINDS) as StepKind[]).filter((k) => KINDS[k].sub)).toEqual(['use']);
+    expect(KINDS.use.sub!(step('use', { attrs: { use: 'lint-fix' } }))).toBe('lint-fix');
+  });
+});
+
+describe('line', () => {
+  const kinds = Object.keys(KINDS) as StepKind[];
+  it('every kind has a non-empty row', () => {
+    for (const k of kinds) expect(KINDS[k].line.length, k).toBeGreaterThan(0);
+  });
+  it('every field token is one of the kind fields', () => {
+    for (const k of kinds) for (const t of KINDS[k].line) if (typeof t === 'object') expect(KINDS[k].fields.map((f) => f.key), k).toContain(t.field);
+  });
+  it("'cond' is in exactly the kinds whose fresh step has a cond", () => {
+    const withCond = kinds.filter((k) => KINDS[k].line.includes('cond')).sort();
+    expect(withCond).toEqual(['gate', 'if', 'repeat']);
+    expect(kinds.filter((k) => KINDS[k].fresh?.().cond).sort()).toEqual(withCond);
+  });
+});
+
+describe('card', () => {
+  const kinds = Object.keys(KINDS) as StepKind[];
+  it('exactly the kinds that can be added have a palette card', () => {
+    expect(kinds.filter((k) => KINDS[k].card).sort()).toEqual(kinds.filter((k) => KINDS[k].fresh).sort());
+  });
+  it('labels are unique and sections are Flow or Memory', () => {
+    const cards = kinds.flatMap((k) => (KINDS[k].card ? [KINDS[k].card!] : []));
+    expect(new Set(cards.map((c) => c.label)).size).toBe(cards.length);
+    for (const c of cards) expect(['Flow', 'Memory']).toContain(c.section);
   });
 });
 

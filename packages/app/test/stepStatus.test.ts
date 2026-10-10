@@ -93,6 +93,68 @@ describe('stepStatus', () => {
   });
 });
 
+const ss = (step: string, parents: string[] = []) => row('step_started', { step, parents });
+const ts = (step: string) => row('turn_started', { step });
+const te = (step: string) => row('turn_ended', { step });
+const cr = (step: string, exitCode: number) => row('command_result', { step, exitCode });
+
+describe('stepStatus with step_started (v2)', () => {
+  it('a run step after a phase: the phase is done and the run step is active', () => {
+    const m = stepStatus([ss('plan'), ts('plan'), te('plan'), ss('run-1')]);
+    expect(m.plan!.state).toBe('done');
+    expect(m['run-1']!.state).toBe('active');
+  });
+
+  it('a container stays active while its kids start; the next top-level step finishes them', () => {
+    const rows = [ss('repeat-1'), ss('a', ['repeat-1']), ts('a'), te('a'), ss('b', ['repeat-1'])];
+    const m = stepStatus(rows);
+    expect(m['repeat-1']!.state).toBe('active');
+    expect(m.a!.state).toBe('done');
+    expect(m.b!.state).toBe('active');
+    const after = stepStatus([...rows, ss('ship')]);
+    expect(after['repeat-1']!.state).toBe('done');
+    expect(after.b!.state).toBe('done');
+    expect(after.ship!.state).toBe('active');
+  });
+
+  it('turn_started after its own start changes no other step; a waiting parent stays waiting', () => {
+    const m = stepStatus([ss('p'), ss('k', ['p']), ts('k')]);
+    expect(m.p!.state).toBe('active');
+    expect(m.k!.state).toBe('active');
+    const waits = stepStatus([ss('p'), row('gate_paused', { step: 'p' }), ss('k', ['p'])]);
+    expect(waits.p!.state).toBe('waiting');
+    expect(waits.k!.state).toBe('active');
+  });
+
+  it('a gate that asks for changes goes back to waiting', () => {
+    const m = stepStatus([ss('g'), row('gate_paused', { step: 'g' }), ts('g'), te('g')]);
+    expect(m.g!.state).toBe('waiting');
+  });
+
+  it('a failed run step stays failed through the next start and is active again when it re-runs', () => {
+    const failed = [ss('run-1'), cr('run-1', 1)];
+    expect(stepStatus(failed)['run-1']).toEqual(info({ state: 'failed', why: 'exit 1' }));
+    expect(stepStatus([...failed, ss('fix')])['run-1']).toEqual(info({ state: 'failed', why: 'exit 1' }));
+    expect(stepStatus([...failed, ss('fix'), ss('run-1')])['run-1']!.state).toBe('active');
+    expect(stepStatus([ss('run-1'), cr('run-1', 0)])['run-1']!.state).toBe('active');
+  });
+
+  it('a failed verify is failed (verify); a passed one changes nothing', () => {
+    const v = [ss('verify-1'), ts('verify-1'), te('verify-1')];
+    expect(stepStatus([...v, row('verify_result', { pass: false })])['verify-1']).toEqual(info({ state: 'failed', why: 'verify' }));
+    expect(stepStatus([...v, row('verify_result', { pass: true })])['verify-1']!.state).toBe('done');
+  });
+
+  it('a log without step_started folds as before; v2 is per fold', () => {
+    const old = [row('turn_started', { step: 'a' }, 'B'), row('turn_ended', { step: 'a' }, 'B'), row('turn_started', { step: 'b' }, 'B')];
+    const v2 = [ss('x'), ts('x')].map((r) => ({ ...r, runId: 'A' }));
+    const both = runRows([...v2, ...old]);
+    expect(both.rows).toEqual(old);
+    expect(stepStatus(both.rows)).toEqual(stepStatus(old));
+    expect(stepStatus(old)).toEqual({ a: info({ state: 'done' }), b: info({ state: 'active' }) });
+  });
+});
+
 describe('runRows', () => {
   it('9a. one run is live until run_finished or run_stopped', () => {
     const start = [row('run_started', { workflow: 'w' }), row('turn_started', { step: 'a' })];

@@ -1,10 +1,14 @@
 import type { LogRow } from '@reins/server/store.js';
 
-export type StepState = 'active' | 'done' | 'waiting' | 'stuck';
-export interface StepInfo { state?: StepState; attempts?: number; refusals: number; cost: number }
+export type StepState = 'active' | 'done' | 'waiting' | 'stuck' | 'failed';
+// One vocabulary for a step's state: the feed's knots, the block chips, the dock and the Text list all read it.
+export const STATE_WORDS: Record<StepState | 'stopped' | 'paused', string> =
+  { active: 'running', done: 'done', waiting: 'waiting for you', stuck: 'out of attempts', failed: 'failed', stopped: 'stopped', paused: 'left paused' };
+export interface StepInfo { state?: StepState; attempts?: number; refusals: number; cost: number; why?: string }
 export type StepMap = Record<string, StepInfo>;
 
-interface Cursor { step?: string; gate?: string }
+// v2: the run logged step_started, so steps start there and a turn only confirms its own step.
+interface Cursor { step?: string; gate?: string; v2?: boolean }
 type Data = Record<string, any>;
 type Handler = (m: StepMap, cur: Cursor, data: Data) => void;
 
@@ -16,10 +20,26 @@ const retag = (m: StepMap, from: StepState, to: StepState | undefined, keep?: st
   }
 };
 
-// ponytail: a run step emits no event, so the step before it keeps showing active until the next turn; add a core step_started event if it matters
 const handlers: Record<string, Handler> = {
+  step_started: (m, cur, d) => {
+    if (typeof d.step !== 'string') return;
+    cur.v2 = true;
+    const parents: string[] = Array.isArray(d.parents) ? d.parents.filter((p: unknown) => typeof p === 'string') : [];
+    for (const [id, i] of Object.entries(m)) if (i.state === 'active' && id !== d.step && !parents.includes(id)) i.state = 'done';
+    for (const p of parents) if (at(m, p).state !== 'waiting') at(m, p).state = 'active';
+    const i = at(m, d.step);
+    if (i.state !== 'waiting') { i.state = 'active'; delete i.why; }
+    cur.step = d.step;
+  },
+  command_result: (m, _cur, d) => {
+    if (typeof d.step === 'string' && typeof d.exitCode === 'number' && d.exitCode !== 0) Object.assign(at(m, d.step), { state: 'failed', why: `exit ${d.exitCode}` });
+  },
+  verify_result: (m, cur, d) => {
+    if (d.pass === false && cur.step) Object.assign(at(m, cur.step), { state: 'failed', why: 'verify' });
+  },
   turn_started: (m, cur, d) => {
     if (typeof d.step !== 'string') return;
+    if (cur.v2 && d.step === cur.step) { at(m, d.step).state = 'active'; return; }
     retag(m, 'active', 'done');
     at(m, d.step).state = 'active';
     cur.step = d.step;

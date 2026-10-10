@@ -64,6 +64,7 @@ export function request(srv: { port: number; token: string }, method: 'GET' | 'P
 export function openStream(srv: { port: number; token: string }, o: { after?: string } = {}) {
   const rows: LogRow[] = [];
   const comments: string[] = [];
+  const events: Array<{ event: string; rows: number }> = [];
   let buf = '';
   const query = `token=${srv.token}${o.after !== undefined ? `&after=${encodeURIComponent(o.after)}` : ''}`;
   const req = http.request({ host: '127.0.0.1', port: srv.port, path: `/api/stream?${query}`, agent: false });
@@ -78,7 +79,8 @@ export function openStream(srv: { port: number; token: string }, o: { after?: st
           const block = buf.slice(0, i);
           buf = buf.slice(i + 2);
           if (block.startsWith('data: ')) rows.push(JSON.parse(block.slice(6)));
-          else comments.push(block);
+          else if (block.startsWith(':')) comments.push(block);
+          else if (block.startsWith('event: ')) events.push({ event: block.split('\n')[0]!.slice(7), rows: rows.length });
         }
       });
       resolve(res);
@@ -87,7 +89,7 @@ export function openStream(srv: { port: number; token: string }, o: { after?: st
   req.end();
   const close = () => req.destroy();
   undo.push(close);
-  return { ready, rows, comments, close };
+  return { ready, rows, comments, events, close };
 }
 
 export const rowsOf = (store: Store, id: string, type?: string): LogRow[] => store.readLog(id).filter((r) => !type || r.type === type);
