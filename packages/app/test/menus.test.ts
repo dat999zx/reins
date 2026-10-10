@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import type { ActName } from '../src/keys.js';
 import { itemsFor, MENUS, type Item, type MenuCtx } from '../src/menus.js';
 
 const ctx = (c: Partial<MenuCtx> = {}): MenuCtx => ({ count: 1, topLevel: true, free: false, isEnd: false, clip: false, ran: false, ...c });
@@ -37,8 +36,8 @@ describe('menus', () => {
     expect(acts(itemsFor('block', ctx({ ran: true })))).toEqual(['duplicate', 'copy', 'cut', 'delete', '-', 'park', 'detach', '-', 'showInChat', 'editInText']);
     expect(acts(itemsFor('block', ctx()))).not.toContain('showInChat');
     expect(acts(itemsFor('block', ctx({ ran: true, count: 2 })))).not.toContain('showInChat');
-    const act: ActName = 'showInChat';
-    expect(act).toBe('showInChat');
+    const item = itemsFor('block', ctx({ ran: true })).find((i) => i !== '-' && i.act === 'showInChat');
+    expect(item).toMatchObject({ label: 'Show in Chat' });
   });
   it('no menu starts or ends with a separator, or has two in a row', () => {
     for (const t of Object.keys(MENUS) as Array<keyof typeof MENUS>) for (const c of [ctx(), ctx({ count: 2 }), ctx({ clip: true })]) {

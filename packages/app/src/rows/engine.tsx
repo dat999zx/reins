@@ -11,7 +11,7 @@ export const chip = (e: { channel: string }) => <div className="row"><span class
 const pretty = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v, null, 2));
 const summary = (i: any) => short(i?.command ?? i?.file_path ?? i?.path ?? i?.pattern ?? i?.description ?? i ?? '', 100);
 
-// ponytail: tool timing is the gap between the call row and its result row, as logged; a result after its turn ended loses its call (state.ts:64).
+// ponytail: tool timing is the gap between the call row and its result row, as logged; a result after its turn ended loses its call (state.ts:72-74).
 function ToolBead({ e, row, ctx }: { e: any; row: LogRow; ctx: Ctx }) {
   const [seen, setSeen] = useState(false);
   const call = ctx.sess.calls[row.seq];

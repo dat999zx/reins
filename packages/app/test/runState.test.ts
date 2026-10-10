@@ -39,6 +39,14 @@ describe('dock facts', () => {
     expect(meter(v, w.budget, 0)[0]).toMatchObject({ key: 'turns', level, enforced: true });
     expect(meter(v, w.budget, 0)[0]!.text).toContain(`${turns} / 40 turns`);
   });
+  it('near says so in words for turns, minutes and money, not by colour alone', () => {
+    const v = view([started()]); v.startedAt = 0; v.turns = 32; v.cost = 3.2;
+    const items = meter(v, w.budget, 24 * 60_000);
+    expect(items.map((i) => i.level)).toEqual(['near', 'near', 'near']);
+    for (const i of items) expect(i.text).toMatch(/ · near$/);
+    v.turns = 1; v.cost = 0;
+    for (const i of meter(v, w.budget, 60_000)) expect(i.text).not.toContain('near');
+  });
   it('minutes and money report unenforced limits; ended time freezes; absent usd stays absent', () => {
     const v = view([started()]); v.startedAt = 0; v.cost = 5;
     const items = meter(v, w.budget, 31 * 60_000);
@@ -120,6 +128,18 @@ describe('runView phase', () => {
     const v = view([started(), ss('plan'), row('run_detached', { error: 'x' }), row('note', { text: 'Resumed run r1.' }), status('running')]);
     expect(v.phase).toBe('running');
     expect(v.live).toBe(true);
+    expect(v.error).toBeUndefined();
+  });
+
+  it('failed, resumed, then left paused cleanly is paused with no old error', () => {
+    reset();
+    const v = view([started(), ss('plan'), row('run_detached', { error: 'x' }), row('note', { text: 'Resumed run r1.' }), status('running'), ss('plan'), row('run_detached', {}), status('idle')]);
+    expect(v.phase).toBe('paused');
+    expect(v.error).toBeUndefined();
+    reset();
+    const done = view([started(), ss('plan'), row('run_detached', { error: 'x' }), row('note', { text: 'Resumed run r1.' }), ss('plan'), row('run_finished'), row('receipt', {})]);
+    expect(done.phase).toBe('done');
+    expect(done.error).toBeUndefined();
   });
 
   it('PHASE.ended and .resumable per spec 4.1', () => {

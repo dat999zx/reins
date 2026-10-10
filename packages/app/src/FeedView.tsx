@@ -7,7 +7,7 @@ import { isFresh, type Sess } from './state.js';
 // ponytail: five cues only; ink-in, glow, clip-on, pop and tool icons were cut for v1 (review); history never animates (replay boundary and seq at mount). Open / closed choices live in Chat's memory; a collapsed knot renders no beads, so find-in-page does not see them.
 // Tab stops: one per knot toggle and per "Blocks ↗", plus every open bead's summary and card control (a long open turn has many). "Blocks ↗" works only from the newest run; whether the open buffer still matches is known only on arrival in Blocks (Chat has no buffer).
 type Run = Extract<Piece, { type: 'run' }>;
-const EARLIER = 'An earlier run: only the newest run links to its blocks.';
+export const EARLIER = 'An earlier run: only the newest run links to its blocks.';
 const id = (key: string) => `sx-${key.replace(/[^\w-]/g, '_')}`;
 
 type BeadCtx = Ctx & { animated: Set<number> };
@@ -126,14 +126,15 @@ export function Feed({ f, sess, run, act, thinking, open, onToggle, onBlock, log
     act: { answer: (qid: string, answer: string) => handlers.current.act.answer(qid, answer), resume: (rid: string) => handlers.current.act.resume(rid) },
   }), []);
   const c: PieceProps = { ctx: { sess, act: stable.act, card: f.cards, seenSeq: seenSeq.current, animated: animated.current, thinking }, run, open, onToggle: stable.onToggle, onBlock: stable.onBlock };
-  const now = f.now ? `Now: ${f.now.title} · ${KNOT[f.now.state].words}${run.thinking !== undefined ? ` · ${thinkingWords(run.thinking)}` : ''}` : '';
+  const now = f.now ? `Now: ${f.now.title} · ${KNOT[f.now.state].words}` : '';
+  const count = f.now && run.thinking !== undefined ? ` · ${thinkingWords(run.thinking)}` : ''; // visible only: it changes at every burst, so it stays out of the live region
   const jump = () => {
     const target = f.now && logRef.current?.querySelector<HTMLElement>(`[data-knot="${CSS.escape(f.now.key)}"] :is(.sx-kbtn, .sx-khead)`);
     if (target) { target.scrollIntoView({ block: 'start' }); target.focus({ preventScroll: true }); }
   };
   return (
     <div className="log sx-feed" ref={logRef} onScroll={onScroll} role="region" aria-label="Run log" tabIndex={0}>
-      <div className="sx-nowbar"><span role="status">{now}</span>{f.now && <button onClick={jump}>{now}<Elapsed since={f.now.start} /></button>}</div>
+      <div className="sx-nowbar"><span role="status">{now}</span>{f.now && <button onClick={jump}>{now}{count}<Elapsed since={f.now.start} /></button>}</div>
       {f.pieces.length === 0 && <p className="hint sx-hint">Say something to start.</p>}
       <ol className="sx-rein">
         {f.pieces.map((p) => (PIECES[p.type] as (p: Piece, c: PieceProps) => ReactNode)(p, c))}

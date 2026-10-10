@@ -64,6 +64,7 @@ describe.skipIf(skip)('live run e2e', () => {
     fs.mkdirSync(path.join(folderA, '.reins', 'workflows'), { recursive: true });
     fs.writeFileSync(path.join(folderA, '.reins', 'workflows', 'live.reins.md'), LIVE('node --version'));
     fs.writeFileSync(path.join(folderA, '.reins', 'workflows', 'live2.reins.md'), LIVE('node -v').replace('name: live\n', 'name: live2\n'));
+    fs.writeFileSync(path.join(folderA, '.reins', 'workflows', 'decl.reins.md'), LIVE('node -p 1').replace('name: live\n', 'name: decl\n'));
     fs.mkdirSync(path.join(folderB, '.reins', 'workflows'), { recursive: true });
     fs.writeFileSync(path.join(folderB, '.reins', 'workflows', 'other.reins.md'), '---\nreins: 1\nname: other\nbudget: { turns: 40, minutes: 30, usd: 4.00 }\nalways: []\n---\n\n## phase solo\n> Do it.\n\n## gate\nuntil: you approve\n');
     const folders = [folderA, folderB];
@@ -159,7 +160,8 @@ describe.skipIf(skip)('live run e2e', () => {
     const strand = log.locator('li.sx-strand');
     for (const t of await strand.locator('.sx-kbtn').all()) if ((await expanded(t)) === 'false') await t.click();
     expect(await strand.locator('.sx-kbtn[aria-expanded="false"]').count()).toBe(0);
-    expect(await log.locator('.row', { hasText: '{"step"' }).count()).toBe(0);
+    // generic.tsx pretty-prints (`{\n  "step": ...`) into a <pre>, closed or not: the text of every one of them holds no key
+    expect(await log.locator('.row.muted pre').filter({ hasText: /"step"\s*:/ }).count()).toBe(0);
     const lastKnot = await strand.locator('li.sx-knot').last().boundingBox();
     const receipt = await log.getByRole('region', { name: 'Receipt for live' }).boundingBox();
     expect(receipt!.y).toBeGreaterThan(lastKnot!.y);
@@ -255,6 +257,11 @@ describe.skipIf(skip)('live run e2e', () => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await expect.poll(() => running.evaluate((el: any) => el.getAnimations({ subtree: true }).length)).toBe(0);
     await page.emulateMedia({ reducedMotion: 'no-preference' });
+    // the thinking count is in the visible Now button, never in the live region (it changes at every burst)
+    add('engine', { type: 'thinking', tokens: 321 }, 'motion');
+    await page.reload();
+    await log.locator('.sx-nowbar button', { hasText: 'thinking… ~321 tokens' }).waitFor();
+    expect(await log.locator('.sx-nowbar [role="status"]').innerText()).toBe('Now: working · running');
 
     await rail.locator('.group', { has: page.locator('header', { hasText: path.basename(folderA) }) }).locator('button.item').click();
     await openLive();
@@ -336,9 +343,15 @@ describe.skipIf(skip)('live run e2e', () => {
     await note(/applies to the next run/).waitFor();
     await tab('Blocks').click();
     const steer = dock.getByRole('textbox', { name: 'Steer the agent' });
+    // a slow reply, and Enter twice: one card goes
+    let posted = 0;
+    await page.route('**/api/sessions/*/card', async (r) => { posted++; await new Promise((ok) => setTimeout(ok, 500)); await r.continue(); });
     await steer.fill('use pnpm');
     await steer.press('Enter');
+    await steer.press('Enter');
     await expect.poll(() => steer.inputValue()).toBe('');
+    expect(posted).toBe(1);
+    await page.unroute('**/api/sessions/*/card');
     await tab('Chat').click();
     await log.getByText('steer card use pnpm', { exact: false }).waitFor();
     await page.getByRole('textbox', { name: 'Message' }).fill('End with PINEAPPLE.');
@@ -362,6 +375,12 @@ describe.skipIf(skip)('live run e2e', () => {
     await tab('Blocks').click();
     expect(await page.locator('.blk .sstate').count()).toBe(0);
     expect(await dock.count()).toBe(0);
+    // a dismissed run offers no Show in Chat: the block ran in it, but the file no longer shows that run
+    await page.locator('.blk[data-id="plan"]').click({ button: 'right' });
+    await page.getByRole('menu').waitFor();
+    expect(await page.getByRole('menuitem', { name: 'Show in Chat' }).count()).toBe(0);
+    expect(await page.getByRole('button', { name: 'Show in Chat' }).count()).toBe(0);
+    await page.keyboard.press('Escape');
 
     // L4. Follow keeps the running block in view until the user moves the camera; pressing Follow brings it back.
     const view = page.locator('.sx-view');
@@ -516,6 +535,14 @@ describe.skipIf(skip)('live run e2e', () => {
     await tab('Blocks').click();
     await dock.getByRole('status').getByText('Done ·', { exact: false }).waitFor();
     expect(await dock.getByRole('status').innerText()).not.toContain('Stopped');
+
+    // L7. A refused start says so in the dock, and Dismiss takes the words away with the run.
+    await page.locator('.wflist button', { has: page.locator('.sx-wfname', { hasText: /^decl$/ }) }).click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await dockCard('trust').getByRole('button', { name: "Don't trust", exact: true }).click();
+    await dock.getByRole('status').getByText('The run did not start: The workflow is not trusted, so it did not run.', { exact: false }).waitFor();
+    await dock.getByRole('button', { name: 'Dismiss', exact: true }).click();
+    expect(await dock.count()).toBe(0);
     expect(errors).toEqual([]);
   }, T);
 });

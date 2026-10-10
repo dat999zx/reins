@@ -324,10 +324,9 @@ describe('feed: 500 rows', () => {
     const began = performance.now();
     for (let i = 0; i < 20; i++) draw();
     const average = (performance.now() - began) / 20;
-    console.info(`Batch 4 feed(500 rows), warmed 20-call average: ${average.toFixed(3)} ms`);
     expect(average).toBeLessThan(2000);
   });
-  it('walks a 500-row log, keeps the last row, and reports the time', () => {
+  it('walks a 500-row log, keeps the last row, and stays fast', () => {
     reset();
     const rows: LogRow[] = [];
     for (let t = 0; t < 20; t++) {
@@ -342,7 +341,6 @@ describe('feed: 500 rows', () => {
     const t0 = performance.now();
     const f = run(rows);
     const ms = performance.now() - t0;
-    console.info(`feed(${rows.length} rows) took ${ms.toFixed(1)} ms`);
     expect(f.pieces.filter((p) => p.type === 'turn')).toHaveLength(20);
     expect(knots(lone(f))).toHaveLength(6);
     const last = (f.pieces.filter((p) => p.type === 'turn').at(-1) as Extract<Piece, { type: 'turn' }>).knot.beads.at(-1)!;

@@ -1,4 +1,5 @@
 import { createContext } from 'react';
+import { thinkingWords } from './runState.js';
 import { STATE_WORDS, type StepInfo, type StepMap, type StepState } from './stepStatus.js';
 
 // Status comes through a context, not props: a streamed row must not rebuild the blocks mid-drag.
@@ -17,7 +18,7 @@ export const ENDED: Record<'stopped' | 'failed' | 'paused', string> = { stopped:
 
 export function StepChips({ i, thinking }: { i: StepInfo; thinking?: number }) {
   const base = i.state && STATE[i.state];
-  const think = thinking === undefined ? undefined : `thinking… ~${thinking.toLocaleString('en-US')} tokens`;
+  const think = thinking === undefined ? undefined : thinkingWords(thinking);
   const st = base && i.why ? { text: `${base.text} (${i.why})`, words: `${base.words} (${i.why})` } : base;
   const tries = i.attempts === undefined ? undefined : i.state === 'stuck' ? `${i.attempts} tries used` : `attempt ${i.attempts + 1}`;
   const cost = i.cost > 0 ? `$${i.cost.toFixed(4)}` : undefined;

@@ -66,7 +66,7 @@ const begin = (v: RunView, path: string[]) => { v.current = path; delete v.ended
 const setStep: Fold = (_r, x, v, a) => {
   if (typeof x.step === 'string' && !(a.v2 && v.current.at(-1) === x.step)) begin(v, [x.step]);
 };
-const ends: Fold = (_r, _x, v) => { v.endedAt = v.current.at(-1); v.current = []; };
+const ends: Fold = (_r, _x, v) => { v.endedAt = v.current.at(-1); v.current = []; delete v.error; }; // an old error goes with the next end; run_detached sets its own after
 const delivered = (text: unknown, v: RunView) => {
   const c = v.cards.find((k) => k.state === 'queued' && k.text === text);
   if (c) c.state = 'delivered';
@@ -153,6 +153,7 @@ export function runView(s: Sess): RunView {
   v.went = a.started.flatMap((to, i) => (i > 0 && a.started[i - 1] !== to ? [{ from: a.started[i - 1]!, to }] : []));
   if (live) {
     delete v.endedTs;
+    delete v.error; // resumed: the failure it left is history
     const t = thinkingNow(rows);
     if (t) v.thinking = t.tokens;
   }
@@ -204,7 +205,7 @@ export function meter(v: RunView, budget: Workflow['budget'], now: number): Mete
   return values.map(({ key, used, limit, text }) => {
     const level = used >= limit ? 'over' : used >= limit * 0.8 ? 'near' : 'ok';
     const enforced = key === 'turns';
-    return { key, text: text + (level === 'over' ? enforced ? ' · turn budget used: the run stops' : ' · over (not enforced)' : ''), level, enforced };
+    return { key, text: text + (level === 'over' ? enforced ? ' · turn budget used: the run stops' : ' · over (not enforced)' : level === 'near' ? ' · near' : ''), level, enforced };
   });
 }
 

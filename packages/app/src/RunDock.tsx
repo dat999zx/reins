@@ -4,7 +4,7 @@ import { sendCard } from './api.js';
 import { QuestionCard } from './QuestionCard.js';
 import type { Actions } from './rows.js';
 import { receiptFields } from './rows/receipt.js';
-import { meter, PHASE, type Pos, type RunCard, type RunView } from './runState.js';
+import { meter, PHASE, thinkingWords, type Pos, type RunCard, type RunView } from './runState.js';
 import type { Sess } from './state.js';
 
 const CARD_STATE: Record<RunCard['state'], string> = { queued: 'queued', delivered: 'delivered', unsent: 'not sent' };
@@ -29,7 +29,10 @@ export function RunDock(p: {
   // ponytail: the budget shown is the open file's; step N of M counts as the agent's header does.
   const items = p.budget ? meter(run, p.budget, now) : [];
   const near = items.find((i) => i.key === 'turns' && i.level === 'near');
-  const words = (p.starting ?? phase.words(run, p.pos)) + (!p.starting && near ? ` · Near the turn budget: ${run.turns} of ${p.budget!.turns}.` : '');
+  // the token count changes at every burst: it is shown, but kept out of the live region
+  const { thinking, ...still } = run;
+  const status = (p.starting ?? phase.words(still, p.pos)) + (!p.starting && near ? ` · Near the turn budget: ${run.turns} of ${p.budget!.turns}.` : '');
+  const count = !p.starting && thinking !== undefined ? ` · ${thinkingWords(thinking)}` : '';
   useEffect(() => {
     if (!run.live) return;
     setNow(Date.now());
@@ -48,16 +51,20 @@ export function RunDock(p: {
   }, [ids.join('|'), open]);
   // ponytail: a steer that races the session going idle starts a plain chat turn (session.ts card()); a steer left unsent comes back in the Composer.
   const working = sess.status === 'running' || sess.status === 'waiting';
+  const [sending, setSending] = useState(false); // one request at a time: Enter twice or a double click is one card
   const send = (kind: 'steer' | 'now' | 'stop') => {
+    if (sending) return;
+    setSending(true);
     setError(undefined);
     const text = kind === 'stop' ? '' : draft.trim();
     sendCard(sess.id, kind, text)
       .then(() => { if (kind !== 'stop') setDraft((d) => (d.trim() === text ? '' : d)); }) // text typed since the send stays
-      .catch((e: Error) => setError(e.message));
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setSending(false));
   };
   return <section className="sx-dock" aria-label="Run">
     <div className="sx-dockline">
-      <span className="sx-dockstatus" role="status" title={words}>{words}</span>
+      <span className="sx-dockstatus" title={status + count}><span role="status">{status}</span>{count}</span>
       {/* an ended run's status line already says its turns, time and cost */}
       {!phase.ended && items.map((i) => <span key={i.key} className={`sx-meter ${i.level === 'ok' ? '' : 'warn'}`} title={i.text}>{i.text}</span>)}
       {!p.match && run.stepsAtStart && <span className="sx-docknotice" role="note">The file changed since this run started; marks are hidden.</span>}
@@ -75,9 +82,9 @@ export function RunDock(p: {
         <textarea ref={steer} aria-label="Steer the agent" rows={1} value={draft} disabled={!working} placeholder="Steer the agent (sent as a card)…"
           onChange={(e) => { setDraft(e.target.value); setError(undefined); }}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); if (draft.trim()) send('steer'); } }} />
-        <button type="submit" disabled={!working || !draft.trim()}>Send</button>
-        <button type="button" disabled={!working || !draft.trim()} title="Interrupt the agent and deliver this card now" onClick={() => send('now')}>Now</button>
-        <button type="button" className="danger" disabled={!working} title="Stop the run" onClick={() => send('stop')}>Stop</button>
+        <button type="submit" disabled={!working || sending || !draft.trim()}>Send</button>
+        <button type="button" disabled={!working || sending || !draft.trim()} title="Interrupt the agent and deliver this card now" onClick={() => send('now')}>Now</button>
+        <button type="button" className="danger" disabled={!working || sending} title="Stop the run" onClick={() => send('stop')}>Stop</button>
       </form>}
       {error && !phase.ended && <div className="bad" role="alert">{error}</div>}
       {run.cards.length > 0 && <ul className="sx-cards" aria-label="Cards sent">

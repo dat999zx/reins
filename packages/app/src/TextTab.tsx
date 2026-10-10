@@ -19,6 +19,7 @@ import { Workspace, type EditOpts } from './Workspace.js';
 import { Palette } from './Palette.js';
 import type { Start } from './useDrag.js';
 import { ENDED, StatusCtx, StepChips } from './StepChips.js';
+import { EARLIER } from './FeedView.js';
 
 interface Listed { path: string; name: string; scope: 'project' | 'user'; diagnostics: Diagnostic[] }
 interface Step { id: string; kind: string; title?: string; depth: number; cond?: string }
@@ -31,7 +32,6 @@ interface Preview {
 const NAME = /^[a-z0-9][a-z0-9-]*$/;
 const WAIT = 'Still applying the last change. Try again.';
 const STOPPED = 'Stopped following the run. Press Follow to follow it again.';
-const EARLIER ='An earlier run: only the newest run links to its blocks.';
 // the panel's Delete button goes away with the block, so the focus goes back to the workspace
 const toWorkspace = (ok: boolean) => { if (ok) document.querySelector<HTMLElement>('.sx-view')?.focus({ preventScroll: true }); };
 const template = (name: string) =>
@@ -309,7 +309,7 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
     else if (!ours || !has) setMsg(`\`${reveal.id}\` is a step of \`${run.workflow}\`, which is not open. Open it from the list.`);
     else { setStepId(reveal.id); setGo({ id: reveal.id, n: reveal.n }); }
   }, [reveal?.n, file, prev, text, restored]);
-  const ran = (id: string) => firstRowOf(run, sess.rows, id) !== undefined;
+  const ran = (id: string) => showStatus && firstRowOf(run, sess.rows, id) !== undefined; // the file must be the one this run shows
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); }
@@ -371,7 +371,7 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
       <section className="editor">
         {view === 'blocks' && (showDock ? <RunDock run={run} sess={sess} act={act} budget={prev?.workflow?.budget}
           pos={showStatus && prev?.workflow ? stepPos(prev.workflow, run.current) : undefined} match={!ours || match}
-          open={dockOpen} onOpen={onDockOpen} starting={startWords} following={following} onFollow={showStatus ? (on) => { setFollowing(on); if (on) setMsg((m) => (m === STOPPED ? '' : m)); } : undefined} onChat={() => onChat()} onDismiss={() => onDismiss(run.runId)} />
+          open={dockOpen} onOpen={onDockOpen} starting={startWords} following={following} onFollow={showStatus ? (on) => { setFollowing(on); if (on) setMsg((m) => (m === STOPPED ? '' : m)); } : undefined} onChat={() => onChat()} onDismiss={() => { setStarting(undefined); onDismiss(run.runId); }} />
           : sess.status === 'waiting' ? <p className="sx-dockline">The agent is waiting for you in Chat. <button onClick={() => onChat()}>Chat</button></p>
           : run.live ? <p className="sx-dockline">A run of `{run.workflow}` is going. <button onClick={() => {
             const entry = list.find((w) => w.name === run.workflow);
