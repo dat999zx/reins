@@ -30,11 +30,11 @@ const NATIVE = 'input, textarea, select, option, button, .sx-menu, .sx-zoom';
 const onOf = (t: Element): Press['on'] => (t.closest(NATIVE) ? 'input' : t.closest('.sx-handle') ? 'handle' : t.closest('[data-link]') ? 'link' : t.closest('.sx-hat') ? 'hat' : t.closest('.sx-loose') ? 'loose' : t.closest('.blk') ? 'block' : 'empty');
 
 // ponytail: Follow pans without animation, only when the block leaves the view; any press in the view stops it.
-export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved, lay, press, reveal, ran, onShowInChat, follow, went, onUserCam, onEdit, onSel, onDelete, onCam, onLayout, onUndo, onRedo, onNote, onEditInText }: {
+export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved, lay, press, reveal, ran, onShowInChat, follow, followTick, went, onUserCam, onEdit, onSel, onDelete, onCam, onLayout, onUndo, onRedo, onNote, onEditInText }: {
   w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; sel: Set<Key>; primary?: string; rev: unknown;
   cam?: Cam; lay: Layout; press: MutableRefObject<Start | undefined>;
   reveal?: { id: string; n: number }; ran?: (id: string) => boolean; onShowInChat?: (id: string) => void; // reveal: bring this block into view and focus it (Chat's "Blocks ↗")
-  follow?: string; went?: Array<{ from: string; to: string }>; onUserCam?: () => void; // follow: keep this block (the running one) in view; went: the steps the run started, in order; onUserCam: the user moved the camera
+  follow?: string; followTick?: number; went?: Array<{ from: string; to: string }>; onUserCam?: () => void; // follow: keep this block (the running one) in view; went: the steps the run started, in order; onUserCam: the user moved the camera
   onEdit: (fn: (w: Workflow) => Workflow, o?: EditOpts) => boolean; onSel: (keys: Set<Key>, primary?: string) => void; onDelete: (keys: Key[], then?: (applied: boolean) => void) => void; onCam: (c: Cam) => void;
   onLayout: (fn: (l: Layout) => Layout) => boolean; onUndo: () => boolean; onRedo: () => boolean; onNote: (s: string) => void; onEditInText: (line: number) => void;
 }) {
@@ -121,14 +121,17 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, cam: saved
   const bring = (id: string) => {
     const el = elOf(stepKey(id));
     if (!el) return undefined;
-    const vr = size(), b = el.getBoundingClientRect(), c = camRef.current, o = toWorld(c, { x: b.left - vr.left, y: b.top - vr.top });
+    // The state chip hangs outside the block's box: bring it into view with the block, but only when both fit (the block itself always wins).
+    const vr = size(), c = camRef.current, own = el.getBoundingClientRect(), all = [el, ...el.querySelectorAll('.sstate')].map((e) => e.getBoundingClientRect());
+    const l = Math.min(...all.map((r) => r.left)), t = Math.min(...all.map((r) => r.top)), r = Math.max(...all.map((r) => r.right)), bt = Math.max(...all.map((r) => r.bottom));
+    const b = r - l <= vr.width - 88 && bt - t <= vr.height - 88 ? new DOMRect(l, t, r - l, bt - t) : own, o = toWorld(c, { x: b.left - vr.left, y: b.top - vr.top });
     const next = revealCam(c, { ...o, w: b.width / c.zoom, h: b.height / c.zoom }, { w: vr.width, h: vr.height });
     if (next) commit(next);
     return el;
   };
   useEffect(() => { if (reveal) bring(reveal.id)?.focus({ preventScroll: true }); }, [reveal?.n]);
-  // The running block comes into view when it changes (or Follow comes back on). Not a user move: onUserCam is not called.
-  useEffect(() => { if (follow !== undefined) bring(follow); }, [follow]);
+  // The running block comes into view when it changes (or Follow comes back on, or its chip grows with the thinking count). Not a user move: onUserCam is not called.
+  useEffect(() => { if (follow !== undefined) bring(follow); }, [follow, followTick]);
   const focusAfter = (k?: Key) => (ok: boolean) => { if (ok && k !== undefined) refocus.current = k; };
   // Every move is one edit; a link the move turned backward gets its max, and the note says which.
   const capNote = (capped: string[]) => `Added max 3 to ${capped.length === 1 ? '1 link that now points' : `${capped.length} links that now point`} back: ${capped.join(', ')}.`;

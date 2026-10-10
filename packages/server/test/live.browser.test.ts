@@ -162,9 +162,10 @@ describe.skipIf(skip)('live run e2e', () => {
     expect(await strand.locator('.sx-kbtn[aria-expanded="false"]').count()).toBe(0);
     // generic.tsx pretty-prints (`{\n  "step": ...`) into a <pre>, closed or not: the text of every one of them holds no key
     expect(await log.locator('.row.muted pre').filter({ hasText: /"step"\s*:/ }).count()).toBe(0);
-    const lastKnot = await strand.locator('li.sx-knot').last().boundingBox();
-    const receipt = await log.getByRole('region', { name: 'Receipt for live' }).boundingBox();
-    expect(receipt!.y).toBeGreaterThan(lastKnot!.y);
+    // DOM order, not geometry: a skipped (content-visibility) track changes size as it renders, so two boxes read at different times can disagree
+    const lastKnot = await strand.locator('li.sx-knot').last().elementHandle();
+    const receipt = await log.getByRole('region', { name: 'Receipt for live' }).elementHandle();
+    expect(await page.evaluate(([k, r]) => ((k as { compareDocumentPosition(o: unknown): number }).compareDocumentPosition(r) & 4) !== 0 /* DOCUMENT_POSITION_FOLLOWING */, [lastKnot, receipt])).toBe(true);
     // Blocks ↗: the Blocks tab selects the block and gives it the focus
     await log.getByRole('button', { name: 'Show plan in Blocks' }).click();
     await expect.poll(() => tab('Blocks').getAttribute('aria-selected'), { timeout: W }).toBe('true');
