@@ -845,7 +845,7 @@ describe('model switch (A)', () => {
     expect(sw(x, 'model-b')).toEqual({ ok: true });
     expect(x.store.getSession('s1')!.model).toBe('model-b');
     expect(settingsRows(x)).toEqual([{ model: 'model-b' }]);
-    expect(notes(x)).toEqual(['Model set to model-b from the next reply. The whole conversation goes to it as input.']);
+    expect(notes(x)).toEqual(['Model set to Test model from the next reply. The whole conversation goes to it as input.']);
     x.s.message('hi');
     await x.s.idle();
     expect(x.models).toEqual(['model-b']);

@@ -151,7 +151,7 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await editor.fill(`${good}\n`);
     await editor.press('ControlOrMeta+S');
     await page.getByRole('status').getByText('Saved.').waitFor();
-    await page.getByRole('button', { name: 'Run' }).click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
     const trust = page.getByRole('region', { name: 'trust question' });
     await trust.waitFor();
     expect(await trust.locator('.qdetail').innerText()).toBe('npm test');

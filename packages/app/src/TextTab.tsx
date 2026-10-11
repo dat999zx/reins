@@ -342,6 +342,11 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
   const known = !prev?.workflow || flatSteps(prev.workflow.steps).every((s) => s.kind in KINDS);
   const sel = stepId && prev?.workflow ? flatSteps(prev.workflow.steps).find((s) => s.id === stepId) : undefined;
 
+  // The run panel's handle sits in the editor bar (Blocks only, as the dock did); its body floats over the canvas, so nothing moves when it opens.
+  const dock = view === 'blocks' && showDock ? <RunDock run={run} sess={sess} act={act} budget={prev?.workflow?.budget} surface="blocks"
+    pos={showStatus && prev?.workflow ? stepPos(prev.workflow, run.current) : undefined} match={!ours || match}
+    open={dockOpen} onOpen={onDockOpen} starting={startWords} following={following} onFollow={showStatus ? (on) => { setFollowing(on); if (on) setMsg((m) => (m === STOPPED ? '' : m)); } : undefined} onJump={() => onChat()} onDismiss={() => { setStarting(undefined); onDismiss(run.runId); }} /> : null;
+
   // The slot is checked before edit(): a declined rewrite confirm or a busy editor must not show this note.
   const cond = (t: string) => {
     if (!sel || !KINDS[sel.kind].line.includes('cond')) return setMsg('Select a wait until, repeat until or if block first.');
@@ -369,18 +374,16 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
         {view === 'blocks' && prev?.workflow && known && <Palette onAdd={add} onCond={cond} press={press} />}
       </aside>
       <section className="editor">
-        {view === 'blocks' && (showDock ? <RunDock run={run} sess={sess} act={act} budget={prev?.workflow?.budget}
-          pos={showStatus && prev?.workflow ? stepPos(prev.workflow, run.current) : undefined} match={!ours || match}
-          open={dockOpen} onOpen={onDockOpen} starting={startWords} following={following} onFollow={showStatus ? (on) => { setFollowing(on); if (on) setMsg((m) => (m === STOPPED ? '' : m)); } : undefined} onChat={() => onChat()} onDismiss={() => { setStarting(undefined); onDismiss(run.runId); }} />
-          : sess.status === 'waiting' ? <p className="sx-dockline">The agent is waiting for you in Chat. <button onClick={() => onChat()}>Chat</button></p>
+        {view === 'blocks' && !showDock && (sess.status === 'waiting' ? <p className="sx-dockline">The agent is waiting for you in Chat. <button onClick={() => onChat()}>Chat</button></p>
           : run.live ? <p className="sx-dockline">A run of `{run.workflow}` is going. <button onClick={() => {
             const entry = list.find((w) => w.name === run.workflow);
             if (entry) void open(entry.path); else setMsg(`Open \`${run.workflow}\` from the list.`);
           }}>Open it</button></p> : null)}
-        {file === null ? <p className="hint">Pick a workflow, or make a new one.</p> : (
+        {file === null ? <>{dock && <div className="ebar">{dock}</div>}<p className="hint">Pick a workflow, or make a new one.</p></> : (
           <>
             <div className="ebar">
               <b className="sx-wfname" title={file.split(/[\\/]/).at(-1)}>{file.split(/[\\/]/).at(-1)}</b>{dirty && <span className="dirty" title="Unsaved changes" role="img" aria-label="unsaved changes"> ●</span>}
+              {dock}
               <span className="grow" />
               <button onClick={() => void save()} disabled={!dirty}>Save</button>
               {view === 'text' && run.phase === 'waiting' && <><span role="status">Waiting for you. Answer in Blocks or Chat.</span><button onClick={() => onView('blocks')}>Blocks</button></>}
@@ -394,7 +397,7 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
                 <StatusCtx.Provider value={{ status: run.steps, show: showStatus, ended, ...(run.thinking !== undefined ? { thinking: run.thinking } : {}) }}>
                   <Workspace key={file} w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} sel={sels} primary={stepId}
                     rev={prev} press={press} cam={canvas.current?.[file]?.cam} lay={lay}
-                    onEdit={edit} onSel={(keys, primary) => { setSels(keys); setStepId(primary); }} onNote={setMsg} onEditInText={(line) => { pendingLine.current = line; onView('text'); }} onDelete={del} onLayout={setLayout} onUndo={() => step(undo)} onRedo={() => step(redo)} reveal={go} ran={ran} onShowInChat={onChat} follow={following ? now : undefined} followTick={run.thinking} went={went} onUserCam={onUserCam} onCam={(cam) => { if (restored) setView(file, { cam }); }} />
+                    onEdit={edit} onSel={(keys, primary) => { setSels(keys); setStepId(primary); }} onNote={setMsg} onEditInText={(line) => { pendingLine.current = line; onView('text'); }} onDelete={del} onLayout={setLayout} onUndo={() => step(undo)} onRedo={() => step(redo)} reveal={go} ran={ran} onShowInChat={onChat} onMenu={() => onDockOpen(false)} follow={following ? now : undefined} followTick={run.thinking} went={went} onUserCam={onUserCam} onCam={(cam) => { if (restored) setView(file, { cam }); }} />
                 </StatusCtx.Provider>
                 {sels.size > 1 ? (
                   <aside className="bpanel" aria-label="Selection panel">

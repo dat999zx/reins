@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { actionsFor, GENERIC } from '../src/questions.js';
+import { actionsFor, GENERIC, offersStop } from '../src/questions.js';
 
 const pick = (kind: string, label: string) => actionsFor(kind).find((a) => a.label === label)!;
 const labels = (kind: string) => actionsFor(kind).map((a) => a.label);
@@ -44,6 +44,11 @@ describe('question kinds', () => {
   it('judge and trust: y and n', () => {
     expect([pick('judge', 'Yes').build(''), pick('judge', 'No').build('')]).toEqual(['y', 'n']);
     expect([pick('trust', 'Trust').build(''), pick('trust', "Don't trust").build('')]).toEqual(['y', 'n']);
+  });
+
+  it('offersStop: the kinds whose card has its own Stop', () => {
+    for (const k of ['gate', 'budget', 'resume']) expect(offersStop(k), k).toBe(true);
+    for (const k of ['tool', 'trust', 'judge', 'brand-new-kind']) expect(offersStop(k), k).toBe(false);
   });
 
   it('a kind with no file gets the generic card, which sends the typed text as is', () => {

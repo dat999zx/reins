@@ -6,6 +6,7 @@ import type { EditorState, Tab } from './editorState.js';
 import { Feed } from './FeedView.js';
 import { feed } from './feed.js';
 import type { Actions } from './rows.js';
+import type { Surface } from './RunDock.js';
 import { runView, thinkingHeads, thinkingNow } from './runState.js';
 import { TextTab } from './TextTab.js';
 import { mergeOutput, title, type Sess } from './state.js';
@@ -22,7 +23,7 @@ export function Chat({ sess, catalogue, providers, takeRefill, tab, onTab, resto
   const log = useRef<HTMLDivElement>(null);
   const [stick, setStick] = useState(true);
   const [fresh, setFresh] = useState(false);
-  const [dockOpen, setDockOpen] = useState(false);
+  const [dockOpen, setDockOpen] = useState<Record<Surface, boolean>>({ chat: false, blocks: false }); // the panel's body is open or closed per surface
   // ponytail: Dismiss is in memory; a reload shows the last run's marks again.
   const [dismissed, setDismissed] = useState<string>();
   const [open, setOpen] = useState<Record<string, boolean>>({}); // the user's open / closed choice per knot, in memory
@@ -131,7 +132,7 @@ export function Chat({ sess, catalogue, providers, takeRefill, tab, onTab, resto
       ) : (
         restore === undefined ? <p className="hint">Loading…</p>
           : <TextTab view={tab} onView={onTab} sess={sess} run={run} act={act} restore={restore} onState={onState} onDirty={onDirty} onRun={() => onTab('chat')}
-            reveal={reveal} onRevealed={() => setReveal(undefined)} onChat={onChat} dockOpen={dockOpen} onDockOpen={setDockOpen} dismissed={dismissed} onDismiss={setDismissed} />
+            reveal={reveal} onRevealed={() => setReveal(undefined)} onChat={onChat} dockOpen={dockOpen.blocks} onDockOpen={(o) => setDockOpen((d) => ({ ...d, blocks: o }))} dismissed={dismissed} onDismiss={setDismissed} />
       )}
     </main>
   );

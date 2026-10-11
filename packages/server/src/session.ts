@@ -525,7 +525,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       const to = p.model!;
       store.updateSession(id, { model: to || null });
       log('settings', { model: to });
-      log('note', { text: `Model set to ${to || 'the default'} from the next reply. The whole conversation goes to it as input.` });
+      log('note', { text: `Model set to ${to ? p.label ?? to : 'the default'} from the next reply. The whole conversation goes to it as input.` });
       const was = pendingSwitch ? pendingSwitch.from : from;
       pendingSwitch = (to || undefined) === was ? undefined : { from: was, to };
       engine = undefined;

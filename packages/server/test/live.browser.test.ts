@@ -320,6 +320,39 @@ describe.skipIf(skip)('live run e2e', () => {
     await dockCard('gate').waitFor();
     await chip('gate-1', 'waiting').waitFor();
     expect(await page.locator('.blk[data-id="gate-1"] > .sx-cue.sx-cue-waiting').count()).toBe(1); // the state cue, a child span of the block
+    // LB. The body floats: closing it leaves the canvas where it was; Escape closes it and focuses the toggle; one status, one Stop
+    await page.setViewportSize({ width: 900, height: 600 });
+    await dockCard('gate').waitFor();
+    const wrap = page.locator('.canvaswrap');
+    const box0 = (await wrap.boundingBox())!;
+    await dockCard('gate').getByRole('button', { name: 'Approve', exact: true }).focus();
+    await page.keyboard.press('Escape');
+    await dock.locator('.sx-dockbody').waitFor({ state: 'detached' });
+    expect(await page.evaluate('document.activeElement?.textContent')).toBe('Show the run');
+    const box1 = (await wrap.boundingBox())!;
+    expect(Math.abs(box1.y - box0.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(box1.height - box0.height)).toBeLessThanOrEqual(1);
+    expect(await dock.locator('.sx-dockline[data-waiting]').count()).toBe(1);
+    expect(await dock.locator('[role="status"]').count()).toBe(1);
+    await dock.getByRole('button', { name: 'Show the run', exact: true }).click();
+    await dockCard('gate').waitFor();
+    expect(await dock.getByRole('button', { name: 'Stop', exact: true }).count()).toBe(1);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    // a canvas context menu closes the body (the menu lives in the isolated view and cannot rise above it): right-click a block the body does not cover
+    const free = await page.evaluate(`(() => {
+      const b = document.querySelector('.sx-dockbody').getBoundingClientRect();
+      const hit = [...document.querySelectorAll('.blk[data-id]')].find((e) => {
+        const r = e.getBoundingClientRect();
+        return r.width > 0 && (r.right < b.left || r.left > b.right || r.bottom < b.top || r.top > b.bottom);
+      });
+      return hit ? hit.dataset.id : undefined;
+    })()`);
+    expect(free).toBeTruthy();
+    await page.locator(`.blk[data-id="${free}"]`).click({ button: 'right' });
+    await dock.locator('.sx-dockbody').waitFor({ state: 'detached' });
+    await page.keyboard.press('Escape');
+    await dock.getByRole('button', { name: 'Show the run', exact: true }).click();
+    await dockCard('gate').waitFor();
     await dockCard('gate').getByRole('button', { name: 'Approve', exact: true }).click();
     await expect.poll(() => page.evaluate('!!document.activeElement?.closest(".sx-dock")')).toBe(true);
     await chip('gate-2', 'waiting').waitFor();
@@ -367,7 +400,7 @@ describe.skipIf(skip)('live run e2e', () => {
     await chip('gate-2', 'waiting').waitFor();
     await sent.filter({ hasText: 'use pnpm' }).getByText('delivered').waitFor();
     await sent.filter({ hasText: 'End with PINEAPPLE.' }).getByText('delivered').waitFor();
-    await dock.locator('.sx-steer').getByRole('button', { name: 'Stop', exact: true }).click(); // the gate card has its own Stop
+    await dockCard('gate').getByRole('button', { name: 'Stop', exact: true }).click(); // the gate card has its own Stop
     await dock.getByRole('status').getByText('Stopped at `gate-2`', { exact: false }).waitFor();
     await expect.poll(() => page.locator('.blk[data-id="gate-2"] .sx-ended').innerText()).toBe('stopped here');
     expect(await page.locator('.blk[data-id="gate-2"] > .sx-cue.sx-cue-ended-stopped').count()).toBe(1);
@@ -530,7 +563,7 @@ describe.skipIf(skip)('live run e2e', () => {
     while (!(await focused('^Steer the agent$')) && fwd++ < 6) await page.keyboard.press('Tab');
     expect(await focused('^Steer the agent$')).toBe(true);
     // Stop in B: B's title and dock change, A's do not
-    await dock.locator('.sx-steer').getByRole('button', { name: 'Stop', exact: true }).click();
+    await dockCard('gate').getByRole('button', { name: 'Stop', exact: true }).click();
     await dock.getByRole('status').getByText('Stopped at `gate-1`', { exact: false }).waitFor();
     await expect.poll(() => page.title()).toBe('Reins');
     await goA();
@@ -555,7 +588,7 @@ describe.skipIf(skip)('live run e2e', () => {
     expect(await model.locator('option').allInnerTexts()).toEqual(['Default', 'Opus 5.5', 'Sonnet 5.5', 'Haiku 5.5', 'Fable 5.1']);
     await model.selectOption('claude-opus-5-5');
     await tab('Chat').click();
-    await page.getByText('Model set to claude-opus-5-5 from the next reply.', { exact: false }).waitFor();
+    await page.getByText('Model set to Opus 5.5 from the next reply.', { exact: false }).waitFor();
     await page.reload();
     await rail.waitFor();
     await expect.poll(() => model.inputValue()).toBe('claude-opus-5-5');

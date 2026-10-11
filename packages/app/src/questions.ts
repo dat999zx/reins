@@ -11,3 +11,4 @@ export const GENERIC: QuestionDef = {
 
 export const actionsFor = (kind: string) => (defs.get(kind) ?? GENERIC).actions;
 export const detailFor = (kind: string) => defs.get(kind)?.detail;
+export const offersStop = (kind: string) => actionsFor(kind).some((a) => a.build('') === 'stop');
