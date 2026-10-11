@@ -9,9 +9,12 @@ import type { Actions } from './rows.js';
 import { runView, thinkingHeads, thinkingNow } from './runState.js';
 import { TextTab } from './TextTab.js';
 import { mergeOutput, title, type Sess } from './state.js';
+import { contextWords, modelOptions, pickerBlock, usageOf } from './usage.js';
 
-export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState, onDirty, onError }: {
-  sess: Sess; catalogue: TagEntry[]; takeRefill: (input: string) => string; tab: Tab; onTab: (t: Tab) => void;
+export type Provider = { id: string; label: string; models: Array<{ id: string; label: string }> };
+
+export function Chat({ sess, catalogue, providers, takeRefill, tab, onTab, restore, onState, onDirty, onError }: {
+  sess: Sess; catalogue: TagEntry[]; providers: Provider[]; takeRefill: (input: string) => string; tab: Tab; onTab: (t: Tab) => void;
   restore?: EditorState; onState: (patch: Partial<EditorState>) => void;
   onDirty: (dirty: boolean) => void; onError: (message: string) => void;
 }) {
@@ -27,6 +30,9 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
   const [focus, setFocus] = useState<{ key: string; n: number }>();
   const rows = useMemo(() => mergeOutput(sess.rows), [sess.rows]);
   const busy = sess.status === 'running' || sess.status === 'waiting';
+  const usage = useMemo(() => usageOf(sess.rows), [sess.rows, sess.lastSeq]);
+  const ctx = contextWords(usage);
+  const block = pickerBlock({ busy, detached: sess.detached.length });
   const run = useMemo(() => runView(sess), [sess]);
   const f = useMemo(() => feed(rows, run, new Set(sess.open)), [rows, run, sess.open]);
   // only the head of a thinking burst draws; it says "thinking…" while it is the newest engine row of a busy session
@@ -88,6 +94,15 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
           <div className="faint" title={sess.cwd}>{sess.cwd}</div>
         </div>
         <span className={`status ${sess.status}`}><span className={`dot ${sess.status}`} /> {sess.status}</span>
+        <label className="sx-model">
+          Model
+          <select aria-label="Model" value={sess.model ?? ''} disabled={block !== undefined}
+            title={block ?? (usage ? `In use: ${usage.model}` : 'Known after the first reply.')}
+            onChange={(e) => post(`${base}/settings`, { model: e.target.value }).catch((err) => onError(err.message))}>
+            {modelOptions(providers.find((p) => p.id === sess.engine)?.models ?? [], sess.model).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+          </select>
+        </label>
+        <span className="sx-ctx" title={ctx.title}>{ctx.text}</span>
         <span className="faint" aria-label="Session cost">${sess.cost.toFixed(4)}</span>
         <label className="switch">
           <input type="checkbox" checked={sess.autoApprove} onChange={(e) => post(`${base}/settings`, { autoApprove: e.target.checked }).catch((e) => onError(e.message))} />

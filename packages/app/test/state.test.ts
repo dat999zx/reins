@@ -41,6 +41,21 @@ describe('initial replay boundary', () => {
   });
 });
 
+describe('model and engine', () => {
+  it('session_created carries both, settings sets or deletes the model, loadSessions copies both', () => {
+    seq = 0;
+    let st = fold([created({ engine: 'claude', model: 'x' })]);
+    expect(st.sessions[S]!.engine).toBe('claude');
+    expect(st.sessions[S]!.model).toBe('x');
+    st = fold([row('settings', { model: 'y' })], 0, st);
+    expect(st.sessions[S]!.model).toBe('y');
+    st = fold([row('settings', { model: '' })], 0, st);
+    expect('model' in st.sessions[S]!).toBe(false);
+    const loaded = loadSessions(initial(), [{ id: 's9', cwd: 'c', autoApprove: false, status: 'idle', engine: 'claude', model: 'm' }]);
+    expect(loaded.sessions.s9).toMatchObject({ engine: 'claude', model: 'm' });
+  });
+});
+
 describe('reduce', () => {
   it('reduceAll matches reduce row by row, dedupes inside a batch, and never mutates the state it was given', () => {
     seq = 0;

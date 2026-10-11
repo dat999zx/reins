@@ -58,7 +58,7 @@ describe.skipIf(skip)('live run e2e', () => {
   }, T);
 
   it('watches a workflow run from every tab', async () => {
-    const fake = fakeSetup([P, B, P, B, H, B, P, B, H, B]);
+    const fake = fakeSetup([P, B, P, B, H, B, P, B, H, B], 10, { cumulative: true });
     const folderA = fake.dir;
     const folderB = tmpDir();
     fs.mkdirSync(path.join(folderA, '.reins', 'workflows'), { recursive: true });
@@ -106,6 +106,8 @@ describe.skipIf(skip)('live run e2e', () => {
     await trust.waitFor();
     await trust.getByRole('button', { name: 'Trust', exact: true }).click();
     await card('gate').waitFor();
+    // L0+ctx. The first turn's parent context (2 + 15,244 + 15,299 + 5 = 30,550 of 1,000,000) is in the header
+    await page.locator('.chead').getByText('Context 31k / 1M', { exact: true }).waitFor();
 
     await openLive();
     await textChip('plan', 'done').waitFor();
@@ -544,6 +546,28 @@ describe.skipIf(skip)('live run e2e', () => {
     await dock.getByRole('status').getByText('The run did not start: The workflow is not trusted, so it did not run.', { exact: false }).waitFor();
     await dock.getByRole('button', { name: 'Dismiss', exact: true }).click();
     expect(await dock.count()).toBe(0);
+
+    // LA. Switch the model while idle: the note, a reload keeps it, the next process resumes on it, its cost is its own share.
+    // The estimate depends on list prices; this step tests the switch, not the limit.
+    store!.putSetting('switchApprovalUsd', 100);
+    const model = page.getByRole('combobox', { name: 'Model', exact: true });
+    expect(await model.inputValue()).toBe('');
+    expect(await model.locator('option').allInnerTexts()).toEqual(['Default', 'Opus 5.5', 'Sonnet 5.5', 'Haiku 5.5', 'Fable 5.1']);
+    await model.selectOption('claude-opus-5-5');
+    await tab('Chat').click();
+    await page.getByText('Model set to claude-opus-5-5 from the next reply.', { exact: false }).waitFor();
+    await page.reload();
+    await rail.waitFor();
+    await expect.poll(() => model.inputValue()).toBe('claude-opus-5-5');
+    const costOf = async () => Number((await page.getByLabel('Session cost').innerText()).replace('$', ''));
+    const c0 = await costOf();
+    if ((await tab('Chat').getAttribute('aria-selected')) !== 'true') await tab('Chat').click();
+    await page.getByRole('textbox', { name: 'Message' }).fill('ping');
+    await page.keyboard.press('Enter');
+    await expect.poll(costOf, { timeout: W }).toBeGreaterThan(c0);
+    expect((await costOf()) - c0).toBeCloseTo(0.0641, 3);
+    const spawns = fake.log().filter((e) => e.kind === 'args');
+    expect(spawns.at(-1).args).toEqual(expect.arrayContaining(['--resume', '--model', 'claude-opus-5-5']));
     expect(errors).toEqual([]);
   }, T);
 });
