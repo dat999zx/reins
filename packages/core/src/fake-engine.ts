@@ -27,6 +27,8 @@ export interface OpenOptions {
   cwd?: string;
   sessionId?: string;
   model?: string;
+  /** The provider's running cost total that Reins last counted for this session; undefined = not known. */
+  costBase?: number;
   readOnly?: boolean;
   policy: () => Policy;
   onApprove?: (req: ToolRequest) => Promise<Decision>;
@@ -43,12 +45,18 @@ export type EngineEvent =
   | { type: 'error'; message: string }
   // The agent's running thinking estimate for this turn; claude sends no thinking text, only a count.
   | { type: 'thinking'; tokens: number }
+  // The parent context after a successful turn: tokens used, and the model's window when the provider knows it.
+  | { type: 'usage'; model: string; used: number; window?: number }
   // One adapter-side control call (a hook or an approval), so every call lands in the run log.
   | { type: 'hook'; event: string; tool?: string; decision: string; reason?: string };
 
 export interface TurnResult {
   text: string;
   cost?: number;
+  /** The provider's raw running total after this turn. */
+  total?: number;
+  /** The provider reported an error that no interrupt asked for. */
+  isError?: boolean;
   events?: EngineEvent[];
 }
 

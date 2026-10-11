@@ -11,6 +11,7 @@ import { startHookServer } from '../hooks.js';
 import { killTree } from '../proc.js';
 import { newNonce, trustNote } from './cards.js';
 import { claudeCommand } from './find.js';
+import { provider } from './provider.js';
 import { createStreamParser } from './stream.js';
 
 export interface ClaudeConfig {
@@ -31,6 +32,9 @@ const CAPABILITIES = { midTurnSteer: 'hook', preToolDeny: true, resume: true } a
 const GUARDED_TOOLS = [...WRITE_TOOLS, ...SHELL_TOOLS].join('|');
 // Run mcp.ts from source under tests and mcp.js from dist; Node runs either directly.
 const MCP_SCRIPT = fileURLToPath(new URL(import.meta.url.endsWith('.ts') ? '../mcp.ts' : '../mcp.js', import.meta.url));
+
+/** One turn's share of a running total; a total that went down means a new count. */
+export const turnCost = (total: number, last: number) => (total >= last ? total - last : total);
 
 export function claudeEngine(cfg: ClaudeConfig): Engine {
   return {
@@ -98,7 +102,10 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
   child.stderr.setEncoding('utf8');
   child.stderr.on('data', (d: string) => (stderr = (stderr + d).slice(-4000)));
   let dead: string | undefined;
-  let lastTotal = 0;
+  // The raw running total Reins last counted; undefined = unknown (a resumed session from before Reins kept it).
+  let base: number | undefined = provider.costAcrossResume === 'cumulative' && opts.sessionId ? opts.costBase : 0;
+  // Set by interrupt(), cleared when the next turn starts: an error result that asked for is not a failed turn.
+  let interrupted = false;
   let current: { resolve: (r: TurnResult) => void; reject: (e: Error) => void } | undefined;
   let exited = false;
   const exit = new Promise<void>((resolve) => child.on('close', () => { exited = true; resolve(); }));
@@ -119,7 +126,7 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
   child.on('close', (code) => failTurn(dead ?? `claude exited (code ${code}). ${stderr.trim().split('\n').slice(-3).join(' ')}`));
   child.stdin.on('error', () => {}); // a write after exit is reported through 'close'
 
-  const parse = createStreamParser();
+  const parse = createStreamParser({ windows: provider.windows });
   readline.createInterface({ input: child.stdout }).on('line', (line) => {
     let m: unknown;
     try {
@@ -130,11 +137,13 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
     const out = parse(m);
     for (const ev of out.events) emit(ev);
     if (out.result) {
-      const cost = Math.max(0, out.result.totalCostUsd - lastTotal);
-      lastTotal = out.result.totalCostUsd;
+      const { text, totalCostUsd: total, isError, usage } = out.result;
+      if (usage) emit({ type: 'usage', ...usage });
+      const cost = base === undefined ? undefined : turnCost(total, base);
+      base = total;
       const events = turnEvents;
       turnEvents = [];
-      endTurn({ text: out.result.text, cost, events });
+      endTurn({ text, cost, total, isError: isError && !interrupted, events });
     }
   });
 
@@ -146,6 +155,7 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
     turn(text) {
       if (dead) return Promise.reject(new Error(`the claude session is dead: ${dead}`));
       if (current) return Promise.reject(new Error('a turn is already running'));
+      interrupted = false;
       return new Promise<TurnResult>((resolve, reject) => {
         current = { resolve, reject };
         send({ type: 'user', message: { role: 'user', content: text } });
@@ -155,6 +165,7 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
     async interrupt() {
       if (!current || dead) return;
       const pending = current;
+      interrupted = true;
       send({ type: 'control_request', request_id: `reins-int-${++interrupts}`, request: { subtype: 'interrupt' } });
       const ended = new Promise<boolean>((resolve) => {
         const t = setTimeout(() => resolve(false), cfg.interruptTimeoutMs ?? 10_000);
@@ -169,7 +180,8 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
       turnEvents = [];
       dead = 'claude did not stop after an interrupt, so Reins killed it';
       events.push({ type: 'error', message: dead });
-      endTurn({ text: '', cost: 0, events });
+      // ponytail: a turn with no provider total (an interrupt kill, a crash) logs no cost; its spend lands, once, in the next counted turn.
+      endTurn({ text: '', events });
       killTree(child.pid);
     },
 

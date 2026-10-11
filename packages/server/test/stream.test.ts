@@ -84,6 +84,84 @@ describe('stream parser on every recorded fixture', () => {
   });
 });
 
+describe('usage', () => {
+  const init = (model: string) => ({ type: 'system', subtype: 'init', session_id: 's', model });
+  const a = (model: string, u: Record<string, unknown>, parent: string | null = null) => ({ type: 'assistant', parent_tool_use_id: parent, message: { model, content: [], usage: u } });
+  const res = (extra: Record<string, unknown> = {}) => ({ type: 'result', result: 'x', total_cost_usd: 0.1, is_error: false, ...extra });
+  const run = (ms: unknown[], o?: Parameters<typeof createStreamParser>[0]) => {
+    const parse = createStreamParser(o);
+    return ms.map((m) => parse(m)).find((x) => x.result)!.result!;
+  };
+  const four = { input_tokens: 1, cache_creation_input_tokens: 2, cache_read_input_tokens: 3, output_tokens: 4 };
+
+  it('turns.jsonl: the parent context after turn 0, with the window from modelUsage', () => {
+    expect(replay('claude-2.1.281-turns.jsonl').results[0]!.usage).toEqual({ model: 'claude-sonnet-5', used: 30550, window: 1000000 });
+  });
+
+  it('every fixture result that is not an error carries a usage with a model and tokens', () => {
+    for (const f of fixtures) {
+      const r = replay(f);
+      for (const x of r.results.filter((y) => !y.isError)) {
+        expect(x.usage, f).toBeDefined();
+        expect(x.usage!.model, f).not.toBe('');
+        expect(x.usage!.used, f).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('interrupt-ctl: the interrupted (error) result has no usage; the next one has', () => {
+    const r = replay('claude-2.1.281-interrupt-ctl.jsonl');
+    expect(r.results[0]!.usage).toBeUndefined();
+    expect(r.results[1]!.usage).toBeDefined();
+  });
+
+  it('window falls back to the table; modelUsage wins; no table, no window key', () => {
+    expect(run([init('m'), a('m', four), res()], { windows: { m: 500 } }).usage).toEqual({ model: 'm', used: 10, window: 500 });
+    expect(run([init('m'), a('m', four), res()]).usage).toEqual({ model: 'm', used: 10 });
+    expect('window' in run([init('m'), a('m', four), res()]).usage!).toBe(false);
+    expect(run([init('m'), a('m', four), res({ modelUsage: { m: { contextWindow: 900 } } })], { windows: { m: 500 } }).usage).toEqual({ model: 'm', used: 10, window: 900 });
+  });
+
+  it('a sidechain line never counts: the parent line does', () => {
+    const r = run([init('m'), a('m', four), a('sub', { ...four, input_tokens: 999_999 }, 'toolu_1'), res()]);
+    expect(r.usage).toEqual({ model: 'm', used: 10 });
+  });
+
+  it('a tool-heavy turn counts its last parent message', () => {
+    const g = (n: number) => ({ ...four, input_tokens: n });
+    expect(run([init('m'), a('m', g(10)), a('m', g(20)), a('m', g(30)), res()]).usage!.used).toBe(30 + 2 + 3 + 4);
+  });
+
+  it('malformed token fields give no usage; a malformed window gives usage without one', () => {
+    for (const bad of ['7', -1, 1.5, NaN, undefined]) {
+      expect(run([init('m'), a('m', { ...four, cache_read_input_tokens: bad }), res()]).usage).toBeUndefined();
+    }
+    const noField: Record<string, unknown> = { ...four };
+    delete noField.output_tokens;
+    expect(run([init('m'), a('m', noField), res()]).usage).toBeUndefined();
+    for (const w of [0, -5, 1.5, '1e6']) {
+      expect(run([init('m'), a('m', four), res({ modelUsage: { m: { contextWindow: w } } })]).usage).toEqual({ model: 'm', used: 10 });
+    }
+  });
+
+  it('a failed turn has no usage', () => {
+    expect(run([init('m'), a('m', four), res({ is_error: true })]).usage).toBeUndefined();
+  });
+
+  it('the model is the last parent message model, else the init model', () => {
+    expect(run([init('i'), a('m', four), res()]).usage!.model).toBe('m');
+    expect(run([init('i'), { type: 'assistant', parent_tool_use_id: null, message: { content: [], usage: four } }, res()]).usage!.model).toBe('i');
+  });
+
+  it('a result resets what was kept: a result with no assistant line has no usage', () => {
+    const parse = createStreamParser();
+    parse(init('m'));
+    parse(a('m', four));
+    expect(parse(res()).result!.usage).toBeDefined();
+    expect(parse(res()).result!.usage).toBeUndefined();
+  });
+});
+
 describe('thinking tokens', () => {
   const tokens = (events: EngineEvent[]) => events.flatMap((e) => (e.type === 'thinking' ? [e.tokens] : []));
   const line = (e: number) => ({ type: 'system', subtype: 'thinking_tokens', estimated_tokens: e, estimated_tokens_delta: e });

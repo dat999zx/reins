@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import type { EngineEvent, Policy } from '@reins/core';
-import { claudeEngine } from '../src/claude/engine.js';
+import { claudeEngine, turnCost } from '../src/claude/engine.js';
 import { FAKE_CLAUDE, fakeSetup, alive, until } from './helpers.js';
 
 const write: Policy = { mode: 'write', guards: ['migrations/**'], allowShell: true };
@@ -98,6 +98,7 @@ describe('claude adapter', () => {
     const r = await turn;
     expect(Date.now() - t).toBeLessThan(5_000);
     expect(r.text).toBe('');
+    expect(r.isError).toBe(false); // the interrupt asked for the error result
     expect(f.log().some((l) => l.kind === 'interrupt')).toBe(true);
     expect((await s.turn('after')).text).toBe('AFTER');
     await s.close();
@@ -156,6 +157,67 @@ describe('claude adapter', () => {
     await s.close();
     expect(alive(pid)).toBe(false);
     expect(fs.existsSync(args[args.indexOf('--settings') + 1])).toBe(false);
+  });
+
+  it('turnCost: the share of a running total; a total that went down is a new count', () => {
+    expect(turnCost(0.08, 0.064)).toBeCloseTo(0.016);
+    expect(turnCost(0.01, 0.064)).toBe(0.01);
+    expect(turnCost(0.064, 0)).toBe(0.064);
+  });
+
+  it('a turn reports the parent context (usage) live and in its events, and the raw total', async () => {
+    const f = fakeSetup([{ fixture: 'claude-2.1.281-turns.jsonl', turn: 0 }]);
+    const live: EngineEvent[] = [];
+    const s = await engine({ live }).open({ cwd: f.dir, policy: () => write });
+    const r = await s.turn('one');
+    await s.close();
+    const usage = { type: 'usage', model: 'claude-sonnet-5', used: 30550, window: 1000000 };
+    expect(live).toContainEqual(usage);
+    expect(r.events).toContainEqual(usage);
+    expect(r.total).toBeCloseTo(0.0640898);
+    expect(r.isError).toBe(false);
+  });
+
+  it('a resumed process counts its turn from the baseline it was given', async () => {
+    const t0 = { fixture: 'claude-2.1.281-turns.jsonl', turn: 0 };
+    const f = fakeSetup([t0], 10, { cumulative: true });
+    const first = await engine().open({ cwd: f.dir, policy: () => write });
+    const r1 = await first.turn('one');
+    await first.close();
+    expect(r1.cost).toBeCloseTo(0.0640898);
+
+    const second = await engine().open({ cwd: f.dir, sessionId: first.sessionId, costBase: r1.total, policy: () => write });
+    const r2 = await second.turn('two');
+    await second.close();
+    const args: string[] = f.log().filter((l) => l.kind === 'args')[1].args;
+    expect(args[args.indexOf('--resume') + 1]).toBe(first.sessionId);
+    expect(r2.total).toBeCloseTo(0.1281796);
+    expect(r2.cost).toBeCloseTo(0.0640898);
+  });
+
+  it('a resumed process with no baseline has no cost for its first turn, but a total', async () => {
+    const f = fakeSetup([{ fixture: 'claude-2.1.281-turns.jsonl', turn: 0 }], 10, { cumulative: true });
+    const first = await engine().open({ cwd: f.dir, policy: () => write });
+    await first.turn('one');
+    await first.close();
+    const second = await engine().open({ cwd: f.dir, sessionId: first.sessionId, policy: () => write });
+    const r2 = await second.turn('two');
+    await second.close();
+    expect(r2.cost).toBeUndefined();
+    expect(r2.total).toBeCloseTo(0.1281796);
+  });
+
+  it('an interrupt kill ends the turn with no cost and no total', async () => {
+    const f = fakeSetup([{ fixture: 'claude-2.1.281-card-marker-hook.jsonl', ignoreInterrupt: true }], 400);
+    const live: EngineEvent[] = [];
+    const s = await engine({ live, interruptTimeoutMs: 500 }).open({ cwd: f.dir, policy: () => write });
+    const turn = s.turn('slow');
+    await until(() => live.some((e) => e.type === 'tool_call'));
+    await s.interrupt();
+    const r = await turn;
+    await s.close();
+    expect(r.cost).toBeUndefined();
+    expect(r.total).toBeUndefined();
   });
 
   it('probe: version and login come from the CLI\'s own output', async () => {

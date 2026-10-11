@@ -92,7 +92,12 @@ async function hook(event, tool, input) {
 }
 
 const sessionId = arg('--session-id') ?? arg('--resume');
-let totalCost = 0;
+// F7: the real CLI's total is cumulative across --resume processes. Opt-in (script.cumulative): the totals
+// are kept per session id beside the log, so a process resumed on a session starts at that session's total.
+const totalsFile = script.cumulative && script.log ? path.join(path.dirname(script.log), '.fake-totals.json') : undefined;
+const savedTotals = () => (totalsFile && fs.existsSync(totalsFile) ? JSON.parse(fs.readFileSync(totalsFile, 'utf8')) : {});
+const saveTotal = () => { if (totalsFile) fs.writeFileSync(totalsFile, JSON.stringify({ ...savedTotals(), [sessionId]: totalCost })); };
+let totalCost = argv.includes('--resume') ? (savedTotals()[sessionId] ?? 0) : 0;
 let turnIndex = 0;
 let interruptReq;
 const queue = [];
@@ -130,6 +135,7 @@ async function playTurn(spec) {
       }
       out(JSON.stringify(shape.interrupted));
       totalCost += 0.001;
+      saveTotal();
       out(JSON.stringify({ ...shape.result, total_cost_usd: totalCost }));
       out(JSON.stringify(shape.init));
       interruptReq = undefined;
@@ -139,6 +145,7 @@ async function playTurn(spec) {
     if (m.type === 'control_response') continue;
     if (m.type === 'result') {
       totalCost += m.total_cost_usd - prevTotal;
+      saveTotal();
       out(JSON.stringify({ ...m, total_cost_usd: totalCost, ...(spec.text !== undefined ? { result: spec.text } : {}) }));
       return;
     }

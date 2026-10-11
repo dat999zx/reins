@@ -92,6 +92,12 @@ describe('drawable and card words', () => {
     expect(drawable(row('note', { text: 'x' }))).toBe(true);
   });
 
+  it('a usage engine event draws nothing', () => {
+    const r = row('engine', { type: 'usage', model: 'm', used: 1 });
+    expect(drawable(r)).toBe(false);
+    expect(renderRow(r, ctx)).toBeNull();
+  });
+
   it('renderRow returns null exactly when drawable is false', () => {
     const rows = [row('status'), row('command_result'), row('engine', { type: 'tool_result' }), row('engine', { type: 'hook' }), row('engine', { type: 'cost' }),
       row('engine', { type: 'text', text: 'x' }), row('note', { text: 'x' }), row('some_new_run_event', {}), row('engine', { type: 'brand_new' })];
