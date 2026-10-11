@@ -1,0 +1,61 @@
+import type { LogRow, Store } from './store.js';
+
+// ponytail: the estimate uses list prices from the provider file, which can go stale; a model with no price is refused.
+export const SETTINGS = {
+  switchApprovalTokens: { default: 200_000, valid: (v: unknown) => Number.isInteger(v) && (v as number) > 0 },
+  switchApprovalUsd: { default: 0.5, valid: (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0 },
+};
+
+export function readSetting(store: Store, key: keyof typeof SETTINGS): number {
+  const v = store.getSetting(key);
+  return SETTINGS[key].valid(v) ? (v as number) : SETTINGS[key].default;
+}
+
+const type = (r: LogRow) => (r.data as { type?: string } | null)?.type;
+
+/** The newest usage's tokens, unknown once any later engine row (other than usage) or a failed turn exists. */
+export function contextSize(rows: LogRow[]): number | undefined {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i]!;
+    if (r.type === 'turn_failed') return undefined;
+    if (r.type !== 'engine') continue;
+    if (type(r) !== 'usage') return undefined;
+    const used = (r.data as { used?: unknown }).used;
+    return typeof used === 'number' ? used : undefined;
+  }
+  return undefined;
+}
+
+/** Run ids whose last row is run_detached (a server restart leaves a run waiting at a gate that way). */
+export function detachedRuns(rows: LogRow[]): string[] {
+  const last = new Map<string, string>();
+  for (const r of rows) if (r.runId) last.set(r.runId, r.type);
+  return [...last].filter(([, t]) => t === 'run_detached').map(([id]) => id);
+}
+
+/** The new model writes the whole context to its cache (F7), so the cache-write price comes first. */
+export function switchEstimate(tokens: number | undefined, price?: { input: number; cacheWrite?: number }): number | undefined {
+  if (tokens === undefined || !price) return undefined;
+  return (tokens * (price.cacheWrite ?? price.input)) / 1e6;
+}
+
+const APPROVAL = 'Switching needs your approval, which Reins cannot ask for yet.';
+
+export function switchRefusal(o: {
+  busy: boolean; detached: boolean; hasSession: boolean; used?: number | undefined; target: string; label?: string;
+  estimate?: number | undefined; limits: { tokens: number; usd: number };
+}): string | undefined {
+  if (o.busy) return 'Switch the model when the session is idle.';
+  if (o.detached) return 'A run is left paused in this session. Resume or stop it before switching the model.';
+  if (!o.hasSession) return undefined; // nothing to feed the new model yet
+  const name = o.label ?? o.target;
+  if (o.used === undefined) return 'Reins does not know the current context size. Send one message, then switch.';
+  if (o.used >= o.limits.tokens) {
+    return `The context is ${o.used.toLocaleString('en-US')} tokens, at or over the ${o.limits.tokens.toLocaleString('en-US')}-token switch limit. ${APPROVAL}`;
+  }
+  if (o.estimate === undefined) return `No price is known for ${name}, so the switch cannot be estimated. ${APPROVAL}`;
+  if (o.estimate >= o.limits.usd) {
+    return `Switching sends ${o.used.toLocaleString('en-US')} tokens to ${name}: about $${o.estimate.toFixed(2)} (an estimate from list prices), at or over the $${o.limits.usd.toFixed(2)} switch limit. ${APPROVAL}`;
+  }
+  return undefined;
+}

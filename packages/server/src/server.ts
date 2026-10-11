@@ -6,9 +6,11 @@ import { randomBytes } from 'node:crypto';
 import { printWorkflow, type EngineProbe, type Workflow } from '@reins/core';
 import { sameToken } from './hooks.js';
 import { releaseLock, runningLock, takeLock } from './lock.js';
+import { loadProviders, type Provider } from './providers.js';
 import { recover } from './recover.js';
 import { loadWorkflow } from './run-cli.js';
 import { openSession, under, type Ack, type MakeEngine, type Session, type SessionDeps } from './session.js';
+import { contextSize, switchEstimate } from './settings.js';
 import type { LogRow, Store } from './store.js';
 import { tagCatalogue, type Tag } from './tags.js';
 import { previewWorkflow, readWorkflow, writeWorkflow } from './workflow-files.js';
@@ -49,7 +51,8 @@ const str = (v: unknown): v is string => typeof v === 'string';
 const isTags = (v: unknown): v is Tag[] =>
   Array.isArray(v) && v.every((t) => typeof t === 'object' && t !== null && str(t.tag) && (t.arg === undefined || str(t.arg)));
 
-const actions: Record<string, (s: Session, b: Body) => Reply | Promise<Reply>> = {
+interface Ctx { providers: Provider[]; store: Store }
+const actions: Record<string, (s: Session, b: Body, ctx: Ctx) => Reply | Promise<Reply>> = {
   message: (s, b) => {
     const tags = b.tags ?? [];
     if (!str(b.text) || !b.text.trim()) return fail(400, 'text must be a non-empty string.');
@@ -62,13 +65,25 @@ const actions: Record<string, (s: Session, b: Body) => Reply | Promise<Reply>> =
     return fromAck(s.card(b.text, b.kind));
   },
   answer: (s, b) => (str(b.questionId) && str(b.answer) ? fromAck(s.answer(b.questionId, b.answer)) : fail(400, 'questionId and answer must be strings.')),
-  settings: (s, b) => {
-    const autoApprove = b.autoApprove;
-    const title = b.title;
+  settings: (s, b, { providers, store }) => {
+    const { autoApprove, title, model } = b;
     if (autoApprove !== undefined && typeof autoApprove !== 'boolean') return fail(400, 'autoApprove must be a boolean.');
     if (title !== undefined && !str(title)) return fail(400, 'title must be a string.');
-    s.settings({ ...(autoApprove !== undefined ? { autoApprove } : {}), ...(title !== undefined ? { title } : {}) });
-    return ok();
+    if (model !== undefined && !str(model)) return fail(400, 'model must be a string.');
+    let target: { estimate: number | undefined; label: string } | undefined;
+    if (model) {
+      // '' is the default; the session's own current model stays selectable even when the list no longer has it.
+      const listed = providers.find((p) => p.id === s.info().engine)?.models.find((m) => m.id === model);
+      if (!listed && model !== s.info().model) return fail(400, "Unknown model for this session's provider.");
+      const price = providers.find((p) => p.id === s.info().engine)?.prices[model];
+      target = { estimate: switchEstimate(contextSize(store.readLog(s.id)), price), label: listed?.label ?? model };
+    } else if (model === '') {
+      target = { estimate: undefined, label: 'the default model' };
+    }
+    return fromAck(s.settings({
+      ...(autoApprove !== undefined ? { autoApprove } : {}), ...(title !== undefined ? { title } : {}),
+      ...(model !== undefined ? { model, ...target } : {}),
+    }));
   },
   run: (s, b) => (str(b.path) && b.path ? fromAck(s.runFile(b.path)) : fail(400, 'path must be a non-empty string.')),
   resume: (s, b) => (str(b.runId) && b.runId ? fromAck(s.resume(b.runId)) : fail(400, 'runId must be a non-empty string.')),
@@ -131,6 +146,7 @@ function send(res: http.ServerResponse, r: Reply) {
 }
 
 export async function startServer(o: ServerOptions): Promise<Server> {
+  const providers = await loadProviders();
   const token = randomBytes(32).toString('hex');
   const sessions = new Map<string, Session>();
   const subs = new Set<(row: LogRow) => void>();
@@ -198,7 +214,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
 
   async function dispatch(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<Reply> {
     const p = url.pathname;
-    if (req.method === 'GET' && p === '/api/state') return ok({ sessions: [...sessions.values()].map(view), engines });
+    if (req.method === 'GET' && p === '/api/state') return ok({ sessions: [...sessions.values()].map(view), engines, providers: providers.map(({ id, label, models }) => ({ id, label, models })) });
     if (req.method === 'POST' && p === '/api/state/probe') { engines = await probeNow(); return ok({ engines }); }
     if (req.method === 'GET' && p === '/api/tags') return ok({ tags: tagCatalogue() });
     if (req.method === 'GET' && p === '/api/workflows') return workflows(url.searchParams.get('cwd'));
@@ -266,7 +282,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
       }
       if (req.method === 'POST' && Object.hasOwn(actions, m[2]!)) {
         const r = await parse(req);
-        return 'fail' in r ? r.fail : actions[m[2]!]!(s, r.b);
+        return 'fail' in r ? r.fail : actions[m[2]!]!(s, r.b, { providers, store: o.store });
       }
     }
     return fail(404, 'Not found.');

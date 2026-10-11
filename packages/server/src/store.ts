@@ -30,7 +30,7 @@ const toLog = (r: any): LogRow => ({
   type: r.type, data: JSON.parse(r.data),
 });
 
-const sessionColumns = { autoApprove: 'auto_approve', title: 'title', engineSessionId: 'engine_session_id' } as const;
+const sessionColumns = { autoApprove: 'auto_approve', title: 'title', engineSessionId: 'engine_session_id', model: 'model' } as const;
 
 /**
  * Runs and their event log, chat sessions and their timeline, and folder trust (plan 6.7, 15b 2.5, 15d 3b.3).
@@ -65,6 +65,8 @@ export function openStore(file: string) {
       primary key (cwd, path)
     );
     create table if not exists editor_state (cwd text primary key, json text not null, ts integer not null);
+    create table if not exists settings (key text primary key, json text not null);
+    create table if not exists engine_costs (engine_session_id text primary key, total real not null, ts integer not null);
     create index if not exists session_log_run on session_log(run_id);
   `);
   const insRun = db.prepare('insert into runs (id, workflow_path, cwd, created_at) values (?, ?, ?, ?)');
@@ -83,6 +85,10 @@ export function openStore(file: string) {
   const putTrust = db.prepare('insert or replace into trust (cwd, path, hash, ts) values (?, ?, ?, ?)');
   const getEditor = db.prepare('select json from editor_state where cwd = ?');
   const putEditor = db.prepare('insert or replace into editor_state (cwd, json, ts) values (?, ?, ?)');
+  const getSettingRow = db.prepare('select json from settings where key = ?');
+  const putSettingRow = db.prepare('insert or replace into settings (key, json) values (?, ?)');
+  const getTotal = db.prepare('select total from engine_costs where engine_session_id = ?');
+  const putTotal = db.prepare('insert or replace into engine_costs (engine_session_id, total, ts) values (?, ?, ?)');
   const seqs = new Map<string, number>();
 
   return {
@@ -115,9 +121,10 @@ export function openStore(file: string) {
     listSessions(): SessionRow[] {
       return listSessions.all().map(toSession);
     },
-    updateSession(id: string, patch: { autoApprove?: boolean; title?: string; engineSessionId?: string }) {
+    /** `model: null` clears the model (the provider's default). */
+    updateSession(id: string, patch: { autoApprove?: boolean; title?: string; engineSessionId?: string; model?: string | null }) {
       const sets: string[] = ['updated_at = ?'];
-      const vals: Array<string | number> = [Date.now()];
+      const vals: Array<string | number | null> = [Date.now()];
       for (const k of Object.keys(sessionColumns) as Array<keyof typeof sessionColumns>) {
         const v = patch[k];
         if (v === undefined) continue;
@@ -150,6 +157,21 @@ export function openStore(file: string) {
     },
     putEditorState(cwd: string, json: string) {
       putEditor.run(cwd, json, Date.now());
+    },
+    getSetting(key: string): unknown {
+      const r = getSettingRow.get(key) as { json: string } | undefined;
+      if (!r) return undefined;
+      try { return JSON.parse(r.json); } catch { return undefined; }
+    },
+    putSetting(key: string, value: unknown) {
+      putSettingRow.run(key, JSON.stringify(value));
+    },
+    /** The provider's raw running cost total, as Reins last counted it, per provider session id. */
+    getEngineTotal(engineSessionId: string): number | undefined {
+      return (getTotal.get(engineSessionId) as { total: number } | undefined)?.total;
+    },
+    putEngineTotal(engineSessionId: string, total: number) {
+      putTotal.run(engineSessionId, total, Date.now());
     },
     close() {
       db.close();

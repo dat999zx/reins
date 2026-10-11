@@ -7,6 +7,7 @@ import {
   type RunEventRecord, type RunOptions, type ToolRequest, type Workflow,
 } from '@reins/core';
 import { askTool, driveRun, questionId, runOptions, type DriveIo, type Question } from './drive.js';
+import { contextSize, detachedRuns, readSetting, switchRefusal } from './settings.js';
 import type { LogRow, SessionRow, Store } from './store.js';
 import { taggedWorkflow, type Tag, type Tagged } from './tags.js';
 import { loadWorkflow } from './run-cli.js';
@@ -26,7 +27,7 @@ const PLAIN: Policy = { mode: 'write', guards: [], allowShell: true };
 const OK: Ack = { ok: true };
 const conflict = (error: string): Ack => ({ ok: false, code: 409, error });
 const bad = (error: string, diagnostics?: Diagnostic[]): Ack => ({ ok: false, code: 400, error, ...(diagnostics ? { diagnostics } : {}) });
-const IGNORED = 'This workflow sets model: or engine:. A session ignores them and uses its own settings.';
+const IGNORED = 'This workflow sets model: or engine:. A session ignores them; pick the model in the session header.';
 export const under = (file: string, root: string) => {
   const rel = path.relative(root, file);
   return rel !== '' && rel.split(path.sep)[0] !== '..' && !path.isAbsolute(rel); // a folder named "..foo" is fine
@@ -53,6 +54,12 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   let stopping = false;
   let plainActive = false;
   let closingP: Promise<void> | undefined;
+  // Processes being closed: a new one is opened, or the server stops, only after these are gone (close() can take 5 s).
+  let retiring: Promise<unknown> = Promise.resolve();
+  // The open that is live had no stored cost total to count from, so its first reply's cost is unknown.
+  let baseUnknown = false;
+  // A model switch no reply has proved yet: where to go back to if the first reply fails.
+  let pendingSwitch: { from: string | undefined; to: string } | undefined;
   let run: Run | undefined;
   let runId: string | undefined;
   let worker: Promise<void> = Promise.resolve();
@@ -105,19 +112,44 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     write: (chunk) => log('command_output', { chunk }, runId),
   };
 
-  const getEngine = () => (engine ??= deps.makeEngine({
-    ...(row.model ? { model: row.model } : {}),
-    ...(row.effort ? { effort: row.effort } : {}),
-    onApprove: (r) => askTool(io, r),
-    onLive: (e) => log('engine', e, runId),
-  }));
+  const getEngine = () => {
+    if (engine) return engine;
+    const cur = store.getSession(id)!; // the model can change after the session was opened
+    return (engine = deps.makeEngine({
+      ...(cur.model ? { model: cur.model } : {}),
+      ...(cur.effort ? { effort: cur.effort } : {}),
+      onApprove: (r) => askTool(io, r),
+      onLive: (e) => log('engine', e, runId),
+    }));
+  };
+
+  function retire(s: EngineSession) {
+    const closing = s.close().catch(() => {});
+    retiring = Promise.all([retiring, closing]);
+  }
 
   function markDead(why: string) {
     const s = live;
     if (!s) return;
     live = undefined;
     log('note', { text: `Claude's session was dropped (${why}); the next message starts it again.` });
-    void s.close().catch(() => {});
+    retire(s);
+  }
+
+  /** The first reply after a switch failed: the stored model goes back, the provider's session id stays. */
+  function undoSwitch(why: string) {
+    const p = pendingSwitch;
+    if (!p) return;
+    pendingSwitch = undefined;
+    store.updateSession(id, { model: p.from ?? null });
+    log('settings', { model: p.from ?? '' });
+    log('note', { text: `${p.to} did not answer (${why}). The model is back to ${p.from ?? 'the default'}.` });
+    engine = undefined;
+    if (live) {
+      const s = live;
+      live = undefined;
+      retire(s);
+    }
   }
 
   async function openEngine(): Promise<EngineSession | undefined> {
@@ -135,10 +167,16 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       }
       store.trust(cwd, FOLDER_PATH, f.hash);
     }
+    await retiring;
     if (cancelOpen || stopping) return undefined;
     const sid = store.getSession(id)!.engineSessionId;
+    // A new session counts from 0; a resumed one from the total stored for its id, and without one (a session
+    // from before the cost table) its first reply's cost is unknown.
+    const base = sid ? store.getEngineTotal(sid) : 0;
+    baseUnknown = base === undefined;
     const s = await getEngine().open({
       cwd, ...(sid ? { sessionId: sid } : {}),
+      ...(base !== undefined ? { costBase: base } : {}),
       policy: () => run?.policy() ?? PLAIN,
       pendingCards: () => (run ? run.takeCards() : queue.splice(0)),
     });
@@ -160,14 +198,25 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
         res = await s.turn(text);
       } catch (e) {
         markDead(msg(e));
+        undoSwitch(msg(e));
         throw e;
       } finally {
         turnOpen = false;
         closeQuestions('the turn ended', 'tool');
       }
+      if (res.total !== undefined) store.putEngineTotal(s.sessionId, res.total);
+      // ponytail: a session from before the cost table shows its first reply's cost as unknown; a switch to Default has no price, so with a context it is refused until the approval card exists.
+      if (baseUnknown && res.total !== undefined) {
+        baseUnknown = false;
+        if (res.cost === undefined) log('note', { text: "This reply's cost is not known: the session began before Reins kept the provider's running total. Later replies are counted." });
+      }
       const err = res.events?.find((e) => e.type === 'error');
       if (err && err.type === 'error') markDead(err.message);
       else if (!store.getSession(id)!.engineSessionId) store.updateSession(id, { engineSessionId: s.sessionId });
+      if (pendingSwitch) {
+        if (res.isError) undoSwitch(res.text || err?.message || 'the reply was an error');
+        else if (!err) pendingSwitch = undefined;
+      }
       return res;
     },
     async interrupt() {
@@ -450,11 +499,43 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     return OK;
   }
 
-  function settings(p: { autoApprove?: boolean; title?: string }) {
+  /**
+   * `estimate` and `label` describe the target model (the server knows the provider's prices; the session does not).
+   * A model switch retires the process; the next reply opens `--resume <same id>` on the new model (F1).
+   */
+  function settings(p: { autoApprove?: boolean; title?: string; model?: string; estimate?: number | undefined; label?: string }): Ack {
+    const from = store.getSession(id)!.model;
+    const switching = p.model !== undefined && p.model !== (from ?? '');
+    if (switching) {
+      if (closingP) return closingAck();
+      const refusal = switchRefusal({
+        busy, detached: detachedRuns(store.readLog(id)).length > 0, hasSession: !!store.getSession(id)!.engineSessionId,
+        used: contextSize(store.readLog(id)), target: p.model!, ...(p.label !== undefined ? { label: p.label } : {}),
+        estimate: p.estimate,
+        limits: { tokens: readSetting(store, 'switchApprovalTokens'), usd: readSetting(store, 'switchApprovalUsd') },
+      });
+      if (refusal) return conflict(refusal);
+    }
     const patch = { ...(p.autoApprove !== undefined ? { autoApprove: p.autoApprove } : {}), ...(p.title !== undefined ? { title: p.title } : {}) };
-    if (!Object.keys(patch).length) return;
-    store.updateSession(id, patch);
-    log('settings', patch);
+    if (Object.keys(patch).length) {
+      store.updateSession(id, patch);
+      log('settings', patch);
+    }
+    if (switching) {
+      const to = p.model!;
+      store.updateSession(id, { model: to || null });
+      log('settings', { model: to });
+      log('note', { text: `Model set to ${to || 'the default'} from the next reply. The whole conversation goes to it as input.` });
+      const was = pendingSwitch ? pendingSwitch.from : from;
+      pendingSwitch = (to || undefined) === was ? undefined : { from: was, to };
+      engine = undefined;
+      if (live) {
+        const s = live;
+        live = undefined;
+        retire(s);
+      }
+    }
+    return OK;
   }
 
   // While it runs, message, card, /run and /resume are 409, so no turn can start between the stop and the engine closing.
@@ -468,6 +549,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     }
     await live?.close().catch(() => {});
     live = undefined;
+    await retiring;
     if (status === 'closed') return;
     closed = true;
     log('closed', {});
@@ -489,6 +571,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     }
     await live?.close().catch(() => {});
     live = undefined;
+    await retiring;
   }
 
   return {

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { Question } from '../src/drive.js';
-import { openSession } from '../src/session.js';
+import { openSession, type MakeEngine } from '../src/session.js';
 import { openStore, type LogRow } from '../src/store.js';
 import { folderHash, hashCommands } from '../src/trust.js';
 import { testEngine, type TestTurn } from './test-engine.js';
@@ -21,12 +21,14 @@ async function until(f: () => boolean) {
 function setup(script: TestTurn[] = [], o: { cwd?: string; dir?: string; autoApprove?: boolean } = {}) {
   const store = openStore(':memory:');
   const t = testEngine(script);
+  const models: Array<string | undefined> = [];
+  const makeEngine: MakeEngine = (e) => { models.push(e.model); return t.makeEngine(e); };
   const seen: LogRow[] = [];
   const dir = o.dir ?? tmp();
   const cwd = o.cwd ?? tmp();
   const row = store.createSession({ id: 's1', cwd, engine: 'claude' });
-  const s = openSession({ store, makeEngine: t.makeEngine, dir, onRow: (r) => seen.push(r) }, row, true);
-  const reopen = () => openSession({ store, makeEngine: t.makeEngine, dir, onRow: (r) => seen.push(r) }, store.getSession('s1')!);
+  const s = openSession({ store, makeEngine, dir, onRow: (r) => seen.push(r) }, row, true);
+  const reopen = () => openSession({ store, makeEngine, dir, onRow: (r) => seen.push(r) }, store.getSession('s1')!);
   if (o.autoApprove) s.settings({ autoApprove: true });
   const log = () => store.readLog('s1');
   const rows = (type: string) => log().filter((r) => r.type === type);
@@ -40,7 +42,7 @@ function setup(script: TestTurn[] = [], o: { cwd?: string; dir?: string; autoApp
     await until(() => open().some((q) => !kind || q.kind === kind));
     return open().find((q) => !kind || q.kind === kind)!;
   };
-  return { store, t, s, reopen, seen, dir, cwd, log, rows, data, open, question, types: () => log().map((r) => r.type) };
+  return { store, t, s, reopen, seen, dir, cwd, models, log, rows, data, open, question, types: () => log().map((r) => r.type) };
 }
 
 const turnsStarted = (x: ReturnType<typeof setup>, n: number) => until(() => x.t.turns.length === n);
@@ -768,5 +770,227 @@ describe('shutdown (server stop)', () => {
     expect(x.rows('run_stopped')).toHaveLength(1);
     expect(x.rows('run_detached')).toEqual([]);
     expect(x.rows('closed')).toEqual([]);
+  });
+});
+
+describe('cost baseline (A)', () => {
+  const total = (x: ReturnType<typeof setup>, sid: string) => x.store.getEngineTotal(sid);
+  const unknownNote = "This reply's cost is not known: the session began before Reins kept the provider's running total. Later replies are counted.";
+
+  it('a new session opens with base 0, and a turn stores its raw total under the claude session id', async () => {
+    const x = setup([{ total: 0.5 }]);
+    x.s.message('hi');
+    await x.s.idle();
+    expect(x.t.opens[0]!.costBase).toBe(0);
+    const sid = x.store.getSession('s1')!.engineSessionId!;
+    expect(total(x, sid)).toBe(0.5);
+  });
+
+  it('after a switch, and after a restart, the open gets the stored total', async () => {
+    const x = setup([{ total: 0.5, usage: 1000 }, { total: 0.75 }, { total: 1 }]);
+    x.s.message('one');
+    await x.s.idle();
+    expect(x.s.settings({ model: 'model-b', estimate: 0.01, label: 'B' })).toEqual({ ok: true });
+    x.s.message('two');
+    await x.s.idle();
+    expect(x.t.opens.map((o) => o.costBase)).toEqual([0, 0.5]);
+    await x.s.shutdown();
+    const s2 = x.reopen();
+    s2.message('three');
+    await s2.idle();
+    expect(x.t.opens.map((o) => o.costBase)).toEqual([0, 0.5, 0.75]);
+  });
+
+  it('a legacy session (a claude id, no stored total) opens with an unknown base; its first reply has no cost and a note; later ones are counted', async () => {
+    const x = setup([{ cost: null, total: 0.3 }, { total: 0.4 }]);
+    x.store.updateSession('s1', { engineSessionId: 'old' });
+    x.s.message('one');
+    await x.s.idle();
+    expect(x.t.opens[0]!.costBase).toBeUndefined();
+    expect(x.t.opens[0]!.sessionId).toBe('old');
+    expect(x.data('turn_ended')).toEqual([{ text: 'ok' }]);
+    expect(x.data('note')).toEqual([{ text: unknownNote }]);
+    expect(total(x, 'old')).toBe(0.3);
+    x.s.message('two');
+    await x.s.idle();
+    expect(x.data('turn_ended')[1]).toEqual({ text: 'ok', cost: 0.01 });
+    expect(x.data('note')).toHaveLength(1);
+    expect(total(x, 'old')).toBe(0.4);
+  });
+
+  it('a turn that rejects stores nothing, and the next open gets the last stored total', async () => {
+    const x = setup([{ total: 0.5 }, { reject: 'boom', total: 9 }, { total: 0.7 }]);
+    x.s.message('one');
+    await x.s.idle();
+    x.s.message('two');
+    await x.s.idle();
+    const sid = x.store.getSession('s1')!.engineSessionId!;
+    expect(total(x, sid)).toBe(0.5);
+    x.s.message('three');
+    await x.s.idle();
+    expect(x.t.opens.map((o) => o.costBase)).toEqual([0, 0.5]);
+    expect(total(x, sid)).toBe(0.7);
+  });
+});
+
+describe('model switch (A)', () => {
+  const sw = (x: ReturnType<typeof setup>, model: string, extra: { estimate?: number; label?: string } = {}) =>
+    x.s.settings({ model, estimate: 0.01, label: 'Test model', ...extra });
+  const settingsRows = (x: ReturnType<typeof setup>) => x.data('settings');
+  const notes = (x: ReturnType<typeof setup>) => x.data('note').map((n) => n.text as string);
+  const conflict = (error: string | RegExp) => ({ ok: false, code: 409, error: typeof error === 'string' ? error : expect.stringMatching(error) });
+
+  it('a fresh session: ok, stored, logged with its note, and the next engine is made with that model', async () => {
+    const x = setup([{}]);
+    expect(sw(x, 'model-b')).toEqual({ ok: true });
+    expect(x.store.getSession('s1')!.model).toBe('model-b');
+    expect(settingsRows(x)).toEqual([{ model: 'model-b' }]);
+    expect(notes(x)).toEqual(['Model set to model-b from the next reply. The whole conversation goes to it as input.']);
+    x.s.message('hi');
+    await x.s.idle();
+    expect(x.models).toEqual(['model-b']);
+  });
+
+  it('with a context of 150,000 tokens: the switch is ok, the old process is closed, and the next message resumes the same id on the new model', async () => {
+    const x = setup([{ usage: 150_000 }, {}]);
+    x.s.message('one');
+    await x.s.idle();
+    const sid = x.store.getSession('s1')!.engineSessionId!;
+    expect(sw(x, 'model-b')).toEqual({ ok: true });
+    await until(() => x.t.closes === 1);
+    x.s.message('two');
+    await x.s.idle();
+    expect(x.t.opens).toHaveLength(2);
+    expect(x.t.opens[1]!.sessionId).toBe(sid);
+    expect(x.models).toEqual([undefined, 'model-b']);
+  });
+
+  it('an immediate reply waits for the old process to close, then opens once', async () => {
+    const x = setup([{ usage: 1000 }, {}]);
+    x.s.message('one');
+    await x.s.idle();
+    x.t.holdClose();
+    expect(sw(x, 'model-b')).toEqual({ ok: true });
+    x.s.message('hi');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(x.t.opens).toHaveLength(1);
+    expect(x.t.turns).toEqual(['one']);
+    x.t.releaseClose();
+    await x.s.idle();
+    expect(x.t.opens).toHaveLength(2);
+    expect(x.t.turns).toEqual(['one', 'hi']);
+  });
+
+  it('two rapid switches open one process, on the second model', async () => {
+    const x = setup([{ usage: 1000 }, {}]);
+    x.s.message('one');
+    await x.s.idle();
+    expect(sw(x, 'model-b')).toEqual({ ok: true });
+    expect(sw(x, 'model-c')).toEqual({ ok: true });
+    x.s.message('two');
+    await x.s.idle();
+    expect(x.t.opens).toHaveLength(2);
+    expect(x.models.at(-1)).toBe('model-c');
+    expect(x.t.closes).toBe(1);
+  });
+
+  it('a shutdown during a switch resolves only after the old process has closed', async () => {
+    const x = setup([{ usage: 1000 }]);
+    x.s.message('one');
+    await x.s.idle();
+    x.t.holdClose();
+    expect(sw(x, 'model-b')).toEqual({ ok: true });
+    let done = false;
+    const down = x.s.shutdown().then(() => { done = true; });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(done).toBe(false);
+    x.t.releaseClose();
+    await down;
+    expect(done).toBe(true);
+  });
+
+  it('a first reply that is an error undoes the switch: the model and the claude id go back, with a note; a later good reply does not undo', async () => {
+    const x = setup([{ usage: 1000 }, { isError: true, text: 'no access' }, {}]);
+    x.s.message('one');
+    await x.s.idle();
+    const sid = x.store.getSession('s1')!.engineSessionId!;
+    sw(x, 'model-b');
+    x.s.message('two');
+    await x.s.idle();
+    expect(x.store.getSession('s1')!.model).toBeUndefined();
+    expect(x.store.getSession('s1')!.engineSessionId).toBe(sid);
+    expect(notes(x).at(-1)).toMatch(/^model-b did not answer \(.+\)\. The model is back to the default\.$/);
+    expect(settingsRows(x).at(-1)).toEqual({ model: '' });
+    x.s.message('three');
+    await x.s.idle();
+    expect(x.models).toEqual([undefined, 'model-b', undefined]);
+    expect(x.t.opens[2]!.sessionId).toBe(sid);
+    expect(notes(x).filter((n) => n.includes('did not answer'))).toHaveLength(1);
+  });
+
+  it('a first reply that rejects undoes the switch too, back to the previous model', async () => {
+    const x = setup([{ usage: 1000 }, { reject: 'refused' }, {}]);
+    x.s.settings({ model: 'model-a' });
+    x.s.message('one');
+    await x.s.idle();
+    sw(x, 'model-b');
+    x.s.message('two');
+    await x.s.idle();
+    expect(x.store.getSession('s1')!.model).toBe('model-a');
+    expect(notes(x).some((n) => n === 'model-b did not answer (refused). The model is back to model-a.')).toBe(true);
+    x.s.message('three');
+    await x.s.idle();
+    expect(x.models.at(-1)).toBe('model-a');
+  });
+
+  it('is refused, with nothing stored, when busy, detached, unknown, over the limits or without a price', async () => {
+    const x = setup([{ hold: true }, { usage: 200_000 }, { usage: 1000 }, { reject: 'x' }]);
+    x.s.message('busy');
+    await turnsStarted(x, 1);
+    expect(sw(x, 'model-b')).toMatchObject(conflict('Switch the model when the session is idle.'));
+    x.t.release();
+    await x.s.idle();
+    // turn 1 had no usage: the size is unknown while a claude session exists
+    expect(sw(x, 'model-b')).toMatchObject(conflict('Reins does not know the current context size. Send one message, then switch.'));
+    x.s.message('big');
+    await x.s.idle();
+    expect(sw(x, 'model-b')).toMatchObject(conflict(/^The context is 200,000 tokens, at or over the 200,000-token switch limit\./));
+    expect(x.store.getSession('s1')!.model).toBeUndefined();
+    x.store.putSetting('switchApprovalTokens', 300_000);
+    expect(sw(x, 'model-b')).toEqual({ ok: true });
+    x.s.message('small');
+    await x.s.idle();
+    expect(sw(x, 'model-c', { estimate: 0.7, label: 'Fable 5.1' })).toMatchObject(
+      conflict('Switching sends 1,000 tokens to Fable 5.1: about $0.70 (an estimate from list prices), at or over the $0.50 switch limit. Switching needs your approval, which Reins cannot ask for yet.'));
+    expect(sw(x, 'model-c', { estimate: undefined, label: 'Fable 5.1' })).toMatchObject(
+      conflict('No price is known for Fable 5.1, so the switch cannot be estimated. Switching needs your approval, which Reins cannot ask for yet.'));
+    expect(x.store.getSession('s1')!.model).toBe('model-b');
+    // a failed turn after a usage row makes the size unknown again
+    x.s.message('boom');
+    await x.s.idle();
+    expect(sw(x, 'model-c')).toMatchObject(conflict('Reins does not know the current context size. Send one message, then switch.'));
+    x.store.appendLog('s1', { type: 'run_detached', runId: 'r1', data: {} });
+    expect(sw(x, 'model-c')).toMatchObject(conflict('A run is left paused in this session. Resume or stop it before switching the model.'));
+  });
+
+  it('Default stores no model, says so, and the next engine has none', async () => {
+    const x = setup([{}]);
+    sw(x, 'model-b');
+    expect(sw(x, '')).toEqual({ ok: true });
+    expect(x.store.getSession('s1')).not.toHaveProperty('model');
+    expect(notes(x).at(-1)).toBe('Model set to the default from the next reply. The whole conversation goes to it as input.');
+    x.s.message('hi');
+    await x.s.idle();
+    expect(x.models).toEqual([undefined]);
+  });
+
+  it('a title alone, or the same model again, switches nothing', () => {
+    const x = setup();
+    sw(x, 'model-b');
+    const before = x.log().length;
+    expect(x.s.settings({ title: 'x' })).toEqual({ ok: true });
+    expect(sw(x, 'model-b')).toEqual({ ok: true });
+    expect(x.log().slice(before).map((r) => r.type)).toEqual(['settings']);
+    expect(x.data('note')).toHaveLength(1);
   });
 });

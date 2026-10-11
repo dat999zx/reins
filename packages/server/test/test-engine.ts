@@ -8,6 +8,10 @@ export interface TestTurn {
   reject?: string;                                                        // turn() rejects with this message
   error?: string;                                                         // the result carries an error event (never emitted live, as the adapter's interrupt timeout)
   lateApprove?: boolean;                                                  // an approval request arrives after the turn has ended
+  usage?: number;                                                         // emit a usage event with this context size after the text
+  cost?: number | null;                                                   // the turn's cost (default 0.01); null = not known
+  total?: number;                                                         // the provider's raw running total after the turn
+  isError?: boolean;                                                      // the result is an error that no interrupt asked for
 }
 
 /** Scripted turns, one per turn() call (the same script for every session). `hold` waits for release() or interrupt(). */
@@ -19,8 +23,14 @@ export function testEngine(script: TestTurn[] = []) {
     interrupts: 0,
     closes: 0,
     release: () => {},
+    holdClose: () => {},
+    releaseClose: () => {},
     makeEngine: undefined as unknown as MakeEngine,
   };
+  let closeGate: Promise<void> | undefined;
+  let openCloseGate: (() => void) | undefined;
+  state.holdClose = () => { closeGate = new Promise<void>((r) => { openCloseGate = r; }); };
+  state.releaseClose = () => { openCloseGate?.(); closeGate = undefined; };
   let nextId = 1;
   let turnDone: Promise<void> | undefined;
   let freeze: (() => void) | undefined;
@@ -62,9 +72,15 @@ export function testEngine(script: TestTurn[] = []) {
             if (t.hold && !interrupted) await wait();
             const text2 = interrupted ? '' : (t.text ?? 'ok');
             emit({ type: 'text', text: text2 });
+            if (t.usage !== undefined) emit({ type: 'usage', model: 'm', used: t.usage, window: 1_000_000 });
             if (t.error) events.push({ type: 'error', message: t.error });
             if (t.lateApprove) setTimeout(() => { void onApprove({ tool: 'Bash', input: { command: 'late' } }).then((d) => state.decisions.push(d)); }, 20);
-            return { text: text2, cost: 0.01, events };
+            return {
+              text: text2, events,
+              ...(t.cost === null ? {} : { cost: t.cost ?? 0.01 }),
+              ...(t.total !== undefined ? { total: t.total } : {}),
+              ...(t.isError ? { isError: true } : {}),
+            };
           } finally {
             end();
           }
@@ -77,7 +93,7 @@ export function testEngine(script: TestTurn[] = []) {
           await turnDone;
         },
         events: { async *[Symbol.asyncIterator]() {} },
-        async close() { state.closes++; },
+        async close() { state.closes++; await closeGate; },
       };
       return session;
     },

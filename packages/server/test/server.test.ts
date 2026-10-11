@@ -192,6 +192,48 @@ describe('state, probing and sessions (3b.6 1526-1528, 1543)', () => {
     expect(p.json).toEqual({ engines: [{ id: 'claude', ...PROBE }] });
   });
 
+  it('/api/state lists the providers with their models and nothing else of them', async () => {
+    const w = await boot();
+    const s = await w.api('GET', '/api/state');
+    expect(s.json.providers).toEqual([{
+      id: 'claude', label: 'Claude',
+      models: [
+        { id: 'claude-opus-5-5', label: 'Opus 5.5' }, { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' },
+        { id: 'claude-haiku-5-5', label: 'Haiku 5.5' }, { id: 'claude-fable-5-1', label: 'Fable 5.1' },
+      ],
+    }]);
+  });
+
+  it('the model setting: a string, "" for the default, the current value or a listed id; anything else is 400', async () => {
+    const w = await boot();
+    const id = await w.session({ model: 'sonnet' });
+    const stateModel = async () => (await w.api('GET', '/api/state')).json.sessions[0].model;
+    const bad = await w.post(id, 'settings', { model: 5 });
+    expect([bad.status, bad.json.error]).toEqual([400, 'model must be a string.']);
+    const unknown = await w.post(id, 'settings', { model: 'nope' });
+    expect([unknown.status, unknown.json.error]).toEqual([400, "Unknown model for this session's provider."]);
+    expect((await w.post(id, 'settings', { model: 'sonnet' })).status).toBe(200);
+    expect(await stateModel()).toBe('sonnet');
+    expect((await w.post(id, 'settings', { model: 'claude-opus-5-5' })).status).toBe(200);
+    expect(await stateModel()).toBe('claude-opus-5-5');
+    expect((await w.post(id, 'settings', { model: 'sonnet' })).status).toBe(400);
+    expect((await w.post(id, 'settings', { model: '' })).status).toBe(200);
+    expect(await stateModel()).toBeUndefined();
+    expect(w.store.getSession(id)).not.toHaveProperty('model');
+  });
+
+  it('a switch refused by the session is 409 with its words, and nothing is stored', async () => {
+    const w = await boot([TURN]);
+    const id = await w.session();
+    await w.say(id, 'hello');
+    await w.settled(id, 1);
+    w.store.putSetting('switchApprovalUsd', 0.1);
+    const r = await w.post(id, 'settings', { model: 'claude-fable-5-1' });
+    expect(r.status).toBe(409);
+    expect(r.json.error).toMatch(/^Switching sends 30,550 tokens to Fable 5\.1: about \$0\.61 \(an estimate from list prices\), at or over the \$0\.10 switch limit\./);
+    expect(w.store.getSession(id)).not.toHaveProperty('model');
+  });
+
   it('a probe that throws becomes an installed:false entry instead of stopping the server', async () => {
     const w = await boot([], { probe: async () => { throw new Error('no claude here'); } });
     const s = await w.api('GET', '/api/state');
