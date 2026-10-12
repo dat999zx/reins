@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { Diagnostic } from '@reins/core';
 import type { TagEntry } from '@reins/server/tags.js';
 import { ApiError, get, post, sendCard } from './api.js';
@@ -6,7 +6,7 @@ import { chipsToTags, missingArg, pickerFor, takeTag, type Chip } from './tags.j
 
 interface Listed { path: string; name: string; scope: string }
 
-export function Composer({ id, cwd, busy, catalogue, takeRefill }: { id: string; cwd: string; busy: boolean; catalogue: TagEntry[]; takeRefill: (input: string) => string }) {
+export function Composer({ id, cwd, busy, catalogue, takeRefill, bar }: { id: string; cwd: string; busy: boolean; catalogue: TagEntry[]; takeRefill: (input: string) => string; bar?: ReactNode }) {
   const [text, setText] = useState('');
   const [chips, setChips] = useState<Chip[]>([]);
   const [caret, setCaret] = useState(0);
@@ -130,6 +130,7 @@ export function Composer({ id, cwd, busy, catalogue, takeRefill }: { id: string;
         onKeyDown={onKey}
       />
       <div className="composer-bar">
+        {bar}
         <span className="hint">Enter sends · Shift+Enter is a new line</span>
         {busy && <button disabled={!text.trim()} onClick={() => void card('now')}>Now</button>}
         {busy && <button className="danger" onClick={() => void card('stop')}>Stop</button>}

@@ -72,6 +72,13 @@ export function RunDock(p: {
       .catch((e: Error) => setError(e.message))
       .finally(() => setSending(false));
   };
+  // Chat: the card is in the log. Close the body first (it floats over the Composer), then take the focus there.
+  const goToQuestion = () => {
+    onOpen(false);
+    const el = document.querySelector<HTMLElement>(`.log [data-qid="${CSS.escape(ids[0]!)}"] button`);
+    el?.scrollIntoView({ block: 'nearest' });
+    el?.focus({ preventScroll: true });
+  };
   return <section className="sx-dock" aria-label="Run">
     <div className="sx-dockline" data-waiting={run.open.length > 0 || undefined}>
       <span className="sx-dockstatus" title={status + count}>{s.live ? <span role="status">{status}</span> : status}{count}</span>
@@ -88,6 +95,10 @@ export function RunDock(p: {
         moveFocus.current = true;
         return act.answer(qid, answer).catch((e) => { moveFocus.current = false; throw e; });
       }} />)}
+      {!s.cards && run.open.length > 0 && <div className="btns">
+        <span>Answer it in the log.</span>
+        <button onClick={goToQuestion}>Go to the question</button>
+      </div>}
       {run.last && <p className="sx-latest" title={run.last.text}>{run.last.text}</p>}
       {s.steer && !phase.ended && <form className="sx-steer" onSubmit={(e) => { e.preventDefault(); if (draft.trim()) send('steer'); }}>
         <textarea ref={steer} aria-label="Steer the agent" rows={1} value={draft} disabled={!working} placeholder="Steer the agent (sent as a card)…"

@@ -107,7 +107,11 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 
 .composer { position: relative; border-top: 1px solid var(--line); padding: 10px 16px; display: grid; gap: 6px; background: var(--panel); }
 .composer textarea { width: 100%; resize: vertical; }
-.composer-bar { display: flex; gap: 8px; align-items: center; }
+.composer-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.composer-bar .sx-dock { flex: 0 1 auto; }
+.composer-bar .sx-dockline { flex-wrap: nowrap; }
+.composer-bar .sx-dockstatus { flex: 0 1 auto; }
+.composer .sx-dockbody { top: auto; bottom: calc(100% + 4px); right: 16px; z-index: 4; } /* under the tag picker (5) */
 .composer-bar .hint { flex: 1; padding: 0; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .picker, .runlist { position: absolute; bottom: 100%; left: 16px; background: var(--raised); border: 1px solid var(--line2); border-radius: 6px; padding: 4px; min-width: 240px; z-index: 5; }

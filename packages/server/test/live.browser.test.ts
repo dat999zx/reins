@@ -109,6 +109,23 @@ describe.skipIf(skip)('live run e2e', () => {
     // L0+ctx. The first turn's parent context (2 + 15,244 + 15,299 + 5 = 30,550 of 1,000,000) is in the header
     await page.locator('.chead').getByText('Context 31k / 1M', { exact: true }).waitFor();
 
+    // LC. The run panel in Chat: the handle in the Composer bar says who is waited for (plain text, the feed keeps the one live region);
+    // its body has no card and no meter, and "Go to the question" closes it and focuses the card in the log
+    const chatDock = page.getByRole('region', { name: 'Run', exact: true });
+    await chatDock.locator('.sx-dockline[data-waiting] .sx-dockstatus', { hasText: 'Waiting for you · gate question' }).waitFor();
+    expect(await page.locator('main.chat [role="status"]').count()).toBe(1);
+    await chatDock.getByRole('button', { name: 'Show the run', exact: true }).click();
+    await chatDock.locator('.sx-dockbody').waitFor();
+    expect(await chatDock.getByRole('region', { name: 'gate question' }).count()).toBe(0);
+    expect(await chatDock.locator('.sx-meter').count()).toBe(0);
+    await chatDock.getByRole('button', { name: 'Blocks', exact: true }).click();
+    await expect.poll(() => tab('Blocks').getAttribute('aria-selected')).toBe('true');
+    await tab('Chat').click();
+    await chatDock.locator('.sx-dockbody').waitFor();
+    await chatDock.getByRole('button', { name: 'Go to the question', exact: true }).click();
+    expect(await chatDock.locator('.sx-dockbody').count()).toBe(0);
+    await expect.poll(() => page.evaluate('!!(document.activeElement && document.activeElement.closest(".log [data-qid]"))'), { timeout: W }).toBe(true);
+
     await openLive();
     await textChip('plan', 'done').waitFor();
     await textChip('run-1', 'done').waitFor();
@@ -408,6 +425,7 @@ describe.skipIf(skip)('live run e2e', () => {
     expect(await page.locator('.blk .sstate').count()).toBe(0);
     expect(await dock.count()).toBe(0);
     await tab('Chat').click();
+    expect(await dock.count()).toBe(0); // the Chat panel's handle is gone with the dismissed run
     await tab('Blocks').click();
     expect(await page.locator('.blk .sstate').count()).toBe(0);
     expect(await dock.count()).toBe(0);

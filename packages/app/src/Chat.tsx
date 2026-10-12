@@ -6,8 +6,8 @@ import type { EditorState, Tab } from './editorState.js';
 import { Feed } from './FeedView.js';
 import { feed } from './feed.js';
 import type { Actions } from './rows.js';
-import type { Surface } from './RunDock.js';
-import { runView, thinkingHeads, thinkingNow } from './runState.js';
+import { RunDock, type Surface } from './RunDock.js';
+import { PHASE, runView, thinkingHeads, thinkingNow } from './runState.js';
 import { TextTab } from './TextTab.js';
 import { mergeOutput, title, type Sess } from './state.js';
 import { contextWords, modelOptions, pickerBlock, usageOf } from './usage.js';
@@ -36,6 +36,8 @@ export function Chat({ sess, catalogue, providers, takeRefill, tab, onTab, resto
   const ctx = contextWords(usage, providers.find((p) => p.id === sess.engine)?.models.find((m) => m.id === usage?.model)?.window);
   const block = pickerBlock({ busy, detached: sess.detached.length });
   const run = useMemo(() => runView(sess), [sess]);
+  // the panel shows for a run that is live or just ended, not for a plain turn (busy) or a run the user dismissed
+  const chatPanel = run.phase !== 'none' && run.phase !== 'busy' && !(run.runId === dismissed && PHASE[run.phase].ended);
   const f = useMemo(() => feed(rows, run, new Set(sess.open)), [rows, run, sess.open]);
   // only the head of a thinking burst draws; it says "thinking…" while it is the newest engine row of a busy session
   const thinking = useMemo(() => { const now = thinkingNow(sess.rows); return { heads: thinkingHeads(sess.rows), ...(busy && now ? { now: now.seq } : {}) }; }, [sess]);
@@ -128,7 +130,9 @@ export function Chat({ sess, catalogue, providers, takeRefill, tab, onTab, resto
               if (bottom) setFresh(false);
             }} />
           {fresh && <button className="pill" onClick={() => { setStick(true); setFresh(false); log.current!.scrollTop = log.current!.scrollHeight; }}>Jump to live ↓</button>}
-          <Composer key={sess.id} id={sess.id} cwd={sess.cwd} busy={busy} catalogue={catalogue} takeRefill={takeRefill} />
+          <Composer key={sess.id} id={sess.id} cwd={sess.cwd} busy={busy} catalogue={catalogue} takeRefill={takeRefill}
+            bar={chatPanel && <RunDock run={run} sess={sess} act={act} surface="chat" match following={false}
+              open={dockOpen.chat} onOpen={(o) => setDockOpen((d) => ({ ...d, chat: o }))} onJump={() => onTab('blocks')} onDismiss={() => setDismissed(run.runId)} />} />
         </>
       ) : (
         restore === undefined ? <p className="hint">Loading…</p>
