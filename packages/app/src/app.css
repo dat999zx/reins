@@ -243,7 +243,7 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 [data-kind='verify'] { --c: var(--verify); }
 [data-kind='handoff'], [data-kind='end'] { --c: var(--hand); }
 [data-kind='recall'], [data-kind='store'] { --c: var(--mem); }
-[data-kind='use'] { --c: var(--mine); }
+[data-kind='use'], [data-kind='model'] { --c: var(--mine); }
 
 .sx-blk, .sx-c { --bgc: initial; position: relative; color: #fff; font-size: 12.5px; }
 .sx-blk { min-width: 190px; max-width: 350px; padding: 6px 11px 7px; border-radius: 6px; background: var(--bgc, var(--c)); box-shadow: inset 0 -2px 0 rgb(0 0 0 / 0.2); }

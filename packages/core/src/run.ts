@@ -61,6 +61,8 @@ export interface RunEventRecord {
     | 'handoff'
     | 'budget_warning'
     | 'engine_cost'
+    | 'model_switched'
+    | 'budget_reached'
     | 'hook'
     | 'judge';
   data: any;
@@ -922,6 +924,12 @@ export class Run {
           }
         }
         this.programCounter = instr.target;
+        return this.status;
+      }
+
+      // Placeholder until Task 2 runs the kind's exec.
+      case 'NODE': {
+        this.programCounter++;
         return this.status;
       }
 

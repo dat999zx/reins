@@ -32,6 +32,8 @@ export type Instr = (
   | { op: 'VERIFY'; step: string; against: string; onFailJump?: number; linkMax?: number }
   | { op: 'STORE'; step: string; what: string }
   | { op: 'HANDOFF'; step: string; to: string; focus?: string }
+  // A kind's own instruction (P12): run by `NodeType.exec` of `kind`, `src` the step as compiled.
+  | { op: 'NODE'; step: string; kind: string; src: Step }
   | { op: 'JUMP'; target: number; step?: string; linkMax?: number }
   | { op: 'END' }) & { top?: number };
 

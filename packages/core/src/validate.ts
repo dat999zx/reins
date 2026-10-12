@@ -5,6 +5,7 @@ import { CONDS } from './conds/index.js';
 import { NODES, nodeAttrs, headingOwns, type ValidateCtx } from './nodes/index.js';
 import { condAtoms } from './cond.js';
 import { compileProgram } from './compile.js';
+import { usdText } from './format/print.js';
 
 export function validate(
   w: Workflow,
@@ -138,6 +139,27 @@ export function validate(
 
     // The node's own late rules
     NODES.get(step.kind)?.validate?.late?.(step, vctx(pos));
+  }
+
+  // D5: block budgets (`usd:` on a kind that owns it) are carved out of the workflow's USD budget.
+  // ponytail: a block file's slices (`use`) are not counted here: the run enforces them anyway; count through resolveBlock if it bites.
+  const owns = (s: Step) => NODES.get(s.kind)?.attrs.includes('usd') === true;
+  const validUsd = (s: Step) => /^\d+(\.\d{1,2})?$/.test(s.attrs.usd!.trim()) && Number(s.attrs.usd) > 0;   // the app's parseBudget rule (panelEdit.ts:60)
+  for (const s of allSteps) {
+    if (s.attrs.usd === undefined) continue;
+    const pos = s.pos || { line: 1, col: 1 };
+    if (!owns(s)) diagnostics.push({ severity: 'warning', message: `\`usd:\` does nothing on a ${s.kind} step`, pos });
+    else if (!validUsd(s)) {
+      diagnostics.push({ severity: 'error', message: `Budget (USD) of \`${s.id}\` must be an amount above 0, like 0.50.`, pos });
+    }
+  }
+  // Only valid slices are summed: a malformed one already has its own error.
+  const sliced = allSteps.filter((s) => s.attrs.usd !== undefined && owns(s) && validUsd(s));
+  if (!w.block && sliced.length) {
+    const pos = sliced[0]!.pos || { line: 1, col: 1 };
+    const sum = sliced.reduce((a, s) => a + (Number(s.attrs.usd) || 0), 0);
+    if (w.budget.usd === undefined) diagnostics.push({ severity: 'error', message: "Set the workflow's USD budget first: block budgets are carved out of it.", pos });
+    else if (sum > w.budget.usd + 1e-9) diagnostics.push({ severity: 'error', message: `The blocks' budgets add up to $${usdText(Math.round(sum * 100) / 100)}, over the workflow's $${usdText(w.budget.usd)}.`, pos });
   }
 
   // Ids inside each container's body (all depths), for the jump-into-a-loop rule.
