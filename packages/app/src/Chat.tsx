@@ -10,7 +10,7 @@ import { RunDock, type Surface } from './RunDock.js';
 import { PHASE, runView, thinkingHeads, thinkingNow } from './runState.js';
 import { TextTab } from './TextTab.js';
 import { mergeOutput, openQuestions, title, type Sess } from './state.js';
-import { contextWords, modelOptions, pickerBlock, usageOf } from './usage.js';
+import { compressBlock, contextWords, modelOptions, pickerBlock, usageOf } from './usage.js';
 
 export type Provider = { id: string; label: string; models: Array<{ id: string; label: string; window?: number }> };
 
@@ -36,6 +36,7 @@ export function Chat({ sess, catalogue, providers, takeRefill, tab, onTab, resto
   const ctx = contextWords(usage, providers.find((p) => p.id === sess.engine)?.models.find((m) => m.id === usage?.model)?.window);
   const asking = openQuestions(sess).some((r) => (r.data as { kind?: string }).kind === 'switch');
   const block = pickerBlock({ busy, detached: sess.detached.length, asking });
+  const cb = compressBlock({ busy, replied: sess.rows.some((r) => r.type === 'turn_ended') });
   const run = useMemo(() => runView(sess), [sess]);
   // the panel shows for a run that is live or just ended, not for a plain turn (busy) or a run the user dismissed
   const chatPanel = run.phase !== 'none' && run.phase !== 'busy' && !(run.runId === dismissed && PHASE[run.phase].ended);
@@ -108,6 +109,8 @@ export function Chat({ sess, catalogue, providers, takeRefill, tab, onTab, resto
           </select>
         </label>
         <span className="sx-ctx" title={ctx.title}>{ctx.text}</span>
+        <button className="sx-compress" disabled={cb !== undefined} title={cb ?? 'Summarise the conversation so far to free context. It costs one model call.'}
+          onClick={() => post(`${base}/compress`).catch((e) => onError(e.message))}>Compress</button>
         <span className="faint" aria-label="Session cost">${sess.cost.toFixed(4)}</span>
         <label className="switch">
           <input type="checkbox" checked={sess.autoApprove} onChange={(e) => post(`${base}/settings`, { autoApprove: e.target.checked }).catch((e) => onError(e.message))} />

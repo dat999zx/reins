@@ -4,6 +4,7 @@ import type { LogRow } from '@reins/server/store.js';
 import { generic, short } from '../generic.js';
 import type { Ctx } from '../rows.js';
 import { thinkingWords } from '../runState.js';
+import { tokens } from '../usage.js';
 
 type Render = (e: any, row: LogRow, ctx: Ctx) => ReactNode;
 
@@ -33,6 +34,20 @@ export const engineEvents = new Map<EngineEvent['type'], Render>([
   ['refusal', (e) => <div className="row bad">refused: {e.reason}</div>],
   ['card_delivered', (e) => chip(e)],
   ['error', (e) => <div className="row bad">{e.message}</div>],
+  // the provider's two figures do not measure the same thing (before has the system prompt, after has not), so the row never pairs them
+  ['compacted', (e) => {
+    const n = (x: number) => x.toLocaleString('en-US');
+    const known = typeof e.after === 'number';
+    const title = !known ? undefined
+      : typeof e.before === 'number' ? `The provider's figures: ${n(e.before)} tokens before, ${n(e.after)} after; before includes the system prompt, after does not.`
+        : `The provider's figure: ${n(e.after)} tokens after; it does not include the system prompt.`;
+    return (
+      <div className="row sx-compacted" title={title}>
+        {known ? `Compressed: ${tokens(e.after)} tokens of conversation remain; the next reply measures the full context.` : 'Compressed.'}
+        {e.trigger === 'auto' ? ' (by the provider)' : ''}
+      </div>
+    );
+  }],
   // the parser emits several rows per burst (a growing count, never the text): only the burst's head draws
   ['thinking', (e, row, ctx) => !ctx.thinking?.heads.has(row.seq) ? null
     : ctx.thinking.now === row.seq ? <div className="row think"><span className="sx-wave" aria-hidden="true">⌁</span>{thinkingWords(e.tokens)}</div>

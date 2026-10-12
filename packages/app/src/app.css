@@ -63,6 +63,7 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .sx-model select { font: inherit; color: var(--ink); background: #16171a; border: 1px solid var(--line2); border-radius: 5px; padding: 3px 6px; }
 .sx-model select:disabled { opacity: 0.45; }
 .sx-ctx { color: var(--mute); font-size: 12px; white-space: nowrap; }
+.sx-compress { font-size: 12px; }
 .chead .faint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .status { display: inline-flex; align-items: center; gap: 6px; color: var(--mute); }
 .switch { display: inline-flex; align-items: center; gap: 6px; }

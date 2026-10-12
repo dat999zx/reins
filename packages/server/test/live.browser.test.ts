@@ -20,6 +20,7 @@ const W = 15_000;
 const P = { fixture: 'claude-2.1.281-turns-thinking.jsonl', turn: 0, delayMs: 60 };
 const B = { fixture: 'claude-2.1.281-card-marker-hook.jsonl', delayMs: 60 };
 const H = { fixture: 'claude-2.1.281-approval-allow-hold.jsonl', approve: true };
+const COMPACT = 'claude-2.1.293-compact.jsonl';
 
 const LIVE = (cmd: string) => `---
 reins: 1
@@ -58,7 +59,7 @@ describe.skipIf(skip)('live run e2e', () => {
   }, T);
 
   it('watches a workflow run from every tab', async () => {
-    const fake = fakeSetup([P, B, P, B, H, B, P, B, H, B], 10, { cumulative: true });
+    const fake = fakeSetup([P, B, P, B, H, B, P, B, H, B], 10, { cumulative: true, compact: COMPACT });
     const folderA = fake.dir;
     const folderB = tmpDir();
     fs.mkdirSync(path.join(folderA, '.reins', 'workflows'), { recursive: true });
@@ -640,6 +641,23 @@ describe.skipIf(skip)('live run e2e', () => {
     await page.getByText('Model set to Sonnet 5.5 from the next reply.', { exact: false }).waitFor();
     await expect.poll(() => model.inputValue()).toBe('claude-sonnet-5-5');
     store!.putSetting('switchApprovalTokens', 200_000);
+
+    // LP. Compress: the button sends /compact on the switched model's process, the feed says how many tokens of conversation remain
+    // (the fixture's post_tokens 4,795 through tokens()), the meter shows that figure as a lower bound, the cost rises; /compress does the same.
+    const c1 = await costOf();
+    const head = page.locator('.chead');
+    await head.getByRole('button', { name: 'Compress', exact: true }).click();
+    const row = page.locator('.sx-compacted');
+    await expect.poll(() => row.count()).toBe(1);
+    expect(await row.innerText()).toBe('Compressed: 5k tokens of conversation remain; the next reply measures the full context.');
+    await head.getByText('Context ≥5k / 1M', { exact: true }).waitFor();
+    await expect.poll(costOf, { timeout: W }).toBeGreaterThan(c1);
+    const entries = fake.log();
+    expect(entries.filter((e) => e.kind === 'user').at(-1).text).toBe('/compact');
+    expect(entries.filter((e) => e.kind === 'args').at(-1).args).toEqual(expect.arrayContaining(['--resume', '--model', 'claude-sonnet-5-5']));
+    await page.getByRole('textbox', { name: 'Message' }).fill('/compress');
+    await page.keyboard.press('Enter');
+    await expect.poll(() => row.count()).toBe(2);
     expect(errors).toEqual([]);
   }, T);
 });

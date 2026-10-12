@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { LogRow } from '@reins/server/store.js';
-import { contextWords, modelOptions, pickerBlock, tokens, usageOf } from '../src/usage.js';
+import { compressBlock, contextWords, modelOptions, pickerBlock, tokens, usageOf } from '../src/usage.js';
 
 let seq = 0;
 const row = (type: string, data: unknown = {}): LogRow => ({ sessionId: 's1', seq: ++seq, ts: 1000 + seq, type, data });
@@ -27,6 +27,20 @@ describe('usageOf', () => {
     expect(usageOf([usage(10), row('turn_failed', { error: 'x' })])?.stale).toBe(true);
     expect(usageOf([usage(10), row('message', { text: 'x' })])?.stale).toBe(false);
   });
+  it('after a compaction is its figure as a lower bound, with the model and window of the usage before it', () => {
+    const c = (data: object = {}) => eng({ type: 'compacted', trigger: 'manual', before: 33_781, after: 3_873, ...data });
+    expect(usageOf([usage(30_550), c()])).toEqual({ model: 'm1', used: 3_873, window: 1_000_000, stale: true, compressed: true });
+    expect(usageOf([usage(30_550), c(), row('turn_failed', { error: 'x' })])?.compressed).toBe(true);
+    expect(usageOf([usage(30_550), c(), usage(37_000)])).toEqual({ model: 'm1', used: 37_000, window: 1_000_000, stale: false });
+    expect(usageOf([usage(30_550), { ...c(), data: { type: 'compacted', trigger: 'manual', before: 33_781 } }])).toBeUndefined();
+    expect(usageOf([c()])).toBeUndefined();
+  });
+  it('ignores a figure that is not a whole non-negative count, and the newest compaction wins over an older one', () => {
+    const c = (data: object = {}) => eng({ type: 'compacted', trigger: 'manual', before: 33_781, after: 3_873, ...data });
+    expect(usageOf([usage(30_550), c({ after: 3_873.5 })])).toBeUndefined();
+    expect(usageOf([usage(30_550), c({ after: -1 })])).toBeUndefined();
+    expect(usageOf([usage(30_550), c({ after: 3_873 }), c({ after: 900 })])?.used).toBe(900);
+  });
   it('is undefined with no usage row, and without a window key when none came', () => {
     expect(usageOf([row('message', { text: 'x' })])).toBeUndefined();
     const u = usageOf([eng({ type: 'usage', model: 'm1', used: 5 })])!;
@@ -46,6 +60,12 @@ describe('contextWords', () => {
     expect(contextWords(undefined)).toEqual({ text: 'Context —', title: 'Known after the next reply.' });
   });
 
+  it('reads a figure after compressing as a lower bound the next reply measures again', () => {
+    expect(contextWords({ model: 'm1', used: 3_873, window: 1_000_000, stale: true, compressed: true })).toEqual({
+      text: 'Context ≥4k / 1M', title: "At least this: the provider's figure after compressing. The next reply measures it again.",
+    });
+  });
+
   it('falls back to the catalog window only when the usage row has none; no usage stays unknown', () => {
     expect(contextWords({ model: 'm1', used: 30_550, stale: false }, 200_000).text).toBe('Context 31k / 200k');
     expect(contextWords({ model: 'm1', used: 30_550, window: 1_000_000, stale: false }, 200_000).text).toBe('Context 31k / 1M');
@@ -59,6 +79,15 @@ describe('modelOptions', () => {
     expect(modelOptions(list)).toEqual([{ id: '', label: 'Default' }, ...list]);
     expect(modelOptions(list, 'b')).toEqual([{ id: '', label: 'Default' }, ...list]);
     expect(modelOptions(list, 'sonnet')).toEqual([{ id: '', label: 'Default' }, ...list, { id: 'sonnet', label: 'sonnet' }]);
+  });
+});
+
+describe('compressBlock', () => {
+  it('says why Compress is off, or nothing', () => {
+    expect(compressBlock({ busy: true, replied: true })).toBe('Compress when the session is idle.');
+    expect(compressBlock({ busy: false, replied: false })).toBe('Nothing to compress before the first reply.');
+    expect(compressBlock({ busy: true, replied: false })).toBe('Compress when the session is idle.');
+    expect(compressBlock({ busy: false, replied: true })).toBeUndefined();
   });
 });
 

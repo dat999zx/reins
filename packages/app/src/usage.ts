@@ -1,21 +1,28 @@
 import type { LogRow } from '@reins/server/store.js';
 
-export interface Usage { model: string; used: number; window?: number; stale: boolean }
+export interface Usage { model: string; used: number; window?: number; stale: boolean; compressed?: true } // compressed: `used` is the provider's figure after a compaction, a lower bound
 
 /**
- * The newest `usage` engine row. ponytail: the stale rule copies the server's contextSize (settings.ts); the app imports
- * server code as types only, so change both together.
+ * The newest `usage` engine row. ponytail: the stale rule copies the server's contextSize (settings.ts), which treats a compaction as
+ * unknown; the app shows its after-figure as a lower bound instead. The app imports server code as types only, so change both together.
  */
 export function usageOf(rows: LogRow[]): Usage | undefined {
   let stale = false;
+  let after: number | undefined;
+  let compacted = false; // a compaction met before any usage
   for (let i = rows.length - 1; i >= 0; i--) {
     const r = rows[i]!;
     if (r.type === 'turn_failed') { stale = true; continue; }
     if (r.type !== 'engine') continue;
-    const d = (r.data ?? {}) as { type?: string; model?: unknown; used?: unknown; window?: unknown };
+    const d = (r.data ?? {}) as { type?: string; model?: unknown; used?: unknown; window?: unknown; after?: unknown };
+    if (d.type === 'compacted' && !compacted) {
+      if (typeof d.after !== 'number' || !Number.isInteger(d.after) || d.after < 0) return undefined;
+      compacted = true; after = d.after; stale = true;
+      continue;
+    }
     if (d.type !== 'usage') { stale = true; continue; }
     if (typeof d.used !== 'number' || typeof d.model !== 'string') return undefined;
-    return { model: d.model, used: d.used, ...(typeof d.window === 'number' ? { window: d.window } : {}), stale };
+    return { model: d.model, used: after ?? d.used, ...(typeof d.window === 'number' ? { window: d.window } : {}), stale, ...(compacted ? { compressed: true as const } : {}) };
   }
   return undefined;
 }
@@ -33,6 +40,7 @@ export function contextWords(u?: Usage, fallback?: number): { text: string; titl
   if (!u) return { text: 'Context —', title: 'Known after the next reply.' };
   const window = u.window ?? fallback;
   const text = `Context ${u.stale ? '≥' : ''}${tokens(u.used)} / ${window === undefined ? '?' : tokens(window)}`;
+  if (u.compressed) return { text, title: "At least this: the provider's figure after compressing. The next reply measures it again." };
   if (u.stale) return { text, title: 'At least this: measured before the latest activity.' };
   return { text, title: `${u.model}: ${num(u.used)}${window === undefined ? '' : ` of ${num(window)}`} tokens after the last reply.` };
 }
@@ -42,6 +50,13 @@ export function modelOptions(models: Array<{ id: string; label: string }>, curre
   const out = [{ id: '', label: 'Default' }, ...models];
   if (current && !models.some((m) => m.id === current)) out.push({ id: current, label: current });
   return out;
+}
+
+/** The disabled Compress button's title, or undefined while it may be used. */
+export function compressBlock(s: { busy: boolean; replied: boolean }): string | undefined {
+  if (s.busy) return 'Compress when the session is idle.';
+  if (!s.replied) return 'Nothing to compress before the first reply.';
+  return undefined;
 }
 
 /** The disabled picker's title, or undefined while it may be used. */

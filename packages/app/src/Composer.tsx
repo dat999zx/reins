@@ -52,6 +52,7 @@ export function Composer({ id, cwd, busy, catalogue, takeRefill, bar }: { id: st
       const runPath = /^\/run\s+(.+)$/.exec(body)?.[1];
       if (runPath) await post(`/api/sessions/${id}/run`, { path: runPath.trim() });
       else if (body === '/stop') await sendCard(id, 'stop');
+      else if (body === '/compress') await post(`/api/sessions/${id}/compress`);
       else {
         if (chips.length && busy) return flash('Tags start a new run; wait until the session is idle.');
         const missing = missingArg(chips, catalogue);

@@ -92,6 +92,22 @@ describe('drawable and card words', () => {
     expect(drawable(row('note', { text: 'x' }))).toBe(true);
   });
 
+  it('a compacted engine event says how many tokens of conversation remain, never "before → after"', () => {
+    const c = (data: object) => row('engine', { type: 'compacted', trigger: 'manual', ...data });
+    const r = c({ before: 33_781, after: 3_873 });
+    const html = renderToStaticMarkup(renderRow(r, ctx) as never);
+    expect(drawable(r)).toBe(true);
+    expect(text(renderRow(r, ctx))).toBe('Compressed: 4k tokens of conversation remain; the next reply measures the full context.');
+    expect(html).toContain('title="The provider&#x27;s figures: 33,781 tokens before, 3,873 after; before includes the system prompt, after does not."');
+    expect(text(renderRow(c({ trigger: 'auto', before: 33_781, after: 3_873 }), ctx))).toBe(
+      'Compressed: 4k tokens of conversation remain; the next reply measures the full context. (by the provider)');
+    expect(text(renderRow(c({ after: 3_873 }), ctx))).toContain('Compressed: 4k tokens');
+    expect(renderToStaticMarkup(renderRow(c({ after: 3_873 }), ctx) as never)).toContain(
+      'title="The provider&#x27;s figure: 3,873 tokens after; it does not include the system prompt."');
+    expect(text(renderRow(c({}), ctx))).toBe('Compressed.');
+    expect(text(renderRow(c({ trigger: 'auto' }), ctx))).toBe('Compressed. (by the provider)');
+  });
+
   it('a usage engine event draws nothing', () => {
     const r = row('engine', { type: 'usage', model: 'm', used: 1 });
     expect(drawable(r)).toBe(false);
