@@ -619,6 +619,27 @@ describe.skipIf(skip)('live run e2e', () => {
     expect((await costOf()) - c0).toBeCloseTo(0.0641, 3);
     const spawns = fake.log().filter((e) => e.kind === 'args');
     expect(spawns.at(-1).args).toEqual(expect.arrayContaining(['--resume', '--model', 'claude-opus-5-5']));
+
+    // LS. A switch over a limit asks with a card: the title and the select wait, Keep leaves the model, Switch applies it.
+    store!.putSetting('switchApprovalTokens', 1000);
+    await model.selectOption('claude-sonnet-5-5');
+    const sq = page.getByRole('region', { name: 'switch question', exact: true });
+    await sq.locator('.qprompt').waitFor();
+    expect(await sq.locator('.qprompt').innerText()).toContain('Switch to Sonnet 5.5?');
+    expect(await sq.locator('.qdetail').innerText()).toBe(
+      "The whole conversation, 30,550 tokens, goes to Sonnet 5.5 as input. Estimate: about $0.12 (an estimate from the provider's price table).\nAsked because the context is at or over the 1,000-token switch limit.");
+    await expect.poll(() => page.title()).toBe('(1) waiting · Reins');
+    expect(await model.isDisabled()).toBe(true);
+    expect(await model.getAttribute('title')).toBe('Answer the switch question first.');
+    await sq.getByRole('button', { name: 'Keep the current model', exact: true }).click();
+    await expect.poll(() => sq.count()).toBe(0);
+    expect(await model.inputValue()).toBe('claude-opus-5-5');
+    await expect.poll(() => page.title()).toBe('Reins');
+    await model.selectOption('claude-sonnet-5-5');
+    await sq.getByRole('button', { name: 'Switch', exact: true }).click();
+    await page.getByText('Model set to Sonnet 5.5 from the next reply.', { exact: false }).waitFor();
+    await expect.poll(() => model.inputValue()).toBe('claude-sonnet-5-5');
+    store!.putSetting('switchApprovalTokens', 200_000);
     expect(errors).toEqual([]);
   }, T);
 });

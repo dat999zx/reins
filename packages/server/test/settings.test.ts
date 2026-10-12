@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { CatalogModel } from '../src/catalog.js';
-import { contextSize, detachedRuns, priceFor, readSetting, switchEstimate, switchRefusal } from '../src/settings.js';
+import { contextSize, detachedRuns, priceFor, readSetting, switchEstimate, switchCheck } from '../src/settings.js';
 import { openStore, type LogRow } from '../src/store.js';
 
 let seq = 0;
@@ -55,30 +55,39 @@ describe('switchEstimate', () => {
   });
 });
 
-describe('switchRefusal', () => {
+describe('switchCheck', () => {
   const base = { busy: false, detached: false, hasSession: true, used: 1000, target: 'm', label: 'Test model', estimate: 0.01, limits: { tokens: 200_000, usd: 0.5 } };
-  it('says each of the six sentences, in order', () => {
-    expect(switchRefusal({ ...base, busy: true })).toBe('Switch the model when the session is idle.');
-    expect(switchRefusal({ ...base, detached: true })).toBe('A run is left paused in this session. Resume or stop it before switching the model.');
-    expect(switchRefusal({ ...base, used: undefined })).toBe('Reins does not know the current context size. Send one message, then switch.');
-    expect(switchRefusal({ ...base, used: 523_112 })).toBe(
-      'The context is 523,112 tokens, at or over the 200,000-token switch limit. Switching needs your approval, which Reins cannot ask for yet.');
-    expect(switchRefusal({ ...base, used: 37_000, label: 'Fable 5.1', estimate: 0.7 })).toBe(
-      'Switching sends 37,000 tokens to Fable 5.1: about $0.70 (an estimate from the provider\'s price table), at or over the $0.50 switch limit. Switching needs your approval, which Reins cannot ask for yet.');
-    expect(switchRefusal({ ...base, label: 'Fable 5.1', estimate: undefined })).toBe(
-      'No price is known for Fable 5.1, so the switch cannot be estimated. Switching needs your approval, which Reins cannot ask for yet.');
+  const ask = (c: ReturnType<typeof switchCheck>) => (c && 'ask' in c ? c.ask : undefined);
+  const SIZE = 'Asked because the context is at or over the 200,000-token switch limit.';
+  it('busy and detached refuse with their words; busy beats detached', () => {
+    expect(switchCheck({ ...base, busy: true })).toEqual({ refuse: 'Switch the model when the session is idle.' });
+    expect(switchCheck({ ...base, detached: true })).toEqual({ refuse: 'A run is left paused in this session. Resume or stop it before switching the model.' });
+    expect(switchCheck({ ...base, busy: true, detached: true })).toEqual({ refuse: 'Switch the model when the session is idle.' });
   });
-  it('both limits are "at or over": exactly the limit refuses, one step under does not', () => {
-    expect(switchRefusal({ ...base, used: 200_000 })).toContain('at or over the 200,000-token switch limit');
-    expect(switchRefusal({ ...base, used: 199_999 })).toBeUndefined();
-    expect(switchRefusal({ ...base, estimate: 0.5 })).toContain('at or over the $0.50 switch limit');
-    expect(switchRefusal({ ...base, estimate: 0.49 })).toBeUndefined();
+  it('the other four ask, with the card words', () => {
+    expect(switchCheck({ ...base, used: undefined })).toEqual({ ask: {
+      prompt: 'Switch to Test model?',
+      detail: 'The whole conversation goes to Test model as input. Reins does not know its size, so the cost cannot be estimated.',
+    } });
+    expect(ask(switchCheck({ ...base, used: 523_112, label: 'Opus 5.5', estimate: 4.184896 }))?.detail).toBe(
+      `The whole conversation, 523,112 tokens, goes to Opus 5.5 as input. Estimate: about $4.18 (an estimate from the provider's price table).\n${SIZE}`);
+    expect(ask(switchCheck({ ...base, used: 37_000, label: 'Fable 5.1', estimate: 0.7 }))?.detail).toBe(
+      "The whole conversation, 37,000 tokens, goes to Fable 5.1 as input. Estimate: about $0.70 (an estimate from the provider's price table).\nAsked because the estimate is at or over the $0.50 switch limit.");
+    expect(ask(switchCheck({ ...base, label: 'Fable 5.1', estimate: undefined }))?.detail).toBe(
+      'The whole conversation, 1,000 tokens, goes to Fable 5.1 as input. No price is known for Fable 5.1, so the cost cannot be estimated.');
+    expect(ask(switchCheck({ ...base, used: 523_112, estimate: undefined, label: 'Fable 5.1' }))?.detail).toBe(
+      `The whole conversation, 523,112 tokens, goes to Fable 5.1 as input. No price is known for Fable 5.1, so the cost cannot be estimated.\n${SIZE}`);
   });
-  it('busy beats detached; no session asks nothing; under both limits is fine', () => {
-    expect(switchRefusal({ ...base, busy: true, detached: true })).toBe('Switch the model when the session is idle.');
-    expect(switchRefusal({ ...base, hasSession: false, used: undefined, estimate: undefined })).toBeUndefined();
-    expect(switchRefusal({ ...base, hasSession: false, used: 900_000, estimate: 9 })).toBeUndefined();
-    expect(switchRefusal(base)).toBeUndefined();
+  it('both limits are "at or over": exactly the limit asks, one step under does not', () => {
+    expect(ask(switchCheck({ ...base, used: 200_000 }))?.detail).toContain(SIZE);
+    expect(switchCheck({ ...base, used: 199_999 })).toBeUndefined();
+    expect(ask(switchCheck({ ...base, estimate: 0.5 }))?.detail).toContain('Asked because the estimate is at or over the $0.50 switch limit.');
+    expect(switchCheck({ ...base, estimate: 0.49 })).toBeUndefined();
+  });
+  it('no session asks nothing whatever the size; under both limits is fine', () => {
+    expect(switchCheck({ ...base, hasSession: false, used: undefined, estimate: undefined })).toBeUndefined();
+    expect(switchCheck({ ...base, hasSession: false, used: 900_000, estimate: 9 })).toBeUndefined();
+    expect(switchCheck(base)).toBeUndefined();
   });
 });
 
@@ -104,11 +113,12 @@ describe('priceFor', () => {
   });
 });
 
-describe('switchRefusal source', () => {
+describe('switchCheck source', () => {
   const o = { busy: false, detached: false, hasSession: true, used: 37_000, target: 'm', label: 'Fable 5.1', estimate: 0.7, limits: { tokens: 200_000, usd: 0.5 } };
+  const detail = (c: ReturnType<typeof switchCheck>) => (c && 'ask' in c ? c.ask.detail : '');
   it('words the estimate by where its price came from', () => {
-    expect(switchRefusal({ ...o, source: 'table' })).toContain("(an estimate from the provider's price table)");
-    expect(switchRefusal({ ...o, source: 'catalog' })).toContain('(an estimate from catalog prices, 1-hour cache write)');
+    expect(detail(switchCheck({ ...o, source: 'table' }))).toContain("(an estimate from the provider's price table)");
+    expect(detail(switchCheck({ ...o, source: 'catalog' }))).toContain('(an estimate from catalog prices, 1-hour cache write)');
   });
 });
 

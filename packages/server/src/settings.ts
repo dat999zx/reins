@@ -61,24 +61,29 @@ export function priceFor(provider: Pick<Provider, 'prices' | 'cacheWritePerInput
   return { input, cacheWrite: input * provider.cacheWritePerInput, source: 'catalog' };
 }
 
-const APPROVAL = 'Switching needs your approval, which Reins cannot ask for yet.';
+export type SwitchCheck = { refuse: string } | { ask: { prompt: string; detail: string } } | undefined;
 
-export function switchRefusal(o: {
+// ponytail: the card carries words only; a workflow's model block (C) adds the data it needs.
+export function switchCheck(o: {
   busy: boolean; detached: boolean; hasSession: boolean; used?: number | undefined; target: string; label?: string;
   estimate?: number | undefined; source?: Price['source']; limits: { tokens: number; usd: number };
-}): string | undefined {
-  if (o.busy) return 'Switch the model when the session is idle.';
-  if (o.detached) return 'A run is left paused in this session. Resume or stop it before switching the model.';
+}): SwitchCheck {
+  if (o.busy) return { refuse: 'Switch the model when the session is idle.' };
+  if (o.detached) return { refuse: 'A run is left paused in this session. Resume or stop it before switching the model.' };
   if (!o.hasSession) return undefined; // nothing to feed the new model yet
   const name = o.label ?? o.target;
+  const n = (x: number) => x.toLocaleString('en-US');
   const basis = o.source === 'catalog' ? 'catalog prices, 1-hour cache write' : "the provider's price table";
-  if (o.used === undefined) return 'Reins does not know the current context size. Send one message, then switch.';
-  if (o.used >= o.limits.tokens) {
-    return `The context is ${o.used.toLocaleString('en-US')} tokens, at or over the ${o.limits.tokens.toLocaleString('en-US')}-token switch limit. ${APPROVAL}`;
-  }
-  if (o.estimate === undefined) return `No price is known for ${name}, so the switch cannot be estimated. ${APPROVAL}`;
-  if (o.estimate >= o.limits.usd) {
-    return `Switching sends ${o.used.toLocaleString('en-US')} tokens to ${name}: about $${o.estimate.toFixed(2)} (an estimate from ${basis}), at or over the $${o.limits.usd.toFixed(2)} switch limit. ${APPROVAL}`;
-  }
-  return undefined;
+  let reason: string | undefined;
+  if (o.used === undefined) reason = '';
+  else if (o.used >= o.limits.tokens) reason = `Asked because the context is at or over the ${n(o.limits.tokens)}-token switch limit.`;
+  else if (o.estimate === undefined) reason = '';
+  else if (o.estimate >= o.limits.usd) reason = `Asked because the estimate is at or over the $${o.limits.usd.toFixed(2)} switch limit.`;
+  if (reason === undefined) return undefined;
+  const line = o.used === undefined
+    ? `The whole conversation goes to ${name} as input. Reins does not know its size, so the cost cannot be estimated.`
+    : `The whole conversation, ${n(o.used)} tokens, goes to ${name} as input. ${o.estimate === undefined
+      ? `No price is known for ${name}, so the cost cannot be estimated.`
+      : `Estimate: about $${o.estimate.toFixed(2)} (an estimate from ${basis}).`}`;
+  return { ask: { prompt: `Switch to ${name}?`, detail: reason ? `${line}\n${reason}` : line } };
 }

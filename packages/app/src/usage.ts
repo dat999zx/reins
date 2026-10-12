@@ -45,7 +45,8 @@ export function modelOptions(models: Array<{ id: string; label: string }>, curre
 }
 
 /** The disabled picker's title, or undefined while it may be used. */
-export function pickerBlock(s: { busy: boolean; detached: number }): string | undefined {
+export function pickerBlock(s: { busy: boolean; detached: number; asking?: boolean }): string | undefined {
+  if (s.asking) return 'Answer the switch question first.';
   if (s.busy) return 'Switch the model when the session is idle.';
   if (s.detached > 0) return 'A run is left paused in this session. Resume or stop it before switching the model.';
   return undefined;

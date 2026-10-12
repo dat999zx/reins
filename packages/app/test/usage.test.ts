@@ -67,5 +67,6 @@ describe('pickerBlock', () => {
     expect(pickerBlock({ busy: true, detached: 0 })).toBe('Switch the model when the session is idle.');
     expect(pickerBlock({ busy: false, detached: 1 })).toBe('A run is left paused in this session. Resume or stop it before switching the model.');
     expect(pickerBlock({ busy: false, detached: 0 })).toBeUndefined();
+    expect(pickerBlock({ busy: true, detached: 1, asking: true })).toBe('Answer the switch question first.');
   });
 });

@@ -943,32 +943,58 @@ describe('model switch (A)', () => {
     expect(x.models.at(-1)).toBe('model-a');
   });
 
-  it('is refused, with nothing stored, when busy, detached, unknown, over the limits or without a price', async () => {
+  it('is refused when busy or detached, and asks with a switch card when unknown, over a limit or without a price; nothing is stored until Switch', async () => {
     const x = setup([{ hold: true }, { usage: 200_000 }, { usage: 1000 }, { reject: 'x' }]);
+    // the newest switch card is the question row just logged; answering keep closes it without a switch
+    const card = () => x.rows('question').at(-1)!.data as { id: string; kind: string; prompt: string; detail: string };
+    const keep = async () => { expect(x.s.answer(card().id, 'keep')).toEqual({ ok: true }); await x.s.idle(); };
     x.s.message('busy');
     await turnsStarted(x, 1);
     expect(sw(x, 'model-b')).toMatchObject(conflict('Switch the model when the session is idle.'));
     x.t.release();
     await x.s.idle();
     // turn 1 had no usage: the size is unknown while a claude session exists
-    expect(sw(x, 'model-b')).toMatchObject(conflict('Reins does not know the current context size. Send one message, then switch.'));
+    expect(sw(x, 'model-b')).toEqual({ ok: true });
+    expect(card()).toMatchObject({
+      kind: 'switch', prompt: 'Switch to Test model?',
+      detail: 'The whole conversation goes to Test model as input. Reins does not know its size, so the cost cannot be estimated.',
+    });
+    await keep();
     x.s.message('big');
     await x.s.idle();
-    expect(sw(x, 'model-b')).toMatchObject(conflict(/^The context is 200,000 tokens, at or over the 200,000-token switch limit\./));
+    expect(sw(x, 'model-b')).toEqual({ ok: true });
+    expect(card()).toMatchObject({
+      kind: 'switch', prompt: 'Switch to Test model?',
+      detail: 'The whole conversation, 200,000 tokens, goes to Test model as input. Estimate: about $0.01 (an estimate from the provider\'s price table).\nAsked because the context is at or over the 200,000-token switch limit.',
+    });
+    await keep();
     expect(x.store.getSession('s1')!.model).toBeUndefined();
     x.store.putSetting('switchApprovalTokens', 300_000);
     expect(sw(x, 'model-b')).toEqual({ ok: true });
     x.s.message('small');
     await x.s.idle();
-    expect(sw(x, 'model-c', { estimate: 0.7, label: 'Fable 5.1' })).toMatchObject(
-      conflict('Switching sends 1,000 tokens to Fable 5.1: about $0.70 (an estimate from the provider\'s price table), at or over the $0.50 switch limit. Switching needs your approval, which Reins cannot ask for yet.'));
-    expect(sw(x, 'model-c', { estimate: undefined, label: 'Fable 5.1' })).toMatchObject(
-      conflict('No price is known for Fable 5.1, so the switch cannot be estimated. Switching needs your approval, which Reins cannot ask for yet.'));
+    expect(sw(x, 'model-c', { estimate: 0.7, label: 'Fable 5.1' })).toEqual({ ok: true });
+    expect(card()).toMatchObject({
+      kind: 'switch', prompt: 'Switch to Fable 5.1?',
+      detail: 'The whole conversation, 1,000 tokens, goes to Fable 5.1 as input. Estimate: about $0.70 (an estimate from the provider\'s price table).\nAsked because the estimate is at or over the $0.50 switch limit.',
+    });
+    await keep();
+    expect(sw(x, 'model-c', { estimate: undefined, label: 'Fable 5.1' })).toEqual({ ok: true });
+    expect(card()).toMatchObject({
+      kind: 'switch', prompt: 'Switch to Fable 5.1?',
+      detail: 'The whole conversation, 1,000 tokens, goes to Fable 5.1 as input. No price is known for Fable 5.1, so the cost cannot be estimated.',
+    });
+    await keep();
     expect(x.store.getSession('s1')!.model).toBe('model-b');
     // a failed turn after a usage row makes the size unknown again
     x.s.message('boom');
     await x.s.idle();
-    expect(sw(x, 'model-c')).toMatchObject(conflict('Reins does not know the current context size. Send one message, then switch.'));
+    expect(sw(x, 'model-c')).toEqual({ ok: true });
+    expect(card()).toMatchObject({
+      kind: 'switch', prompt: 'Switch to Test model?',
+      detail: 'The whole conversation goes to Test model as input. Reins does not know its size, so the cost cannot be estimated.',
+    });
+    await keep();
     x.store.appendLog('s1', { type: 'run_detached', runId: 'r1', data: {} });
     expect(sw(x, 'model-c')).toMatchObject(conflict('A run is left paused in this session. Resume or stop it before switching the model.'));
   });
@@ -992,5 +1018,114 @@ describe('model switch (A)', () => {
     expect(sw(x, 'model-b')).toEqual({ ok: true });
     expect(x.log().slice(before).map((r) => r.type)).toEqual(['settings']);
     expect(x.data('note')).toHaveLength(1);
+  });
+});
+
+describe('switch approval (B)', () => {
+  const sw = (x: ReturnType<typeof setup>, model = 'model-b') => x.s.settings({ model, estimate: 0.01, label: 'Test model' });
+  const big = async (o: { autoApprove?: boolean } = {}) => {
+    const x = setup([{ usage: 300_000 }, {}], o);
+    x.s.message('one');
+    await x.s.idle();
+    return x;
+  };
+  const card = (x: ReturnType<typeof setup>) => x.rows('question').at(-1)!.data as { id: string; kind: string; prompt: string };
+  const modelRows = (x: ReturnType<typeof setup>) => x.data('settings').filter((d) => 'model' in d);
+
+  it('asks: ok at once, a switch question, the session waits, nothing is stored', async () => {
+    const x = await big();
+    expect(sw(x)).toEqual({ ok: true });
+    expect(card(x)).toMatchObject({ kind: 'switch', prompt: 'Switch to Test model?' });
+    expect(x.s.status()).toBe('waiting');
+    expect(modelRows(x)).toEqual([]);
+    expect(x.store.getSession('s1')!.model).toBeUndefined();
+  });
+
+  it('Switch applies it as A does: the row, the note, idle, and the next message resumes the same id on the new model', async () => {
+    const x = await big();
+    const sid = x.store.getSession('s1')!.engineSessionId!;
+    sw(x);
+    expect(x.s.answer(card(x).id, 'switch')).toEqual({ ok: true });
+    await x.s.idle();
+    expect(modelRows(x)).toEqual([{ model: 'model-b' }]);
+    expect(x.data('note').at(-1).text).toBe('Model set to Test model from the next reply. The whole conversation goes to it as input.');
+    expect(x.s.status()).toBe('idle');
+    x.s.message('two');
+    await x.s.idle();
+    expect(x.models).toEqual([undefined, 'model-b']);
+    expect(x.t.opens[1]!.sessionId).toBe(sid);
+  });
+
+  it('Keep stores nothing and logs no note; the next message runs on the old model', async () => {
+    const x = await big();
+    sw(x);
+    x.s.answer(card(x).id, 'keep');
+    await x.s.idle();
+    expect(modelRows(x)).toEqual([]);
+    expect(x.data('note')).toEqual([]);
+    expect(x.s.status()).toBe('idle');
+    x.s.message('two');
+    await x.s.idle();
+    expect(x.models).toEqual([undefined]); // the engine was never remade
+    expect(x.store.getSession('s1')!.model).toBeUndefined();
+  });
+
+  it('a message while it waits closes it first; the turn runs on the old model; a late Switch is 409', async () => {
+    const x = await big();
+    sw(x);
+    const qid = card(x).id;
+    x.s.message('two');
+    await x.s.idle();
+    const closed = x.rows('question_closed').at(-1)!;
+    expect(closed.data).toEqual({ questionId: qid, why: 'work started before it was answered' });
+    expect(closed.seq).toBeLessThan(x.rows('message').at(-1)!.seq);
+    // no spurious idle between waiting and running (B1)
+    expect(x.data('status').map((d) => d.status).slice(-3)).toEqual(['waiting', 'running', 'idle']);
+    expect(x.models).toEqual([undefined]); // the engine was never remade
+    expect(x.store.getSession('s1')!.model).toBeUndefined();
+    expect(x.s.answer(qid, 'switch')).toEqual({ ok: false, code: 409, error: `Question ${qid} is not open.` });
+    expect(modelRows(x)).toEqual([]);
+  });
+
+  it('Stop while it waits answers keep', async () => {
+    const x = await big();
+    sw(x);
+    const qid = card(x).id;
+    expect(x.s.card('', 'stop')).toEqual({ ok: true });
+    await x.s.idle();
+    expect(x.data('answer').at(-1)).toEqual({ questionId: qid, answer: 'keep' });
+    expect(x.s.status()).toBe('idle');
+    expect(modelRows(x)).toEqual([]);
+  });
+
+  it('a second switch while one waits is 409', async () => {
+    const x = await big();
+    sw(x);
+    expect(sw(x, 'model-c')).toEqual({ ok: false, code: 409, error: 'Answer the switch question first.' });
+    expect(x.rows('question')).toHaveLength(1);
+  });
+
+  it('Auto-approve never answers a switch', async () => {
+    const x = await big({ autoApprove: true });
+    sw(x);
+    expect(x.s.status()).toBe('waiting');
+    expect(x.data('answer')).toEqual([]);
+  });
+
+  it('closing the session closes it', async () => {
+    const x = await big();
+    sw(x);
+    const qid = card(x).id;
+    await x.s.close();
+    expect(x.data('question_closed').at(-1)).toEqual({ questionId: qid, why: 'the session was closed' });
+    expect(modelRows(x)).toEqual([]);
+  });
+
+  it('under a raised token limit there is no card: switched at once', async () => {
+    const x = await big();
+    x.store.putSetting('switchApprovalTokens', 400_000);
+    expect(sw(x)).toEqual({ ok: true });
+    expect(x.rows('question')).toHaveLength(0);
+    expect(modelRows(x)).toEqual([{ model: 'model-b' }]);
   });
 });

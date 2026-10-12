@@ -223,16 +223,20 @@ describe('state, probing and sessions (3b.6 1526-1528, 1543)', () => {
     expect(w.store.getSession(id)).not.toHaveProperty('model');
   });
 
-  it('a switch refused by the session is 409 with its words, and nothing is stored', async () => {
+  it('a switch over a limit is 200 and a question card with its words; nothing is stored until Switch', async () => {
     const w = await boot([TURN]);
     const id = await w.session();
     await w.say(id, 'hello');
     await w.settled(id, 1);
     w.store.putSetting('switchApprovalUsd', 0.1);
     const r = await w.post(id, 'settings', { model: 'claude-fable-5-1' });
-    expect(r.status).toBe(409);
-    expect(r.json.error).toMatch(/^Switching sends 30,550 tokens to Fable 5\.1: about \$0\.61 \(an estimate from the provider's price table\), at or over the \$0\.10 switch limit\./);
+    expect(r.status).toBe(200);
+    const q = w.store.readLog(id).filter((x) => x.type === 'question').at(-1)!;
+    expect((q.data as { detail: string }).detail).toMatch(/^The whole conversation, 30,550 tokens, goes to Fable 5\.1 as input\. Estimate: about \$0\.61 \(an estimate from the provider's price table\)\.\nAsked because the estimate is at or over the \$0\.10 switch limit\.$/);
     expect(w.store.getSession(id)).not.toHaveProperty('model');
+    const a = await w.post(id, 'answer', { questionId: (q.data as { id: string }).id, answer: 'switch' });
+    expect(a.status).toBe(200);
+    expect(w.store.getSession(id)!.model).toBe('claude-fable-5-1');
   });
 
   describe('the model catalog (4b)', () => {
@@ -268,8 +272,9 @@ describe('state, probing and sessions (3b.6 1526-1528, 1543)', () => {
       await w.settled(id, 1);
       w.store.putSetting('switchApprovalUsd', 0.05);
       const r = await w.post(id, 'settings', { model: 'claude-extra-9' });
-      expect(r.status).toBe(409);
-      expect(r.json.error).toMatch(/^Switching sends 30,550 tokens to Extra 9: about \$0\.06 \(an estimate from catalog prices, 1-hour cache write\)/);
+      expect(r.status).toBe(200);
+      const q = w.store.readLog(id).filter((x) => x.type === 'question').at(-1)!;
+      expect((q.data as { detail: string }).detail).toMatch(/30,550 tokens, goes to Extra 9 as input\. Estimate: about \$0\.06 \(an estimate from catalog prices, 1-hour cache write\)/);
     });
 
     it('the server refreshes the catalog at start and closes it with itself', async () => {

@@ -41,7 +41,8 @@ const where = (word: string, v: RunView) => (v.endedAt ? `${word} at \`${v.ended
 // ponytail: the newest run only; a history picker would pass a run id. Cards are matched by text, first in first out; `cards_unsent` by position (it has no run id).
 export const PHASE: Record<RunPhase, { words: (v: RunView, pos?: Pos) => string; ended: boolean; resumable: boolean }> = {
   none: { words: () => '', ended: false, resumable: false },
-  busy: { words: () => 'The agent is working (not a workflow run).', ended: false, resumable: false },
+  // a switch card after an ended run waits in phase busy: say so, not "working"
+  busy: { words: (v, pos) => (v.open.length ? PHASE.waiting.words(v, pos) : 'The agent is working (not a workflow run).'), ended: false, resumable: false },
   running: {
     words: (v, pos) => `${v.current.length ? `Running \`${v.current.at(-1)}\`` : 'Running'}${pos ? ` · step ${pos.n} of ${pos.m}` : ''}${v.thinking !== undefined ? ` · ${thinkingWords(v.thinking)}` : ''}`,
     ended: false, resumable: false,

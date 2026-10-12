@@ -7,7 +7,7 @@ import {
   type RunEventRecord, type RunOptions, type ToolRequest, type Workflow,
 } from '@reins/core';
 import { askTool, driveRun, questionId, runOptions, type DriveIo, type Question } from './drive.js';
-import { contextSize, detachedRuns, readSetting, switchRefusal } from './settings.js';
+import { contextSize, detachedRuns, readSetting, switchCheck, type SwitchCheck } from './settings.js';
 import type { LogRow, SessionRow, Store } from './store.js';
 import { taggedWorkflow, type Tag, type Tagged } from './tags.js';
 import { loadWorkflow } from './run-cli.js';
@@ -205,7 +205,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
         closeQuestions('the turn ended', 'tool');
       }
       if (res.total !== undefined) store.putEngineTotal(s.sessionId, res.total);
-      // ponytail: a session from before the cost table shows its first reply's cost as unknown; a switch to Default has no price, so with a context it is refused until the approval card exists.
+      // ponytail: a session from before the cost table shows its first reply's cost as unknown; a switch to Default has no price, so with a context it asks with the switch card.
       if (baseUnknown && res.total !== undefined) {
         baseUnknown = false;
         if (res.cost === undefined) log('note', { text: "This reply's cost is not known: the session began before Reins kept the provider's running total. Later replies are counted." });
@@ -434,6 +434,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     closed = false;
     stopping = false;
     intent = undefined;
+    closeQuestions('work started before it was answered', 'switch'); // after busy: closing it earlier would log an idle between waiting and running
     refresh();
   }
   function start(work: () => Promise<void>) {
@@ -480,7 +481,13 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
 
   function card(text: string, kind: 'steer' | 'now' | 'stop'): Ack {
     if (closingP) return closingAck();
-    if (!busy) return kind === 'stop' ? conflict('Nothing is running, so there is nothing to stop.') : startPlain(text, true);
+    if (!busy) {
+      if (kind !== 'stop') return startPlain(text, true);
+      const sq = [...pending].find(([, p]) => p.q.kind === 'switch');
+      if (!sq) return conflict('Nothing is running, so there is nothing to stop.');
+      settle(sq[0], 'keep'); // the Composer shows Stop while the session waits
+      return OK;
+    }
     const oldest = [...pending.values()][0];
     if (kind === 'stop' && oldest) {
       const k = oldest.q.kind;
@@ -506,15 +513,17 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   function settings(p: { autoApprove?: boolean; title?: string; model?: string; estimate?: number | undefined; label?: string; source?: 'table' | 'catalog' }): Ack {
     const from = store.getSession(id)!.model;
     const switching = p.model !== undefined && p.model !== (from ?? '');
+    let check: SwitchCheck;
     if (switching) {
       if (closingP) return closingAck();
-      const refusal = switchRefusal({
+      if ([...pending.values()].some((x) => x.q.kind === 'switch')) return conflict('Answer the switch question first.');
+      check = switchCheck({
         busy, detached: detachedRuns(store.readLog(id)).length > 0, hasSession: !!store.getSession(id)!.engineSessionId,
         used: contextSize(store.readLog(id)), target: p.model!, ...(p.label !== undefined ? { label: p.label } : {}),
         estimate: p.estimate, ...(p.source !== undefined ? { source: p.source } : {}),
         limits: { tokens: readSetting(store, 'switchApprovalTokens'), usd: readSetting(store, 'switchApprovalUsd') },
       });
-      if (refusal) return conflict(refusal);
+      if (check && 'refuse' in check) return conflict(check.refuse);
     }
     const patch = { ...(p.autoApprove !== undefined ? { autoApprove: p.autoApprove } : {}), ...(p.title !== undefined ? { title: p.title } : {}) };
     if (Object.keys(patch).length) {
@@ -523,23 +532,29 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     }
     if (switching) {
       const to = p.model!;
-      store.updateSession(id, { model: to || null });
-      log('settings', { model: to });
-      log('note', { text: `Model set to ${to ? p.label ?? to : 'the default'} from the next reply. The whole conversation goes to it as input.` });
-      const was = pendingSwitch ? pendingSwitch.from : from;
-      pendingSwitch = (to || undefined) === was ? undefined : { from: was, to };
-      engine = undefined;
-      if (live) {
-        const s = live;
-        live = undefined;
-        retire(s);
-      }
+      const applySwitch = () => {
+        store.updateSession(id, { model: to || null });
+        log('settings', { model: to });
+        log('note', { text: `Model set to ${to ? p.label ?? to : 'the default'} from the next reply. The whole conversation goes to it as input.` });
+        const was = pendingSwitch ? pendingSwitch.from : from;
+        pendingSwitch = (to || undefined) === was ? undefined : { from: was, to };
+        engine = undefined;
+        if (live) {
+          const s = live;
+          live = undefined;
+          retire(s);
+        }
+      };
+      // ponytail: a switch card waits with no timeout; any new work closes it without switching; a server stop leaves it to recover.ts.
+      if (check && 'ask' in check) void ask({ id: questionId(), kind: 'switch', ...check.ask }).then((a) => { if (a === 'switch') applySwitch(); });
+      else applySwitch();
     }
     return OK;
   }
 
   // While it runs, message, card, /run and /resume are 409, so no turn can start between the stop and the engine closing.
   async function endSession() {
+    closeQuestions('the session was closed', 'switch');
     if (busy) {
       stopping = true;
       const stopped = run ? run.stop() : applyStop();

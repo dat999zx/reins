@@ -46,6 +46,12 @@ describe('question kinds', () => {
     expect([pick('trust', 'Trust').build(''), pick('trust', "Don't trust").build('')]).toEqual(['y', 'n']);
   });
 
+  it('switch: Switch and Keep the current model, no Stop of its own', () => {
+    expect(labels('switch')).toEqual(['Switch', 'Keep the current model']);
+    expect([pick('switch', 'Switch').build(''), pick('switch', 'Keep the current model').build('')]).toEqual(['switch', 'keep']);
+    expect(offersStop('switch')).toBe(false);
+  });
+
   it('offersStop: the kinds whose card has its own Stop', () => {
     for (const k of ['gate', 'budget', 'resume']) expect(offersStop(k), k).toBe(true);
     for (const k of ['tool', 'trust', 'judge', 'brand-new-kind']) expect(offersStop(k), k).toBe(false);

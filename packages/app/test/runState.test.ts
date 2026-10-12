@@ -175,6 +175,11 @@ describe('runView phase', () => {
     expect(PHASE.failed.words(view([started(), ss('build'), row('run_detached', { error: 'x' })]))).toBe('Failed at `build`: x');
     expect(PHASE.busy.words(view([status('running')]))).toBe('The agent is working (not a workflow run).');
   });
+
+  it('busy says it waits when a question is open (a switch card after an ended run)', () => {
+    reset();
+    expect(PHASE.busy.words(view([ask('q1', 'switch'), status('waiting')]))).toBe('Waiting for you · switch question');
+  });
 });
 
 describe('runView fold', () => {

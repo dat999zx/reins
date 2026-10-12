@@ -7,7 +7,7 @@ import {
 } from '@reins/core';
 import { runCommand } from './commands.js';
 
-export interface Question { id: string; kind: 'gate' | 'budget' | 'resume' | 'tool' | 'judge' | 'trust'; prompt: string; detail?: string }
+export interface Question { id: string; kind: 'gate' | 'budget' | 'resume' | 'tool' | 'judge' | 'trust' | 'switch'; prompt: string; detail?: string }
 export interface DriveIo { ask(q: Question): Promise<string | null>; say(line: string): void; write(chunk: string): void }
 
 export type Answer =
