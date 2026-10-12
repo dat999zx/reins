@@ -4,6 +4,10 @@ Format: [Keep a Changelog](https://keepachangelog.com). Versions: [SemVer](https
 
 ## Unreleased
 
+- The session header shows the model in use and the context used of its window (`Context 31k / 1M`), and switches the model while the session is idle. A switch is refused, until an approval card exists, when the context is 200,000 tokens or more or the estimated cost of the first reply on the new model is $0.50 or more (both are settings).
+- The model list, context windows and prices follow Hermes: a models.dev catalog, cached on disk for 4 hours, adds models after the provider's own list, a catalog-only model can be chosen, and its price is the catalog's input price times the provider's cache-write multiple. The estimate says where its price came from.
+- Each turn's cost is counted once across model switches, restarts and resumed sessions; a session from before this change shows its first reply's cost as unknown.
+- The run panel floats in Blocks and Chat: its handle sits in the editor bar or the Composer bar, its body floats over the canvas or the log instead of moving them, a waiting question shows on the handle, Escape closes it, and only one Stop shows while a card offers its own.
 - Watch a run live in all three tabs. Chat is now a feed: a rein runs down the left with a knot for each step (running, waiting for you, done, failed), the agent's tools and text hang under its knot, finished steps fold to one line, and "Jump to live" brings you back to the end. Knots and blocks link both ways ("Blocks ↗", "Show in Chat").
 - Blocks shows the run: each block carries its state in words and colour, a stopped, failed or paused run is marked where it ended, the arrows the run took are drawn heavier, and Follow keeps the running block in view until you move the canvas.
 - A run dock on Blocks: status, turns, minutes and dollars, the open question or gate card, Run without leaving the tab, a steer box with Now and Stop, queued cards, and a note when you save a file during a run (it applies to the next run).

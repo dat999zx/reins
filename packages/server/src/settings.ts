@@ -47,7 +47,8 @@ export interface Price { input: number; cacheWrite: number; source: 'table' | 'c
 /**
  * The price of the first reply on `model`: the provider's table, else the catalog's input price (a context tier at or under
  * `tokens` replaces it) times the provider's cacheWritePerInput. Hermes also keeps a labelled docs snapshot first.
- * ponytail: tiers are chosen by the tokens of the switch, not of a later turn.
+ * ponytail: tiers are chosen by the tokens of the switch, not of a later turn, and only on the catalog path: the provider's own table is flat
+ * (Haiku's catalog tier above 100k tokens, 5x the input price, is not in it; the estimate stays far under the USD limit).
  */
 export function priceFor(provider: Pick<Provider, 'prices' | 'cacheWritePerInput'>, catalog: CatalogModel[], model: string, tokens: number): Price | undefined {
   const t = provider.prices[model];
