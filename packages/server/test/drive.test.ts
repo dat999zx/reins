@@ -40,6 +40,87 @@ describe('parseAnswer (one grammar, the terminal words)', () => {
   });
 });
 
+describe('parseAnswer usd (Task 2, milestone C)', () => {
+  const hint = { t: 'invalid', hint: 'Type allow $<amount> more, like allow $0.50, or stop.' };
+  it('allow $<amount> [more], stop; anything else is the hint', () => {
+    expect(parseAnswer('usd', 'allow $0.50')).toEqual({ t: 'allowUsd', usd: 0.5 });
+    expect(parseAnswer('usd', 'allow 0.5 more')).toEqual({ t: 'allowUsd', usd: 0.5 });
+    expect(parseAnswer('usd', 'ALLOW $2')).toEqual({ t: 'allowUsd', usd: 2 });
+    for (const a of ['allow $0', 'allow $1.234', 'allow', 'x']) expect(parseAnswer('usd', a), a).toEqual(hint);
+    expect(parseAnswer('usd', 'stop')).toEqual({ t: 'stop' });
+  });
+});
+
+describe('driveRun on a USD pause (Task 2, milestone C)', () => {
+  const blockRun = (usd: number | undefined = 1.3) => new Run({
+    workflow: { ...wf([step('model-1', 'model', { attrs: { model: 'm', usd: '0.10' } }), phase('a'), phase('b'), phase('c')]), budget: { turns: 20, minutes: 20, ...(usd === undefined ? {} : { usd }) } },
+    engine: new FakeEngine([{ text: 'REINS: done', cost: 0.06 }, { text: 'REINS: done', cost: 0.06 }, { text: 'REINS: done', cost: 0.06 }]),
+    switchModel: async (m) => ({ to: 'switched', label: m }),
+  });
+
+  it('asks the usd question with its prompt and detail; allow resumes and the run finishes', async () => {
+    const run = blockRun();
+    const t = testIo(() => 'allow $0.05');
+    const r = await driveRun(run, t.io, () => {});
+    expect(r).toEqual({ result: 'finished' });
+    expect(run.status).toBe('done');
+    expect(t.lines).toContain('⏸ block model-1 used its $0.10 budget ($0.12 spent)');
+    expect(t.questions).toEqual([{
+      id: expect.stringMatching(/^[0-9a-f]+$/), kind: 'usd', prompt: 'allow $<amount> more / stop',
+      detail: 'Block `model-1` has used $0.12 of its $0.10. The workflow\'s USD budget has $1.18 left.',
+    }]);
+    // 0.12 spent + 0.05 allowed = 0.17; c costs 0.06 more and is the last step
+    expect(run.snapshot().runCost).toBeCloseTo(0.18, 9);
+  });
+
+  it('an allow past the workflow says the refusal and asks again', async () => {
+    const run = blockRun(0.2);
+    const answers = ['allow $5', 'stop'];
+    const t = testIo(() => answers.shift() ?? null);
+    await driveRun(run, t.io, () => {});
+    expect(t.lines).toContain("Allow at most $0.08: the workflow's USD budget has that much left.");
+    expect(t.questions.map((q) => q.kind)).toEqual(['usd', 'usd']);
+    expect(run.status).toBe('stopped');
+  });
+
+  it('a null answer to the usd question detaches; the run stays paused on it', async () => {
+    const run = blockRun();
+    const t = testIo(() => null);
+    const r = await driveRun(run, t.io, () => {});
+    expect(r).toEqual({ result: 'detached' });
+    expect(run.status).toBe('paused');
+    expect(run.pauseReason).toMatchObject({ type: 'usd-budget-used', stepId: 'model-1' });
+    expect(t.questions).toHaveLength(1);
+  });
+
+  it("the workflow's own budget says its own words", async () => {
+    const run = new Run({ workflow: { ...wf([phase('a'), phase('b'), phase('c')]), budget: { turns: 20, minutes: 20, usd: 0.1 } }, engine: new FakeEngine([{ text: 'REINS: done', cost: 0.06 }, { text: 'REINS: done', cost: 0.06 }]) });
+    const t = testIo(() => 'stop');
+    await driveRun(run, t.io, () => {});
+    expect(t.lines).toContain('⏸ the run used its $0.10 USD budget ($0.12 spent)');
+    expect(t.questions[0]).toMatchObject({ kind: 'usd', detail: 'The run has used $0.12 of its $0.10 USD budget.' });
+  });
+
+  it('a stop pause with a step id says the step; without one says a card did', async () => {
+    const closed = new Run({ workflow: wf([step('model-1', 'model', { attrs: { model: 'm' } }), phase('a')]), engine: new FakeEngine(), switchModel: async () => ({ to: 'closed' }) });
+    const t = testIo(() => null);
+    await driveRun(closed, t.io, () => {});
+    expect(t.lines[0]).toBe('⏸ model-1: the switch question was closed before it was answered; Resume asks it again');
+
+    const card = new Run({ workflow: wf([phase('a')]), engine: new FakeEngine() });
+    card.queueCard('wait', 'stop');
+    const u = testIo(() => null);
+    await driveRun(card, u.io, () => {});
+    expect(u.lines[0]).toBe('⏹ stopped by a card: wait');
+  });
+
+  it('runOptions passes switchModel through', () => {
+    const switchModel = async () => ({ to: 'same' as const, label: 'x' });
+    const o = runOptions(testIo().io, { workflow: wf([]), engine: new FakeEngine(), cwd: process.cwd(), resolveBlock: () => undefined, onEvent: () => {}, switchModel });
+    expect(o.switchModel).toBe(switchModel);
+  });
+});
+
 describe('driveRun', () => {
   it('a gate question with the terminal prompt, approve goes on and finishes', async () => {
     const t = testIo(() => 'approve');

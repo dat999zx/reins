@@ -1,6 +1,7 @@
 import type { Workflow, Step, Cond } from './model.js';
 import { compileProgram, compileTurn, type Instr, type Policy, type StepStart } from './compile.js';
 import type { Engine, EngineSession, TurnResult } from './fake-engine.js';
+import { NODES, type ExecCtx, type SwitchOutcome } from './nodes/index.js';
 import { CARDS } from './cards/index.js';
 import { evalCond, evalCondSync, type EvalCtx } from './cond.js';
 
@@ -18,10 +19,14 @@ export interface PauseReason {
     | 'run-turn-budget-used'
     | 'agent-blocked'
     | 'step-deleted'
+    | 'usd-budget-used'
     | 'stop';
+  /** A step's own id: the loop, the gate, the model step of a `stop` pause, the slice of a USD pause (absent for the workflow's budget). */
   stepId?: string;
   cond?: Cond;
   limit?: number;
+  /** usd-budget-used: what was spent against the limit when the check hit. */
+  spent?: number;
   reason?: string;
   text?: string;
   /** link-budget-used: the jump that was interrupted, and its counter key. */
@@ -90,6 +95,8 @@ export interface RunOptions {
   onEvent?: (ev: RunEventRecord) => void;
   /** A session the caller owns: Run uses it and never opens or closes it (3b.1). */
   session?: EngineSession;
+  /** A model step asks the host to put the session on `model`; absent in a host that cannot (the terminal). */
+  switchModel?: (model: string, step: string) => Promise<SwitchOutcome>;
 }
 
 export interface RunSnapshot {
@@ -110,7 +117,17 @@ export interface RunSnapshot {
   lastTurnText?: string;
   loopLimitExtensions?: Record<string, number>;
   linkLimitExtensions?: Record<string, number>;
+  /** USD counted over the whole run. */
+  runCost?: number;
+  /** USD counted while each model step's slice was open, by step id. */
+  usdSpent?: Record<string, number>;
+  /** What an Allow added to a limit beyond its base; the key '' is the workflow's. */
+  usdExtra?: Record<string, number>;
+  openSlice?: { step: string; usd: number };
 }
+
+/** Money sums carry float noise (0.1 + 0.07): six decimals keep every logged figure exact to the cent and below. */
+const r6 = (x: number) => Math.round(x * 1e6) / 1e6;
 
 export class Run {
   workflow: Workflow;
@@ -151,6 +168,12 @@ export class Run {
   private resumeSessionId?: string;
   private turnInFlight = false;
   private interruptCard?: { text: string; kind: 'now' | 'stop' };
+  private switchModel?: (model: string, step: string) => Promise<SwitchOutcome>;
+  private runCost = 0;
+  // ponytail: spent is per slice step and is not reset when a loop passes the model step again
+  private usdSpent: Record<string, number> = {};
+  private usdExtra: Record<string, number> = {};
+  private openSlice?: { step: string; usd: number };
 
   constructor(opts: RunOptions) {
     this.workflow = opts.workflow;
@@ -167,6 +190,7 @@ export class Run {
     this.onEvent = opts.onEvent;
     this.borrowed = opts.session;
     this.engineSession = opts.session;
+    this.switchModel = opts.switchModel;
 
     this.program = compileProgram(this.workflow, this.resolveBlock, this.starts);
 
@@ -274,10 +298,77 @@ export class Run {
     return this.interruptCard?.kind === 'stop' || this.status === 'stopped';
   }
 
-  private pauseForStop(text: string) {
+  /** `stepId` marks a step's own pause (a model step), said apart from a stop card. */
+  private pauseForStop(text: string, stepId?: string) {
     this.status = 'paused';
-    this.pauseReason = { type: 'stop', text };
-    this.logEvent('run_paused', { reason: 'stop', text });
+    this.pauseReason = { type: 'stop', text, ...(stepId ? { stepId } : {}) };
+    this.logEvent('run_paused', { reason: 'stop', text, ...(stepId ? { stepId } : {}) });
+  }
+
+  /** The workflow's USD budget with allowances, minus the run's cost; undefined when the workflow sets none. */
+  usdLeft(): number | undefined {
+    const usd = this.workflow.budget.usd;
+    return usd === undefined ? undefined : r6(usd + (this.usdExtra[''] ?? 0) - this.runCost);
+  }
+
+  /**
+   * "Allow $n more" at a USD pause: n more from now, so the new limit clears what is spent.
+   * Returns why it refused; a slice can never be raised past what the workflow has left.
+   */
+  allowUsd(n: number): string | undefined {
+    const p = this.pauseReason;
+    if (this.status !== 'paused' || p?.type !== 'usd-budget-used') return undefined;
+    const key = p.stepId ?? '';
+    const base = p.stepId === undefined ? this.workflow.budget.usd! : this.openSlice?.usd ?? p.limit! - (this.usdExtra[key] ?? 0);
+    const spent = p.stepId === undefined ? this.runCost : this.usdSpent[key] ?? 0;
+    if (p.stepId !== undefined) {
+      const left = this.usdLeft();
+      if (left !== undefined && n > left + 1e-9) {
+        return `Allow at most $${(Math.floor(Math.max(left, 0) * 100 + 1e-6) / 100).toFixed(2)}: the workflow's USD budget has that much left.`;
+      }
+    }
+    this.usdExtra[key] = r6(Math.max(this.usdExtra[key] ?? 0, spent - base) + n);
+    this.status = 'running';
+    this.pauseReason = undefined;
+    this.logEvent('run_resumed', { allowUsd: n, usd: r6(base + this.usdExtra[key]!), ...(p.stepId ? { step: p.stepId } : {}) });
+    return undefined;
+  }
+
+  /** The host's hands for a NODE step (P12). */
+  private execCtx(step: string): ExecCtx {
+    return {
+      ...(this.switchModel ? { switchModel: this.switchModel } : {}),
+      slice: (id, usd) => { this.openSlice = usd === undefined ? undefined : { step: id, usd }; },
+      log: (type, data) => this.logEvent(type, data),
+      pause: (text) => { if (this.status === 'running') this.pauseForStop(text, step); },
+      stop: () => this.stop(),
+    };
+  }
+
+  /**
+   * USD is checked between steps, after the fact, so a reply can run past a limit. The workflow's
+   * budget comes first: a slice pause then always has workflow money left, so its Allow is never a dead end.
+   */
+  // ponytail: a reply with an unknown cost counts 0; an auto-compaction whose reply failed is logged outside the run and not counted
+  private usdOver(): boolean {
+    const hit = (stepId: string | undefined, limit: number, spent: number) => {
+      this.status = 'paused';
+      this.pauseReason = { type: 'usd-budget-used', ...(stepId ? { stepId } : {}), limit: r6(limit), spent: r6(spent) };
+      this.logEvent('budget_reached', { ...(stepId ? { step: stepId } : {}), usd: r6(limit), spent: r6(spent) });
+      return true;
+    };
+    const usd = this.workflow.budget.usd;
+    if (usd !== undefined) {
+      const limit = usd + (this.usdExtra[''] ?? 0);
+      if (this.runCost >= limit - 1e-9) return hit(undefined, limit, this.runCost);
+    }
+    const s = this.openSlice;
+    if (s) {
+      const limit = s.usd + (this.usdExtra[s.step] ?? 0);
+      const spent = this.usdSpent[s.step] ?? 0;
+      if (spent >= limit - 1e-9) return hit(s.step, limit, spent);
+    }
+    return false;
   }
 
   /**
@@ -332,7 +423,15 @@ export class Run {
       this.totalTurns++;
       this.lastTurnText = result.text;
       this.handleTurnResult(result);
-      this.logEvent('turn_ended', { step: stepId, text: result.text, cost: result.cost });
+      this.runCost += result.cost ?? 0;
+      const slice = this.openSlice;
+      if (slice) this.usdSpent[slice.step] = (this.usdSpent[slice.step] ?? 0) + (result.cost ?? 0);
+      const usage = result.events?.find((e): e is Extract<typeof e, { type: 'usage' }> => e.type === 'usage');
+      this.logEvent('turn_ended', {
+        step: stepId, text: result.text, cost: result.cost,
+        ...(usage ? { model: usage.model } : {}),
+        ...(slice ? { slice: { step: slice.step, spent: r6(this.usdSpent[slice.step]!), usd: r6(slice.usd + (this.usdExtra[slice.step] ?? 0)) } } : {}),
+      });
 
       if (this.status === 'stopped') {
         const held = this.interruptCard;
@@ -516,6 +615,10 @@ export class Run {
       lastTurnText: this.lastTurnText,
       loopLimitExtensions: Object.fromEntries(this.loopLimitExtensions),
       linkLimitExtensions: Object.fromEntries(this.linkLimitExtensions),
+      runCost: this.runCost,
+      usdSpent: { ...this.usdSpent },
+      usdExtra: { ...this.usdExtra },
+      ...(this.openSlice ? { openSlice: { ...this.openSlice } } : {}),
     };
   }
 
@@ -532,6 +635,7 @@ export class Run {
       diffLines: opts.diffLines,
       cwd: opts.cwd,
       session: opts.session,
+      switchModel: opts.switchModel,
     });
 
     // Set after construction so the constructor's own run_started is not reported again.
@@ -558,6 +662,11 @@ export class Run {
     if (snapshot.linkLimitExtensions) {
       run.linkLimitExtensions = new Map(Object.entries(snapshot.linkLimitExtensions));
     }
+    // A snapshot from before milestone C has no runCost: sum it from the run's own cost rows.
+    run.runCost = snapshot.runCost ?? snapshot.events.filter((e) => e.type === 'engine_cost').reduce((a, e) => a + Number(e.data?.usd || 0), 0);
+    if (snapshot.usdSpent) run.usdSpent = { ...snapshot.usdSpent };
+    if (snapshot.usdExtra) run.usdExtra = { ...snapshot.usdExtra };
+    if (snapshot.openSlice) run.openSlice = { ...snapshot.openSlice };
 
     return run;
   }
@@ -605,10 +714,12 @@ export class Run {
       return this.status;
     }
 
+    const instr = this.program[this.programCounter]!;
+    // Every program ends in END: the last reply may pass a limit and the run still finishes instead of pausing.
+    if (instr.op !== 'END' && this.usdOver()) return this.status;
+
     // ponytail: a step re-run after a stop card or REINS: blocked reports its start again; a TURN that hits the run turn budget reports its start, then pauses
     for (const s of this.starts.get(this.programCounter) ?? []) this.logEvent('step_started', s);
-
-    const instr = this.program[this.programCounter]!;
 
     switch (instr.op) {
       case 'RECALL': {
@@ -927,9 +1038,11 @@ export class Run {
         return this.status;
       }
 
-      // Placeholder until Task 2 runs the kind's exec.
       case 'NODE': {
-        this.programCounter++;
+        const n = NODES.get(instr.kind);
+        const out = n?.exec ? await n.exec(instr.src, this.execCtx(instr.step)) : 'next';
+        if (this.status !== 'running') return this.status;
+        if (out === 'next') this.programCounter++;
         return this.status;
       }
 

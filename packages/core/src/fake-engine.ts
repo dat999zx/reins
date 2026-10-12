@@ -80,7 +80,10 @@ export interface Engine {
 
 export interface ScriptedTurn {
   events?: Array<{
-    type: 'text' | 'tool_call' | 'tool_result' | 'refusal' | 'cost' | 'error';
+    type: 'text' | 'tool_call' | 'tool_result' | 'refusal' | 'cost' | 'error' | 'usage';
+    /** usage: the model the reply ran on and the context it used. */
+    model?: string;
+    used?: number;
     tool?: string;
     input?: any;
     output?: any;

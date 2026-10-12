@@ -1,13 +1,13 @@
 import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import {
-  printCond,
+  printCond, usdText,
   type Cond, type Decision, type Engine, type EngineSession, type Run, type RunEventRecord,
   type RunOptions, type ToolRequest, type Workflow,
 } from '@reins/core';
 import { runCommand } from './commands.js';
 
-export interface Question { id: string; kind: 'gate' | 'budget' | 'resume' | 'tool' | 'judge' | 'trust' | 'switch'; prompt: string; detail?: string }
+export interface Question { id: string; kind: 'gate' | 'budget' | 'resume' | 'tool' | 'judge' | 'trust' | 'switch' | 'usd'; prompt: string; detail?: string }
 export interface DriveIo { ask(q: Question): Promise<string | null>; say(line: string): void; write(chunk: string): void }
 
 export type Answer =
@@ -15,13 +15,20 @@ export type Answer =
   | { t: 'changes'; note: string }
   | { t: 'stop' }
   | { t: 'allow'; n: number }
+  | { t: 'allowUsd'; usd: number }
   | { t: 'resume'; note: string }
   | { t: 'invalid'; hint: string };
 
 export const questionId = () => randomBytes(6).toString('hex');
 
 /** The terminal's answer words (run-cli.ts:195-224 at 33ba873). The UI's buttons send these same strings. */
-export function parseAnswer(kind: 'gate' | 'budget' | 'resume', a: string): Answer {
+export function parseAnswer(kind: 'gate' | 'budget' | 'resume' | 'usd', a: string): Answer {
+  if (kind === 'usd') {
+    const m = /^allow\s+\$?(\d+(?:\.\d{1,2})?)(\s+more)?$/i.exec(a);
+    if (m && Number(m[1]) > 0) return { t: 'allowUsd', usd: Number(m[1]) };
+    if (a === 'stop') return { t: 'stop' };
+    return { t: 'invalid', hint: 'Type allow $<amount> more, like allow $0.50, or stop.' };
+  }
   if (kind === 'gate') {
     if (/^(approve|a|y|yes)$/i.test(a)) return { t: 'approve' };
     if (/^changes\s+\S/i.test(a)) return { t: 'changes', note: a.replace(/^changes\s+/i, '') };
@@ -96,8 +103,25 @@ async function onPause(run: Run, io: DriveIo): Promise<boolean> {
     else if (ans.t === 'invalid') io.say(ans.hint);
     return true;
   }
+  if (p.type === 'usd-budget-used') {
+    const limit = usdText(p.limit!), spent = usdText(p.spent!);
+    io.say(p.stepId ? `⏸ block ${p.stepId} used its $${limit} budget ($${spent} spent)` : `⏸ the run used its $${limit} USD budget ($${spent} spent)`);
+    const left = run.usdLeft();
+    const detail = p.stepId
+      ? `Block \`${p.stepId}\` has used $${spent} of its $${limit}.${left === undefined ? '' : ` The workflow's USD budget has $${usdText(Math.max(left, 0))} left.`}`
+      : `The run has used $${spent} of its $${limit} USD budget.`;
+    const a = await io.ask({ id: questionId(), kind: 'usd', prompt: 'allow $<amount> more / stop', detail });
+    if (a === null) return false;
+    const ans = parseAnswer('usd', a);
+    if (ans.t === 'allowUsd') {
+      const why = run.allowUsd(ans.usd);
+      if (why) io.say(why);
+    } else if (ans.t === 'stop') await run.stop();
+    else if (ans.t === 'invalid') io.say(ans.hint);
+    return true;
+  }
   if (p.type === 'agent-blocked' || p.type === 'stop') {
-    io.say(p.type === 'stop' ? `⏹ stopped by a card: ${p.text}` : `⏸ the agent is blocked: ${p.reason}`);
+    io.say(p.type === 'stop' ? (p.stepId ? `⏸ ${p.stepId}: ${p.text}` : `⏹ stopped by a card: ${p.text}`) : `⏸ the agent is blocked: ${p.reason}`);
     const a = await io.ask({ id: questionId(), kind: 'resume', prompt: 'resume [note] / stop' });
     if (a === null) return false;
     const ans = parseAnswer('resume', a);
@@ -135,6 +159,7 @@ export function runOptions(io: DriveIo, o: {
   workflow: Workflow; engine: Engine; cwd: string;
   resolveBlock: (name: string) => Workflow | undefined;
   onEvent: (ev: RunEventRecord) => void; session?: EngineSession;
+  switchModel?: RunOptions['switchModel'];
 }): RunOptions {
   const { cwd } = o;
   const startCommit = git(cwd, ['rev-parse', 'HEAD']).trim();
@@ -144,6 +169,7 @@ export function runOptions(io: DriveIo, o: {
     cwd,
     resolveBlock: o.resolveBlock,
     ...(o.session ? { session: o.session } : {}),
+    ...(o.switchModel ? { switchModel: o.switchModel } : {}),
     commandRunner: async (cmd) => {
       io.say(`$ ${cmd}`);
       const r = await runCommand(cmd, { cwd, onOutput: (s) => io.write(s) });
