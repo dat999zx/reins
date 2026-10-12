@@ -552,7 +552,9 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await workspace.focus();
     await page.keyboard.press('Escape');
     await expect.poll(() => selected.count(), { timeout: W }).toBe(0);
-    // build sits above plan here (8c.2 swapped them)
+    // build sits above plan here (8c.2 swapped them). The undo above may still be settling the canvas: measure once both rows hold still.
+    const still = async () => JSON.stringify([await row('build').boundingBox(), await row('plan').boundingBox()]);
+    await expect.poll(async () => { const a = await still(); await page.waitForTimeout(150); return a === await still(); }, { timeout: W }).toBe(true);
     const upper = (await row('build').boundingBox())!, lower = (await row('plan').boundingBox())!;
     await page.keyboard.down('Shift');
     await drag({ x: upper.x - 20, y: upper.y - 6 }, { x: lower.x + lower.width + 20, y: lower.y + lower.height + 6 });
