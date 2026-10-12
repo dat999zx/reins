@@ -47,6 +47,8 @@ export type EngineEvent =
   | { type: 'thinking'; tokens: number }
   // The parent context after a successful turn: tokens used, and the model's window when the provider knows it.
   | { type: 'usage'; model: string; used: number; window?: number }
+  // The provider compressed the context in place; before and after are its own figures (after leaves the system prompt out, so it is a lower bound).
+  | { type: 'compacted'; trigger: string; before?: number; after?: number }
   // One adapter-side control call (a hook or an approval), so every call lands in the run log.
   | { type: 'hook'; event: string; tool?: string; decision: string; reason?: string };
 
@@ -63,6 +65,8 @@ export interface TurnResult {
 export interface EngineSession {
   readonly sessionId: string;
   turn(text: string): Promise<TurnResult>;
+  /** Compress the conversation in place, as one turn; a provider without one cannot compress. */
+  compact?(): Promise<TurnResult>;
   interrupt(): Promise<void>;
   events: AsyncIterable<EngineEvent>;
   close(): Promise<void>;

@@ -10,7 +10,8 @@
 // Configure with FAKE_CLAUDE_SCRIPT=<json file>:
 //   { "log": "<jsonl file>", "delayMs": 20, "turns": [{ "fixture": "claude-2.1.281-turns.jsonl", "turn": 0,
 //     "approve": true, "text": "final text override", "ignoreInterrupt": false, "delayMs": 200 }] }
-// Turns past the list replay claude-2.1.281-turns.jsonl turn 0.
+// Turns past the list replay claude-2.1.281-turns.jsonl turn 0. "compact": "<fixture>" plays that
+// fixture's turn 1 for a user line that is exactly /compact, without using a scripted turn.
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
@@ -185,7 +186,8 @@ for (;;) {
   const m = queue.shift();
   if (m === null) break;
   interruptReq = undefined;
-  await playTurn(script.turns[turnIndex++] ?? { fixture: 'claude-2.1.281-turns.jsonl', turn: 0 });
+  // Opt-in (script.compact): Reins sends /compact as a user line; play the recorded compaction without using a scripted turn.
+  await playTurn(script.compact && m.message?.content === '/compact' ? { fixture: script.compact, turn: 1 } : script.turns[turnIndex++] ?? { fixture: 'claude-2.1.281-turns.jsonl', turn: 0 });
 }
 mcp?.child.stdin.end();
 mcp?.child.kill();

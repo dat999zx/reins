@@ -150,7 +150,7 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
   const send = (o: unknown) => child.stdin.write(JSON.stringify(o) + '\n');
   let interrupts = 0;
 
-  return {
+  const session: EngineSession = {
     sessionId,
     turn(text) {
       if (dead) return Promise.reject(new Error(`the claude session is dead: ${dead}`));
@@ -161,6 +161,9 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
         send({ type: 'user', message: { role: 'user', content: text } });
       });
     },
+
+    // The CLI's own command, sent as a user line (verified over stream-json input: spike/fixtures/claude-2.1.293-compact.jsonl).
+    compact: () => session.turn('/compact'),
 
     async interrupt() {
       if (!current || dead) return;
@@ -200,6 +203,7 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
       fs.rmSync(dir, { recursive: true, force: true });
     },
   };
+  return session;
 }
 
 /** `claude --version`, then a one-turn call; login state comes only from the CLI's own output (plan D4). */

@@ -99,7 +99,7 @@ describe('usage', () => {
   });
 
   it('every fixture result that is not an error carries a usage with a model and tokens', () => {
-    for (const f of fixtures) {
+    for (const f of fixtures.filter((x) => !x.endsWith('-compact.jsonl'))) {
       const r = replay(f);
       for (const x of r.results.filter((y) => !y.isError)) {
         expect(x.usage, f).toBeDefined();
@@ -159,6 +159,37 @@ describe('usage', () => {
     parse(a('m', four));
     expect(parse(res()).result!.usage).toBeDefined();
     expect(parse(res()).result!.usage).toBeUndefined();
+  });
+});
+
+describe('compacted', () => {
+  const init = { type: 'system', subtype: 'init', session_id: 's', model: 'm' };
+  const boundary = (meta: Record<string, unknown>) => ({ type: 'system', subtype: 'compact_boundary', compact_metadata: meta });
+  const asst = { type: 'assistant', parent_tool_use_id: null, message: { model: 'm', content: [], usage: { input_tokens: 1, cache_creation_input_tokens: 2, cache_read_input_tokens: 3, output_tokens: 4 } } };
+  const res = { type: 'result', result: '', total_cost_usd: 0.1, is_error: false };
+  const feed = (...ms: unknown[]) => { const parse = createStreamParser(); const outs = ms.map((m) => parse(m)); return { events: outs.flatMap((o) => o.events), result: outs.find((o) => o.result)!.result! }; };
+
+  it('the recorded /compact turn: one compacted event with the provider figures, no usage; the next turn is measured', () => {
+    const r = replay('claude-2.1.293-compact.jsonl');
+    expect(r.events.filter((e) => e.type === 'compacted')).toEqual([{ type: 'compacted', trigger: 'manual', before: 34469, after: 4795 }]);
+    // the replayed summary lines are not drawn: the whole fixture holds only the two answers' texts
+    expect(r.events.map((e) => e.type)).toEqual(['text', 'compacted', 'thinking', 'text']);
+    expect(r.results).toHaveLength(3);
+    expect(r.results[1]!.usage).toBeUndefined();
+    expect(r.results[1]!.isError).toBe(false);
+    expect(r.results[2]!.usage).toBeDefined();
+  });
+
+  it('a usage seen before the boundary is dropped; one seen after it is kept', () => {
+    expect(feed(init, asst, boundary({ trigger: 'auto', pre_tokens: 9, post_tokens: 2 }), res).result.usage).toBeUndefined();
+    expect(feed(init, boundary({ trigger: 'auto', pre_tokens: 9, post_tokens: 2 }), asst, res).result.usage).toEqual({ model: 'm', used: 10 });
+  });
+
+  it('a figure that is not a count is left out; no trigger is unknown; auto is kept', () => {
+    const e = feed(init, boundary({ pre_tokens: '9', post_tokens: -1 }), res).events[0]!;
+    expect(e).toEqual({ type: 'compacted', trigger: 'unknown' });
+    expect('before' in e || 'after' in e).toBe(false);
+    expect(feed(init, boundary({ trigger: 'auto', pre_tokens: 9, post_tokens: 2 }), res).events[0]).toEqual({ type: 'compacted', trigger: 'auto', before: 9, after: 2 });
   });
 });
 

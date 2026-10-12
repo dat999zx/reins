@@ -30,6 +30,16 @@ export function createStreamParser(o: { windows?: Record<string, number> } = {})
       if (!sawInit && typeof m.session_id === 'string') out.sessionId = m.session_id;
       sawInit = true;
       if (typeof m.model === 'string') initModel = m.model;
+    } else if (m?.type === 'system' && m.subtype === 'compact_boundary') {
+      // ponytail: after a compact_boundary the turn's earlier usage is dropped; post_tokens is the CLI's figure (it leaves out the system prompt), so it is reported, never used as the measured context.
+      const c = m.compact_metadata;
+      out.events.push({
+        type: 'compacted',
+        trigger: typeof c?.trigger === 'string' ? c.trigger : 'unknown',
+        ...(count(c?.pre_tokens) ? { before: c.pre_tokens } : {}),
+        ...(count(c?.post_tokens) ? { after: c.post_tokens } : {}),
+      });
+      usage = undefined;
     } else if (m?.type === 'system' && m.subtype === 'thinking_tokens' && Number.isFinite(m.estimated_tokens)) {
       const e = Number(m.estimated_tokens);
       const start = !open || e < cur;

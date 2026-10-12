@@ -87,6 +87,24 @@ describe('claude adapter', () => {
     expect(r.events).toContainEqual({ type: 'card_delivered', card: cards[0] ?? 'End your answer with PINEAPPLE.', channel: 'mid-turn' });
   });
 
+  it('compact: /compact goes out as a user line, ends in a compacted event with no usage, and the process lives on', async () => {
+    const COMPACT = 'claude-2.1.293-compact.jsonl';
+    const f = fakeSetup([{ fixture: COMPACT, turn: 0 }], 10, { compact: COMPACT });
+    const s = await engine().open({ cwd: f.dir, policy: () => write });
+    const first = await s.turn('remember');
+    const r = await s.compact!();
+    expect(r.events).toContainEqual({ type: 'compacted', trigger: 'manual', before: 34469, after: 4795 });
+    expect(r.events!.some((e) => e.type === 'usage')).toBe(false);
+    expect(r.isError).toBe(false);
+    expect(r.total).toBeCloseTo(0.00962756);
+    expect(r.cost).toBeCloseTo(0.00962756 - 0.0068948);
+    expect(first.total).toBeCloseTo(0.0068948);
+    const users = f.log().filter((l) => l.kind === 'user').map((l) => l.text);
+    expect(users).toEqual(['remember', '/compact']);
+    expect((await s.turn('and now')).isError).toBe(false);
+    await s.close();
+  });
+
   it('interrupt: a control_request ends the turn, and the session takes the next turn', async () => {
     const f = fakeSetup([{ fixture: 'claude-2.1.281-card-marker-hook.jsonl' }, { fixture: 'claude-2.1.281-interrupt-ctl.jsonl', turn: 1 }], 100);
     const live: EngineEvent[] = [];
