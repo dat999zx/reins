@@ -12,7 +12,7 @@ import { TextTab } from './TextTab.js';
 import { mergeOutput, title, type Sess } from './state.js';
 import { contextWords, modelOptions, pickerBlock, usageOf } from './usage.js';
 
-export type Provider = { id: string; label: string; models: Array<{ id: string; label: string }> };
+export type Provider = { id: string; label: string; models: Array<{ id: string; label: string; window?: number }> };
 
 export function Chat({ sess, catalogue, providers, takeRefill, tab, onTab, restore, onState, onDirty, onError }: {
   sess: Sess; catalogue: TagEntry[]; providers: Provider[]; takeRefill: (input: string) => string; tab: Tab; onTab: (t: Tab) => void;
@@ -32,7 +32,8 @@ export function Chat({ sess, catalogue, providers, takeRefill, tab, onTab, resto
   const rows = useMemo(() => mergeOutput(sess.rows), [sess.rows]);
   const busy = sess.status === 'running' || sess.status === 'waiting';
   const usage = useMemo(() => usageOf(sess.rows), [sess.rows, sess.lastSeq]);
-  const ctx = contextWords(usage);
+  // The stream's window wins; the catalog's (from /api/state) only fills a gap.
+  const ctx = contextWords(usage, providers.find((p) => p.id === sess.engine)?.models.find((m) => m.id === usage?.model)?.window);
   const block = pickerBlock({ busy, detached: sess.detached.length });
   const run = useMemo(() => runView(sess), [sess]);
   const f = useMemo(() => feed(rows, run, new Set(sess.open)), [rows, run, sess.open]);

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { contextSize, detachedRuns, readSetting, switchEstimate, switchRefusal } from '../src/settings.js';
+import type { CatalogModel } from '../src/catalog.js';
+import { contextSize, detachedRuns, priceFor, readSetting, switchEstimate, switchRefusal } from '../src/settings.js';
 import { openStore, type LogRow } from '../src/store.js';
 
 let seq = 0;
@@ -63,7 +64,7 @@ describe('switchRefusal', () => {
     expect(switchRefusal({ ...base, used: 523_112 })).toBe(
       'The context is 523,112 tokens, at or over the 200,000-token switch limit. Switching needs your approval, which Reins cannot ask for yet.');
     expect(switchRefusal({ ...base, used: 37_000, label: 'Fable 5.1', estimate: 0.7 })).toBe(
-      'Switching sends 37,000 tokens to Fable 5.1: about $0.70 (an estimate from list prices), at or over the $0.50 switch limit. Switching needs your approval, which Reins cannot ask for yet.');
+      'Switching sends 37,000 tokens to Fable 5.1: about $0.70 (an estimate from the provider\'s price table), at or over the $0.50 switch limit. Switching needs your approval, which Reins cannot ask for yet.');
     expect(switchRefusal({ ...base, label: 'Fable 5.1', estimate: undefined })).toBe(
       'No price is known for Fable 5.1, so the switch cannot be estimated. Switching needs your approval, which Reins cannot ask for yet.');
   });
@@ -78,5 +79,47 @@ describe('switchRefusal', () => {
     expect(switchRefusal({ ...base, hasSession: false, used: undefined, estimate: undefined })).toBeUndefined();
     expect(switchRefusal({ ...base, hasSession: false, used: 900_000, estimate: 9 })).toBeUndefined();
     expect(switchRefusal(base)).toBeUndefined();
+  });
+});
+
+describe('priceFor', () => {
+  const provider = { prices: { t: { input: 2, cacheWrite: 4 } }, cacheWritePerInput: 2 };
+  const cat = (price?: CatalogModel['price']): CatalogModel[] => [{ id: 'c', label: 'C', ...(price ? { price } : {}) }];
+  it('the provider table comes first and is labelled table', () => {
+    expect(priceFor(provider, cat({ input: 9, output: 9 }), 't', 1000)).toEqual({ input: 2, cacheWrite: 4, source: 'table' });
+  });
+  it('else the catalog input times cacheWritePerInput, labelled catalog', () => {
+    expect(priceFor(provider, cat({ input: 3, output: 9, cacheWrite: 3.75 }), 'c', 1000)).toEqual({ input: 3, cacheWrite: 6, source: 'catalog' });
+  });
+  it('a context tier at or under the tokens is used; its missing input refuses', () => {
+    const tiered = cat({ input: 1, output: 9, tiers: [{ size: 100, input: 5 }, { size: 500 }] });
+    expect(priceFor(provider, tiered, 'c', 99)).toEqual({ input: 1, cacheWrite: 2, source: 'catalog' });
+    expect(priceFor(provider, tiered, 'c', 100)).toEqual({ input: 5, cacheWrite: 10, source: 'catalog' });
+    expect(priceFor(provider, tiered, 'c', 500)).toBeUndefined();
+  });
+  it('is undefined with no table row and no catalog price, or no cacheWritePerInput', () => {
+    expect(priceFor(provider, [], 'c', 1)).toBeUndefined();
+    expect(priceFor(provider, cat(), 'c', 1)).toBeUndefined();
+    expect(priceFor({ prices: {} }, cat({ input: 3, output: 9 }), 'c', 1)).toBeUndefined();
+  });
+});
+
+describe('switchRefusal source', () => {
+  const o = { busy: false, detached: false, hasSession: true, used: 37_000, target: 'm', label: 'Fable 5.1', estimate: 0.7, limits: { tokens: 200_000, usd: 0.5 } };
+  it('words the estimate by where its price came from', () => {
+    expect(switchRefusal({ ...o, source: 'table' })).toContain("(an estimate from the provider's price table)");
+    expect(switchRefusal({ ...o, source: 'catalog' })).toContain('(an estimate from catalog prices, 1-hour cache write)');
+  });
+});
+
+describe('pickerLimit', () => {
+  it('defaults to 8 and falls back on an invalid value', () => {
+    const store = openStore(':memory:');
+    expect(readSetting(store, 'pickerLimit')).toBe(8);
+    store.putSetting('pickerLimit', 3);
+    expect(readSetting(store, 'pickerLimit')).toBe(3);
+    store.putSetting('pickerLimit', 0);
+    expect(readSetting(store, 'pickerLimit')).toBe(8);
+    store.close();
   });
 });

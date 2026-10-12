@@ -6,11 +6,12 @@ import { randomBytes } from 'node:crypto';
 import { printWorkflow, type EngineProbe, type Workflow } from '@reins/core';
 import { sameToken } from './hooks.js';
 import { releaseLock, runningLock, takeLock } from './lock.js';
-import { loadProviders, type Provider } from './providers.js';
+import type { Catalog, CatalogModel } from './catalog.js';
+import { listModels, loadProviders, type PickerModel, type Provider } from './providers.js';
 import { recover } from './recover.js';
 import { loadWorkflow } from './run-cli.js';
 import { openSession, under, type Ack, type MakeEngine, type Session, type SessionDeps } from './session.js';
-import { contextSize, switchEstimate } from './settings.js';
+import { contextSize, priceFor, readSetting, switchEstimate } from './settings.js';
 import type { LogRow, Store } from './store.js';
 import { tagCatalogue, type Tag } from './tags.js';
 import { previewWorkflow, readWorkflow, writeWorkflow } from './workflow-files.js';
@@ -25,6 +26,7 @@ export interface ServerOptions {
   heartbeatMs?: number;
   appDir?: string;
   pickFolder?: (signal: AbortSignal) => Promise<string | null>;
+  catalog?: Catalog;
 }
 export interface Server { port: number; token: string; url: string; close(): Promise<void> }
 
@@ -51,7 +53,7 @@ const str = (v: unknown): v is string => typeof v === 'string';
 const isTags = (v: unknown): v is Tag[] =>
   Array.isArray(v) && v.every((t) => typeof t === 'object' && t !== null && str(t.tag) && (t.arg === undefined || str(t.arg)));
 
-interface Ctx { providers: Provider[]; store: Store }
+interface Ctx { providers: Provider[]; store: Store; list: (p: Provider) => PickerModel[]; catalogOf: (p: Provider) => CatalogModel[] }
 const actions: Record<string, (s: Session, b: Body, ctx: Ctx) => Reply | Promise<Reply>> = {
   message: (s, b) => {
     const tags = b.tags ?? [];
@@ -65,18 +67,20 @@ const actions: Record<string, (s: Session, b: Body, ctx: Ctx) => Reply | Promise
     return fromAck(s.card(b.text, b.kind));
   },
   answer: (s, b) => (str(b.questionId) && str(b.answer) ? fromAck(s.answer(b.questionId, b.answer)) : fail(400, 'questionId and answer must be strings.')),
-  settings: (s, b, { providers, store }) => {
+  settings: (s, b, { providers, store, list, catalogOf }) => {
     const { autoApprove, title, model } = b;
     if (autoApprove !== undefined && typeof autoApprove !== 'boolean') return fail(400, 'autoApprove must be a boolean.');
     if (title !== undefined && !str(title)) return fail(400, 'title must be a string.');
     if (model !== undefined && !str(model)) return fail(400, 'model must be a string.');
-    let target: { estimate: number | undefined; label: string } | undefined;
+    let target: { estimate: number | undefined; label: string; source?: 'table' | 'catalog' } | undefined;
     if (model) {
       // '' is the default; the session's own current model stays selectable even when the list no longer has it.
-      const listed = providers.find((p) => p.id === s.info().engine)?.models.find((m) => m.id === model);
+      const provider = providers.find((p) => p.id === s.info().engine);
+      const listed = provider && list(provider).find((m) => m.id === model);
       if (!listed && model !== s.info().model) return fail(400, "Unknown model for this session's provider.");
-      const price = providers.find((p) => p.id === s.info().engine)?.prices[model];
-      target = { estimate: switchEstimate(contextSize(store.readLog(s.id)), price), label: listed?.label ?? model };
+      const used = contextSize(store.readLog(s.id));
+      const price = provider && used !== undefined ? priceFor(provider, catalogOf(provider), model, used) : undefined;
+      target = { estimate: switchEstimate(used, price), label: listed?.label ?? model, ...(price ? { source: price.source } : {}) };
     } else if (model === '') {
       target = { estimate: undefined, label: 'the default model' };
     }
@@ -147,6 +151,9 @@ function send(res: http.ServerResponse, r: Reply) {
 
 export async function startServer(o: ServerOptions): Promise<Server> {
   const providers = await loadProviders();
+  const catalog = o.catalog;
+  const catalogOf = (p: Provider): CatalogModel[] => (p.catalog ? catalog?.models(p.catalog) ?? [] : []);
+  const list = (p: Provider) => listModels(p, catalogOf(p), readSetting(o.store, 'pickerLimit'));
   const token = randomBytes(32).toString('hex');
   const sessions = new Map<string, Session>();
   const subs = new Set<(row: LogRow) => void>();
@@ -214,7 +221,10 @@ export async function startServer(o: ServerOptions): Promise<Server> {
 
   async function dispatch(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<Reply> {
     const p = url.pathname;
-    if (req.method === 'GET' && p === '/api/state') return ok({ sessions: [...sessions.values()].map(view), engines, providers: providers.map(({ id, label, models }) => ({ id, label, models })) });
+    if (req.method === 'GET' && p === '/api/state') {
+      void catalog?.refresh(); // never rejects; a no-op inside 4 hours
+      return ok({ sessions: [...sessions.values()].map(view), engines, providers: providers.map((pr) => ({ id: pr.id, label: pr.label, models: list(pr) })) });
+    }
     if (req.method === 'POST' && p === '/api/state/probe') { engines = await probeNow(); return ok({ engines }); }
     if (req.method === 'GET' && p === '/api/tags') return ok({ tags: tagCatalogue() });
     if (req.method === 'GET' && p === '/api/workflows') return workflows(url.searchParams.get('cwd'));
@@ -282,7 +292,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
       }
       if (req.method === 'POST' && Object.hasOwn(actions, m[2]!)) {
         const r = await parse(req);
-        return 'fail' in r ? r.fail : actions[m[2]!]!(s, r.b, { providers, store: o.store });
+        return 'fail' in r ? r.fail : actions[m[2]!]!(s, r.b, { providers, store: o.store, list, catalogOf });
       }
     }
     return fail(404, 'Not found.');
@@ -349,6 +359,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
   let closing: Promise<void> | undefined;
   const close = () => (closing ??= (async () => {
     subs.clear();
+    catalog?.close();
     const stopped = new Promise<void>((resolve) => server.close(() => resolve()));
     server.closeAllConnections();
     await stopped;
@@ -372,5 +383,6 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     await close();
     throw e;
   }
+  void catalog?.refresh(); // once at start; the disk copy is served meanwhile
   return { port, token, url: `${origin}/#token=${token}`, close };
 }

@@ -1,16 +1,22 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import type { CatalogModel } from './catalog.js';
 
 // What a provider (an engine family) tells Reins about itself. Each provider lives in its own folder.
 export interface Provider {
   id: string;
   label: string;
+  /** The CURATED models, in picker order: ids already run on the real CLI. The catalog adds extras after them. */
   models: Array<{ id: string; label: string }>;
+  /** The catalog's key for this provider (models.dev), if it has one. */
+  catalog?: string;
   /** Models whose stream reports no context window. */
   windows: Record<string, number>;
-  /** USD per million tokens. List prices, can go stale. */
+  /** USD per million tokens, as the provider's own CLI bills them (a measured table, not published list prices). Can go stale. */
   prices: Record<string, { input: number; cacheWrite?: number }>;
+  /** What the provider bills a cache write at, as a multiple of the catalog's input price. A provider with none has no catalog price path. */
+  cacheWritePerInput?: number;
   costAcrossResume: 'cumulative' | 'per-process';
 }
 
@@ -29,4 +35,26 @@ export async function loadProviders(root = fileURLToPath(new URL('.', import.met
     found.push(m.provider);
   }
   return found.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+export interface PickerModel { id: string; label: string; window?: number }
+
+/**
+ * The picker's list, after Hermes's `_anthropic_catalog`: the provider's models first, in file order (its label wins),
+ * then catalog extras: tool-call models, no dated ids (`-YYYYMMDD`), newest first, the whole list at most `limit` long
+ * (the provider's own models are never cut). `window` is the catalog's context size.
+ * ponytail: the picker can list an id the CLI rejects; a switch whose first reply fails is undone (session.ts).
+ */
+export function listModels(provider: Pick<Provider, 'models'>, catalog: CatalogModel[], limit: number): PickerModel[] {
+  const known = new Map(catalog.map((m) => [m.id, m]));
+  const withWindow = (id: string, label: string): PickerModel => {
+    const window = known.get(id)?.context;
+    return window === undefined ? { id, label } : { id, label, window };
+  };
+  const have = new Set(provider.models.map((m) => m.id));
+  const extras = catalog
+    .filter((m) => m.toolCall === true && !/-\d{8}$/.test(m.id) && !have.has(m.id))
+    .sort((a, b) => (b.released ?? '').localeCompare(a.released ?? ''))
+    .slice(0, Math.max(0, limit - provider.models.length));
+  return [...provider.models.map((m) => withWindow(m.id, m.label)), ...extras.map((m) => withWindow(m.id, m.label))];
 }

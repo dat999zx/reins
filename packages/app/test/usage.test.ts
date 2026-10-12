@@ -45,6 +45,12 @@ describe('contextWords', () => {
     });
     expect(contextWords(undefined)).toEqual({ text: 'Context —', title: 'Known after the next reply.' });
   });
+
+  it('falls back to the catalog window only when the usage row has none; no usage stays unknown', () => {
+    expect(contextWords({ model: 'm1', used: 30_550, stale: false }, 200_000).text).toBe('Context 31k / 200k');
+    expect(contextWords({ model: 'm1', used: 30_550, window: 1_000_000, stale: false }, 200_000).text).toBe('Context 31k / 1M');
+    expect(contextWords(undefined, 200_000).text).toBe('Context —');
+  });
 });
 
 describe('modelOptions', () => {

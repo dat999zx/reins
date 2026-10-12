@@ -961,7 +961,7 @@ describe('model switch (A)', () => {
     x.s.message('small');
     await x.s.idle();
     expect(sw(x, 'model-c', { estimate: 0.7, label: 'Fable 5.1' })).toMatchObject(
-      conflict('Switching sends 1,000 tokens to Fable 5.1: about $0.70 (an estimate from list prices), at or over the $0.50 switch limit. Switching needs your approval, which Reins cannot ask for yet.'));
+      conflict('Switching sends 1,000 tokens to Fable 5.1: about $0.70 (an estimate from the provider\'s price table), at or over the $0.50 switch limit. Switching needs your approval, which Reins cannot ask for yet.'));
     expect(sw(x, 'model-c', { estimate: undefined, label: 'Fable 5.1' })).toMatchObject(
       conflict('No price is known for Fable 5.1, so the switch cannot be estimated. Switching needs your approval, which Reins cannot ask for yet.'));
     expect(x.store.getSession('s1')!.model).toBe('model-b');

@@ -503,7 +503,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
    * `estimate` and `label` describe the target model (the server knows the provider's prices; the session does not).
    * A model switch retires the process; the next reply opens `--resume <same id>` on the new model (F1).
    */
-  function settings(p: { autoApprove?: boolean; title?: string; model?: string; estimate?: number | undefined; label?: string }): Ack {
+  function settings(p: { autoApprove?: boolean; title?: string; model?: string; estimate?: number | undefined; label?: string; source?: 'table' | 'catalog' }): Ack {
     const from = store.getSession(id)!.model;
     const switching = p.model !== undefined && p.model !== (from ?? '');
     if (switching) {
@@ -511,7 +511,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       const refusal = switchRefusal({
         busy, detached: detachedRuns(store.readLog(id)).length > 0, hasSession: !!store.getSession(id)!.engineSessionId,
         used: contextSize(store.readLog(id)), target: p.model!, ...(p.label !== undefined ? { label: p.label } : {}),
-        estimate: p.estimate,
+        estimate: p.estimate, ...(p.source !== undefined ? { source: p.source } : {}),
         limits: { tokens: readSetting(store, 'switchApprovalTokens'), usd: readSetting(store, 'switchApprovalUsd') },
       });
       if (refusal) return conflict(refusal);

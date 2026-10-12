@@ -1,9 +1,10 @@
 // The HTTP API and the SSE stream (plan 15d 3b.6 lines 1500-1552, 3b.7 line 1553, 3b.8 HTTP tests).
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { createCatalog } from '../src/catalog.js';
 import { startServer } from '../src/server.js';
 import { openStore } from '../src/store.js';
 import { takeLock } from '../src/lock.js';
@@ -230,8 +231,67 @@ describe('state, probing and sessions (3b.6 1526-1528, 1543)', () => {
     w.store.putSetting('switchApprovalUsd', 0.1);
     const r = await w.post(id, 'settings', { model: 'claude-fable-5-1' });
     expect(r.status).toBe(409);
-    expect(r.json.error).toMatch(/^Switching sends 30,550 tokens to Fable 5\.1: about \$0\.61 \(an estimate from list prices\), at or over the \$0\.10 switch limit\./);
+    expect(r.json.error).toMatch(/^Switching sends 30,550 tokens to Fable 5\.1: about \$0\.61 \(an estimate from the provider's price table\), at or over the \$0\.10 switch limit\./);
     expect(w.store.getSession(id)).not.toHaveProperty('model');
+  });
+
+  describe('the model catalog (4b)', () => {
+    const catalogFile = () => {
+      const file = path.join(tmpDir(), 'cache.json');
+      const m = (name: string, date: string, context: number) => ({ name, release_date: date, tool_call: true, limit: { context }, cost: { input: 1, output: 5 } });
+      fs.writeFileSync(file, JSON.stringify({ anthropic: { models: {
+        'claude-fable-5-1': m('Claude Fable 5.1', '2026-09-01', 1_000_000), 'claude-extra-9': m('Extra 9', '2026-10-01', 500_000),
+      } } }));
+      return file;
+    };
+
+    it('the state carries each model\'s window and the catalog extras', async () => {
+      const w = await boot([], { catalog: createCatalog({ file: catalogFile() }) });
+      const models = (await w.api('GET', '/api/state')).json.providers[0].models;
+      expect(models).toEqual([
+        { id: 'claude-opus-5-5', label: 'Opus 5.5' }, { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' }, { id: 'claude-haiku-5-5', label: 'Haiku 5.5' },
+        { id: 'claude-fable-5-1', label: 'Fable 5.1', window: 1_000_000 }, { id: 'claude-extra-9', label: 'Extra 9', window: 500_000 },
+      ]);
+    });
+
+    it('a catalog-only id is accepted by settings; a made-up one is still 400', async () => {
+      const w = await boot([], { catalog: createCatalog({ file: catalogFile() }) });
+      const id = await w.session();
+      expect((await w.post(id, 'settings', { model: 'claude-extra-9' })).status).toBe(200);
+      expect((await w.post(id, 'settings', { model: 'made-up' })).status).toBe(400);
+    });
+
+    it('a catalog price drives the estimate and says so', async () => {
+      const w = await boot([TURN], { catalog: createCatalog({ file: catalogFile() }) });
+      const id = await w.session();
+      await w.say(id, 'hello');
+      await w.settled(id, 1);
+      w.store.putSetting('switchApprovalUsd', 0.05);
+      const r = await w.post(id, 'settings', { model: 'claude-extra-9' });
+      expect(r.status).toBe(409);
+      expect(r.json.error).toMatch(/^Switching sends 30,550 tokens to Extra 9: about \$0\.06 \(an estimate from catalog prices, 1-hour cache write\)/);
+    });
+
+    it('the server refreshes the catalog at start and closes it with itself', async () => {
+      const calls: string[] = [];
+      const catalog = { models: () => [], refresh: async () => { calls.push('refresh'); }, close: () => { calls.push('close'); } };
+      const w = await boot([], { catalog });
+      expect(calls).toEqual(['refresh']);
+      await w.srv.close();
+      expect(calls).toEqual(['refresh', 'close']);
+    });
+
+    it('a server booted without a catalog never calls fetch', async () => {
+      const spy = vi.fn();
+      vi.stubGlobal('fetch', spy);
+      try {
+        const w = await boot();
+        expect((await w.api('GET', '/api/state')).status).toBe(200);
+        expect(spy).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
   });
 
   it('a probe that throws becomes an installed:false entry instead of stopping the server', async () => {

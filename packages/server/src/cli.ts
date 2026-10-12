@@ -34,6 +34,8 @@ interface Io {
   env: NodeJS.ProcessEnv;
   stop?: Promise<void>;
   open?: (url: string) => void;
+  /** Only the process entry point sets it, so no test reaches the network. */
+  fetch?: typeof fetch;
 }
 
 /** Split argv into positionals and --flags; a flag takes the next word unless it is boolean. */
@@ -117,6 +119,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
       ...(raw !== undefined ? { port: Number(raw) } : {}),
       ...(appDir ? { appDir } : {}),
       pickFolder: (signal) => pickFolder(signal),
+      ...(io.fetch ? { fetch: io.fetch } : {}),
       ...(bare ? { open } : {}),
       makeEngine: ({ model, effort, onApprove, onLive }) =>
         claudeEngine({ bin, ...(model ? { model } : {}), ...(effort ? { effort } : {}), onApprove, onLive }),
@@ -170,7 +173,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(fs.realpathSync(process.argv[1])).href) {
-  main(process.argv.slice(2), { stdout: process.stdout, stderr: process.stderr, stdin: process.stdin, env: process.env }).then(
+  main(process.argv.slice(2), { stdout: process.stdout, stderr: process.stderr, stdin: process.stdin, env: process.env, fetch: globalThis.fetch }).then(
     (code) => { process.exitCode = code; },
     (e) => { process.stderr.write(`reins: ${e?.message ?? e}\n`); process.exitCode = 1; }
   );

@@ -28,11 +28,13 @@ export function tokens(n: number): string {
 
 const num = (n: number) => n.toLocaleString('en-US');
 
-export function contextWords(u?: Usage): { text: string; title: string } {
+/** `fallback` is the catalog's window for the model; the usage row's own window (the stream's) wins. */
+export function contextWords(u?: Usage, fallback?: number): { text: string; title: string } {
   if (!u) return { text: 'Context —', title: 'Known after the next reply.' };
-  const text = `Context ${u.stale ? '≥' : ''}${tokens(u.used)} / ${u.window === undefined ? '?' : tokens(u.window)}`;
+  const window = u.window ?? fallback;
+  const text = `Context ${u.stale ? '≥' : ''}${tokens(u.used)} / ${window === undefined ? '?' : tokens(window)}`;
   if (u.stale) return { text, title: 'At least this: measured before the latest activity.' };
-  return { text, title: `${u.model}: ${num(u.used)}${u.window === undefined ? '' : ` of ${num(u.window)}`} tokens after the last reply.` };
+  return { text, title: `${u.model}: ${num(u.used)}${window === undefined ? '' : ` of ${num(window)}`} tokens after the last reply.` };
 }
 
 /** Default first, the provider's list, then the current model when the list does not have it. */
