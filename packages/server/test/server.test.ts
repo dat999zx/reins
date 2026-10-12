@@ -9,7 +9,7 @@ import { startServer } from '../src/server.js';
 import { openStore } from '../src/store.js';
 import { takeLock } from '../src/lock.js';
 import { tagCatalogue } from '../src/tags.js';
-import { until } from './helpers.js';
+import { fakeSetup, until } from './helpers.js';
 import { askedQuestion, boot, cleanup, openStream, PROBE, request, tmpDir } from './http-helpers.js';
 
 afterEach(cleanup);
@@ -237,6 +237,30 @@ describe('state, probing and sessions (3b.6 1526-1528, 1543)', () => {
     const a = await w.post(id, 'answer', { questionId: (q.data as { id: string }).id, answer: 'switch' });
     expect(a.status).toBe(200);
     expect(w.store.getSession(id)!.model).toBe('claude-fable-5-1');
+  });
+
+  it('POST compress: 409 before a message; then 200 and a compacted row, costing the compaction only; the next reply costs its own', async () => {
+    const fake = fakeSetup([TURN, TURN], 10, { compact: 'claude-2.1.293-compact.jsonl' });
+    const w = await boot([], { fake });
+    try {
+      const id = await w.session();
+      const early = await w.post(id, 'compress');
+      expect(early.status).toBe(409);
+      expect(early.json.error).toBe('Nothing to compress yet: send a message first.');
+      await w.say(id, 'hello');
+      await w.settled(id, 1);
+      expect((await w.post(id, 'compress')).status).toBe(200);
+      await w.settled(id, 2);
+      expect(w.rows(id, 'engine').map((r) => r.data)).toContainEqual({ type: 'compacted', trigger: 'manual', before: 34469, after: 4795 });
+      await w.say(id, 'again');
+      await w.settled(id, 3);
+      const cost = w.rows(id, 'turn_ended').map((r) => (r.data as { cost: number }).cost);
+      expect(cost[1]).toBeCloseTo(0.00962756 - 0.0068948, 6); // the fixture's /compact total less its turn 0 total
+      expect(cost[2]).toBeCloseTo(cost[0]!, 6); // the same recorded turn: only its own cost
+    } finally {
+      await w.srv.close();
+      fs.rmSync(fake.dir, { recursive: true, force: true });
+    }
   });
 
   describe('the model catalog (4b)', () => {

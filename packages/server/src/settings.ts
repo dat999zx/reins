@@ -7,6 +7,8 @@ export const SETTINGS = {
   switchApprovalTokens: { default: 200_000, valid: (v: unknown) => Number.isInteger(v) && (v as number) > 0 },
   switchApprovalUsd: { default: 0.5, valid: (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0 },
   pickerLimit: { default: 8, valid: (v: unknown) => Number.isInteger(v) && (v as number) > 0 },
+  // The fraction of the window at which a reply is preceded by a compression. 1 is off: at 100 % the window is already full.
+  autoCompressAt: { default: 0.9, valid: (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 1 },
 };
 
 export function readSetting(store: Store, key: keyof typeof SETTINGS): number {
@@ -27,6 +29,30 @@ export function contextSize(rows: LogRow[]): number | undefined {
     return typeof used === 'number' ? used : undefined;
   }
   return undefined;
+}
+
+/** The window of the newest usage row, whatever came after it. */
+export function contextWindow(rows: LogRow[]): number | undefined {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i]!;
+    if (r.type !== 'engine' || type(r) !== 'usage') continue;
+    const w = (r.data as { window?: unknown }).window;
+    return typeof w === 'number' ? w : undefined;
+  }
+  return undefined;
+}
+
+/** The newest usage row was measured right after a compaction: a `compacted` row lies between it and the usage row before it. */
+export function measuredAfterCompaction(rows: LogRow[]): boolean {
+  let i = rows.length - 1;
+  while (i >= 0 && !(rows[i]!.type === 'engine' && type(rows[i]!) === 'usage')) i--;
+  for (i--; i >= 0; i--) {
+    const r = rows[i]!;
+    if (r.type !== 'engine') continue;
+    if (type(r) === 'usage') return false;
+    if (type(r) === 'compacted') return true;
+  }
+  return false;
 }
 
 /** Run ids whose last row is run_detached (a server restart leaves a run waiting at a gate that way). */

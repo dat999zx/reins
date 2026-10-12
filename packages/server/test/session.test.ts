@@ -1129,3 +1129,203 @@ describe('switch approval (B)', () => {
     expect(modelRows(x)).toEqual([{ model: 'model-b' }]);
   });
 });
+
+describe('compress (B)', () => {
+  const autoNote = (n: number, pct: number, w = '1,000,000') =>
+    `The context, ${n.toLocaleString('en-US')} tokens, is at or over ${pct}% of the ${w}-token window: compressing before the next reply.`;
+  const stillNote = 'The context is still at or over 50% of the window after compressing, so Reins does not compress again before this reply.';
+  const notes = (x: ReturnType<typeof setup>) => x.data('note').map((d) => d.text as string);
+  const compactedRows = (x: ReturnType<typeof setup>) => x.data('engine').filter((d) => d.type === 'compacted');
+
+  it('is 409 before any message, and while busy', async () => {
+    const x = setup([{ hold: true }]);
+    expect(x.s.compress()).toEqual({ ok: false, code: 409, error: 'Nothing to compress yet: send a message first.' });
+    x.s.message('one');
+    await turnsStarted(x, 1);
+    expect(x.s.compress()).toEqual({ ok: false, code: 409, error: 'Compress when the session is idle.' });
+    x.t.release();
+    await x.s.idle();
+    expect(x.t.compacts).toBe(0);
+  });
+
+  it('after a turn: the /compress user row, the compacted row, a turn_ended with the cost, idle; it is not a message turn', async () => {
+    const x = setup([{}, {}]);
+    x.s.message('one');
+    await x.s.idle();
+    const from = x.log().length;
+    expect(x.s.compress()).toEqual({ ok: true });
+    await x.s.idle();
+    expect(x.log().slice(from).filter((r) => r.type !== 'status').map((r) => [r.type, r.data])).toEqual([
+      ['message', { role: 'user', text: '/compress' }],
+      ['engine', { type: 'compacted', trigger: 'manual', before: 1000, after: 100 }],
+      ['turn_ended', { text: '', cost: 0.01 }],
+    ]);
+    expect(x.t.compacts).toBe(1);
+    expect(x.t.turns).toEqual(['one']);
+    expect(x.s.status()).toBe('idle');
+  });
+
+  it("the reply after a compaction is charged only its own cost, and the stored total is the running total", async () => {
+    const x = setup([{ total: 0.5, usage: 1000 }, { total: 0.6, cost: 0.1 }, { total: 0.75, cost: 0.15 }]);
+    x.s.message('one');
+    await x.s.idle();
+    x.s.compress();
+    await x.s.idle();
+    x.s.message('two');
+    await x.s.idle();
+    expect(x.data('turn_ended').map((d) => d.cost)).toEqual([0.01, 0.1, 0.15]);
+    expect(x.store.getEngineTotal(x.store.getSession('s1')!.engineSessionId!)).toBe(0.75);
+    // a restart counts from that total
+    await x.s.shutdown();
+    const s2 = x.reopen();
+    s2.message('three');
+    await s2.idle();
+    expect(x.t.opens.at(-1)!.costBase).toBe(0.75);
+  });
+
+  it('closes a waiting switch card (work started before it was answered)', async () => {
+    const x = setup([{ usage: 300_000 }, {}]);
+    x.s.message('one');
+    await x.s.idle();
+    x.s.settings({ model: 'model-b', estimate: 0.01, label: 'Test model' });
+    const q = x.rows('question').at(-1)!.data as { id: string; kind: string };
+    expect(q.kind).toBe('switch');
+    expect(x.s.compress()).toEqual({ ok: true });
+    await x.s.idle();
+    expect(x.data('question_closed').at(-1)).toEqual({ questionId: q.id, why: 'work started before it was answered' });
+    expect(x.store.getSession('s1')!.model).toBeUndefined();
+  });
+
+  it('an engine session without compact fails the turn: "This provider cannot compress."', async () => {
+    const store = openStore(':memory:');
+    const t = testEngine([{}]);
+    const makeEngine: MakeEngine = (e) => {
+      const eng = t.makeEngine(e);
+      return { ...eng, open: async (o) => { const s = await eng.open(o); delete s.compact; return s; } };
+    };
+    const row = store.createSession({ id: 's1', cwd: tmp(), engine: 'claude' });
+    const s = openSession({ store, makeEngine, dir: tmp() }, row, true);
+    s.message('one');
+    await s.idle();
+    expect(s.compress()).toEqual({ ok: true });
+    await s.idle();
+    const failed = store.readLog('s1').filter((r) => r.type === 'turn_failed');
+    expect(failed.map((r) => r.data)).toEqual([{ error: 'This provider cannot compress.' }]);
+    expect(t.compacts).toBe(0);
+    expect(s.status()).toBe('idle');
+  });
+
+  it('Stop during a held compaction interrupts it like a turn', async () => {
+    const x = setup([{}, { hold: true }]);
+    x.s.message('one');
+    await x.s.idle();
+    x.s.compress();
+    await until(() => x.t.compacts === 1);
+    expect(x.s.card('', 'stop')).toEqual({ ok: true });
+    await x.s.idle();
+    expect(x.t.interrupts).toBe(1);
+    expect(compactedRows(x)).toEqual([]);
+    expect(x.s.status()).toBe('idle');
+  });
+
+  describe('auto-compress', () => {
+    it('at or over autoCompressAt of the window it compresses first, then sends the reply; the reply carries both costs; the next message does not compress again', async () => {
+      const x = setup([{ usage: 600_000 }, {}, {}, {}]);
+      x.store.putSetting('autoCompressAt', 0.5);
+      x.s.message('one');
+      await x.s.idle();
+      expect(x.t.compacts).toBe(0);
+      x.s.message('two');
+      await x.s.idle();
+      expect(notes(x)).toEqual([autoNote(600_000, 50)]);
+      expect(x.t.compacts).toBe(1);
+      expect(x.t.turns).toEqual(['one', 'two']);
+      expect(x.data('turn_ended').at(-1)).toEqual({ text: 'ok', cost: 0.02 });
+      x.s.message('three');
+      await x.s.idle();
+      expect(x.t.compacts).toBe(1);
+      expect(notes(x)).toHaveLength(1);
+    });
+
+    it('under the threshold nothing is compressed; the default is 90% of the window', async () => {
+      const under = setup([{ usage: 400_000 }, {}, {}]);
+      under.store.putSetting('autoCompressAt', 0.5);
+      under.s.message('one');
+      await under.s.idle();
+      under.s.message('two');
+      await under.s.idle();
+      expect(under.t.compacts).toBe(0);
+
+      const below = setup([{ usage: 899_999 }, {}, {}]);
+      below.s.message('one');
+      await below.s.idle();
+      below.s.message('two');
+      await below.s.idle();
+      expect(below.t.compacts).toBe(0);
+
+      const at = setup([{ usage: 900_000 }, {}, {}, {}]);
+      at.s.message('one');
+      await at.s.idle();
+      at.s.message('two');
+      await at.s.idle();
+      expect(at.t.compacts).toBe(1);
+      expect(notes(at)).toEqual([autoNote(900_000, 90)]);
+    });
+
+    it('autoCompressAt 1 is off: even a full window is not compressed', async () => {
+      const x = setup([{ usage: 1_000_000 }, {}, {}]);
+      x.store.putSetting('autoCompressAt', 1);
+      x.s.message('one');
+      await x.s.idle();
+      x.s.message('two');
+      await x.s.idle();
+      expect(x.t.compacts).toBe(0);
+      expect(x.t.turns).toEqual(['one', 'two']);
+      expect(notes(x)).toEqual([]);
+    });
+
+    it('in a run, its note carries the run id', async () => {
+      const x = setup([{ usage: 600_000 }, {}, { text: 'REINS: done' }]);
+      x.store.putSetting('autoCompressAt', 0.5);
+      x.s.message('one');
+      await x.s.idle();
+      x.s.runFile(put(x.cwd, 'a.reins.md', ECHO));
+      const q = await x.question('trust');
+      x.s.answer(q.id, 'y');
+      await x.s.idle();
+      const runId = x.rows('run_started')[0]!.runId!;
+      const note = x.rows('note').find((r) => (r.data as { text: string }).text === autoNote(600_000, 50))!;
+      expect(note.runId).toBe(runId);
+      expect(x.t.compacts).toBe(1);
+    });
+
+    it('no progress: when the size measured right after a compaction is still over, it skips, with one note', async () => {
+      const x = setup([{ usage: 600_000 }, {}, { usage: 700_000 }, {}, {}]);
+      x.store.putSetting('autoCompressAt', 0.5);
+      x.s.message('one');
+      await x.s.idle();
+      x.s.message('two'); // compresses; its reply is measured at 700k, still over
+      await x.s.idle();
+      expect(x.t.compacts).toBe(1);
+      x.s.message('three');
+      await x.s.idle();
+      expect(x.t.compacts).toBe(1);
+      expect(notes(x)).toEqual([autoNote(600_000, 50), stillNote]);
+      expect(x.t.turns).toEqual(['one', 'two', 'three']);
+    });
+
+    it('a Stop during the auto-compaction returns without sending the reply (C3)', async () => {
+      const x = setup([{ usage: 600_000 }, { hold: true }, {}]);
+      x.store.putSetting('autoCompressAt', 0.5);
+      x.s.message('one');
+      await x.s.idle();
+      x.s.message('two');
+      await until(() => x.t.compacts === 1);
+      expect(x.s.card('', 'stop')).toEqual({ ok: true });
+      await x.s.idle();
+      expect(x.t.turns).toEqual(['one']);
+      expect(x.rows('turn_ended')).toHaveLength(2);
+      expect(x.s.status()).toBe('idle');
+    });
+  });
+});

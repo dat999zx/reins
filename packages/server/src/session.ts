@@ -4,10 +4,10 @@ import path from 'node:path';
 import {
   Run, receipt,
   type Decision, type Diagnostic, type Engine, type EngineEvent, type EngineSession, type Policy,
-  type RunEventRecord, type RunOptions, type ToolRequest, type Workflow,
+  type RunEventRecord, type RunOptions, type ToolRequest, type TurnResult, type Workflow,
 } from '@reins/core';
 import { askTool, driveRun, questionId, runOptions, type DriveIo, type Question } from './drive.js';
-import { contextSize, detachedRuns, readSetting, switchCheck, type SwitchCheck } from './settings.js';
+import { contextSize, contextWindow, detachedRuns, measuredAfterCompaction, readSetting, switchCheck, type SwitchCheck } from './settings.js';
 import type { LogRow, SessionRow, Store } from './store.js';
 import { taggedWorkflow, type Tag, type Tagged } from './tags.js';
 import { loadWorkflow } from './run-cli.js';
@@ -186,39 +186,75 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   const ensureEngine = (): Promise<EngineSession | undefined> =>
     live ? Promise.resolve(live) : (opening ??= openEngine().finally(() => { opening = undefined; }));
 
+  /** One engine call (a reply or a compaction): the process, the cost total, the unknown-cost note, a failed switch. */
+  async function call(f: (s: EngineSession) => Promise<TurnResult>): Promise<TurnResult> {
+    notSent = false;
+    const s = await ensureEngine();
+    if (!s) { notSent = true; return { text: '', events: [] }; }
+    let res: TurnResult;
+    turnOpen = true;
+    try {
+      res = await f(s);
+    } catch (e) {
+      markDead(msg(e));
+      undoSwitch(msg(e));
+      throw e;
+    } finally {
+      turnOpen = false;
+      closeQuestions('the turn ended', 'tool');
+    }
+    if (res.total !== undefined) store.putEngineTotal(s.sessionId, res.total);
+    // ponytail: a session from before the cost table shows its first reply's cost as unknown; a switch to Default has no price, so with a context it asks with the switch card.
+    if (baseUnknown && res.total !== undefined) {
+      baseUnknown = false;
+      if (res.cost === undefined) log('note', { text: "This reply's cost is not known: the session began before Reins kept the provider's running total. Later replies are counted." });
+    }
+    const err = res.events?.find((e) => e.type === 'error');
+    if (err && err.type === 'error') markDead(err.message);
+    else if (!store.getSession(id)!.engineSessionId) store.updateSession(id, { engineSessionId: s.sessionId });
+    if (pendingSwitch) {
+      if (res.isError) undoSwitch(res.text || err?.message || 'the reply was an error');
+      else if (!err) pendingSwitch = undefined;
+    }
+    return res;
+  }
+
+  const compactCall = (s: EngineSession) => (s.compact ? s.compact() : Promise.reject(new Error('This provider cannot compress.')));
+
+  /** Compresses first when the known context is at or over autoCompressAt of the window; the reply's cost then includes the compaction's. */
+  // ponytail: the window is the stream's (the usage row's); a model whose window is only in the catalog never auto-compresses; the compaction's cost is added to the reply it preceded.
+  async function turnWithAutoCompress(text: string): Promise<TurnResult> {
+    const s = await ensureEngine(); // the check needs s.compact; a missing s goes to call()'s not-sent path
+    let pre: TurnResult | undefined;
+    if (s?.compact) {
+      const rows = store.readLog(id);
+      const used = contextSize(rows);
+      const w = contextWindow(rows);
+      const at = readSetting(store, 'autoCompressAt');
+      if (at < 1 && used !== undefined && w !== undefined && used >= w * at) {
+        const pct = Math.round(at * 100);
+        if (measuredAfterCompaction(rows)) {
+          log('note', { text: `The context is still at or over ${pct}% of the window after compressing, so Reins does not compress again before this reply.` }, runId);
+        } else {
+          log('note', { text: `The context, ${used.toLocaleString('en-US')} tokens, is at or over ${pct}% of the ${w.toLocaleString('en-US')}-token window: compressing before the next reply.` }, runId);
+          pre = await call(compactCall);
+          // A Stop during the compaction interrupted it: do not send the reply. A now card still gets its turn.
+          // ponytail: in a run a Stop is a queued card that the run acts on after this call returns, so a Stop pressed during an auto-compaction still lets this one reply go out first; honouring it here needs a look into the run's held card.
+          if (stopping || intent?.kind === 'stop') {
+            return { text: '', events: [], ...(pre.cost !== undefined ? { cost: pre.cost } : {}), ...(pre.total !== undefined ? { total: pre.total } : {}) };
+          }
+        }
+      }
+    }
+    const res = await call((x) => x.turn(text));
+    const cost = pre?.cost === undefined ? res.cost : (res.cost ?? 0) + pre.cost;
+    return cost === undefined || cost === res.cost ? res : { ...res, cost };
+  }
+
   const lent: EngineSession = {
     get sessionId() { return live?.sessionId ?? store.getSession(id)?.engineSessionId ?? ''; },
-    async turn(text) {
-      notSent = false;
-      const s = await ensureEngine();
-      if (!s) { notSent = true; return { text: '', events: [] }; }
-      let res: Awaited<ReturnType<EngineSession['turn']>>;
-      turnOpen = true;
-      try {
-        res = await s.turn(text);
-      } catch (e) {
-        markDead(msg(e));
-        undoSwitch(msg(e));
-        throw e;
-      } finally {
-        turnOpen = false;
-        closeQuestions('the turn ended', 'tool');
-      }
-      if (res.total !== undefined) store.putEngineTotal(s.sessionId, res.total);
-      // ponytail: a session from before the cost table shows its first reply's cost as unknown; a switch to Default has no price, so with a context it asks with the switch card.
-      if (baseUnknown && res.total !== undefined) {
-        baseUnknown = false;
-        if (res.cost === undefined) log('note', { text: "This reply's cost is not known: the session began before Reins kept the provider's running total. Later replies are counted." });
-      }
-      const err = res.events?.find((e) => e.type === 'error');
-      if (err && err.type === 'error') markDead(err.message);
-      else if (!store.getSession(id)!.engineSessionId) store.updateSession(id, { engineSessionId: s.sessionId });
-      if (pendingSwitch) {
-        if (res.isError) undoSwitch(res.text || err?.message || 'the reply was an error');
-        else if (!err) pendingSwitch = undefined;
-      }
-      return res;
-    },
+    turn: turnWithAutoCompress,
+    compact: () => call(compactCall),
     async interrupt() {
       if (turnOpen && live) await live.interrupt();
     },
@@ -264,10 +300,10 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     }
   }
 
-  async function plainTurn(text: string): Promise<boolean> {
-    let res: Awaited<ReturnType<EngineSession['turn']>>;
+  async function plainTurn(text: string, compact = false): Promise<boolean> {
+    let res: TurnResult;
     try {
-      res = await lent.turn(text);
+      res = await (compact ? lent.compact!() : lent.turn(text));
     } catch (e) {
       log('turn_failed', { error: msg(e) });
       return false;
@@ -276,13 +312,16 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     return true;
   }
 
-  async function plainLoop(first: string, carried = false) {
+  /** `compress`: the first turn is a compaction instead of a reply to `first`; cards queued meanwhile follow as usual. */
+  async function plainLoop(first: string, carried = false, compress = false) {
     plainActive = true;
     try {
       let text = first;
+      let compact = compress;
       if (carried) log('message', { role: 'user', text, fromCards: true });
       for (;;) {
-        const ok = await plainTurn(text);
+        const ok = await plainTurn(text, compact);
+        compact = false;
         const it = intent;
         intent = undefined;
         if (!ok || stopping || it?.kind === 'stop') {
@@ -459,6 +498,17 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     return OK;
   }
 
+  // The word /compress is Reins' command; what the provider is sent is its own engine's business.
+  function compress(): Ack {
+    if (closingP) return closingAck();
+    if (busy) return conflict('Compress when the session is idle.');
+    if (!store.getSession(id)!.engineSessionId) return conflict('Nothing to compress yet: send a message first.');
+    begin();
+    log('message', { role: 'user', text: '/compress' });
+    start(() => plainLoop('', false, true));
+    return OK;
+  }
+
   function message(text: string, tags: Tag[] = []): Ack {
     if (closingP) return closingAck();
     if (tags.length) {
@@ -593,7 +643,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     id,
     info: () => store.getSession(id)!,
     status: () => status,
-    message, card, answer, settings, runFile, resume, close, shutdown,
+    message, card, answer, settings, compress, runFile, resume, close, shutdown,
     idle: () => worker,
   };
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { CatalogModel } from '../src/catalog.js';
-import { contextSize, detachedRuns, priceFor, readSetting, switchEstimate, switchCheck } from '../src/settings.js';
+import { contextSize, contextWindow, detachedRuns, measuredAfterCompaction, priceFor, readSetting, switchEstimate, switchCheck } from '../src/settings.js';
 import { openStore, type LogRow } from '../src/store.js';
 
 let seq = 0;
@@ -36,6 +36,43 @@ describe('contextSize', () => {
     expect(contextSize([usage(30), row('turn_failed', { error: 'x' })])).toBeUndefined();
     expect(contextSize([usage(10), row('engine', { type: 'text', text: 'hi' }), usage(5)])).toBe(5);
     expect(contextSize([usage(10), row('turn_failed', { error: 'x' }), row('engine', { type: 'text', text: 'hi' })])).toBeUndefined();
+  });
+});
+
+describe('autoCompressAt and the compaction helpers (B)', () => {
+  const compacted = () => row('engine', { type: 'compacted', trigger: 'manual', before: 30, after: 5 });
+
+  it('autoCompressAt: 0.9 by default, a stored fraction up to 1 (off) is kept, anything else falls back', () => {
+    const store = openStore(':memory:');
+    expect(readSetting(store, 'autoCompressAt')).toBe(0.9);
+    store.putSetting('autoCompressAt', 0.5);
+    expect(readSetting(store, 'autoCompressAt')).toBe(0.5);
+    store.putSetting('autoCompressAt', 1);
+    expect(readSetting(store, 'autoCompressAt')).toBe(1);
+    for (const bad of [0, 1.5, 'x']) {
+      store.putSetting('autoCompressAt', bad);
+      expect(readSetting(store, 'autoCompressAt')).toBe(0.9);
+    }
+    store.close();
+  });
+
+  it('a compaction makes the size unknown (the rule the deviation relies on)', () => {
+    expect(contextSize([usage(30), compacted()])).toBeUndefined();
+  });
+
+  it('contextWindow is the newest usage row\'s window, whatever came after it', () => {
+    expect(contextWindow([])).toBeUndefined();
+    expect(contextWindow([row('engine', { type: 'usage', model: 'm', used: 5 })])).toBeUndefined();
+    expect(contextWindow([usage(10), row('engine', { type: 'usage', model: 'm', used: 5, window: 200_000 })])).toBe(200_000);
+    expect(contextWindow([usage(10), row('engine', { type: 'text', text: 'hi' }), compacted(), row('turn_failed', {})])).toBe(1_000_000);
+  });
+
+  it('measuredAfterCompaction: a compacted row lies between the newest usage and the one before it', () => {
+    expect(measuredAfterCompaction([usage(1), compacted(), usage(2)])).toBe(true);
+    expect(measuredAfterCompaction([usage(1), usage(2)])).toBe(false);
+    expect(measuredAfterCompaction([compacted(), usage(2)])).toBe(true);
+    expect(measuredAfterCompaction([usage(1), compacted()])).toBe(false);
+    expect(measuredAfterCompaction([])).toBe(false);
   });
 });
 

@@ -89,6 +89,7 @@ const actions: Record<string, (s: Session, b: Body, ctx: Ctx) => Reply | Promise
       ...(model !== undefined ? { model, ...target } : {}),
     }));
   },
+  compress: (s) => fromAck(s.compress()),
   run: (s, b) => (str(b.path) && b.path ? fromAck(s.runFile(b.path)) : fail(400, 'path must be a non-empty string.')),
   resume: (s, b) => (str(b.runId) && b.runId ? fromAck(s.resume(b.runId)) : fail(400, 'runId must be a non-empty string.')),
   close: async (s) => { await s.close(); return ok(); },
