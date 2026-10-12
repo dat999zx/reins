@@ -9,6 +9,7 @@ export interface TestTurn {
   error?: string;                                                         // the result carries an error event (never emitted live, as the adapter's interrupt timeout)
   lateApprove?: boolean;                                                  // an approval request arrives after the turn has ended
   usage?: number;                                                         // emit a usage event with this context size after the text
+  window?: number;                                                        // that usage event's window (default 1,000,000)
   cost?: number | null;                                                   // the turn's cost (default 0.01); null = not known
   total?: number;                                                         // the provider's raw running total after the turn
   isError?: boolean;                                                      // the result is an error that no interrupt asked for
@@ -77,7 +78,7 @@ export function testEngine(script: TestTurn[] = []) {
             if (!interrupted) emit({ type: 'compacted', trigger: 'manual', ...(t.compacted ?? { before: 1000, after: 100 }) });
           } else {
             emit({ type: 'text', text: text2 });
-            if (t.usage !== undefined) emit({ type: 'usage', model: 'm', used: t.usage, window: 1_000_000 });
+            if (t.usage !== undefined) emit({ type: 'usage', model: 'm', used: t.usage, window: t.window ?? 1_000_000 });
           }
           if (t.error) events.push({ type: 'error', message: t.error });
           if (t.lateApprove) setTimeout(() => { void onApprove({ tool: 'Bash', input: { command: 'late' } }).then((d) => state.decisions.push(d)); }, 20);

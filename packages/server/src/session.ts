@@ -7,7 +7,7 @@ import {
   type RunEventRecord, type RunOptions, type ToolRequest, type TurnResult, type Workflow,
 } from '@reins/core';
 import { askTool, driveRun, questionId, runOptions, type DriveIo, type Question } from './drive.js';
-import { contextSize, contextWindow, detachedRuns, measuredAfterCompaction, readSetting, switchCheck, type SwitchCheck } from './settings.js';
+import { contextSize, contextWindow, detachedRuns, readSetting, stillOverAfterCompaction, switchCheck, type SwitchCheck } from './settings.js';
 import type { LogRow, SessionRow, Store } from './store.js';
 import { taggedWorkflow, type Tag, type Tagged } from './tags.js';
 import { loadWorkflow } from './run-cli.js';
@@ -219,34 +219,43 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     return res;
   }
 
-  const compactCall = (s: EngineSession) => (s.compact ? s.compact() : Promise.reject(new Error('This provider cannot compress.')));
+  const compactCall = (s: EngineSession) => s.compact!();
 
   /** Compresses first when the known context is at or over autoCompressAt of the window; the reply's cost then includes the compaction's. */
   // ponytail: the window is the stream's (the usage row's); a model whose window is only in the catalog never auto-compresses; the compaction's cost is added to the reply it preceded.
   async function turnWithAutoCompress(text: string): Promise<TurnResult> {
-    const s = await ensureEngine(); // the check needs s.compact; a missing s goes to call()'s not-sent path
+    const s = await ensureEngine(); // the check needs s.compact
+    if (!s) { notSent = true; return { text: '', events: [] }; } // a Stop landed while the engine opened
     let pre: TurnResult | undefined;
-    if (s?.compact) {
+    if (s.compact) {
       const rows = store.readLog(id);
       const used = contextSize(rows);
       const w = contextWindow(rows);
       const at = readSetting(store, 'autoCompressAt');
       if (at < 1 && used !== undefined && w !== undefined && used >= w * at) {
         const pct = Math.round(at * 100);
-        if (measuredAfterCompaction(rows)) {
+        if (stillOverAfterCompaction(rows, w * at)) {
           log('note', { text: `The context is still at or over ${pct}% of the window after compressing, so Reins does not compress again before this reply.` }, runId);
         } else {
           log('note', { text: `The context, ${used.toLocaleString('en-US')} tokens, is at or over ${pct}% of the ${w.toLocaleString('en-US')}-token window: compressing before the next reply.` }, runId);
           pre = await call(compactCall);
           // A Stop during the compaction interrupted it: do not send the reply. A now card still gets its turn.
-          // ponytail: in a run a Stop is a queued card that the run acts on after this call returns, so a Stop pressed during an auto-compaction still lets this one reply go out first; honouring it here needs a look into the run's held card.
-          if (stopping || intent?.kind === 'stop') {
+          if (stopping || intent?.kind === 'stop' || run?.stopHeld) {
             return { text: '', events: [], ...(pre.cost !== undefined ? { cost: pre.cost } : {}), ...(pre.total !== undefined ? { total: pre.total } : {}) };
           }
         }
       }
     }
-    const res = await call((x) => x.turn(text));
+    // The compaction's cost reaches the log even when the reply does not: its own row has no runId, so it is no turn of a run.
+    const lost = () => { if (pre?.cost !== undefined) log('turn_ended', { text: '', cost: pre.cost }); };
+    let res: TurnResult;
+    try {
+      res = await call((x) => x.turn(text));
+    } catch (e) {
+      lost();
+      throw e;
+    }
+    if (notSent && pre) { lost(); return res; }
     const cost = pre?.cost === undefined ? res.cost : (res.cost ?? 0) + pre.cost;
     return cost === undefined || cost === res.cost ? res : { ...res, cost };
   }
@@ -254,7 +263,11 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   const lent: EngineSession = {
     get sessionId() { return live?.sessionId ?? store.getSession(id)?.engineSessionId ?? ''; },
     turn: turnWithAutoCompress,
-    compact: () => call(compactCall),
+    async compact() {
+      const s = await ensureEngine();
+      if (s && !s.compact) throw new Error('This provider cannot compress.'); // a healthy process: no markDead, no undoSwitch
+      return call(compactCall);
+    },
     async interrupt() {
       if (turnOpen && live) await live.interrupt();
     },
@@ -502,6 +515,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   function compress(): Ack {
     if (closingP) return closingAck();
     if (busy) return conflict('Compress when the session is idle.');
+    if (detachedRuns(store.readLog(id)).length > 0) return conflict('A run is left paused in this session. Resume or stop it before compressing.');
     if (!store.getSession(id)!.engineSessionId) return conflict('Nothing to compress yet: send a message first.');
     begin();
     log('message', { role: 'user', text: '/compress' });

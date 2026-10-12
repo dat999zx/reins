@@ -1148,6 +1148,15 @@ describe('compress (B)', () => {
     expect(x.t.compacts).toBe(0);
   });
 
+  it('is 409 while a run is left paused (as a model switch is)', async () => {
+    const x = setup([{}]);
+    x.s.message('one');
+    await x.s.idle();
+    x.store.appendLog('s1', { type: 'run_detached', runId: 'r1', data: {} });
+    expect(x.s.compress()).toEqual({ ok: false, code: 409, error: 'A run is left paused in this session. Resume or stop it before compressing.' });
+    expect(x.t.compacts).toBe(0);
+  });
+
   it('after a turn: the /compress user row, the compacted row, a turn_ended with the cost, idle; it is not a message turn', async () => {
     const x = setup([{}, {}]);
     x.s.message('one');
@@ -1211,6 +1220,7 @@ describe('compress (B)', () => {
     await s.idle();
     const failed = store.readLog('s1').filter((r) => r.type === 'turn_failed');
     expect(failed.map((r) => r.data)).toEqual([{ error: 'This provider cannot compress.' }]);
+    expect(store.readLog('s1').filter((r) => r.type === 'note')).toEqual([]); // no "dropped" note: the process is healthy
     expect(t.compacts).toBe(0);
     expect(s.status()).toBe('idle');
   });
@@ -1312,6 +1322,77 @@ describe('compress (B)', () => {
       expect(x.t.compacts).toBe(1);
       expect(notes(x)).toEqual([autoNote(600_000, 50), stillNote]);
       expect(x.t.turns).toEqual(['one', 'two', 'three']);
+    });
+
+    it('a Stop while the engine is opening (after a switch) sends nothing', async () => {
+      const x = setup([{ usage: 1000 }, {}]);
+      x.s.message('one');
+      await x.s.idle();
+      x.t.holdClose();
+      x.s.settings({ model: 'model-b', estimate: 0.01, label: 'Test model' });
+      x.s.message('hi');
+      expect(x.s.card('', 'stop')).toEqual({ ok: true });
+      x.t.releaseClose();
+      await x.s.idle();
+      expect(x.t.turns).toEqual(['one']);
+    });
+
+    it('no progress holds for every reply while the context stays over, one note each; a reply under the limit lets it compress again', async () => {
+      const x = setup([{ usage: 600_000 }, {}, { usage: 700_000 }, { usage: 700_000 }, {}]);
+      x.store.putSetting('autoCompressAt', 0.5);
+      for (const m of ['one', 'two', 'three', 'four']) {
+        x.s.message(m);
+        await x.s.idle();
+      }
+      expect(x.t.compacts).toBe(1);
+      expect(notes(x)).toEqual([autoNote(600_000, 50), stillNote, stillNote]);
+
+      const y = setup([{ usage: 600_000 }, {}, { usage: 100_000 }, { usage: 600_000 }, {}, {}]);
+      y.store.putSetting('autoCompressAt', 0.5);
+      for (const m of ['one', 'two', 'three', 'four']) {
+        y.s.message(m);
+        await y.s.idle();
+      }
+      expect(y.t.compacts).toBe(2);
+      expect(notes(y)).toEqual([autoNote(600_000, 50), autoNote(600_000, 50)]);
+    });
+
+    it("the compaction's cost is logged when the reply after it fails", async () => {
+      const x = setup([{ usage: 600_000 }, { cost: 0.02 }, { reject: 'x' }]);
+      x.store.putSetting('autoCompressAt', 0.5);
+      x.s.message('one');
+      await x.s.idle();
+      x.s.message('two');
+      await x.s.idle();
+      expect(x.data('turn_failed')).toEqual([{ error: 'x' }]);
+      expect(x.data('turn_ended').map((d) => d.cost)).toEqual([0.01, 0.02]);
+    });
+
+    it('after a model switch the old window is not known, so the first reply is not compressed', async () => {
+      const x = setup([{ usage: 190_000, window: 200_000 }, {}, {}]);
+      x.s.message('one');
+      await x.s.idle();
+      x.s.settings({ model: 'model-b', estimate: 0.01, label: 'Test model' });
+      x.s.message('two');
+      await x.s.idle();
+      expect(x.t.compacts).toBe(0);
+      expect(x.t.turns).toEqual(['one', 'two']);
+    });
+
+    it('in a run, a Stop during the auto-compaction does not send the reply', async () => {
+      const x = setup([{ usage: 600_000 }, { hold: true }, {}]);
+      x.store.putSetting('autoCompressAt', 0.5);
+      x.s.message('one');
+      await x.s.idle();
+      x.s.message('two', [{ tag: 'read-only' }]);
+      await until(() => x.t.compacts === 1);
+      expect(x.s.card('', 'stop')).toEqual({ ok: true });
+      // a stop pauses the run, which asks resume / stop; answering stop ends it
+      const r = await x.question('resume');
+      x.s.answer(r.id, 'stop');
+      await x.s.idle();
+      expect(x.t.turns).toEqual(['one']);
+      expect(x.s.status()).toBe('idle');
     });
 
     it('a Stop during the auto-compaction returns without sending the reply (C3)', async () => {

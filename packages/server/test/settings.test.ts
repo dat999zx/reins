@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { CatalogModel } from '../src/catalog.js';
-import { contextSize, contextWindow, detachedRuns, measuredAfterCompaction, priceFor, readSetting, switchEstimate, switchCheck } from '../src/settings.js';
+import { contextSize, contextWindow, detachedRuns, priceFor, stillOverAfterCompaction, readSetting, switchEstimate, switchCheck } from '../src/settings.js';
 import { openStore, type LogRow } from '../src/store.js';
 
 let seq = 0;
@@ -67,12 +67,23 @@ describe('autoCompressAt and the compaction helpers (B)', () => {
     expect(contextWindow([usage(10), row('engine', { type: 'text', text: 'hi' }), compacted(), row('turn_failed', {})])).toBe(1_000_000);
   });
 
-  it('measuredAfterCompaction: a compacted row lies between the newest usage and the one before it', () => {
-    expect(measuredAfterCompaction([usage(1), compacted(), usage(2)])).toBe(true);
-    expect(measuredAfterCompaction([usage(1), usage(2)])).toBe(false);
-    expect(measuredAfterCompaction([compacted(), usage(2)])).toBe(true);
-    expect(measuredAfterCompaction([usage(1), compacted()])).toBe(false);
-    expect(measuredAfterCompaction([])).toBe(false);
+  it('contextWindow is unknown once the model was changed after the usage row', () => {
+    const w = (n: number) => row('engine', { type: 'usage', model: 'm', used: 1, window: n });
+    expect(contextWindow([w(200_000), row('settings', { model: 'x' })])).toBeUndefined();
+    expect(contextWindow([row('settings', { model: 'x' }), w(1_000_000)])).toBe(1_000_000);
+    expect(contextWindow([w(200_000), row('settings', { title: 't' })])).toBe(200_000);
+  });
+
+  it('stillOverAfterCompaction: a compaction, then usage rows that are all at or over the limit', () => {
+    const f = (rows: LogRow[]) => stillOverAfterCompaction(rows, 10);
+    expect(f([usage(20), compacted(), usage(10)])).toBe(true);
+    expect(f([usage(20), compacted(), usage(10), usage(30), usage(11)])).toBe(true);
+    expect(f([usage(20), compacted(), usage(10), usage(5)])).toBe(false);
+    expect(f([usage(20), compacted(), usage(5), usage(30)])).toBe(false);
+    expect(f([usage(20), compacted(), usage(5), compacted(), usage(30)])).toBe(true);
+    expect(f([usage(20), compacted()])).toBe(false);
+    expect(f([usage(20), usage(30)])).toBe(false);
+    expect(f([])).toBe(false);
   });
 });
 

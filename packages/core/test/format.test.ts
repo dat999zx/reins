@@ -276,6 +276,13 @@ describe('budget line', () => {
     expect(text).toContain('budget: { turns: 10, minutes: 30, usd: 2.50 }\n');
     expect(parseWorkflow(text).workflow!.budget).toEqual({ turns: 10, minutes: 30, usd: 2.5 });
   });
+  it('prints a limit that two decimals would change as it is, and it reads back unchanged', () => {
+    for (const [usd, printed] of [[0.0001, '0.0001'], [0.005, '0.005'], [1e21, '1e+21'], [12, '12.00']] as const) {
+      const text = printWorkflow({ ...base, budget: { turns: 10, minutes: 30, usd } });
+      expect(text).toContain(`usd: ${printed} }\n`);
+      expect(parseWorkflow(text).workflow!.budget.usd).toBe(usd);
+    }
+  });
   it('prints no usd, and parses no usd key, without one', () => {
     const text = printWorkflow({ ...base, budget: { turns: 10, minutes: 30 } });
     expect(text).toContain('budget: { turns: 10, minutes: 30 }\n');

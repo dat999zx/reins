@@ -31,10 +31,11 @@ export function contextSize(rows: LogRow[]): number | undefined {
   return undefined;
 }
 
-/** The window of the newest usage row, whatever came after it. */
+/** The window of the newest usage row, whatever came after it; unknown once the model was changed after it. */
 export function contextWindow(rows: LogRow[]): number | undefined {
   for (let i = rows.length - 1; i >= 0; i--) {
     const r = rows[i]!;
+    if (r.type === 'settings' && r.data && 'model' in (r.data as object)) return undefined;
     if (r.type !== 'engine' || type(r) !== 'usage') continue;
     const w = (r.data as { window?: unknown }).window;
     return typeof w === 'number' ? w : undefined;
@@ -42,15 +43,17 @@ export function contextWindow(rows: LogRow[]): number | undefined {
   return undefined;
 }
 
-/** The newest usage row was measured right after a compaction: a `compacted` row lies between it and the usage row before it. */
-export function measuredAfterCompaction(rows: LogRow[]): boolean {
-  let i = rows.length - 1;
-  while (i >= 0 && !(rows[i]!.type === 'engine' && type(rows[i]!) === 'usage')) i--;
-  for (i--; i >= 0; i--) {
+/** A compaction happened and every usage row after the newest one is at or over `limit` (and one exists): compressing again would not help. */
+export function stillOverAfterCompaction(rows: LogRow[], limit: number): boolean {
+  let seen = false;
+  for (let i = rows.length - 1; i >= 0; i--) {
     const r = rows[i]!;
     if (r.type !== 'engine') continue;
-    if (type(r) === 'usage') return false;
-    if (type(r) === 'compacted') return true;
+    if (type(r) === 'compacted') return seen;
+    if (type(r) !== 'usage') continue;
+    const used = (r.data as { used?: unknown }).used;
+    if (typeof used !== 'number' || used < limit) return false;
+    seen = true;
   }
   return false;
 }

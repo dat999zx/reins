@@ -10,7 +10,7 @@ import { RunDock, type Surface } from './RunDock.js';
 import { PHASE, runView, thinkingHeads, thinkingNow } from './runState.js';
 import { TextTab } from './TextTab.js';
 import { mergeOutput, openQuestions, title, type Sess } from './state.js';
-import { compressBlock, contextWords, modelOptions, pickerBlock, usageOf } from './usage.js';
+import { compressBlock, compressBusy, contextWords, hasReplied, modelOptions, pickerBlock, usageOf } from './usage.js';
 
 export type Provider = { id: string; label: string; models: Array<{ id: string; label: string; window?: number }> };
 
@@ -36,7 +36,11 @@ export function Chat({ sess, catalogue, providers, takeRefill, tab, onTab, resto
   const ctx = contextWords(usage, providers.find((p) => p.id === sess.engine)?.models.find((m) => m.id === usage?.model)?.window);
   const asking = openQuestions(sess).some((r) => (r.data as { kind?: string }).kind === 'switch');
   const block = pickerBlock({ busy, detached: sess.detached.length, asking });
-  const cb = compressBlock({ busy, replied: sess.rows.some((r) => r.type === 'turn_ended') });
+  // the server accepts Compress while only a switch card waits (it closes the card)
+  const cb = compressBlock({
+    busy: compressBusy(sess.status, openQuestions(sess).map((r) => (r.data as { kind?: string }).kind)),
+    replied: hasReplied(sess.rows),
+  });
   const run = useMemo(() => runView(sess), [sess]);
   // the panel shows for a run that is live or just ended, not for a plain turn (busy) or a run the user dismissed
   const chatPanel = run.phase !== 'none' && run.phase !== 'busy' && !(run.runId === dismissed && PHASE[run.phase].ended);

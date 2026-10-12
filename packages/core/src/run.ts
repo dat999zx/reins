@@ -267,6 +267,11 @@ export class Run {
     }
   }
 
+  /** A stop is held for the turn in flight, or has already ended the run. */
+  get stopHeld(): boolean {
+    return this.interruptCard?.kind === 'stop' || this.status === 'stopped';
+  }
+
   private pauseForStop(text: string) {
     this.status = 'paused';
     this.pauseReason = { type: 'stop', text };

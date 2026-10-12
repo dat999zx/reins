@@ -52,6 +52,26 @@ export function modelOptions(models: Array<{ id: string; label: string }>, curre
   return out;
 }
 
+/**
+ * The server keeps the engine's session id from the first reply that has no error event, and Compress needs it.
+ * ponytail: the app has no such field, so this reads the log: some turn_ended whose rows since the previous turn_ended / turn_failed hold no error.
+ */
+export function hasReplied(rows: LogRow[]): boolean {
+  let errored = false;
+  for (const r of rows) {
+    if (r.type === 'turn_failed') errored = false;
+    else if (r.type === 'turn_ended') { if (!errored) return true; errored = false; }
+    else if (r.type === 'engine' && (r.data as { type?: string } | null)?.type === 'error') errored = true;
+  }
+  return false;
+}
+
+/** Work is going on for Compress: running, or waiting on anything but a switch card (the server closes that card and compresses). */
+export function compressBusy(status: string, openKinds: Array<string | undefined>): boolean {
+  if (status === 'running') return true;
+  return status === 'waiting' && !(openKinds.length > 0 && openKinds.every((k) => k === 'switch'));
+}
+
 /** The disabled Compress button's title, or undefined while it may be used. */
 export function compressBlock(s: { busy: boolean; replied: boolean }): string | undefined {
   if (s.busy) return 'Compress when the session is idle.';

@@ -6,6 +6,9 @@ import { NODES, defaultId, headingOwns } from '../nodes/index.js';
 // An always rule is printed bare only when YAML reads it back as the same string; else as a JSON string (valid YAML).
 const plain = (s: string) => { try { return YAML.parse(s, { logLevel: 'error' }) === s; } catch { return false; } };
 
+/** A USD limit as text: two decimals when that loses nothing, else the number as it is (0.0001 stays 0.0001). */
+export const usdText = (usd: number): string => (Number(usd.toFixed(2)) === usd ? usd.toFixed(2) : String(usd));
+
 export function printWorkflow(w: Workflow): string {
   const parts: string[] = [];
   const owned = headingOwns();
@@ -30,7 +33,7 @@ export function printWorkflow(w: Workflow): string {
 
     const usdStr =
       w.budget.usd !== undefined
-        ? `, usd: ${w.budget.usd.toFixed(2)}`
+        ? `, usd: ${usdText(w.budget.usd)}`
         : '';
     fm.push(`budget: { turns: ${w.budget.turns}, minutes: ${w.budget.minutes}${usdStr} }`);
 

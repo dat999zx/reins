@@ -5,6 +5,9 @@ import { setAlways, setBudget } from './blocks.js';
 import { editStep, removeLinks, setLink } from './canvas.js';
 import { applyField, applyLinkMax, budgetCount, budgetPatch, BUDGET_HINT, fieldValue, type BudgetKey } from './panelEdit.js';
 
+// The same rule as usdText in packages/core/src/format/print.ts (the app imports only core's types): two decimals when that loses nothing.
+const usdText = (usd: number) => (Number(usd.toFixed(2)) === usd ? usd.toFixed(2) : String(usd));
+
 type InputProps = { label: string; value: string; ids: string[]; rev: unknown; commit: (v: string) => void };
 
 // A field shows a draft while typing and commits on blur / Enter. It re-syncs from the model after every
@@ -175,7 +178,7 @@ export function BudgetFields({ w, rev, onEdit }: { w: Workflow; rev: unknown; on
   };
   const turns = useLine(budgetCount(b.turns), rev, (v) => commit('turns', v));
   const minutes = useLine(budgetCount(b.minutes), rev, (v) => commit('minutes', v));
-  const usd = useLine(b.usd === undefined ? '' : b.usd.toFixed(2), rev, (v) => commit('usd', v));
+  const usd = useLine(b.usd === undefined ? '' : usdText(b.usd), rev, (v) => commit('usd', v));
   const drafts = { turns: turns.v, minutes: minutes.v };
   const field = (label: string, l: ReturnType<typeof useLine>, number: boolean) => (
     <label className="bfield">{label}

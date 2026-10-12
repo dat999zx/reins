@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { LogRow } from '@reins/server/store.js';
-import { compressBlock, contextWords, modelOptions, pickerBlock, tokens, usageOf } from '../src/usage.js';
+import { compressBlock, compressBusy, contextWords, hasReplied, modelOptions, pickerBlock, tokens, usageOf } from '../src/usage.js';
 
 let seq = 0;
 const row = (type: string, data: unknown = {}): LogRow => ({ sessionId: 's1', seq: ++seq, ts: 1000 + seq, type, data });
@@ -88,6 +88,32 @@ describe('compressBlock', () => {
     expect(compressBlock({ busy: false, replied: false })).toBe('Nothing to compress before the first reply.');
     expect(compressBlock({ busy: true, replied: false })).toBe('Compress when the session is idle.');
     expect(compressBlock({ busy: false, replied: true })).toBeUndefined();
+  });
+});
+
+describe('compressBusy', () => {
+  it('a waiting switch card alone is not work; running, or waiting on anything else, is', () => {
+    expect(compressBusy('running', [])).toBe(true);
+    expect(compressBusy('running', ['switch'])).toBe(true);
+    expect(compressBusy('waiting', ['switch'])).toBe(false);
+    expect(compressBusy('waiting', ['switch', 'tool'])).toBe(true);
+    expect(compressBusy('waiting', [])).toBe(true);
+    expect(compressBusy('idle', [])).toBe(false);
+  });
+});
+
+describe('hasReplied', () => {
+  const ended = () => row('turn_ended', { text: 'ok' });
+  const err = () => eng({ type: 'error', message: 'x' });
+  it('is true after a reply without an error event; a first turn that ended in an error, or failed, has no id to compress', () => {
+    expect(hasReplied([])).toBe(false);
+    expect(hasReplied([ended()])).toBe(true);
+    expect(hasReplied([err(), ended()])).toBe(false);
+    expect(hasReplied([row('turn_failed', { error: 'x' })])).toBe(false);
+    expect(hasReplied([err(), ended(), ended()])).toBe(true);
+    expect(hasReplied([ended(), err(), ended()])).toBe(true);
+    // a failed turn ends the error's turn: the error before it does not follow into the next reply
+    expect(hasReplied([err(), row('turn_failed', { error: 'x' }), ended()])).toBe(true);
   });
 });
 
