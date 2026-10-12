@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseWorkflow, printCond, printWorkflow, validate, type Workflow } from '@reins/core';
 import { flatSteps } from '../src/canvas.js';
-import { addPlace, addStep, addStepAt, stackEnd, capBackward, deleteStep, deleteSteps, dropPlace, dropSteps, duplicateSteps, insertSteps, moveStep, nestPlace, newId, placeOf, setAlways, setCond, takeSteps, withFreshIds } from '../src/blocks.js';
+import { addPlace, addStep, addStepAt, stackEnd, capBackward, deleteStep, deleteSteps, dropPlace, dropSteps, duplicateSteps, insertSteps, moveStep, nestPlace, newId, placeOf, setAlways, setBudget, setCond, takeSteps, withFreshIds } from '../src/blocks.js';
 
 const HEAD = '---\nreins: 1\nname: demo\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n';
 const TEXT = `${HEAD}## phase plan
@@ -525,5 +525,33 @@ describe('the end of the stack', () => {
   it('a drop on the end strip lands before the end', () => {
     expect(dropPlace(wf, { top: 'end' })).toEqual({ branch: 'kids', index: 2 });
     expect(ids(dropSteps(wf, ['a'], { top: 'end' }))).toEqual(['b', 'a', 'end-1', 'f']);
+  });
+});
+describe('setBudget', () => {
+  const w = parseWorkflow(`${HEAD}## phase a\n`).workflow!;
+  const withUsd = { ...w, budget: { turns: 10, minutes: 30, usd: 2.5 } };
+  it('sets turns and keeps minutes', () => {
+    const r = setBudget(w, { turns: 12 });
+    expect(r.budget).toEqual({ turns: 12, minutes: 30 });
+  });
+  it('sets usd', () => {
+    expect(setBudget(w, { usd: 2.5 }).budget).toEqual({ turns: 10, minutes: 30, usd: 2.5 });
+  });
+  it('removes the usd key when usd is undefined', () => {
+    const b = setBudget(withUsd, { usd: undefined }).budget;
+    expect('usd' in b).toBe(false);
+    expect(b).toEqual({ turns: 10, minutes: 30 });
+  });
+  it('lands turns and minutes in one object', () => {
+    const empty = { ...w, budget: { turns: 0, minutes: 0 } };
+    expect(setBudget(empty, { turns: 5, minutes: 20 }).budget).toEqual({ turns: 5, minutes: 20 });
+  });
+  it('returns the same object when nothing changes, and never mutates its input', () => {
+    expect(setBudget(w, { turns: 10, minutes: 30 })).toBe(w);
+    expect(setBudget(withUsd, { usd: 2.5 })).toBe(withUsd);
+    expect(setBudget(w, { usd: undefined })).toBe(w);
+    const before = JSON.stringify(withUsd);
+    setBudget(withUsd, { turns: 3, usd: undefined });
+    expect(JSON.stringify(withUsd)).toBe(before);
   });
 });

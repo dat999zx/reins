@@ -12,7 +12,7 @@ import type { Sess } from './state.js';
 import { didNotStart, firstRowOf, PHASE, sameSteps, stepPos, type RunView } from './runState.js';
 import { RunDock } from './RunDock.js';
 import type { Actions } from './rows.js';
-import { BlockPanel, WorkflowPanel } from './BlockPanel.js';
+import { BlockPanel, BudgetFields, WorkflowPanel } from './BlockPanel.js';
 import { flatSteps } from './canvas.js';
 import { KINDS } from './canvasKinds.js';
 import { Workspace, type EditOpts } from './Workspace.js';
@@ -170,7 +170,7 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
       if (file === null || !prev?.workflow) return false;
       if (busy.current || prev.for !== text) { setMsg(WAIT); return false; }
       if (prev.reformats && !confirmed.current.has(file)) {
-        if (!window.confirm('Editing in Blocks reformats this workflow file. Comments, unknown lines, frontmatter comments and unknown keys, and custom order are not kept. Continue?')) return false;
+        if (!window.confirm('Editing with Blocks or the Budget form reformats this workflow file. Comments, unknown lines, frontmatter comments and unknown keys, and custom order are not kept. Continue?')) return false;
         confirmed.current.add(file);
       }
       const next = fn(prev.workflow);
@@ -432,6 +432,7 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
               ))}
               {prev && prev.diagnostics.length === 0 && <li className="ok">No problems.</li>}
             </ul>
+            {view === 'text' && prev?.workflow && !prev.workflow.block && <BudgetFields w={prev.workflow} rev={prev} onEdit={edit} />}
             {view === 'text' && <div className="receives">
               <h3>What the agent receives</h3>
               <ol>

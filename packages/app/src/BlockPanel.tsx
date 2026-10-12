@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type JSX, type KeyboardEvent } from 'react';
 import type { CardKind, Step, Workflow } from '@reins/core';
 import { CARD_KINDS, KINDS, type Field } from './canvasKinds.js';
-import { setAlways } from './blocks.js';
+import { setAlways, setBudget } from './blocks.js';
 import { editStep, removeLinks, setLink } from './canvas.js';
-import { applyField, applyLinkMax, fieldValue } from './panelEdit.js';
+import { applyField, applyLinkMax, budgetCount, budgetPatch, BUDGET_HINT, fieldValue, type BudgetKey } from './panelEdit.js';
 
 type InputProps = { label: string; value: string; ids: string[]; rev: unknown; commit: (v: string) => void };
 
@@ -156,8 +156,42 @@ export function WorkflowPanel({ w, rev, onEdit }: { w: Workflow; rev: unknown; o
     <aside className="bpanel" aria-label="Workflow panel">
       <h3>{w.name}</h3>
       {w.task && <div className="bfield">Task<span className="sx-faint">{w.task}</span></div>}
+      {!w.block && <BudgetFields w={w} rev={rev} onEdit={onEdit} />}
       <Always w={w} rev={rev} onEdit={onEdit} />
     </aside>
+  );
+}
+
+// ponytail: the budget form edits through the model, so the file is reprinted as in Blocks (comments and custom order go,
+// after the existing confirm); a line edit of the front-matter would keep them in Text.
+export function BudgetFields({ w, rev, onEdit }: { w: Workflow; rev: unknown; onEdit: (fn: (w: Workflow) => Workflow) => void }) {
+  const b = w.budget;
+  const [bad, setBad] = useState('');
+  const commit = (key: BudgetKey, raw: string) => {
+    const r = budgetPatch(key, raw, b, drafts);
+    if ('error' in r) return setBad(r.error);
+    setBad('');
+    onEdit((m) => setBudget(m, r.patch));
+  };
+  const turns = useLine(budgetCount(b.turns), rev, (v) => commit('turns', v));
+  const minutes = useLine(budgetCount(b.minutes), rev, (v) => commit('minutes', v));
+  const usd = useLine(b.usd === undefined ? '' : b.usd.toFixed(2), rev, (v) => commit('usd', v));
+  const drafts = { turns: turns.v, minutes: minutes.v };
+  const field = (label: string, l: ReturnType<typeof useLine>, number: boolean) => (
+    <label className="bfield">{label}
+      <input type={number ? 'number' : 'text'} {...(number ? { min: 1, step: 1 } : { inputMode: 'decimal' as const })}
+        value={l.v} onChange={(e) => l.setV(e.target.value)} onBlur={l.done} onKeyDown={l.onKeyDown} />
+    </label>
+  );
+  return (
+    <section className="sx-budget" aria-label="Budget">
+      <h4>Budget</h4>
+      {field('Turns', turns, true)}
+      {field('Minutes', minutes, true)}
+      {field('USD', usd, false)}
+      {bad && <div className="bad" role="alert">{bad}</div>}
+      <p className="hint">{BUDGET_HINT}</p>
+    </section>
   );
 }
 

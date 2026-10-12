@@ -266,3 +266,20 @@ gaurd: src/**
     }
   });
 });
+
+describe('budget line', () => {
+  const head = (budget: string) => `---\nreins: 1\nname: t\n${budget}\nalways: []\n---\n`;
+  const base = parseWorkflow(head('budget: { turns: 1, minutes: 1 }')).workflow!;
+  it('prints usd with two decimals and reads it back', () => {
+    const w: Workflow = { ...base, budget: { turns: 10, minutes: 30, usd: 2.5 } };
+    const text = printWorkflow(w);
+    expect(text).toContain('budget: { turns: 10, minutes: 30, usd: 2.50 }\n');
+    expect(parseWorkflow(text).workflow!.budget).toEqual({ turns: 10, minutes: 30, usd: 2.5 });
+  });
+  it('prints no usd, and parses no usd key, without one', () => {
+    const text = printWorkflow({ ...base, budget: { turns: 10, minutes: 30 } });
+    expect(text).toContain('budget: { turns: 10, minutes: 30 }\n');
+    expect(text).not.toContain('usd');
+    expect('usd' in parseWorkflow(text).workflow!.budget).toBe(false);
+  });
+});

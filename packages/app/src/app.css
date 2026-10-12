@@ -498,3 +498,8 @@ input.sx-num { min-width: 2.5ch; padding: 1px 6px; text-align: center; }
 @keyframes sx-flow { from { transform: translateY(-24px); opacity: .3; } to { transform: translateY(160px); opacity: 1; } }
 @keyframes sx-breathe { 0%, 100% { opacity: .5; transform: scaleY(.8); } 50% { opacity: 1; transform: scaleY(1.2); } }
 @keyframes sx-spin { to { transform: rotate(360deg); } }
+.sx-budget { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 8px; align-items: end; }
+.sx-budget h4, .sx-budget .hint, .sx-budget .bad { grid-column: 1 / -1; margin: 0; padding: 0; }
+.sx-budget h4 { font-size: 12px; color: var(--mute); }
+.sx-budget label { display: grid; gap: 2px; color: var(--mute); font-size: 12px; }
+.sx-budget input { width: 100%; box-sizing: border-box; }

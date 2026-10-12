@@ -341,6 +341,36 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await blocksTab.click();
     await expect.poll(() => always.inputValue(), { timeout: W }).toBe('Never: touch prod');
 
+    // 8d.3b. the budget form: USD lands in the front-matter, a wrong value is refused in words and commits nothing
+    const budget = page.getByRole('region', { name: 'Budget', exact: true });
+    const usd = budget.getByRole('textbox', { name: 'USD' });
+    const u0 = await usd.inputValue();
+    await expect.poll(async () => {
+      await blocksTab.click();
+      const spot = await empty();
+      await page.mouse.click(spot.x, spot.y);
+      await usd.fill('2.5');
+      await usd.blur();
+      await textTab.click();
+      return editor.inputValue();
+    }, { timeout: W }).toContain('usd: 2.50 }');
+    await expect.poll(() => budget.count(), { timeout: W }).toBe(1); // the Text view carries the same form
+    await usd.fill('abc');
+    await usd.blur();
+    await expect.poll(() => budget.getByRole('alert').textContent(), { timeout: W }).toBe('USD must be an amount above 0, like 2.50. Leave it empty for no USD limit.');
+    expect(await editor.inputValue()).toContain('usd: 2.50 }');
+    const turns = budget.getByRole('spinbutton', { name: 'Turns' });
+    await turns.fill('0');
+    await turns.blur();
+    await expect.poll(() => budget.getByRole('alert').textContent(), { timeout: W }).toBe('Turns must be a whole number, 1 or more.');
+    expect(await editor.inputValue()).toContain('usd: 2.50 }');
+    // back to what later steps expect (retried: a preview landing between fill and blur resets the draft)
+    await expect.poll(async () => {
+      await usd.fill(u0);
+      await usd.blur();
+      return (await editor.inputValue()).includes('usd:');
+    }, { timeout: W }).toBe(u0 !== '');
+    await blocksTab.click();
     // 8d.4. a block's grip dragged onto the top half of another block moves it before that block
     await blocksTab.click();
     await row('build').locator('.sx-grip').first().dragTo(row('plan').locator('.sx-row').first(), { targetPosition: { x: 30, y: 3 } });

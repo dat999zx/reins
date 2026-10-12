@@ -1,6 +1,7 @@
 import type { Cond, Step, StepKind, Workflow } from '@reins/core';
 import { flatSteps } from './canvas.js';
 import { KINDS } from './canvasKinds.js';
+import type { BudgetKey } from './panelEdit.js';
 
 export type Place = { parent?: string; branch: 'kids' | 'else'; index: number };
 
@@ -218,4 +219,13 @@ export function setCond(w: Workflow, id: string, path: CondPath, cond: Cond): Wo
 
 export function setAlways(w: Workflow, text: string): Workflow {
   return { ...w, always: text.split('\n').map((l) => l.trim()).filter(Boolean) };
+}
+
+// The budget with `patch` applied; the SAME workflow when nothing changes (an edit of it sends nothing).
+// A `usd` of undefined removes the key; turns and minutes can land together.
+export function setBudget(w: Workflow, patch: Partial<Record<BudgetKey, number | undefined>>): Workflow {
+  const { usd, ...rest } = { ...w.budget, ...patch };
+  const budget = { ...rest, ...(usd !== undefined ? { usd } : {}) };
+  const same = budget.turns === w.budget.turns && budget.minutes === w.budget.minutes && budget.usd === w.budget.usd;
+  return same ? w : { ...w, budget };
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseWorkflow, printWorkflow } from '@reins/core';
 import { editStep } from '../src/canvas.js';
-import { applyField, applyLinkMax, fieldValue } from '../src/panelEdit.js';
+import { applyField, applyLinkMax, BUDGET_ERRORS, budgetCount, budgetPatch, fieldValue, parseBudget } from '../src/panelEdit.js';
 
 const TEXT = `---
 reins: 1
@@ -76,5 +76,53 @@ describe('panelEdit', () => {
     const m = { kind: 'next' as const, to: 'r', max: 3 };
     applyLinkMax(m, '0');
     expect(m.max).toBeUndefined();
+  });
+});
+
+describe('budgetPatch', () => {
+  const none = { turns: '', minutes: '' };
+  it('writes one field when the budget is already set', () => {
+    expect(budgetPatch('usd', '3', { turns: 5, minutes: 20 }, none)).toEqual({ patch: { usd: 3 } });
+    expect(budgetPatch('turns', '7', { turns: 5, minutes: 20 }, none)).toEqual({ patch: { turns: 7 } });
+  });
+  it('writes Turns and Minutes together while either is 0, once both are filled in', () => {
+    expect(budgetPatch('turns', '5', { turns: 0, minutes: 0 }, { turns: '5', minutes: '20' })).toEqual({ patch: { turns: 5, minutes: 20 } });
+    expect(budgetPatch('minutes', '20', { turns: 5, minutes: 0 }, { turns: '5', minutes: '20' })).toEqual({ patch: { minutes: 20, turns: 5 } });
+  });
+  it('asks for both, and writes nothing, while the other one is empty', () => {
+    expect(budgetPatch('turns', '5', { turns: 0, minutes: 0 }, { turns: '5', minutes: '' })).toEqual({ error: 'Fill in both Turns and Minutes.' });
+  });
+  it('USD never waits for the pair', () => {
+    expect(budgetPatch('usd', '3', { turns: 0, minutes: 0 }, none)).toEqual({ patch: { usd: 3 } });
+  });
+  it("judges the field's own text first", () => {
+    expect(budgetPatch('turns', '0', { turns: 0, minutes: 0 }, { turns: '0', minutes: '20' })).toEqual({ error: 'Turns must be a whole number, 1 or more.' });
+  });
+  it('shows 0 as empty', () => {
+    expect([budgetCount(0), budgetCount(12)]).toEqual(['', '12']);
+  });
+});
+
+describe('parseBudget', () => {
+  it('reads turns and minutes as whole numbers of 1 or more', () => {
+    expect(parseBudget('turns', ' 12 ')).toEqual({ value: 12 });
+    expect(parseBudget('minutes', '30')).toEqual({ value: 30 });
+    for (const key of ['turns', 'minutes'] as const) {
+      for (const raw of ['0', '1.5', '-1', '', 'x']) expect(parseBudget(key, raw)).toEqual({ error: BUDGET_ERRORS[key] });
+    }
+  });
+  it('reads USD as an amount above 0 with up to two decimals, empty for none', () => {
+    expect(parseBudget('usd', '')).toEqual({ value: undefined });
+    expect(parseBudget('usd', '2.5')).toEqual({ value: 2.5 });
+    expect(parseBudget('usd', '2.50')).toEqual({ value: 2.5 });
+    expect(parseBudget('usd', '0.01')).toEqual({ value: 0.01 });
+    for (const raw of ['0', '2.555', '-1', '1e3', '$2']) expect(parseBudget('usd', raw)).toEqual({ error: BUDGET_ERRORS.usd });
+  });
+  it('says it in plain words', () => {
+    expect(BUDGET_ERRORS).toEqual({
+      turns: 'Turns must be a whole number, 1 or more.',
+      minutes: 'Minutes must be a whole number, 1 or more.',
+      usd: 'USD must be an amount above 0, like 2.50. Leave it empty for no USD limit.',
+    });
   });
 });
