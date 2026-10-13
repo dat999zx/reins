@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import type { EngineEvent, Policy } from '@reins/core';
-import { claudeEngine, turnCost } from '../src/claude/engine.js';
+import { claudeEngine, modelCosts, turnCost } from '../src/claude/engine.js';
 import { FAKE_CLAUDE, fakeSetup, alive, until } from './helpers.js';
 
 const write: Policy = { mode: 'write', guards: ['migrations/**'], allowShell: true };
@@ -223,6 +223,112 @@ describe('claude adapter', () => {
     await second.close();
     expect(r2.cost).toBeUndefined();
     expect(r2.total).toBeCloseTo(0.1281796);
+  });
+
+  describe('cost per model (C)', () => {
+    const sum = (m?: Record<string, number>) => Object.values(m ?? {}).reduce((a, b) => a + b, 0);
+    const T0 = { fixture: 'claude-2.1.281-turns.jsonl', turn: 0 };
+    const T1 = { fixture: 'claude-2.1.281-turns.jsonl', turn: 1 };
+    const open = (dir: string, o: { model: string; sessionId?: string; costBase?: number; costBaseByModel?: Record<string, number> }) =>
+      engine().open({ cwd: dir, policy: () => write, ...o });
+
+    it('modelCosts: a model with no new spend is left out; a total that went down is a new count', () => {
+      expect(modelCosts({ a: 0.5, b: 0.25 }, { a: 0.5 })).toEqual({ b: 0.25 });
+      expect(modelCosts({ a: 0.75 }, { a: 0.5 })).toEqual({ a: 0.25 });
+      expect(modelCosts({ a: 0.1 }, { a: 0.5 })).toEqual({ a: 0.1 });
+    });
+
+    it('one process: each reply carries its own share and the running total of its model', async () => {
+      const f = fakeSetup([T0, T1], 10, { cumulative: true });
+      const s = await open(f.dir, { model: 'a' });
+      const r1 = await s.turn('one');
+      const r2 = await s.turn('two');
+      await s.close();
+      expect(r1.models!.a).toBeCloseTo(0.0640898, 9);
+      expect(r1.totals!.a).toBeCloseTo(0.0640898, 9);
+      expect(sum(r1.models)).toBeCloseTo(r1.cost!, 9);
+      expect(r2.models!.a).toBeCloseTo(0.0802364 - 0.0640898, 9);
+      expect(r2.totals!.a).toBeCloseTo(0.0802364, 9);
+      expect(sum(r2.models)).toBeCloseTo(r2.cost!, 9);
+    });
+
+    it('a switch: the resumed process on another model counts only that model, and the shares add up to the cost', async () => {
+      const f = fakeSetup([T0, T1], 10, { cumulative: true });
+      const first = await open(f.dir, { model: 'a' });
+      await first.turn('one');
+      const r2 = await first.turn('two');
+      await first.close();
+
+      const second = await open(f.dir, { model: 'b', sessionId: first.sessionId, costBase: r2.total, costBaseByModel: r2.totals });
+      const r3 = await second.turn('three');
+      await second.close();
+      const args: string[] = f.log().filter((l) => l.kind === 'args')[1].args;
+      expect(args[args.indexOf('--model') + 1]).toBe('b');
+      expect(Object.keys(r3.models!)).toEqual(['b']);
+      expect(r3.models!.b).toBeCloseTo(0.0640898, 9);
+      expect(r3.cost).toBeCloseTo(0.0640898, 9);
+      expect(sum(r3.models)).toBeCloseTo(r3.cost!, 9);
+      expect(r3.totals!.a).toBeCloseTo(0.0802364, 9);
+      expect(r3.totals!.b).toBeCloseTo(0.0640898, 9);
+      expect(r3.total).toBeCloseTo(0.0802364 + 0.0640898, 9);
+    });
+
+    it('the usage event names the model the reply ran on, matching the dollars', async () => {
+      const f = fakeSetup([T0], 10, { cumulative: true });
+      const s = await open(f.dir, { model: 'a' });
+      const r = await s.turn('one');
+      await s.close();
+      expect(r.events!.find((e) => e.type === 'usage')).toMatchObject({ model: 'a' });
+      expect(Object.keys(r.models!)).toEqual(['a']);
+    });
+
+    it('a resumed process with no per-model base has no split for its first reply, then a split', async () => {
+      const f = fakeSetup([T0, T1], 10, { cumulative: true });
+      const first = await open(f.dir, { model: 'a' });
+      const r1 = await first.turn('one');
+      await first.close();
+
+      const second = await open(f.dir, { model: 'a', sessionId: first.sessionId, costBase: r1.total });
+      const r2 = await second.turn('two');
+      const r3 = await second.turn('three');
+      await second.close();
+      expect(r2.cost).toBeCloseTo(0.0640898, 9);
+      expect(r2.models).toBeUndefined();
+      expect(r2.totals!.a).toBeCloseTo(0.0640898 * 2, 9);
+      expect(r3.models!.a).toBeCloseTo(0.0802364 - 0.0640898, 9);
+      expect(sum(r3.models)).toBeCloseTo(r3.cost!, 9);
+    });
+
+    it('a result with a total and no modelUsage: that reply and the next have no split, the one after is split', async () => {
+      const f = fakeSetup([{ ...T0, noModelUsage: true }, T1, T0], 10, { cumulative: true });
+      const s = await open(f.dir, { model: 'a' });
+      const r1 = await s.turn('one');
+      const r2 = await s.turn('two');
+      const r3 = await s.turn('three');
+      await s.close();
+      expect(r1.total).toBeCloseTo(0.0640898, 9);
+      expect(r1.totals).toBeUndefined();
+      expect(r1.models).toBeUndefined();
+      expect(r2.cost).toBeCloseTo(0.0802364 - 0.0640898, 9);
+      expect(r2.models).toBeUndefined();
+      expect(r2.totals!.a).toBeCloseTo(0.0802364, 9);
+      expect(r3.models!.a).toBeCloseTo(0.0640898, 9);
+      expect(sum(r3.models)).toBeCloseTo(r3.cost!, 9);
+    });
+
+    it('an interrupt kill is no result: it carries neither a split nor totals', async () => {
+      const f = fakeSetup([{ fixture: 'claude-2.1.281-card-marker-hook.jsonl', ignoreInterrupt: true }], 400, { cumulative: true });
+      const live: EngineEvent[] = [];
+      const s = await claudeEngine({ bin: FAKE_CLAUDE, model: 'a', onApprove: async () => ({ behavior: 'allow' }), onLive: (e) => live.push(e), interruptTimeoutMs: 500 })
+        .open({ cwd: f.dir, policy: () => write });
+      const turn = s.turn('slow');
+      await until(() => live.some((e) => e.type === 'tool_call'));
+      await s.interrupt();
+      const r = await turn;
+      await s.close();
+      expect(r.models).toBeUndefined();
+      expect(r.totals).toBeUndefined();
+    });
   });
 
   it('an interrupt kill ends the turn with no cost and no total', async () => {

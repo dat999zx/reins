@@ -162,6 +162,41 @@ describe('usage', () => {
   });
 });
 
+describe('byModel (cost per model, C)', () => {
+  const res = (modelUsage?: unknown) => ({ type: 'result', result: 'x', total_cost_usd: 0.1, is_error: false, ...(modelUsage === undefined ? {} : { modelUsage }) });
+  const by = (modelUsage?: unknown) => createStreamParser()(res(modelUsage)).result!.byModel;
+
+  it('turns.jsonl: each result carries its model figure, equal to the total of a one-model session', () => {
+    const r = replay('claude-2.1.281-turns.jsonl');
+    expect(r.results.map((x) => x.byModel)).toEqual([{ 'claude-sonnet-5': 0.0640898 }, { 'claude-sonnet-5': 0.0802364 }, { 'claude-sonnet-5': 0.0871622 }]);
+  });
+
+  it('the compact fixture: three results, figures 0.0068948, 0.00962756, 0.01168894', () => {
+    const r = replay('claude-2.1.293-compact.jsonl');
+    expect(r.results.map((x) => Object.values(x.byModel!)[0])).toEqual([0.0068948, 0.00962756, 0.01168894]);
+  });
+
+  it('two-models.jsonl (real CLI, M8): both models, and the parts sum to the total', () => {
+    const r = replay('claude-2.1.293-two-models.jsonl');
+    const last = r.results.at(-1)!;
+    expect(last.byModel).toEqual({ 'claude-haiku-5-5': 0.01128855, 'claude-sonnet-5-5': 0.154664 });
+    expect(last.totalCostUsd).toBeCloseTo(0.16595255, 9);
+    expect(Object.values(last.byModel!).reduce((a, b) => a + b, 0)).toBeCloseTo(last.totalCostUsd, 9);
+  });
+
+  it('a figure that is not a finite number >= 0 drops the whole split; none at all is none', () => {
+    expect(by({ a: { costUSD: 0.5 } })).toEqual({ a: 0.5 });
+    expect(by({ a: { costUSD: 0.5 }, b: { costUSD: 0 } })).toEqual({ a: 0.5, b: 0 });
+    for (const bad of ['1', -1, NaN, null, undefined]) expect(by({ a: { costUSD: 0.5 }, b: { costUSD: bad } })).toBeUndefined();
+    // JSON has no Infinity, but 1e999 parses to it: it must not reach a running total
+    const huge = JSON.parse('{"a":{"costUSD":0.5},"b":{"costUSD":1e999}}');
+    expect(by(huge)).toBeUndefined();
+    expect(by({})).toBeUndefined();
+    expect(by(undefined)).toBeUndefined();
+    expect(by('x')).toBeUndefined();
+  });
+});
+
 describe('compacted', () => {
   const init = { type: 'system', subtype: 'init', session_id: 's', model: 'm' };
   const boundary = (meta: Record<string, unknown>) => ({ type: 'system', subtype: 'compact_boundary', compact_metadata: meta });

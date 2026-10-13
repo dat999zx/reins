@@ -36,6 +36,11 @@ const MCP_SCRIPT = fileURLToPath(new URL(import.meta.url.endsWith('.ts') ? '../m
 /** One turn's share of a running total; a total that went down means a new count. */
 export const turnCost = (total: number, last: number) => (total >= last ? total - last : total);
 
+/** Each model's share of a reply: its running total minus the one last counted. A model with no new spend is left out. */
+// ponytail: the CLI's own helper calls on other models land in their model's dollars with no turn.
+export const modelCosts = (totals: Record<string, number>, base: Record<string, number>): Record<string, number> =>
+  Object.fromEntries(Object.entries(totals).map(([m, t]) => [m, turnCost(t, base[m] ?? 0)] as const).filter(([, c]) => c > 0));
+
 export function claudeEngine(cfg: ClaudeConfig): Engine {
   return {
     id: 'claude',
@@ -104,6 +109,8 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
   let dead: string | undefined;
   // The raw running total Reins last counted; undefined = unknown (a resumed session from before Reins kept it).
   let base: number | undefined = provider.costAcrossResume === 'cumulative' && opts.sessionId ? opts.costBase : 0;
+  // The same, per model; a reply with no per-model figures leaves it unknown, so the next reply has no split rather than a wrong one.
+  let baseBy: Record<string, number> | undefined = provider.costAcrossResume === 'cumulative' && opts.sessionId ? opts.costBaseByModel : {};
   // Set by interrupt(), cleared when the next turn starts: an error result that asked for is not a failed turn.
   let interrupted = false;
   let current: { resolve: (r: TurnResult) => void; reject: (e: Error) => void } | undefined;
@@ -137,13 +144,19 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
     const out = parse(m);
     for (const ev of out.events) emit(ev);
     if (out.result) {
-      const { text, totalCostUsd: total, isError, usage } = out.result;
+      const { text, totalCostUsd: total, isError, usage, byModel } = out.result;
       if (usage) emit({ type: 'usage', ...usage });
       const cost = base === undefined ? undefined : turnCost(total, base);
       base = total;
+      const models = baseBy && byModel ? modelCosts(byModel, baseBy) : undefined;
+      baseBy = byModel;
       const events = turnEvents;
       turnEvents = [];
-      endTurn({ text, cost, total, isError: isError && !interrupted, events });
+      endTurn({
+        text, cost, total, isError: isError && !interrupted, events,
+        ...(byModel ? { totals: byModel } : {}),
+        ...(models ? { models } : {}),
+      });
     }
   });
 

@@ -12,6 +12,9 @@ export interface TestTurn {
   window?: number;                                                        // that usage event's window (default 1,000,000)
   cost?: number | null;                                                   // the turn's cost (default 0.01); null = not known
   total?: number;                                                         // the provider's raw running total after the turn
+  models?: Record<string, number>;                                        // the turn's cost per model, as the adapter splits it
+  totals?: Record<string, number>;                                        // the provider's raw per-model running totals after the turn
+  model?: string;                                                         // the usage event's model (default 'm')
   isError?: boolean;                                                      // the result is an error that no interrupt asked for
   compacted?: { before?: number; after?: number };                        // a compact() entry: the provider's figures (default 1000 and 100)
 }
@@ -78,7 +81,7 @@ export function testEngine(script: TestTurn[] = []) {
             if (!interrupted) emit({ type: 'compacted', trigger: 'manual', ...(t.compacted ?? { before: 1000, after: 100 }) });
           } else {
             emit({ type: 'text', text: text2 });
-            if (t.usage !== undefined) emit({ type: 'usage', model: 'm', used: t.usage, window: t.window ?? 1_000_000 });
+            if (t.usage !== undefined) emit({ type: 'usage', model: t.model ?? 'm', used: t.usage, window: t.window ?? 1_000_000 });
           }
           if (t.error) events.push({ type: 'error', message: t.error });
           if (t.lateApprove) setTimeout(() => { void onApprove({ tool: 'Bash', input: { command: 'late' } }).then((d) => state.decisions.push(d)); }, 20);
@@ -86,6 +89,8 @@ export function testEngine(script: TestTurn[] = []) {
             text: text2, events,
             ...(t.cost === null ? {} : { cost: t.cost ?? 0.01 }),
             ...(t.total !== undefined ? { total: t.total } : {}),
+            ...(t.models ? { models: t.models } : {}),
+            ...(t.totals ? { totals: t.totals } : {}),
             ...(t.isError ? { isError: true } : {}),
           };
         } finally {

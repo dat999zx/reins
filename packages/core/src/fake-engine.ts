@@ -29,6 +29,8 @@ export interface OpenOptions {
   model?: string;
   /** The provider's running cost total that Reins last counted for this session; undefined = not known. */
   costBase?: number;
+  /** The per-model running totals Reins last counted for this session; undefined = not known. */
+  costBaseByModel?: Record<string, number>;
   readOnly?: boolean;
   policy: () => Policy;
   onApprove?: (req: ToolRequest) => Promise<Decision>;
@@ -57,6 +59,10 @@ export interface TurnResult {
   cost?: number;
   /** The provider's raw running total after this turn. */
   total?: number;
+  /** This turn's cost per model (sums to `cost` when known). */
+  models?: Record<string, number>;
+  /** The provider's raw per-model running totals after this turn. */
+  totals?: Record<string, number>;
   /** The provider reported an error that no interrupt asked for. */
   isError?: boolean;
   events?: EngineEvent[];

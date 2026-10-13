@@ -12,6 +12,8 @@ export interface FakeTurn {
   text?: string;
   ignoreInterrupt?: boolean;
   delayMs?: number;
+  /** With `cumulative`: the result carries no modelUsage. */
+  noModelUsage?: boolean;
 }
 
 /** A temp project folder plus a fake-claude script; `log()` reads what the fake saw. */

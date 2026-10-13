@@ -97,8 +97,31 @@ const sessionId = arg('--session-id') ?? arg('--resume');
 // are kept per session id beside the log, so a process resumed on a session starts at that session's total.
 const totalsFile = script.cumulative && script.log ? path.join(path.dirname(script.log), '.fake-totals.json') : undefined;
 const savedTotals = () => (totalsFile && fs.existsSync(totalsFile) ? JSON.parse(fs.readFileSync(totalsFile, 'utf8')) : {});
-const saveTotal = () => { if (totalsFile) fs.writeFileSync(totalsFile, JSON.stringify({ ...savedTotals(), [sessionId]: totalCost })); };
+// F7: modelUsage is cumulative per model across --resume; keyed by the --model the process was started with
+// (with none, by the model the fixture's own line names, so the assistant's model still finds its window).
+const modelKey = arg('--model');
+const modelsKey = `${sessionId}#models`;
+const saveTotal = () => { if (totalsFile) fs.writeFileSync(totalsFile, JSON.stringify({ ...savedTotals(), [sessionId]: totalCost, [modelsKey]: modelTotals })); };
 let totalCost = argv.includes('--resume') ? (savedTotals()[sessionId] ?? 0) : 0;
+const modelTotals = argv.includes('--resume') ? (savedTotals()[modelsKey] ?? {}) : {};
+// With --model given, the init and assistant lines name that model, so usage.model matches the dollars.
+const named = (line) => {
+  if (!script.cumulative || !modelKey) return line;
+  const m = JSON.parse(line);
+  if (m.type === 'system' && m.subtype === 'init') m.model = modelKey;
+  else if (m.type === 'assistant' && m.message) m.message.model = modelKey;
+  else return line;
+  return JSON.stringify(m);
+};
+// One modelUsage entry per model this session has spent on, built from the line's first entry.
+const withModels = (m, share, spec) => {
+  if (!script.cumulative) return {};
+  const key = modelKey ?? Object.keys(m.modelUsage ?? {})[0] ?? 'default';
+  modelTotals[key] = (modelTotals[key] ?? 0) + share;
+  if (spec?.noModelUsage) return { modelUsage: undefined };
+  const entry = Object.values(m.modelUsage ?? {})[0] ?? {};
+  return { modelUsage: Object.fromEntries(Object.entries(modelTotals).map(([k, v]) => [k, { ...entry, costUSD: v }])) };
+};
 let turnIndex = 0;
 let interruptReq;
 const queue = [];
@@ -136,18 +159,21 @@ async function playTurn(spec) {
       }
       out(JSON.stringify(shape.interrupted));
       totalCost += 0.001;
+      const models = withModels(shape.result, 0.001, spec);
       saveTotal();
-      out(JSON.stringify({ ...shape.result, total_cost_usd: totalCost }));
-      out(JSON.stringify(shape.init));
+      out(JSON.stringify({ ...shape.result, total_cost_usd: totalCost, ...models }));
+      out(named(JSON.stringify(shape.init)));
       interruptReq = undefined;
       return;
     }
     const m = JSON.parse(raw);
     if (m.type === 'control_response') continue;
     if (m.type === 'result') {
-      totalCost += m.total_cost_usd - prevTotal;
+      const share = m.total_cost_usd - prevTotal;
+      totalCost += share;
+      const models = withModels(m, share, spec);
       saveTotal();
-      out(JSON.stringify({ ...m, total_cost_usd: totalCost, ...(spec.text !== undefined ? { result: spec.text } : {}) }));
+      out(JSON.stringify({ ...m, total_cost_usd: totalCost, ...models, ...(spec.text !== undefined ? { result: spec.text } : {}) }));
       return;
     }
     if (m.type === 'user' && Array.isArray(m.message?.content) && m.message.content[0]?.type === 'tool_result') {
@@ -162,7 +188,7 @@ async function playTurn(spec) {
       }
       continue;
     }
-    out(raw);
+    out(named(raw));
     if (m.type === 'assistant') {
       for (const b of m.message.content.filter((x) => x.type === 'tool_use')) {
         toolNames.set(b.id, b.name);

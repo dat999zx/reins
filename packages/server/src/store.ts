@@ -69,6 +69,10 @@ export function openStore(file: string) {
     create table if not exists engine_costs (engine_session_id text primary key, total real not null, ts integer not null);
     create index if not exists session_log_run on session_log(run_id);
   `);
+  // C: the per-model running totals beside the total (a database made before C has no column).
+  if (!(db.prepare('pragma table_info(engine_costs)').all() as Array<{ name: string }>).some((c) => c.name === 'by_model')) {
+    db.exec('alter table engine_costs add column by_model text');
+  }
   const insRun = db.prepare('insert into runs (id, workflow_path, cwd, created_at) values (?, ?, ?, ?)');
   const insEvent = db.prepare('insert into events (run_id, id, ts, type, data) values (?, ?, ?, ?, ?)');
   const setSnap = db.prepare('update runs set snapshot = ? where id = ?');
@@ -88,7 +92,8 @@ export function openStore(file: string) {
   const getSettingRow = db.prepare('select json from settings where key = ?');
   const putSettingRow = db.prepare('insert or replace into settings (key, json) values (?, ?)');
   const getTotal = db.prepare('select total from engine_costs where engine_session_id = ?');
-  const putTotal = db.prepare('insert or replace into engine_costs (engine_session_id, total, ts) values (?, ?, ?)');
+  const putTotal = db.prepare('insert or replace into engine_costs (engine_session_id, total, ts, by_model) values (?, ?, ?, ?)');
+  const getModels = db.prepare('select by_model from engine_costs where engine_session_id = ?');
   const seqs = new Map<string, number>();
 
   return {
@@ -170,8 +175,18 @@ export function openStore(file: string) {
     getEngineTotal(engineSessionId: string): number | undefined {
       return (getTotal.get(engineSessionId) as { total: number } | undefined)?.total;
     },
-    putEngineTotal(engineSessionId: string, total: number) {
-      putTotal.run(engineSessionId, total, Date.now());
+    /** `byModel` absent clears the stored split, so the next process's split never counts that reply again. */
+    putEngineTotal(engineSessionId: string, total: number, byModel?: Record<string, number>) {
+      putTotal.run(engineSessionId, total, Date.now(), byModel ? JSON.stringify(byModel) : null);
+    },
+    /** The provider's per-model running totals as Reins last counted them; undefined = not known. */
+    getEngineModels(engineSessionId: string): Record<string, number> | undefined {
+      const j = (getModels.get(engineSessionId) as { by_model: string | null } | undefined)?.by_model;
+      if (!j) return undefined;
+      try {
+        const v = JSON.parse(j);
+        return v && typeof v === 'object' && !Array.isArray(v) ? v : undefined;
+      } catch { return undefined; }
     },
     close() {
       db.close();

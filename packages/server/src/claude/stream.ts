@@ -3,7 +3,11 @@ import type { EngineEvent } from '@reins/core';
 export interface StreamOut {
   events: EngineEvent[];
   /** Set on the `result` line that ends a turn. `totalCostUsd` is cumulative for the session. */
-  result?: { text: string; totalCostUsd: number; isError: boolean; usage?: { model: string; used: number; window?: number } };
+  result?: {
+    text: string; totalCostUsd: number; isError: boolean; usage?: { model: string; used: number; window?: number };
+    /** `modelUsage[model].costUSD`: the provider's running total per model; absent unless every figure is a number >= 0. */
+    byModel?: Record<string, number>;
+  };
   /** Set once, from the first `system/init`. */
   sessionId?: string;
 }
@@ -81,6 +85,8 @@ export function createStreamParser(o: { windows?: Record<string, number> } = {})
       };
       const u = isError ? undefined : usageOf(model ?? initModel, usage, m.modelUsage, o.windows);
       if (u) out.result.usage = u;
+      const by = byModelOf(m.modelUsage);
+      if (by) out.result.byModel = by;
       model = usage = undefined;
     }
     return out;
@@ -88,6 +94,14 @@ export function createStreamParser(o: { windows?: Record<string, number> } = {})
 }
 
 const count = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0;
+
+/** One bad figure drops the whole split: a partial one would put its dollars on the wrong models. */
+function byModelOf(modelUsage: unknown): Record<string, number> | undefined {
+  if (!modelUsage || typeof modelUsage !== 'object') return undefined;
+  const entries = Object.entries(modelUsage as Record<string, any>).map(([k, v]) => [k, v?.costUSD] as const);
+  if (!entries.length || !entries.every(([, c]) => typeof c === 'number' && Number.isFinite(c) && c >= 0)) return undefined;
+  return Object.fromEntries(entries) as Record<string, number>;
+}
 
 function usageOf(model: string | undefined, u: any, modelUsage: any, windows?: Record<string, number>) {
   if (!model || !u) return undefined;
