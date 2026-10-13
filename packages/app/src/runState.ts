@@ -21,6 +21,8 @@ export interface RunView {
   last?: { seq: number; text: string };
   stepOf: Map<number, string>;
   thinking?: number;                 // tokens, while the newest engine row of the live run is a thinking row
+  slice?: { step: string; spent: number; usd: number };   // the open USD slice, from the newest run turn_ended
+  usdLimit?: number;                 // the workflow's USD limit after allowances (the newest run_resumed with `usd` and no `step`)
 }
 
 type Data = Record<string, any>;
@@ -96,7 +98,19 @@ const FOLD: Record<string, Fold> = {
   gate_paused: setStep,
   say: (r, x, v) => { v.last = { seq: r.seq, text: String(x.text ?? '') }; },
   turn_failed: (r, x, v) => { v.last = { seq: r.seq, text: String(x.error ?? '') }; },
-  turn_ended: (_r, x, v) => { v.turns += 1; if (typeof x.cost === 'number') v.cost += x.cost; },
+  turn_ended: (_r, x, v) => {
+    v.turns += 1;
+    if (typeof x.cost === 'number') v.cost += x.cost;
+    const s = x.slice;
+    if (s && typeof s.step === 'string' && typeof s.spent === 'number' && typeof s.usd === 'number') v.slice = { step: s.step, spent: s.spent, usd: s.usd };
+    else delete v.slice;
+  },
+  // the run logs the new limit with an allowance, so the meter keeps no copy of the allowance rule; a slice's allowance names its step
+  run_resumed: (_r, x, v) => {
+    if (typeof x.usd !== 'number') return;
+    if (x.step === undefined) v.usdLimit = x.usd;
+    else if (v.slice && v.slice.step === x.step) v.slice = { step: v.slice.step, spent: v.slice.spent, usd: x.usd };
+  },
   card_queued: (_r, x, v) => {
     if ((x.kind === 'steer' || x.kind === 'now') && x.source !== 'auto') v.cards.push({ text: String(x.card ?? ''), kind: x.kind, state: 'queued' });
   },
@@ -194,19 +208,27 @@ export function stepPos(w: Workflow, current: string[]): Pos | undefined {
   return i < 0 ? undefined : { n: i + 1, m: w.steps.length };
 }
 
-export type MeterItem = { key: 'turns' | 'minutes' | 'usd'; text: string; level: 'ok' | 'near' | 'over'; enforced: boolean };
+export type MeterItem = { key: 'turns' | 'minutes' | 'usd' | 'block'; text: string; level: 'ok' | 'near' | 'over'; enforced: boolean };
+const OVER: Record<MeterItem['key'], string> = {
+  turns: ' · turn budget used: the run stops',
+  minutes: ' · over (not enforced)',
+  usd: ' · USD budget used: the run pauses',
+  block: ' · block budget used: the run pauses',
+};
 export function meter(v: RunView, budget: Workflow['budget'], now: number): MeterItem[] {
   const ms = Math.max(0, (v.endedTs ?? now) - (v.startedAt ?? now));
   const seconds = Math.floor(ms / 1000);
+  const usd = v.usdLimit ?? budget.usd ?? 0;
   const values: Array<{ key: MeterItem['key']; used: number; limit: number; text: string }> = [
     { key: 'turns', used: v.turns, limit: budget.turns, text: `${v.turns} / ${budget.turns} turns` },
     { key: 'minutes', used: ms / 60_000, limit: budget.minutes, text: `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s / ${budget.minutes}m` },
-    ...(budget.usd === undefined ? [] : [{ key: 'usd' as const, used: v.cost, limit: budget.usd, text: `$${v.cost.toFixed(2)} / $${budget.usd.toFixed(2)}` }]),
+    ...(budget.usd === undefined ? [] : [{ key: 'usd' as const, used: v.cost, limit: usd, text: `$${v.cost.toFixed(2)} / $${usd.toFixed(2)}` }]),
+    ...(v.slice ? [{ key: 'block' as const, used: v.slice.spent, limit: v.slice.usd, text: `${v.slice.step}: $${v.slice.spent.toFixed(2)} / $${v.slice.usd.toFixed(2)}` }] : []),
   ];
   return values.map(({ key, used, limit, text }) => {
     const level = used >= limit ? 'over' : used >= limit * 0.8 ? 'near' : 'ok';
-    const enforced = key === 'turns';
-    return { key, text: text + (level === 'over' ? enforced ? ' · turn budget used: the run stops' : ' · over (not enforced)' : level === 'near' ? ' · near' : ''), level, enforced };
+    const enforced = key !== 'minutes';
+    return { key, text: text + (level === 'over' ? OVER[key] : level === 'near' ? ' · near' : ''), level, enforced };
   });
 }
 

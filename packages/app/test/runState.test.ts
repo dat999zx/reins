@@ -47,15 +47,49 @@ describe('dock facts', () => {
     v.turns = 1; v.cost = 0;
     for (const i of meter(v, w.budget, 60_000)) expect(i.text).not.toContain('near');
   });
-  it('minutes and money report unenforced limits; ended time freezes; absent usd stays absent', () => {
+  it('minutes report an unenforced limit and USD an enforced one; ended time freezes; absent usd stays absent', () => {
     const v = view([started()]); v.startedAt = 0; v.cost = 5;
     const items = meter(v, w.budget, 31 * 60_000);
-    for (const item of items.slice(1)) expect(item).toMatchObject({ level: 'over', enforced: false, text: expect.stringContaining('over (not enforced)') });
+    expect(items[1]).toMatchObject({ level: 'over', enforced: false, text: expect.stringContaining('over (not enforced)') });
+    expect(items[2]).toMatchObject({ level: 'over', enforced: true, text: expect.stringContaining(' · USD budget used: the run pauses') });
     v.endedTs = 60_000;
     expect(meter(v, { turns: 40, minutes: 30 }, 31 * 60_000)).toEqual([
       { key: 'turns', text: '0 / 40 turns', level: 'ok', enforced: true },
       { key: 'minutes', text: '1m 00s / 30m', level: 'ok', enforced: false },
     ]);
+  });
+  it('a block item shows the open slice as enforced, and goes when a later turn carries none', () => {
+    reset();
+    const slice = { step: 'model-1', spent: 0.52, usd: 0.5 };
+    const v = view([started(), row('turn_ended', { step: 'plan', cost: 0.52, slice })]);
+    expect(v.slice).toEqual(slice);
+    const items = meter(v, w.budget, 0);
+    expect(items.map((i) => i.key)).toEqual(['turns', 'minutes', 'usd', 'block']);
+    expect(items[3]).toEqual({ key: 'block', text: 'model-1: $0.52 / $0.50 · block budget used: the run pauses', level: 'over', enforced: true });
+    const near = meter({ ...v, slice: { step: 'model-1', spent: 0.4, usd: 0.5 } }, w.budget, 0)[3]!;
+    expect(near).toMatchObject({ text: 'model-1: $0.40 / $0.50 · near', level: 'near', enforced: true });
+    const later = view([started(), row('turn_ended', { step: 'plan', cost: 0.52, slice }), row('turn_ended', { step: 'b', cost: 0.1 })]);
+    expect(later.slice).toBeUndefined();
+    expect(meter(later, w.budget, 0).map((i) => i.key)).toEqual(['turns', 'minutes', 'usd']);
+  });
+  it('the USD item reads the limit the run logged on an allowance, not the file\'s', () => {
+    reset();
+    const v = view([started(), row('turn_ended', { step: 'plan', cost: 5 }), row('run_resumed', { allowUsd: 2, usd: 7 })]);
+    expect(v.usdLimit).toBe(7);
+    expect(meter(v, w.budget, 0)[2]).toEqual({ key: 'usd', text: '$5.00 / $7.00', level: 'ok', enforced: true });
+    // a slice's allowance names its step: it is not the workflow's limit
+    const s = view([started(), row('run_resumed', { allowUsd: 1, usd: 1.5, step: 'model-1' })]);
+    expect(s.usdLimit).toBeUndefined();
+    // ...and it raises the open slice's limit until the next turn reports it
+    const slice = { step: 'model-1', spent: 0.52, usd: 0.5 };
+    const k = view([started(), row('turn_ended', { step: 'plan', cost: 0.52, slice }), row('run_resumed', { allowUsd: 1, usd: 1.52, step: 'model-1' })]);
+    expect(k.slice).toEqual({ step: 'model-1', spent: 0.52, usd: 1.52 });
+    expect(meter(k, w.budget, 0)[3]).toEqual({ key: 'block', text: 'model-1: $0.52 / $1.52', level: 'ok', enforced: true });
+    // an allowance that names another step leaves this slice alone
+    const other = view([started(), row('turn_ended', { step: 'plan', cost: 0.52, slice }), row('run_resumed', { allowUsd: 1, usd: 9, step: 'other' })]);
+    expect(other.slice).toEqual(slice);
+    // a slice with a figure that is not a number is no slice
+    expect(view([started(), row('turn_ended', { step: 'plan', cost: 0.52, slice: { step: 'model-1', spent: 0.52, usd: 'x' } })]).slice).toBeUndefined();
   });
   it('does not report a refused start before a busy-to-idle transition', () => {
     reset(); const before = status('idle');

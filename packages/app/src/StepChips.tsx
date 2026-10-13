@@ -22,8 +22,9 @@ export function StepChips({ i, thinking }: { i: StepInfo; thinking?: number }) {
   const st = base && i.why ? { text: `${base.text} (${i.why})`, words: `${base.words} (${i.why})` } : base;
   const tries = i.attempts === undefined ? undefined : i.state === 'stuck' ? `${i.attempts} tries used` : `attempt ${i.attempts + 1}`;
   const cost = i.cost > 0 ? `$${i.cost.toFixed(4)}` : undefined;
-  const text = [st && st.text, think, tries, cost].filter(Boolean);
-  const words = [st && st.words, think, tries, cost && `cost ${cost}`].filter(Boolean);
+  const on = i.model && `on ${i.model}`;
+  const text = [st && st.text, on, think, tries, cost].filter(Boolean);
+  const words = [st && st.words, on, think, tries, cost && `cost ${cost}`].filter(Boolean);
   return (
     <>
       {text.length > 0 && <span className={`sstate ${i.state ?? ''}`} role="img" aria-label={words.join(', ')}>{text.join(' · ')}</span>}

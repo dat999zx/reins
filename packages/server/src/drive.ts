@@ -104,11 +104,13 @@ async function onPause(run: Run, io: DriveIo): Promise<boolean> {
     return true;
   }
   if (p.type === 'usd-budget-used') {
-    const limit = usdText(p.limit!), spent = usdText(p.spent!);
+    // measured dollars (a float sum, a long tail) are rounded to 4 decimals before they are printed
+    const r4 = (x: number) => usdText(Math.round(x * 1e4) / 1e4);
+    const limit = r4(p.limit!), spent = r4(p.spent!);
     io.say(p.stepId ? `⏸ block ${p.stepId} used its $${limit} budget ($${spent} spent)` : `⏸ the run used its $${limit} USD budget ($${spent} spent)`);
     const left = run.usdLeft();
     const detail = p.stepId
-      ? `Block \`${p.stepId}\` has used $${spent} of its $${limit}.${left === undefined ? '' : ` The workflow's USD budget has $${usdText(Math.max(left, 0))} left.`}`
+      ? `Block \`${p.stepId}\` has used $${spent} of its $${limit}.${left === undefined ? '' : ` The workflow's USD budget has $${r4(Math.max(left, 0))} left.`}`
       : `The run has used $${spent} of its $${limit} USD budget.`;
     const a = await io.ask({ id: questionId(), kind: 'usd', prompt: 'allow $<amount> more / stop', detail });
     if (a === null) return false;

@@ -73,6 +73,30 @@ describe('driveRun on a USD pause (Task 2, milestone C)', () => {
     expect(run.snapshot().runCost).toBeCloseTo(0.18, 9);
   });
 
+  it('the card and the say line print measured dollars cleanly: float sums and long tails are rounded to 4 decimals', async () => {
+    // 0.1 + 0.2 is 0.30000000000000004 in floating point; the card must say $0.30, not that
+    const run = new Run({
+      workflow: { ...wf([step('model-1', 'model', { attrs: { model: 'm', usd: '0.30' } }), phase('a'), phase('b'), phase('c')]), budget: { turns: 20, minutes: 20, usd: 1.3 } },
+      engine: new FakeEngine([{ text: 'REINS: done', cost: 0.1 }, { text: 'REINS: done', cost: 0.2 }, { text: 'REINS: done', cost: 0.05 }]),
+      switchModel: async (m) => ({ to: 'switched', label: m }),
+    });
+    const t = testIo(() => 'stop');
+    await driveRun(run, t.io, () => {});
+    expect(t.lines).toContain('⏸ block model-1 used its $0.30 budget ($0.30 spent)');
+    expect(t.questions[0]).toMatchObject({ detail: "Block `model-1` has used $0.30 of its $0.30. The workflow's USD budget has $1.00 left." });
+  });
+
+  it('a long measured tail keeps 4 decimals (0.06409 reads $0.0641), so a small overage is not hidden', async () => {
+    const run = new Run({
+      workflow: { ...wf([step('model-1', 'model', { attrs: { model: 'm', usd: '0.01' } }), phase('a'), phase('b')]), budget: { turns: 20, minutes: 20, usd: 4 } },
+      engine: new FakeEngine([{ text: 'REINS: done', cost: 0.06409 }, { text: 'REINS: done', cost: 0.01 }]),
+      switchModel: async (m) => ({ to: 'switched', label: m }),
+    });
+    const t = testIo(() => 'stop');
+    await driveRun(run, t.io, () => {});
+    expect(t.questions[0]).toMatchObject({ detail: "Block `model-1` has used $0.0641 of its $0.01. The workflow's USD budget has $3.9359 left." });
+  });
+
   it('an allow past the workflow says the refusal and asks again', async () => {
     const run = blockRun(0.2);
     const answers = ['allow $5', 'stop'];

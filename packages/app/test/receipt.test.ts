@@ -13,6 +13,19 @@ describe('receiptFields', () => {
     expect(receiptFields(base)).toEqual([['status', 'done'], ['turns', '3'], ['time', '12s'], ['cost', '$0.5000']]);
   });
 
+  it('says the dollars and turns per model after cost, and what was not split', () => {
+    const models = [
+      { model: 'a', label: 'Sonnet 5.5', usd: 0.13, turns: 4 },
+      { model: 'b', label: 'Opus 5.5', usd: 0.16, turns: 2 },
+    ];
+    expect(receiptFields({ ...base, models }).slice(3)).toEqual([
+      ['cost', '$0.5000'], ['models', 'Sonnet 5.5 $0.13 (4 turns) · Opus 5.5 $0.16 (2 turns)'],
+    ]);
+    expect(receiptFields({ ...base, models, unsplitUsd: 0.05 })[4]).toEqual(
+      ['models', 'Sonnet 5.5 $0.13 (4 turns) · Opus 5.5 $0.16 (2 turns) · not split by model $0.05']);
+    expect(receiptFields({ ...base, models: [{ model: 'raw-id', usd: 0.007, turns: 1 }] })[4]).toEqual(['models', 'raw-id $0.0070 (1 turn)']);
+  });
+
   it('adds every other field only when it is not zero', () => {
     const f = receiptFields({ ...base, gatesHeld: 1, guardRefusals: 2, totalRefusals: 2, verifyResults: { passed: 1, failed: 0 }, knowlRecalls: 4 });
     expect(f.slice(4)).toEqual([['gates held', '1'], ['refusals', '2'], ['guard refusals', '2'], ['verify passed', '1'], ['Knowl recalls', '4']]);

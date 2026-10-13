@@ -66,6 +66,8 @@ describe.skipIf(skip)('live run e2e', () => {
     fs.writeFileSync(path.join(folderA, '.reins', 'workflows', 'live.reins.md'), LIVE('node --version'));
     fs.writeFileSync(path.join(folderA, '.reins', 'workflows', 'live2.reins.md'), LIVE('node -v').replace('name: live\n', 'name: live2\n'));
     fs.writeFileSync(path.join(folderA, '.reins', 'workflows', 'decl.reins.md'), LIVE('node -p 1').replace('name: live\n', 'name: decl\n'));
+    fs.writeFileSync(path.join(folderA, '.reins', 'workflows', 'models.reins.md'),
+      '---\nreins: 1\nname: models\nbudget: { turns: 10, minutes: 30, usd: 4.00 }\nalways: []\n---\n\n## model claude-opus-5-5\nusd: 0.01\n\n## phase one\n> Do it.\n\n## phase two\n> Again.\n');
     fs.mkdirSync(path.join(folderB, '.reins', 'workflows'), { recursive: true });
     fs.writeFileSync(path.join(folderB, '.reins', 'workflows', 'other.reins.md'), '---\nreins: 1\nname: other\nbudget: { turns: 40, minutes: 30, usd: 4.00 }\nalways: []\n---\n\n## phase solo\n> Do it.\n\n## gate\nuntil: you approve\n');
     const folders = [folderA, folderB];
@@ -658,6 +660,32 @@ describe.skipIf(skip)('live run e2e', () => {
     await page.getByRole('textbox', { name: 'Message' }).fill('/compress');
     await page.keyboard.press('Enter');
     await expect.poll(() => row.count()).toBe(2);
+
+    // LM. A workflow's model block: the switch card inside the run says which block asked; Switch resumes the same session on that model;
+    // the 0.01 slice is used up by the first reply (fake-claude plays the 0.0640898 turn), so the usd card asks; Stop ends with the per-model receipt.
+    store!.putSetting('switchApprovalTokens', 1000);
+    await page.locator('.chead .status.idle').waitFor();
+    await tab('Blocks').click();
+    await page.locator('.wflist button', { has: page.locator('.sx-wfname', { hasText: /^models$/ }) }).click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await dockCard('trust').getByRole('button', { name: 'Trust', exact: true }).click();
+    const modelQ = dockCard('switch');
+    await modelQ.waitFor();
+    expect(await modelQ.locator('.qdetail').innerText()).toMatch(/Asked by the workflow's model block `model-1`\.$/);
+    await dock.getByRole('status').getByText('Waiting for you · switch question', { exact: false }).waitFor();
+    const spawnsBefore = fake.log().filter((e) => e.kind === 'args').length;
+    await modelQ.getByRole('button', { name: 'Switch', exact: true }).click();
+    const usdQ = dockCard('usd');
+    await usdQ.waitFor();
+    await page.getByText('Over: block USD', { exact: false }).first().waitFor();
+    expect(await usdQ.locator('.qdetail').innerText()).toMatch(/^Block `model-1` has used \$0\.0641 of its \$0\.01\./);
+    const runSpawns = fake.log().filter((e) => e.kind === 'args');
+    expect(runSpawns.length).toBeGreaterThan(spawnsBefore);
+    expect(runSpawns.at(-1).args).toEqual(expect.arrayContaining(['--resume', '--model', 'claude-opus-5-5']));
+    await usdQ.getByRole('button', { name: 'Stop', exact: true }).click();
+    const models = dock.locator('.sx-dockreceipt > div', { has: page.locator('dt', { hasText: /^models$/ }) }).locator('dd');
+    await models.waitFor();
+    expect(await models.innerText()).toBe('Opus 5.5 $0.06 (1 turn)');
     expect(errors).toEqual([]);
   }, T);
 });

@@ -26,6 +26,17 @@ describe('question kinds', () => {
     expect(pick('budget', 'Stop').build('')).toBe('stop');
   });
 
+  it('usd: allow $<amount>, an amount above 0 with at most two decimals, and stop', () => {
+    expect(labels('usd')).toEqual(['Allow', 'Stop']);
+    const allow = pick('usd', 'Allow');
+    expect(allow.field).toMatchObject({ placeholder: 'more USD', initial: '0.50' });
+    expect(allow.build('0.5')).toBe('allow $0.5');
+    expect(allow.build(' 2 ')).toBe('allow $2');
+    for (const bad of ['', 'x', '0', '1.234']) expect(allow.build(bad), bad).toBeNull();
+    expect(pick('usd', 'Stop').build('')).toBe('stop');
+    expect(offersStop('usd')).toBe(true);
+  });
+
   it('resume: resume or resume <note>, and stop', () => {
     expect(pick('resume', 'Resume').build('')).toBe('resume');
     expect(pick('resume', 'Resume').build('  ')).toBe('resume');

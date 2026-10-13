@@ -11,6 +11,12 @@ describe('StepChips', () => {
     expect(chips({ i: running, thinking: 1509 })).toContain('running, thinking… ~1,509 tokens');
     expect(chips({ i: running })).not.toContain('thinking');
   });
+  it('names the model a reply ran on, in the text and in the words', () => {
+    const html = chips({ i: { ...running, model: 'Opus 5.5' } });
+    expect(html).toContain('running · on Opus 5.5');
+    expect(html).toContain('running, on Opus 5.5');
+    expect(chips({ i: running })).not.toContain(' on ');
+  });
   it('names the three ended marks', () => {
     expect(Object.values(ENDED)).toEqual(['stopped here', 'failed here', 'left paused here']);
   });

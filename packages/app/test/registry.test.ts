@@ -39,6 +39,8 @@ describe('row registry', () => {
 
   it('draws a step start as a divider and hides command_result', () => {
     expect(JSON.stringify(renderRow(row('step_started', { step: 'plan', parents: [] }), ctx))).toMatch(/sx-stepdiv.*"step ","plan"/);
+    // the say line, the notes and the chips already tell these; a generic details row would repeat them as JSON
+    for (const type of ['model_switched', 'budget_reached']) expect(hidden.has(type), type).toBe(true);
     expect(hidden.has('command_result')).toBe(true);
     expect(renderRow(row('command_result', { step: 'run-1', exitCode: 1 }), ctx)).toBeNull();
   });

@@ -9,7 +9,7 @@ import type { Sess } from './state.js';
 import { offersStop } from './questions.js';
 
 const CARD_STATE: Record<RunCard['state'], string> = { queued: 'queued', delivered: 'delivered', unsent: 'not sent' };
-const METER_WORDS = { turns: 'turns', minutes: 'minutes', usd: 'USD' };
+const METER_WORDS = { turns: 'turns', minutes: 'minutes', usd: 'USD', block: 'block USD' };
 
 // One panel, two places: what each surface shows. Chat has no cards, steer box or meter: its log, Composer and header already have them.
 export type Surface = 'chat' | 'blocks';
