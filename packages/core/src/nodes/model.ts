@@ -10,7 +10,12 @@ const model: NodeType = {
   attrs: ['usd'],
   heading: {
     owns: ['model'],
-    parse(arg, step) { step.attrs.model = arg; return false; },
+    parse(arg, step, ctx) {
+      // Lines are parsed before the heading, so a model: line is already in attrs.
+      if (step.attrs.model !== undefined) ctx.push({ severity: 'error', message: 'A model block names its model in its heading (## model <id>), not in a model: line.', pos: { line: ctx.line, col: ctx.col } });
+      step.attrs.model = arg;
+      return false;
+    },
     print(step) { return { text: step.attrs.model ? `model ${step.attrs.model}` : 'model', condInHeading: false }; },
   },
   validate: {

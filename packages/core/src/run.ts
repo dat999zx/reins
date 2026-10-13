@@ -68,6 +68,8 @@ export interface RunEventRecord {
     | 'engine_cost'
     | 'model_switched'
     | 'budget_reached'
+    | 'subagent_started'
+    | 'subagent_result'
     | 'hook'
     | 'judge';
   data: any;
@@ -351,6 +353,7 @@ export class Run {
       log: (type, data) => this.logEvent(type, data),
       pause: (text) => { if (this.status === 'running') this.pauseForStop(text, step); },
       stop: () => this.stop(),
+      subagent: () => Promise.reject(new Error('subagent steps run from Batch 2')),
     };
   }
 

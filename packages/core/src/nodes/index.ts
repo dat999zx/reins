@@ -13,6 +13,7 @@ import recall from './recall.js';
 import store from './store.js';
 import handoff from './handoff.js';
 import model from './model.js';
+import subagent from './subagent.js';
 import end from './end.js';
 
 /** What the host did with a model step. `label` names the model in use afterwards. One member per `to`, so `r.label` narrows. */
@@ -26,6 +27,8 @@ export interface ExecCtx {
   /** Pauses the run at this step (a `stop` pause with this step's id): Resume runs the step again. */
   pause(text: string): void;
   stop(): Promise<void>;
+  /** Runs a subagent step (D): its own engine session, model and USD slice. True once its result waits for the next turn; false when the run paused or stopped. */
+  subagent(step: Step, usd: number | undefined): Promise<boolean>;
 }
 
 export interface HeadingCtx { line: number; col: number; push(d: Diagnostic): void }
@@ -71,7 +74,7 @@ export interface NodeType {
 }
 
 export const NODES = new Map<string, NodeType>(
-  [phase, say, run, gate, repeat, ifNode, verify, use, recall, store, handoff, model, end].map((n) => [n.kind, n]),
+  [phase, say, run, gate, repeat, ifNode, verify, use, recall, store, handoff, model, subagent, end].map((n) => [n.kind, n]),
 );
 
 export function defaultId(step: { kind: string; title?: string }, counters: Record<string, number>): string {
@@ -95,4 +98,5 @@ export { default as recallNode } from './recall.js';
 export { default as storeNode } from './store.js';
 export { default as handoffNode } from './handoff.js';
 export { default as modelNode } from './model.js';
+export { default as subagentNode } from './subagent.js';
 export { default as endNode } from './end.js';

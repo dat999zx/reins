@@ -41,9 +41,13 @@ describe('model step: parse and print', () => {
     expect(p.workflow!.steps[0]!.attrs.until).toBeUndefined();
   });
 
-  it('model: as a line is an unknown attribute: the id lives in the heading only', () => {
+  it('a model: line in a model block with an id in its heading is an error; with no heading id it names the model', () => {
     const p = parseWorkflow(wf('## model m\nmodel: x\n'));
-    expect(p.diagnostics.map((d) => d.message)).toContain('Unknown attribute "model"');
+    expect(p.diagnostics.map((d) => d.message)).toContain('A model block names its model in its heading (## model <id>), not in a model: line.');
+    expect(p.diagnostics.find((d) => d.message.startsWith('A model block names its model'))!.severity).toBe('error');
+    const w = ok(wf('## model\nmodel: x\n'));
+    expect(w.steps[0]!.attrs.model).toBe('x');
+    expect(printWorkflow(w)).toContain('## model x');
   });
 });
 

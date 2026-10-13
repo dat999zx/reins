@@ -9,6 +9,16 @@ const plain = (s: string) => { try { return YAML.parse(s, { logLevel: 'error' })
 /** A USD limit as text: two decimals when that loses nothing, else the number as it is (0.0001 stays 0.0001). */
 export const usdText = (usd: number): string => (Number(usd.toFixed(2)) === usd ? usd.toFixed(2) : String(usd));
 
+/**
+ * A key a heading owns is not printed as a line: its own kind prints it in the heading, and a kind that does not list it
+ * has no line for it (a stray `cmd:` on a phase stays unprinted). A kind that lists a key another kind's heading owns
+ * (a subagent's `model:`) prints it as a line.
+ */
+function ownedElsewhere(kind: string, k: string, owned: Set<string>): boolean {
+  const n = NODES.get(kind);
+  return !!n?.heading?.owns?.includes(k) || (owned.has(k) && !n?.attrs.includes(k));
+}
+
 export function printWorkflow(w: Workflow): string {
   const parts: string[] = [];
   const owned = headingOwns();
@@ -96,7 +106,7 @@ export function printWorkflow(w: Workflow): string {
 
     // Extra attrs not handled
     for (const [k, v] of Object.entries(step.attrs)) {
-      if (['id', 'mode', 'until', 'max', 'against', 'knowl', 'to', 'focus'].includes(k) || owned.has(k)) {
+      if (['id', 'mode', 'until', 'max', 'against', 'knowl', 'to', 'focus'].includes(k) || ownedElsewhere(step.kind, k, owned)) {
         continue;
       }
       lines.push(`${k}: ${v}`);

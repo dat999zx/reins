@@ -53,6 +53,7 @@ export const KINDS: Record<StepKind, KindView> = {
     line: ['model', { field: 'model' }, 'USD', { field: 'usd' }],
     card: { label: 'model', section: 'Flow' }, fresh: () => ({}),
   },
+  subagent: { fields: [], line: ['subagent'], card: { label: 'subagent', section: 'Flow' }, fresh: () => ({}) },
   end: { stops: true, fields: [], line: ['end'], card: { label: 'end', section: 'Flow' }, fresh: () => ({}) },
   use: { fields: [], line: ['use', 'sub'], sub: (s) => s.title || s.attrs.use || s.id },
 };
