@@ -18,6 +18,10 @@ export interface Receipt {
   knowlStores: number;
   /** recall or store steps that did nothing because no Knowl function was wired in */
   knowlSkipped: number;
+  /** Turns and dollars per model (first seen first); absent when no reply named a model or carried a split. */
+  models?: Array<{ model: string; usd: number; turns: number; label?: string }>;
+  /** The part of totalCostUsd no model's figure covers (a reply with no per-model split); absent when none. */
+  unsplitUsd?: number;
 }
 
 export function receipt(events: RunEventRecord[]): Receipt {
@@ -36,6 +40,8 @@ export function receipt(events: RunEventRecord[]): Receipt {
   let knowlRecalls = 0;
   let knowlStores = 0;
   let knowlSkipped = 0;
+  const byModel = new Map<string, { usd: number; turns: number }>();
+  const seen = (m: string) => byModel.get(m) ?? (byModel.set(m, { usd: 0, turns: 0 }), byModel.get(m)!);
 
   const firstTimestamp = events[0]?.timestamp ?? 0;
   let lastTimestamp = firstTimestamp;
@@ -60,6 +66,7 @@ export function receipt(events: RunEventRecord[]): Receipt {
         break;
       case 'turn_ended':
         totalTurns++;
+        if (typeof ev.data?.model === 'string') seen(ev.data.model).turns++;
         break;
       case 'gate_paused':
         gatesHeld++;
@@ -99,11 +106,15 @@ export function receipt(events: RunEventRecord[]): Receipt {
         break;
       case 'engine_cost':
         totalCostUsd += Number(ev.data?.usd || 0);
+        for (const [m, usd] of Object.entries((ev.data?.models ?? {}) as Record<string, number>)) seen(m).usd += Number(usd) || 0;
         break;
     }
   }
 
   const totalTimeMs = Math.max(0, lastTimestamp - firstTimestamp);
+  const r6 = (x: number) => Math.round(x * 1e6) / 1e6;
+  const models = [...byModel].map(([model, v]) => ({ model, usd: r6(v.usd), turns: v.turns }));
+  const unsplit = totalCostUsd - models.reduce((a, m) => a + m.usd, 0);
 
   return {
     workflow,
@@ -122,5 +133,7 @@ export function receipt(events: RunEventRecord[]): Receipt {
     knowlRecalls,
     knowlStores,
     knowlSkipped,
+    ...(models.length ? { models } : {}),
+    ...(models.length && unsplit > 0.00005 ? { unsplitUsd: r6(unsplit) } : {}),
   };
 }

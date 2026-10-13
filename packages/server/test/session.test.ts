@@ -1672,3 +1672,212 @@ describe('compress (B)', () => {
     });
   });
 });
+
+describe('per-model cost (C)', () => {
+  type X = ReturnType<typeof setup>;
+  const sidOf = (x: X) => x.store.getSession('s1')!.engineSessionId!;
+  const stored = (x: X) => x.store.getEngineModels(sidOf(x));
+  const sum = (m: Record<string, number>) => Object.values(m).reduce((a, b) => a + b, 0);
+  const describeB = (_e: string, m: string) => ({ listed: true, label: m === 'model-b' ? 'B' : m, estimate: 0.01 });
+  const WF_B = `${FRONT}## model model-b\n\n## phase one\n> Go.\n`;
+  const WF_B4 = `${FRONT}## model model-b\n\n## phase one\n> a\n\n## phase two\n> b\n\n## phase three\n> c\n\n## phase four\n> d\n`;
+  const WF_P = `${FRONT}## phase one\n> Go.\n`;
+  /** Runs `text` from a trusted file to its end; returns the run id. */
+  const runIt = async (x: X, text: string) => {
+    expect(x.s.runFile(put(x.cwd, 'w.reins.md', text))).toEqual({ ok: true });
+    const q = await x.question('trust');
+    x.s.answer(q.id, 'y');
+    await x.s.idle();
+    return x.rows('run_started')[0]!.runId!;
+  };
+  const runEvents = (x: X, rid: string, type: string) => x.store.loadRun(rid)!.snapshot.events.filter((e) => e.type === type).map((e) => e.data as any);
+  const receiptOf = (x: X) => x.data('receipt')[0] as { models?: Array<{ model: string; usd: number; turns: number; label?: string }>; unsplitUsd?: number; totalCostUsd: number };
+  /** The money rule: the receipt's split plus what it could not split is the total. */
+  const addsUp = (r: ReturnType<typeof receiptOf>) =>
+    expect((r.models ?? []).reduce((a, m) => a + m.usd, 0) + (r.unsplitUsd ?? 0)).toBeCloseTo(r.totalCostUsd, 9);
+
+  it('a plain reply stores its per-model totals; a restart opens with them as its base; plain turn_ended rows carry no models', async () => {
+    const x = setup([
+      { cost: 0.5, total: 0.5, models: { a: 0.5 }, totals: { a: 0.5 } },
+      { cost: 0.25, total: 0.75, models: { a: 0.25 }, totals: { a: 0.75 } },
+    ]);
+    x.s.message('one');
+    await x.s.idle();
+    expect(stored(x)).toEqual({ a: 0.5 });
+    expect(x.t.opens[0]).not.toHaveProperty('costBaseByModel');
+    await x.s.shutdown();
+    const s2 = x.reopen();
+    s2.message('two');
+    await s2.idle();
+    expect(x.t.opens[1]!.costBaseByModel).toEqual({ a: 0.5 });
+    expect(stored(x)).toEqual({ a: 0.75 });
+    expect(x.data('turn_ended').map((d) => d.cost)).toEqual([0.5, 0.25]);
+    for (const d of x.data('turn_ended')) expect(d).not.toHaveProperty('models');
+  });
+
+  it('a legacy row (a total, no per-model totals) opens with no per-model base; its reply has no split, the next is split, and the receipt adds up', async () => {
+    const x = setup([
+      { usage: 1000, model: 'model-b', cost: 0.1, total: 0.3, totals: { 'model-b': 0.3 } }, // the adapter has no base: no `models`
+      { usage: 1000, model: 'model-b', cost: 0.2, total: 0.5, totals: { 'model-b': 0.5 }, models: { 'model-b': 0.2 } },
+    ], { describe: describeB });
+    x.store.updateSession('s1', { engineSessionId: 'old', model: 'model-b' });
+    x.store.putEngineTotal('old', 0.2);
+    const rid = await runIt(x, `${FRONT}## phase one\n> a\n\n## phase two\n> b\n`);
+    expect(x.t.opens[0]!.costBase).toBe(0.2);
+    expect(x.t.opens[0]).not.toHaveProperty('costBaseByModel');
+    expect(runEvents(x, rid, 'engine_cost')).toEqual([{ usd: 0.1 }, { usd: 0.2, models: { 'model-b': 0.2 } }]);
+    const r = receiptOf(x);
+    expect(r.models).toEqual([{ model: 'model-b', usd: 0.2, turns: 2, label: 'B' }]);
+    expect(r.unsplitUsd).toBeCloseTo(0.1, 9);
+    expect(r.totalCostUsd).toBeCloseTo(0.3, 9);
+    addsUp(r);
+    expect(x.store.getEngineModels('old')).toEqual({ 'model-b': 0.5 });
+  });
+
+  it('a result with a total and no modelUsage stores no split; that reply and the next are unsplit, the one after is split again', async () => {
+    const x = setup([
+      { usage: 1000, model: 'model-b', cost: 0.1, total: 0.1, totals: { 'model-b': 0.1 }, models: { 'model-b': 0.1 } },
+      { usage: 1000, model: 'model-b', cost: 0.2, total: 0.3 },                                             // no modelUsage
+      { usage: 1000, model: 'model-b', cost: 0.3, total: 0.6, totals: { 'model-b': 0.6 } },                 // the adapter's base is gone: no split
+      { usage: 1000, model: 'model-b', cost: 0.4, total: 1.0, totals: { 'model-b': 1.0 }, models: { 'model-b': 0.4 } },
+    ], { describe: describeB });
+    const rid = await runIt(x, WF_B4);
+    expect(x.rows('run_finished')).toHaveLength(1);
+    const r = receiptOf(x);
+    expect(r.models).toEqual([{ model: 'model-b', usd: 0.5, turns: 4, label: 'B' }]);
+    expect(r.unsplitUsd).toBeCloseTo(0.5, 9);
+    expect(r.totalCostUsd).toBe(1);
+    addsUp(r);
+    expect(runEvents(x, rid, 'engine_cost').map((d) => d.usd)).toEqual([0.1, 0.2, 0.3, 0.4]);
+    expect(stored(x)).toEqual({ 'model-b': 1 });
+  });
+
+  it('stored totals: a total with no modelUsage clears the stored split, so the next open has no per-model base', async () => {
+    const x = setup([{ total: 0.5, totals: { a: 0.5 } }, { total: 0.75 }, {}]);
+    x.s.message('one');
+    await x.s.idle();
+    expect(stored(x)).toEqual({ a: 0.5 });
+    x.s.message('two');
+    await x.s.idle();
+    expect(stored(x)).toBeUndefined();
+    expect(x.store.getEngineTotal(sidOf(x))).toBe(0.75);
+    await x.s.shutdown();
+    const s2 = x.reopen();
+    s2.message('three');
+    await s2.idle();
+    expect(x.t.opens[1]).not.toHaveProperty('costBaseByModel');
+    expect(x.t.opens[1]!.costBase).toBe(0.75);
+  });
+
+  it('a reply that rejects stores nothing, and the next open gets the last stored per-model totals', async () => {
+    const x = setup([{ total: 0.5, totals: { a: 0.5 } }, { reject: 'boom', total: 9, totals: { a: 9 } }, { total: 0.7, totals: { a: 0.7 }, models: { a: 0.2 } }]);
+    for (const m of ['one', 'two', 'three']) {
+      x.s.message(m);
+      await x.s.idle();
+    }
+    expect(x.t.opens.map((o) => o.costBaseByModel)).toEqual([undefined, { a: 0.5 }]);
+    expect(stored(x)).toEqual({ a: 0.7 });
+  });
+
+  it('an interrupt kill (no total, no figures) keeps the stored per-model totals for the next reply', async () => {
+    const x = setup([{ total: 0.5, totals: { a: 0.5 } }, { cost: 0 }, { total: 0.7, totals: { a: 0.7 } }]);
+    x.s.message('one');
+    await x.s.idle();
+    x.s.message('two');
+    await x.s.idle();
+    expect(stored(x)).toEqual({ a: 0.5 });
+    expect(x.store.getEngineTotal(sidOf(x))).toBe(0.5);
+    x.s.message('three');
+    await x.s.idle();
+    expect(stored(x)).toEqual({ a: 0.7 });
+  });
+
+  it('a switch inside a run resumes with the stored per-model totals as its base; the run reply is the new model only and the parts add up', async () => {
+    const x = setup([
+      { usage: 1000, cost: 0.5, total: 0.5, totals: { a: 0.5 }, models: { a: 0.5 } },
+      { usage: 1000, model: 'model-b', cost: 0.01, total: 0.51, totals: { a: 0.5, 'model-b': 0.01 }, models: { 'model-b': 0.01 } },
+    ], { describe: describeB });
+    x.s.message('first');
+    await x.s.idle();
+    const rid = await runIt(x, WF_B);
+    expect(x.models).toEqual([undefined, 'model-b']);
+    expect(x.t.opens[1]!.costBaseByModel).toEqual({ a: 0.5 });
+    expect(x.t.opens[1]!.costBase).toBe(0.5);
+    const [cost] = runEvents(x, rid, 'engine_cost');
+    expect(cost).toEqual({ usd: 0.01, models: { 'model-b': 0.01 } });
+    expect(sum(cost.models)).toBeCloseTo(cost.usd, 9);
+    const r = receiptOf(x);
+    expect(r.models).toEqual([{ model: 'model-b', usd: 0.01, turns: 1, label: 'B' }]);
+    expect(r).not.toHaveProperty('unsplitUsd');
+    expect(r.totalCostUsd).toBe(0.01);
+    addsUp(r);
+    expect(stored(x)).toEqual({ a: 0.5, 'model-b': 0.01 });
+  });
+
+  describe('auto-compaction in a run', () => {
+    it('the reply carries the compaction and its split: one engine_cost whose models sum to usd', async () => {
+      const x = setup([{ usage: 600_000 }, { cost: 0.01, models: { a: 0.01 } }, { usage: 1000, model: 'a', cost: 0.02, models: { a: 0.02 } }]);
+      x.store.putSetting('autoCompressAt', 0.5);
+      x.s.message('one');
+      await x.s.idle();
+      const rid = await runIt(x, WF_P);
+      expect(x.t.compacts).toBe(1);
+      const evs = runEvents(x, rid, 'engine_cost');
+      expect(evs).toHaveLength(1);
+      expect(evs[0].usd).toBeCloseTo(0.03, 9);
+      expect(evs[0].models.a).toBeCloseTo(0.03, 9);
+      expect(sum(evs[0].models)).toBeCloseTo(evs[0].usd, 9);
+      const r = receiptOf(x);
+      expect(r.models).toEqual([{ model: 'a', usd: expect.closeTo(0.03, 9), turns: 1, label: 'a' }]);
+      expect(r).not.toHaveProperty('unsplitUsd');
+      addsUp(r);
+    });
+
+    it('a reply with no split after a compaction with one: the run gets the compaction\'s split only, and the receipt shows the rest as unsplit', async () => {
+      const x = setup([{ usage: 600_000 }, { cost: 0.01, models: { a: 0.01 } }, { usage: 1000, model: 'a', cost: 0.02 }]);
+      x.store.putSetting('autoCompressAt', 0.5);
+      x.s.message('one');
+      await x.s.idle();
+      const rid = await runIt(x, WF_P);
+      const [c] = runEvents(x, rid, 'engine_cost');
+      expect(c.usd).toBeCloseTo(0.03, 9);
+      expect(c.models).toEqual({ a: 0.01 });
+      const r = receiptOf(x);
+      expect(r.models).toEqual([{ model: 'a', usd: 0.01, turns: 1, label: 'a' }]);
+      expect(r.unsplitUsd).toBeCloseTo(0.02, 9);
+      expect(r.totalCostUsd).toBeCloseTo(0.03, 9);
+      addsUp(r);
+    });
+
+    it("when the reply fails, the compaction's dollars go to its own turn_ended with no split and none to the run", async () => {
+      const x = setup([{ usage: 600_000 }, { cost: 0.02, models: { a: 0.02 } }, { reject: 'x' }]);
+      x.store.putSetting('autoCompressAt', 0.5);
+      x.s.message('one');
+      await x.s.idle();
+      expect(x.s.runFile(put(x.cwd, 'w.reins.md', WF_P))).toEqual({ ok: true });
+      const q = await x.question('trust');
+      x.s.answer(q.id, 'y');
+      await x.s.idle();
+      const rid = x.rows('run_started')[0]!.runId!;
+      expect(x.rows('run_detached')).toHaveLength(1);
+      expect(x.data('turn_ended')).toEqual([{ text: 'ok', cost: 0.01 }, { text: '', cost: 0.02 }]);
+      expect(runEvents(x, rid, 'engine_cost')).toEqual([]);
+    });
+
+    it('a Stop during the compaction still hands the run its cost and split', async () => {
+      const x = setup([{ usage: 600_000 }, { hold: true, cost: 0.02, models: { a: 0.02 } }, {}]);
+      x.store.putSetting('autoCompressAt', 0.5);
+      x.s.message('one');
+      await x.s.idle();
+      x.s.message('two', [{ tag: 'read-only' }]);
+      await until(() => x.t.compacts === 1);
+      expect(x.s.card('', 'stop')).toEqual({ ok: true });
+      const r = await x.question('resume');
+      x.s.answer(r.id, 'stop');
+      await x.s.idle();
+      expect(x.t.turns).toEqual(['one']);
+      const rid = x.rows('run_started')[0]!.runId!;
+      expect(runEvents(x, rid, 'engine_cost')).toEqual([{ usd: 0.02, models: { a: 0.02 } }]);
+    });
+  });
+});

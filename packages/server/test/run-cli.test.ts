@@ -176,6 +176,24 @@ describe('reins run against fake-claude', () => {
     store.close();
   }, 30_000);
 
+  it('a model step says the terminal cannot switch models; the receipt names the model with its dollars and turns', async () => {
+    const f = fakeSetup([]);
+    const file = path.join(f.dir, 'w.reins.md');
+    fs.writeFileSync(file, '---\nreins: 1\nname: m\nbudget: { turns: 9, minutes: 9 }\nalways: []\n---\n\n## model claude-opus-5-5\n\n## phase one\n> a\n');
+    const store = openStore(':memory:');
+    const d = drive({ file, cwd: f.dir, store });
+    const res = await d.h.done;
+    expect(res.status).toBe('done');
+    expect(d.text()).toContain("· model-1: this runner cannot switch models; the steps run on the CLI's model");
+    const r = res.receipt!;
+    expect(r.models).toHaveLength(1);
+    const [m] = r.models!;
+    expect(m!.turns).toBe(1);
+    expect(m!.usd + (r.unsplitUsd ?? 0)).toBeCloseTo(r.totalCostUsd, 4);
+    expect(d.text()).toContain(`models ${m!.model} $${m!.usd.toFixed(4)} (1 turn)`);
+    store.close();
+  }, 60_000);
+
   it('check errors stop the run before claude starts', async () => {
     const f = fakeSetup([]);
     const file = path.join(f.dir, 'bad.reins.md');

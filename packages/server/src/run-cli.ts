@@ -180,12 +180,17 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
     else if (ev.type === 'verify_result') say(d.pass ? '✓ verify: pass' : '✗ verify: fail');
     else if (ev.type === 'loop_iteration') say(`↻ ${d.step}: attempt ${d.attempts}`);
     else if (ev.type === 'handoff') say(`· handoff to ${d.to}: summary recorded`);
+    else if (ev.type === 'model_switched' && d.how === 'unsupported') say(`· ${d.step}: this runner cannot switch models; the steps run on the CLI's model`);
     else if (ev.type === 'run_stopped') say('⏹ run stopped');
   }
 
   function printReceipt(r: Receipt, runId: string) {
     say('\n── Receipt ──');
     say(`workflow ${r.workflow} · ${r.status} · ${r.totalTurns} turns · ${Math.round(r.totalTimeMs / 1000)} s · $${r.totalCostUsd.toFixed(4)}`);
+    if (r.models) {
+      const split = r.models.map((m) => `${m.model} $${m.usd.toFixed(4)} (${m.turns} turn${m.turns === 1 ? '' : 's'})`).join(' · ');
+      say(`models ${split}${r.unsplitUsd ? ` · not split by model $${r.unsplitUsd.toFixed(4)}` : ''}`);
+    }
     say(`gates held ${r.gatesHeld} · refusals ${r.totalRefusals} (guard ${r.guardRefusals}, read-only ${r.readOnlyRefusals}) · loop attempts ${r.loopAttempts}`);
     say(`cards: live delivered ${r.liveCardsDelivered}, auto fired ${r.autoCardsFired} · verify ${r.verifyResults.passed} pass / ${r.verifyResults.failed} fail · Knowl ${r.knowlRecalls} recalls, ${r.knowlStores} stores${r.knowlSkipped ? `, ${r.knowlSkipped} skipped` : ''}`);
     say(`run id ${runId}`);

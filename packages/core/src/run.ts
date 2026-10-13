@@ -261,7 +261,7 @@ export class Run {
       }
     }
     if (result.cost !== undefined && !result.events?.some((e) => e.type === 'cost')) {
-      this.logEvent('engine_cost', { usd: result.cost });
+      this.logEvent('engine_cost', { usd: result.cost, ...(result.models ? { models: result.models } : {}) });
     }
   }
 

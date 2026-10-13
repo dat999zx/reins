@@ -4,7 +4,7 @@ import path from 'node:path';
 import {
   Run, receipt,
   type Decision, type Diagnostic, type Engine, type EngineEvent, type EngineSession, type Policy,
-  type RunEventRecord, type RunOptions, type SwitchOutcome, type ToolRequest, type TurnResult, type Workflow,
+  type Receipt, type RunEventRecord, type RunOptions, type SwitchOutcome, type ToolRequest, type TurnResult, type Workflow,
 } from '@reins/core';
 import { askTool, driveRun, questionId, runOptions, type DriveIo, type Question } from './drive.js';
 import { contextSize, contextWindow, detachedRuns, readSetting, stillOverAfterCompaction, switchCheck, type SwitchCheck } from './settings.js';
@@ -41,6 +41,13 @@ const real = (p: string) => {
 const msg = (e: unknown) => String((e as Error)?.message ?? e);
 // Already in session_log as engine rows, or (cost) in turn_ended (plan 15d 3b.3, line 1405).
 const SKIPPED = new Set(['tool_call', 'refusal', 'hook', 'engine_cost']);
+/** Two replies' per-model dollars added; a side that is missing adds nothing, both missing stays missing. */
+const sumModels = (a?: Record<string, number>, b?: Record<string, number>): Record<string, number> | undefined => {
+  if (!a || !b) return a ?? b;
+  const out = { ...a };
+  for (const [m, c] of Object.entries(b)) out[m] = (out[m] ?? 0) + c;
+  return out;
+};
 
 export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   const { store, dir } = deps;
@@ -206,6 +213,13 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     return m ? bad(`Unknown model ${m.model} in step \`${m.step}\`: it is not in this session's provider list.`) : undefined;
   }
 
+  /** The receipt's models with the provider's label for each, as the header shows it. */
+  function labelled(r: Receipt): Receipt {
+    if (!r.models) return r;
+    const engine = store.getSession(id)!.engine;
+    return { ...r, models: r.models.map((m) => ({ ...m, label: describe(engine, m.model, undefined).label })) };
+  }
+
   async function openEngine(): Promise<EngineSession | undefined> {
     cancelOpen = false;
     const f = folderHash(cwd);
@@ -227,10 +241,12 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     // A new session counts from 0; a resumed one from the total stored for its id, and without one (a session
     // from before the cost table) its first reply's cost is unknown.
     const base = sid ? store.getEngineTotal(sid) : 0;
+    const models = sid ? store.getEngineModels(sid) : undefined;
     baseUnknown = base === undefined;
     const s = await getEngine().open({
       cwd, ...(sid ? { sessionId: sid } : {}),
       ...(base !== undefined ? { costBase: base } : {}),
+      ...(models ? { costBaseByModel: models } : {}),
       policy: () => run?.policy() ?? PLAIN,
       pendingCards: () => (run ? run.takeCards() : queue.splice(0)),
     });
@@ -257,7 +273,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       turnOpen = false;
       closeQuestions('the turn ended', 'tool');
     }
-    if (res.total !== undefined) store.putEngineTotal(s.sessionId, res.total);
+    if (res.total !== undefined) store.putEngineTotal(s.sessionId, res.total, res.totals);
     // ponytail: a session from before the cost table shows its first reply's cost as unknown; a switch to Default has no price, so with a context it asks with the switch card.
     if (baseUnknown && res.total !== undefined) {
       baseUnknown = false;
@@ -295,7 +311,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
           pre = await call(compactCall);
           // A Stop during the compaction interrupted it: do not send the reply. A now card still gets its turn.
           if (stopping || intent?.kind === 'stop' || run?.stopHeld) {
-            return { text: '', events: [], ...(pre.cost !== undefined ? { cost: pre.cost } : {}), ...(pre.total !== undefined ? { total: pre.total } : {}) };
+            return { text: '', events: [], ...(pre.cost !== undefined ? { cost: pre.cost } : {}), ...(pre.total !== undefined ? { total: pre.total } : {}), ...(pre.models ? { models: pre.models } : {}) };
           }
         }
       }
@@ -311,7 +327,8 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     }
     if (notSent && pre) { lost(); return res; }
     const cost = pre?.cost === undefined ? res.cost : (res.cost ?? 0) + pre.cost;
-    return cost === undefined || cost === res.cost ? res : { ...res, cost };
+    const models = sumModels(pre?.models, res.models);
+    return cost === undefined || cost === res.cost ? (models === res.models ? res : { ...res, ...(models ? { models } : {}) }) : { ...res, cost, ...(models ? { models } : {}) };
   }
 
   const lent: EngineSession = {
@@ -445,7 +462,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       unsent();
       return undefined;
     }
-    log('receipt', receipt(r.getEvents()), rid);
+    log('receipt', labelled(receipt(r.getEvents())), rid);
     const all = [...cards, ...queue.splice(0)];
     if (r.status === 'done' && !stopping && all.length) return all.join('\n\n');
     if (all.length) log('cards_unsent', { cards: all });
