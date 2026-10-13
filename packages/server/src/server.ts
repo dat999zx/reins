@@ -7,10 +7,10 @@ import { printWorkflow, type EngineProbe, type Workflow } from '@reins/core';
 import { sameToken } from './hooks.js';
 import { releaseLock, runningLock, takeLock } from './lock.js';
 import type { Catalog, CatalogModel } from './catalog.js';
-import { listModels, loadProviders, type PickerModel, type Provider } from './providers.js';
+import { listModels, loadProviders, type Provider } from './providers.js';
 import { recover } from './recover.js';
 import { loadWorkflow } from './run-cli.js';
-import { openSession, under, type Ack, type MakeEngine, type Session, type SessionDeps } from './session.js';
+import { openSession, under, type Ack, type DescribeModel, type MakeEngine, type Session, type SessionDeps } from './session.js';
 import { contextSize, priceFor, readSetting, switchEstimate } from './settings.js';
 import type { LogRow, Store } from './store.js';
 import { tagCatalogue, type Tag } from './tags.js';
@@ -53,7 +53,7 @@ const str = (v: unknown): v is string => typeof v === 'string';
 const isTags = (v: unknown): v is Tag[] =>
   Array.isArray(v) && v.every((t) => typeof t === 'object' && t !== null && str(t.tag) && (t.arg === undefined || str(t.arg)));
 
-interface Ctx { providers: Provider[]; store: Store; list: (p: Provider) => PickerModel[]; catalogOf: (p: Provider) => CatalogModel[] }
+interface Ctx { store: Store; describe: DescribeModel }
 const actions: Record<string, (s: Session, b: Body, ctx: Ctx) => Reply | Promise<Reply>> = {
   message: (s, b) => {
     const tags = b.tags ?? [];
@@ -67,7 +67,7 @@ const actions: Record<string, (s: Session, b: Body, ctx: Ctx) => Reply | Promise
     return fromAck(s.card(b.text, b.kind));
   },
   answer: (s, b) => (str(b.questionId) && str(b.answer) ? fromAck(s.answer(b.questionId, b.answer)) : fail(400, 'questionId and answer must be strings.')),
-  settings: (s, b, { providers, store, list, catalogOf }) => {
+  settings: (s, b, { store, describe }) => {
     const { autoApprove, title, model } = b;
     if (autoApprove !== undefined && typeof autoApprove !== 'boolean') return fail(400, 'autoApprove must be a boolean.');
     if (title !== undefined && !str(title)) return fail(400, 'title must be a string.');
@@ -75,12 +75,9 @@ const actions: Record<string, (s: Session, b: Body, ctx: Ctx) => Reply | Promise
     let target: { estimate: number | undefined; label: string; source?: 'table' | 'catalog' } | undefined;
     if (model) {
       // '' is the default; the session's own current model stays selectable even when the list no longer has it.
-      const provider = providers.find((p) => p.id === s.info().engine);
-      const listed = provider && list(provider).find((m) => m.id === model);
-      if (!listed && model !== s.info().model) return fail(400, "Unknown model for this session's provider.");
-      const used = contextSize(store.readLog(s.id));
-      const price = provider && used !== undefined ? priceFor(provider, catalogOf(provider), model, used) : undefined;
-      target = { estimate: switchEstimate(used, price), label: listed?.label ?? model, ...(price ? { source: price.source } : {}) };
+      const d = describe(s.info().engine, model, contextSize(store.readLog(s.id)));
+      if (!d.listed && model !== s.info().model) return fail(400, "Unknown model for this session's provider.");
+      target = { estimate: d.estimate, label: d.label, ...(d.source ? { source: d.source } : {}) };
     } else if (model === '') {
       target = { estimate: undefined, label: 'the default model' };
     }
@@ -158,7 +155,14 @@ export async function startServer(o: ServerOptions): Promise<Server> {
   const token = randomBytes(32).toString('hex');
   const sessions = new Map<string, Session>();
   const subs = new Set<(row: LogRow) => void>();
-  const deps: SessionDeps = { store: o.store, makeEngine: o.makeEngine, dir: o.dir, onRow: (row) => { for (const f of subs) f(row); } };
+  // One copy of the rule: the header's switch and a run's model step both read the list and the estimate here.
+  const describeModel: DescribeModel = (engine, model, used) => {
+    const provider = providers.find((p) => p.id === engine);
+    const listed = provider && list(provider).find((m) => m.id === model);
+    const price = provider && used !== undefined ? priceFor(provider, catalogOf(provider), model, used) : undefined;
+    return { listed: !!listed, label: listed?.label ?? model, estimate: switchEstimate(used, price), ...(price ? { source: price.source } : {}) };
+  };
+  const deps: SessionDeps = { store: o.store, makeEngine: o.makeEngine, dir: o.dir, describeModel, onRow: (row) => { for (const f of subs) f(row); } };
   let engines: Array<{ id: string } & EngineProbe> = [];
   let host = '';
   let origin = '';
@@ -293,7 +297,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
       }
       if (req.method === 'POST' && Object.hasOwn(actions, m[2]!)) {
         const r = await parse(req);
-        return 'fail' in r ? r.fail : actions[m[2]!]!(s, r.b, { providers, store: o.store, list, catalogOf });
+        return 'fail' in r ? r.fail : actions[m[2]!]!(s, r.b, { store: o.store, describe: describeModel });
       }
     }
     return fail(404, 'Not found.');

@@ -18,7 +18,7 @@ async function until(f: () => boolean) {
   expect(f(), 'the condition was not met in time').toBe(true);
 }
 
-function setup(script: TestTurn[] = [], o: { cwd?: string; dir?: string; autoApprove?: boolean } = {}) {
+function setup(script: TestTurn[] = [], o: { cwd?: string; dir?: string; autoApprove?: boolean; describe?: Parameters<typeof openSession>[0]['describeModel'] } = {}) {
   const store = openStore(':memory:');
   const t = testEngine(script);
   const models: Array<string | undefined> = [];
@@ -27,8 +27,8 @@ function setup(script: TestTurn[] = [], o: { cwd?: string; dir?: string; autoApp
   const dir = o.dir ?? tmp();
   const cwd = o.cwd ?? tmp();
   const row = store.createSession({ id: 's1', cwd, engine: 'claude' });
-  const s = openSession({ store, makeEngine, dir, onRow: (r) => seen.push(r) }, row, true);
-  const reopen = () => openSession({ store, makeEngine, dir, onRow: (r) => seen.push(r) }, store.getSession('s1')!);
+  const s = openSession({ store, makeEngine, dir, onRow: (r) => seen.push(r), ...(o.describe ? { describeModel: o.describe } : {}) }, row, true);
+  const reopen = () => openSession({ store, makeEngine, dir, onRow: (r) => seen.push(r), ...(o.describe ? { describeModel: o.describe } : {}) }, store.getSession('s1')!);
   if (o.autoApprove) s.settings({ autoApprove: true });
   const log = () => store.readLog('s1');
   const rows = (type: string) => log().filter((r) => r.type === type);
@@ -1127,6 +1127,268 @@ describe('switch approval (B)', () => {
     expect(sw(x)).toEqual({ ok: true });
     expect(x.rows('question')).toHaveLength(0);
     expect(modelRows(x)).toEqual([{ model: 'model-b' }]);
+  });
+});
+
+describe('model step in a run (C)', () => {
+  const FRONT_C = '---\nreins: 1\nname: w\nbudget: { turns: 10, minutes: 10 }\nalways: []\n---\n\n';
+  const WF = `${FRONT_C}## model model-b\n\n## phase one\n> Go.\n`;
+  const WF_GATE = `${FRONT_C}## model model-b\n\n## gate\nuntil: you approve\n\n## phase one\n> Go.\n`;
+  const describeB = (_e: string, m: string) => ({ listed: m !== 'nope', label: m === 'model-b' ? 'B' : m, estimate: 0.01 });
+  const SWITCHED = "Model set to B from the next reply. The whole conversation goes to it as input.";
+  const CLOSED = "⏸ model-1: the switch question was closed before it was answered; Resume asks it again";
+  /** A session that has had one reply (context 1,000 tokens) with the `describeB` list. */
+  const ready = async (o: { autoApprove?: boolean; describe?: boolean } = {}, script: TestTurn[] = [{}]) => {
+    const x = setup([{ usage: 1000 }, ...script], { ...(o.autoApprove ? { autoApprove: true } : {}), ...(o.describe === false ? {} : { describe: describeB }) });
+    x.s.message('first');
+    await x.s.idle();
+    return x;
+  };
+  /** Writes `text`, runs it and answers the trust question. */
+  const go = async (x: ReturnType<typeof setup>, text = WF, name = 'w.reins.md') => {
+    const file = put(x.cwd, name, text);
+    expect(x.s.runFile(file)).toEqual({ ok: true });
+    const q = await x.question('trust');
+    x.s.answer(q.id, 'y');
+    return file;
+  };
+  const rid = (x: ReturnType<typeof setup>) => x.rows('run_started')[0]!.runId!;
+  const modelRows = (x: ReturnType<typeof setup>) => x.data('settings').filter((d) => 'model' in d);
+  const lowLimit = (x: ReturnType<typeof setup>) => x.store.putSetting('switchApprovalTokens', 500);
+
+  it('under the limits there is no card: the session switches as the header does, with the run id, and the run turn opens on the new model', async () => {
+    const x = await ready();
+    await go(x);
+    await x.s.idle();
+    expect(x.rows('question').filter((r) => (r.data as Question).kind === 'switch')).toEqual([]);
+    expect(modelRows(x)).toEqual([{ model: 'model-b' }]);
+    expect(x.rows('note').find((r) => (r.data as { text: string }).text === SWITCHED)!.runId).toBe(rid(x));
+    expect(x.models).toEqual([undefined, 'model-b']);
+    expect(x.t.opens[1]!.sessionId).toBe(x.store.getSession('s1')!.engineSessionId);
+    expect(x.t.turns).toEqual(['first', expect.stringContaining('Go.')]);
+    expect(x.data('model_switched')).toEqual([{ step: 'model-1', model: 'model-b', how: 'switched', label: 'B' }]);
+  });
+
+  it('over a limit it asks with the run id and the block named; the session waits and no turn is sent yet', async () => {
+    const x = await ready();
+    lowLimit(x);
+    await go(x);
+    const q = await x.question('switch');
+    expect(q.prompt).toBe('Switch to B?');
+    expect(q.detail).toMatch(/\nAsked by the workflow's model block `model-1`\.$/);
+    expect(x.rows('question').find((r) => (r.data as Question).id === q.id)!.runId).toBe(rid(x));
+    expect(x.s.status()).toBe('waiting');
+    expect(x.t.turns).toEqual(['first']);
+    expect(modelRows(x)).toEqual([]);
+    x.s.answer(q.id, 'switch');
+    await x.s.idle();
+  });
+
+  it('Switch applies it, then the run goes on to its end', async () => {
+    const x = await ready();
+    lowLimit(x);
+    await go(x);
+    const q = await x.question('switch');
+    x.s.answer(q.id, 'switch');
+    await x.s.idle();
+    expect(modelRows(x)).toEqual([{ model: 'model-b' }]);
+    expect(x.rows('note').find((r) => (r.data as { text: string }).text === SWITCHED)!.runId).toBe(rid(x));
+    expect(x.models).toEqual([undefined, 'model-b']);
+    expect(x.data('model_switched')).toEqual([{ step: 'model-1', model: 'model-b', how: 'switched', label: 'B' }]);
+    expect(x.rows('run_finished')).toHaveLength(1);
+    expect(x.t.turns).toHaveLength(2);
+  });
+
+  it('Keep stores nothing, says so with the run id, and the turn runs on the old model', async () => {
+    const x = await ready();
+    lowLimit(x);
+    await go(x);
+    const q = await x.question('switch');
+    x.s.answer(q.id, 'keep');
+    await x.s.idle();
+    expect(modelRows(x)).toEqual([]);
+    const note = x.rows('note').find((r) => (r.data as { text: string }).text.startsWith('Kept'))!;
+    expect((note.data as { text: string }).text).toBe('Kept the default model: the steps after `model-1` run on it.');
+    expect(note.runId).toBe(rid(x));
+    expect(x.data('model_switched')).toEqual([{ step: 'model-1', model: 'model-b', how: 'kept', label: 'the default model' }]);
+    expect(x.models).toEqual([undefined]);
+    expect(x.t.turns).toHaveLength(2);
+    expect(x.rows('run_finished')).toHaveLength(1);
+  });
+
+  it('Stop while it waits stops the run: the answer row stop, run_stopped, a receipt, no turn sent', async () => {
+    const x = await ready();
+    lowLimit(x);
+    await go(x);
+    const q = await x.question('switch');
+    expect(x.s.card('', 'stop')).toEqual({ ok: true });
+    await x.s.idle();
+    expect(x.data('answer').at(-1)).toEqual({ questionId: q.id, answer: 'stop' });
+    expect(x.rows('run_stopped')).toHaveLength(1);
+    expect(x.rows('receipt')).toHaveLength(1);
+    expect(x.t.turns).toEqual(['first']);
+    expect(modelRows(x)).toEqual([]);
+    expect(x.data('model_switched')).toEqual([]);
+  });
+
+  it('shutdown while it waits detaches the run (question closed, say, run_detached, no run_stopped); Resume asks resume, then the switch again', async () => {
+    const x = await ready();
+    lowLimit(x);
+    await go(x);
+    const q = await x.question('switch');
+    await x.s.shutdown();
+    expect(x.data('question_closed')).toEqual([{ questionId: q.id, why: 'the server stopped' }]);
+    expect(x.data('say').map((d) => d.text)).toContain(CLOSED);
+    expect(x.rows('run_detached')).toEqual([expect.objectContaining({ runId: rid(x) })]);
+    expect(x.rows('run_stopped')).toEqual([]);
+    expect(x.rows('receipt')).toEqual([]);
+    expect(x.t.turns).toEqual(['first']);
+    const s2 = x.reopen();
+    expect(s2.resume(rid(x))).toEqual({ ok: true });
+    const r = await x.question('resume');
+    s2.answer(r.id, 'resume');
+    const again = await x.question('switch');
+    expect(again.id).not.toBe(q.id);
+    expect(again.detail).toMatch(/Asked by the workflow's model block `model-1`\.$/);
+    s2.answer(again.id, 'switch');
+    await s2.idle();
+    expect(modelRows(x)).toEqual([{ model: 'model-b' }]);
+    expect(x.rows('run_finished')).toHaveLength(1);
+  });
+
+  it('a snapshot saved running at the model step (a crash) asks the switch directly on resume', async () => {
+    const x = await ready();
+    lowLimit(x);
+    await go(x);
+    const q = await x.question('switch');
+    const snap = x.store.loadRun(rid(x))!.snapshot!;
+    expect(snap.status).toBe('running');
+    await x.s.shutdown();
+    x.store.saveSnapshot(rid(x), snap);
+    const s2 = x.reopen();
+    expect(s2.resume(rid(x))).toEqual({ ok: true });
+    const again = await x.question('switch');
+    expect(again.id).not.toBe(q.id);
+    expect(x.rows('question').filter((r) => (r.data as Question).kind === 'resume')).toEqual([]);
+    s2.answer(again.id, 'switch');
+    await s2.idle();
+    expect(modelRows(x)).toEqual([{ model: 'model-b' }]);
+  });
+
+  it('a resumed run says when the session was switched meanwhile: the run chose B, the session is on the default model', async () => {
+    const x = await ready();
+    await go(x, WF_GATE);
+    const g = await x.question('gate');
+    await x.s.shutdown();
+    expect(modelRows(x)).toEqual([{ model: 'model-b' }]);
+    x.store.updateSession('s1', { model: null }); // another run's model step stands in: the header refuses while a run is detached
+    const s2 = x.reopen();
+    expect(s2.resume(rid(x))).toEqual({ ok: true });
+    const g2 = await x.question('gate');
+    expect(g2.id).not.toBe(g.id);
+    const note = x.rows('note').find((r) => (r.data as { text: string }).text.startsWith("This run's model block"))!;
+    expect((note.data as { text: string }).text).toBe("This run's model block chose B; the session is on the default model, so the next steps run on it.");
+    expect(note.runId).toBe(rid(x));
+    s2.answer(g2.id, 'approve');
+    await s2.idle();
+  });
+
+  it('close() while it waits stops the run, closes the session and asks nothing more', async () => {
+    const x = await ready();
+    lowLimit(x);
+    await go(x);
+    await x.question('switch');
+    await x.s.close();
+    expect(x.rows('run_stopped')).toHaveLength(1);
+    expect(x.rows('run_detached')).toEqual([]);
+    expect(x.rows('closed')).toHaveLength(1);
+    expect(x.rows('question').filter((r) => (r.data as Question).kind === 'switch')).toHaveLength(1);
+    expect(x.rows('question').filter((r) => (r.data as Question).kind === 'resume')).toEqual([]);
+    expect(x.t.turns).toEqual(['first']);
+    expect(x.s.status()).toBe('closed');
+  });
+
+  it('a session already on the model asks nothing and logs no note and no settings row', async () => {
+    const x = await ready();
+    lowLimit(x);
+    x.store.updateSession('s1', { model: 'model-b' });
+    await go(x);
+    await x.s.idle();
+    expect(x.rows('question').filter((r) => (r.data as Question).kind === 'switch')).toEqual([]);
+    expect(x.rows('note').filter((r) => (r.data as { text: string }).text === SWITCHED)).toEqual([]);
+    expect(modelRows(x)).toEqual([]);
+    expect(x.data('model_switched')).toEqual([{ step: 'model-1', model: 'model-b', how: 'same', label: 'B' }]);
+  });
+
+  it('Auto-approve never answers it', async () => {
+    const x = await ready({ autoApprove: true });
+    lowLimit(x);
+    await go(x);
+    const q = await x.question('switch');
+    expect(x.s.status()).toBe('waiting');
+    expect(x.data('answer').filter((a) => a.questionId === q.id)).toEqual([]);
+    x.s.answer(q.id, 'keep');
+    await x.s.idle();
+  });
+
+  it('a model that is not in the provider list is 400 at run start with nothing logged; the session\'s own off-list model passes', async () => {
+    const x = await ready();
+    const file = put(x.cwd, 'bad.reins.md', WF.replace('model-b', 'nope'));
+    const before = x.log().length;
+    expect(x.s.runFile(file)).toEqual({ ok: false, code: 400, error: "Unknown model nope in step `model-1`: it is not in this session's provider list." });
+    expect(x.log()).toHaveLength(before);
+    x.store.updateSession('s1', { model: 'nope' });
+    await go(x, WF.replace('model-b', 'nope'), 'bad.reins.md');
+    await x.s.idle();
+    expect(x.rows('run_finished')).toHaveLength(1);
+  });
+
+  it('a model block with only a usd: slice names no model: the run is not refused as an unknown model', async () => {
+    const x = setup([{ usage: 1000 }, {}], { describe: (_e: string, m: string) => ({ listed: m === 'model-b', label: m, estimate: 0.01 }) });
+    x.s.message('first');
+    await x.s.idle();
+    x.store.updateSession('s1', { model: 'model-b' });
+    const front = '---\nreins: 1\nname: w\nbudget: { turns: 10, minutes: 10, usd: 2.00 }\nalways: []\n---\n\n';
+    const file = put(x.cwd, 'slice.reins.md', `${front}## model\nusd: 0.50\n\n## phase one\n> Go.\n`);
+    expect(x.s.runFile(file)).toEqual({ ok: true });
+  });
+
+  it('resume refuses a model the provider no longer lists, with nothing logged', async () => {
+    let known = true;
+    const x = setup([{ usage: 1000 }, {}], { describe: (_e: string, m: string) => ({ listed: m !== 'nope' && (known || m !== 'model-b'), label: m, estimate: 0.01 }) });
+    x.s.message('first');
+    await x.s.idle();
+    x.store.putSetting('switchApprovalTokens', 500);
+    await go(x);
+    await x.question('switch');
+    await x.s.shutdown();
+    known = false;
+    const s2 = x.reopen();
+    const before = x.log().length;
+    expect(s2.resume(rid(x))).toEqual({ ok: false, code: 400, error: "Unknown model model-b in step `model-1`: it is not in this session's provider list." });
+    expect(x.log()).toHaveLength(before);
+  });
+
+  it('with no price known the card says so (P3: no price asks)', async () => {
+    const x = await ready({ describe: false });
+    await go(x);
+    const q = await x.question('switch');
+    expect(q.prompt).toBe('Switch to model-b?');
+    expect(q.detail).toBe("The whole conversation, 1,000 tokens, goes to model-b as input. No price is known for model-b, so the cost cannot be estimated.\nAsked by the workflow's model block `model-1`.");
+    x.s.answer(q.id, 'keep');
+    await x.s.idle();
+  });
+
+  it('shutdown at the USD question detaches the run too, with the run\'s own numbers', async () => {
+    const x = setup([{ cost: 0.01 }, { cost: 0.01 }]);
+    await go(x, `---\nreins: 1\nname: w\nbudget: { turns: 10, minutes: 10, usd: 0.005 }\nalways: []\n---\n\n## phase one\n> Go.\n\n## phase two\n> Again.\n`);
+    const q = await x.question('usd');
+    expect(x.data('budget_reached')).toEqual([{ usd: 0.005, spent: 0.01 }]);
+    await x.s.shutdown();
+    expect(x.data('question_closed')).toEqual([{ questionId: q.id, why: 'the server stopped' }]);
+    expect(x.rows('run_detached')).toEqual([expect.objectContaining({ runId: rid(x) })]);
+    expect(x.rows('run_stopped')).toEqual([]);
+    expect(x.t.turns).toHaveLength(1);
   });
 });
 

@@ -38,4 +38,13 @@ export function commandsOf(w: Workflow, resolveBlock: (name: string) => Workflow
   return out;
 }
 
+/** The models a workflow's own steps ask for, in program order (a kind's NODE instruction with a `model` attribute). */
+export function modelsOf(w: Workflow, resolveBlock: (name: string) => Workflow | undefined): Array<{ step: string; model: string }> {
+  const out: Array<{ step: string; model: string }> = [];
+  for (const i of compileProgram(w, resolveBlock)) {
+    if (i.op === 'NODE' && i.src.attrs.model) out.push({ step: i.step, model: i.src.attrs.model });
+  }
+  return out;
+}
+
 export const hashCommands = (commands: string[]) => createHash('sha256').update(commands.join('\0')).digest('hex');

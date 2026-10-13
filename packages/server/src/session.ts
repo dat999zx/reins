@@ -4,21 +4,24 @@ import path from 'node:path';
 import {
   Run, receipt,
   type Decision, type Diagnostic, type Engine, type EngineEvent, type EngineSession, type Policy,
-  type RunEventRecord, type RunOptions, type ToolRequest, type TurnResult, type Workflow,
+  type RunEventRecord, type RunOptions, type SwitchOutcome, type ToolRequest, type TurnResult, type Workflow,
 } from '@reins/core';
 import { askTool, driveRun, questionId, runOptions, type DriveIo, type Question } from './drive.js';
 import { contextSize, contextWindow, detachedRuns, readSetting, stillOverAfterCompaction, switchCheck, type SwitchCheck } from './settings.js';
 import type { LogRow, SessionRow, Store } from './store.js';
 import { taggedWorkflow, type Tag, type Tagged } from './tags.js';
 import { loadWorkflow } from './run-cli.js';
-import { FOLDER_PATH, commandsOf, folderHash, hashCommands } from './trust.js';
+import { FOLDER_PATH, commandsOf, folderHash, hashCommands, modelsOf } from './trust.js';
 
 export type MakeEngine = (o: {
   model?: string; effort?: string;
   onApprove: (r: ToolRequest) => Promise<Decision>;
   onLive: (e: EngineEvent) => void;
 }) => Engine;
-export interface SessionDeps { store: Store; makeEngine: MakeEngine; dir: string; onRow?: (row: LogRow) => void }
+/** The provider's view of a model, for a switch: whether its list has it, its label, and the cost estimate of switching to it at `used` tokens. */
+export type DescribeModel = (engine: string, model: string, used: number | undefined) =>
+  { listed: boolean; label: string; estimate?: number | undefined; source?: 'table' | 'catalog' };
+export interface SessionDeps { store: Store; makeEngine: MakeEngine; dir: string; onRow?: (row: LogRow) => void; describeModel?: DescribeModel }
 export type Ack = { ok: true } | { ok: false; code: 400 | 409; error: string; text?: string; diagnostics?: Diagnostic[] };
 export type SessionStatus = 'idle' | 'running' | 'waiting' | 'closed';
 export type Session = ReturnType<typeof openSession>;
@@ -150,6 +153,57 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       live = undefined;
       retire(s);
     }
+  }
+
+  const describe: DescribeModel = deps.describeModel ?? ((_e, m) => ({ listed: false, label: m }));
+  const limits = () => ({ tokens: readSetting(store, 'switchApprovalTokens'), usd: readSetting(store, 'switchApprovalUsd') });
+
+  /** The one place a model switch lands (the header and a run's model step): the stored model, its row and note, and the process retired. */
+  function applySwitch(from: string | undefined, to: string, label: string | undefined) {
+    store.updateSession(id, { model: to || null });
+    log('settings', { model: to });
+    log('note', { text: `Model set to ${to ? label ?? to : 'the default'} from the next reply. The whole conversation goes to it as input.` }, runId);
+    const was = pendingSwitch ? pendingSwitch.from : from;
+    pendingSwitch = (to || undefined) === was ? undefined : { from: was, to };
+    engine = undefined;
+    if (live) {
+      const s = live;
+      live = undefined;
+      retire(s);
+    }
+  }
+
+  // ponytail: a run's model step is never refused as busy or because another run is left detached; a detached run resumed later goes on with the model stored then.
+  /** A run's model step: the same rules and card as the header's switch, asked inside the run (which waits on it). */
+  async function runSwitch(model: string, step: string): Promise<SwitchOutcome> {
+    const cur = store.getSession(id)!;
+    const used = contextSize(store.readLog(id));
+    const d = describe(cur.engine, model, used);
+    if ((cur.model ?? '') === model) return { to: 'same', label: d.label };
+    const c = switchCheck({
+      busy: false, detached: false, hasSession: !!cur.engineSessionId, used, target: model, label: d.label,
+      estimate: d.estimate, ...(d.source ? { source: d.source } : {}), limits: limits(),
+    });
+    if (c && 'ask' in c) {
+      const a = await ask({ id: questionId(), kind: 'switch', prompt: c.ask.prompt, detail: `${c.ask.detail}\nAsked by the workflow's model block \`${step}\`.` });
+      if (a === null) return { to: 'closed' };
+      if (a === 'stop') return { to: 'stop' };
+      if (a !== 'switch') {
+        const label = cur.model ? describe(cur.engine, cur.model, used).label : 'the default model';
+        log('note', { text: `Kept ${label}: the steps after \`${step}\` run on it.` }, runId);
+        return { to: 'kept', label };
+      }
+    }
+    applySwitch(cur.model, model, d.label);
+    return { to: 'switched', label: d.label };
+  }
+
+  /** A run start refuses a model the session's provider does not list (the session's own model excepted). */
+  function unknownModel(w: Workflow, resolveBlock: (name: string) => Workflow | undefined): Ack | undefined {
+    if (!deps.describeModel) return undefined;
+    const cur = store.getSession(id)!;
+    const m = modelsOf(w, resolveBlock).find((x) => !describe(cur.engine, x.model, undefined).listed && x.model !== cur.model);
+    return m ? bad(`Unknown model ${m.model} in step \`${m.step}\`: it is not in this session's provider list.`) : undefined;
   }
 
   async function openEngine(): Promise<EngineSession | undefined> {
@@ -368,7 +422,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   ): Promise<string | undefined> {
     runId = rid;
     const opts = runOptions(io, {
-      workflow: wf, engine: getEngine(), cwd, resolveBlock, session: lent,
+      workflow: wf, engine: getEngine(), cwd, resolveBlock, session: lent, switchModel: runSwitch,
       onEvent: (ev) => {
         store.appendEvent(rid, ev);
         if (run) store.saveSnapshot(rid, run.snapshot());
@@ -440,6 +494,8 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     const loaded = loadWorkflow(file);
     const w = loaded.workflow;
     if (!w) return bad(loaded.diagnostics.filter((d) => d.severity === 'error').map((d) => d.message).join('; ') || 'Invalid workflow.', loaded.diagnostics);
+    const unknown = unknownModel(w, loaded.resolveBlock);
+    if (unknown) return unknown;
     begin();
     start(async () => {
       if (!(await trustedCommands(file, w, loaded.resolveBlock))) return;
@@ -468,12 +524,21 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     const w = snapshot.workflow;
     const tagged = path.resolve(saved.workflowPath) === path.resolve(dir, 'runs', `${rid}.reins.md`); // exactly the file taggedRun wrote
     const { resolveBlock } = loadWorkflow(saved.workflowPath);
+    const unknown = unknownModel(w, resolveBlock);
+    if (unknown) return unknown;
     begin();
     start(async () => {
       if (!tagged && !(await trustedCommands(saved.workflowPath, w, resolveBlock))) return;
       const carry = await execute(rid, w, resolveBlock, (o) => {
         const r = Run.restore(snapshot, o);
         log('note', { text: `Resumed run ${rid}.${w.model || w.engine ? ` ${IGNORED}` : ''}` }, rid);
+        // The session's model may have changed since the run's last model step (another run, a detached header switch).
+        const chose = [...snapshot.events].reverse().find((e) => e.type === 'model_switched' && (e.data?.how === 'switched' || e.data?.how === 'same'));
+        const cur = store.getSession(id)!;
+        if (chose && chose.data.model !== (cur.model ?? '')) {
+          const now = cur.model ? describe(cur.engine, cur.model, undefined).label : 'the default model';
+          log('note', { text: `This run's model block chose ${chose.data.label ?? chose.data.model}; the session is on ${now}, so the next steps run on it.` }, rid);
+        }
         return r;
       });
       if (carry) await plainLoop(carry, true);
@@ -585,7 +650,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
         busy, detached: detachedRuns(store.readLog(id)).length > 0, hasSession: !!store.getSession(id)!.engineSessionId,
         used: contextSize(store.readLog(id)), target: p.model!, ...(p.label !== undefined ? { label: p.label } : {}),
         estimate: p.estimate, ...(p.source !== undefined ? { source: p.source } : {}),
-        limits: { tokens: readSetting(store, 'switchApprovalTokens'), usd: readSetting(store, 'switchApprovalUsd') },
+        limits: limits(),
       });
       if (check && 'refuse' in check) return conflict(check.refuse);
     }
@@ -596,22 +661,9 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     }
     if (switching) {
       const to = p.model!;
-      const applySwitch = () => {
-        store.updateSession(id, { model: to || null });
-        log('settings', { model: to });
-        log('note', { text: `Model set to ${to ? p.label ?? to : 'the default'} from the next reply. The whole conversation goes to it as input.` });
-        const was = pendingSwitch ? pendingSwitch.from : from;
-        pendingSwitch = (to || undefined) === was ? undefined : { from: was, to };
-        engine = undefined;
-        if (live) {
-          const s = live;
-          live = undefined;
-          retire(s);
-        }
-      };
       // ponytail: a switch card waits with no timeout; any new work closes it without switching; a server stop leaves it to recover.ts.
-      if (check && 'ask' in check) void ask({ id: questionId(), kind: 'switch', ...check.ask }).then((a) => { if (a === 'switch') applySwitch(); });
-      else applySwitch();
+      if (check && 'ask' in check) void ask({ id: questionId(), kind: 'switch', ...check.ask }).then((a) => { if (a === 'switch') applySwitch(from, to, p.label); });
+      else applySwitch(from, to, p.label);
     }
     return OK;
   }
@@ -636,13 +688,14 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   }
   const close = () => (closingP ??= endSession().finally(() => { closingP = undefined; }));
 
-  // Server stop. Only a gate, budget or resume question detaches a run (driveRun returns on its null answer). Anything
-  // else, a tool or judge question or a turn in flight, is stopped first, or the run would go on with the next step.
+  // Server stop. Only a gate, budget, usd, switch or resume question detaches a run (driveRun returns on its null answer;
+  // a run's switch closed this way pauses it at its model step). Anything else, a tool or judge question or a turn in
+  // flight, is stopped first, or the run would go on with the next step.
   // ponytail: a RUN command in flight is waited for, as in /close; there is no cancel.
   async function shutdown() {
     if (busy) {
       stopping = true;
-      const detaches = [...pending.values()].some((p) => p.q.kind === 'gate' || p.q.kind === 'budget' || p.q.kind === 'resume');
+      const detaches = [...pending.values()].some((p) => ['gate', 'budget', 'resume', 'switch', 'usd'].includes(p.q.kind));
       const stopped = detaches ? undefined : run ? run.stop() : applyStop();
       closeQuestions('the server stopped');
       await stopped;

@@ -239,6 +239,17 @@ describe('state, probing and sessions (3b.6 1526-1528, 1543)', () => {
     expect(w.store.getSession(id)!.model).toBe('claude-fable-5-1');
   });
 
+  it('a run file whose model block names a model outside the provider list is 400 with the step named, and nothing is logged', async () => {
+    const w = await boot();
+    const id = await w.session();
+    const file = path.join(w.cwd, 'm.reins.md');
+    fs.writeFileSync(file, GOOD.replace('## phase go', '## model nope\n\n## phase go'));
+    const before = w.store.readLog(id).length;
+    const r = await w.post(id, 'run', { path: file });
+    expect([r.status, r.json.error]).toEqual([400, "Unknown model nope in step `model-1`: it is not in this session's provider list."]);
+    expect(w.store.readLog(id)).toHaveLength(before);
+  });
+
   it('POST compress: 409 before a message; then 200 and a compacted row, costing the compaction only; the next reply costs its own', async () => {
     const fake = fakeSetup([TURN, TURN], 10, { compact: 'claude-2.1.293-compact.jsonl' });
     const w = await boot([], { fake });
