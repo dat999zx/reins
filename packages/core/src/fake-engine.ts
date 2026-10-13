@@ -35,6 +35,8 @@ export interface OpenOptions {
   policy: () => Policy;
   onApprove?: (req: ToolRequest) => Promise<Decision>;
   pendingCards?: () => string[];
+  /** The provider's own cap on this process's spend (a subagent's room); undefined = none. */
+  maxUsd?: number;
 }
 
 export type EngineEvent =
@@ -100,13 +102,26 @@ export interface ScriptedTurn {
   }>;
   text: string;
   cost?: number;
+  total?: number;
+  totals?: Record<string, number>;
+  models?: Record<string, number>;
+  isError?: boolean;
+  /** turn() rejects with this message. */
+  reject?: string;
+  /** Awaited before the turn resolves: a turn in flight. */
+  hold?: () => Promise<void>;
 }
+
+// A module counter: two opens in one millisecond must not share an id.
+let sessions = 0;
 
 export class FakeEngine implements Engine {
   readonly id = 'claude' as const;
   receivedTexts: string[] = [];
   recordedPolicyChecks: Array<{ tool: string; input: any; policy: Policy }> = [];
   interrupted = false;
+  interrupts = 0;
+  opens: OpenOptions[] = [];
   /** Test hook: runs before each scripted tool call, i.e. while the turn is in flight. */
   onToolCall?: (tool: string) => void;
 
@@ -132,7 +147,8 @@ export class FakeEngine implements Engine {
   }
 
   async open(opts: OpenOptions): Promise<EngineSession> {
-    const sessionId = `fake-sess-${Date.now()}`;
+    const sessionId = `fake-sess-${++sessions}`;
+    this.opens.push(opts);
 
     return {
       sessionId,
@@ -143,6 +159,9 @@ export class FakeEngine implements Engine {
         };
 
         const turnEvents: EngineEvent[] = [];
+
+        await scripted.hold?.();
+        if (scripted.reject !== undefined) throw new Error(scripted.reject);
 
         if (scripted.events) {
           for (const ev of scripted.events) {
@@ -183,12 +202,17 @@ export class FakeEngine implements Engine {
         return {
           text: scripted.text,
           cost: scripted.cost,
+          ...(scripted.total !== undefined ? { total: scripted.total } : {}),
+          ...(scripted.totals ? { totals: scripted.totals } : {}),
+          ...(scripted.models ? { models: scripted.models } : {}),
+          ...(scripted.isError ? { isError: true } : {}),
           events: turnEvents,
         };
       },
 
       interrupt: async (): Promise<void> => {
         this.interrupted = true;
+        this.interrupts++;
       },
 
       events: {
