@@ -22,6 +22,8 @@ export interface Receipt {
   models?: Array<{ model: string; usd: number; turns: number; label?: string }>;
   /** The part of totalCostUsd no model's figure covers (a reply with no per-model split); absent when none. */
   unsplitUsd?: number;
+  /** Dollars and turns per subagent step, first started first; absent when no subagent ran. */
+  subagents?: Array<{ step: string; title: string; usd: number; turns: number }>;
 }
 
 export function receipt(events: RunEventRecord[]): Receipt {
@@ -42,6 +44,8 @@ export function receipt(events: RunEventRecord[]): Receipt {
   let knowlSkipped = 0;
   const byModel = new Map<string, { usd: number; turns: number }>();
   const seen = (m: string) => byModel.get(m) ?? (byModel.set(m, { usd: 0, turns: 0 }), byModel.get(m)!);
+
+  const subs = new Map<string, { title: string; usd: number; turns: number }>();
 
   const firstTimestamp = events[0]?.timestamp ?? 0;
   let lastTimestamp = firstTimestamp;
@@ -67,6 +71,13 @@ export function receipt(events: RunEventRecord[]): Receipt {
       case 'turn_ended':
         totalTurns++;
         if (typeof ev.data?.model === 'string') seen(ev.data.model).turns++;
+        {
+          const sub = subs.get(ev.data?.step);
+          if (sub) { sub.turns++; sub.usd += Number(ev.data?.cost || 0); }
+        }
+        break;
+      case 'subagent_started':
+        if (!subs.has(ev.data?.step)) subs.set(ev.data?.step, { title: ev.data?.title ?? ev.data?.step, usd: 0, turns: 0 });
         break;
       case 'gate_paused':
         gatesHeld++;
@@ -135,5 +146,6 @@ export function receipt(events: RunEventRecord[]): Receipt {
     knowlSkipped,
     ...(models.length ? { models } : {}),
     ...(models.length && unsplit > 0.00005 ? { unsplitUsd: r6(unsplit) } : {}),
+    ...(subs.size ? { subagents: [...subs].map(([step, v]) => ({ step, title: v.title, usd: r6(v.usd), turns: v.turns })) } : {}),
   };
 }

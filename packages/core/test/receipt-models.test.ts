@@ -52,9 +52,44 @@ describe('receipt models', () => {
     expect(r.totalCostUsd).toBe(0.02);
   });
 
+  it('a subagent shows its dollars and turns; its model and the parent\'s sum to the total; none, no key', () => {
+    const r = receipt([
+      ev('run_started', { workflow: 'w' }),
+      ev('subagent_started', { step: 's', title: 'research' }),
+      ev('turn_ended', { step: 's', cost: 0.06, model: 'h' }), ev('engine_cost', { usd: 0.06, models: { h: 0.06 } }),
+      ev('turn_ended', { step: 'p', cost: 0.1, model: 'o' }), ev('engine_cost', { usd: 0.1, models: { o: 0.1 } }),
+    ]);
+    expect(r.subagents).toEqual([{ step: 's', title: 'research', usd: 0.06, turns: 1 }]);
+    expect(r.models).toEqual([{ model: 'h', usd: 0.06, turns: 1 }, { model: 'o', usd: 0.1, turns: 1 }]);
+    expect(r.totalCostUsd).toBe(0.16);
+    expect(r.models!.reduce((a, m) => a + m.usd, 0)).toBeCloseTo(r.totalCostUsd, 9);
+    expect(r).not.toHaveProperty('unsplitUsd');
+    expect(r.totalTurns).toBe(2);
+
+    expect(receipt([ev('turn_ended', { step: 'p', cost: 0.1 })])).not.toHaveProperty('subagents');
+  });
+
+  it('a subagent that resumed counts every reply on the one entry, and a started row twice adds no second entry', () => {
+    const r = receipt([
+      ev('subagent_started', { step: 's', title: 'research' }), ev('turn_ended', { step: 's', cost: 0.01 }),
+      ev('subagent_started', { step: 's', title: 'research', resumed: true }), ev('turn_ended', { step: 's', cost: 0.02 }),
+    ]);
+    expect(r.subagents).toEqual([{ step: 's', title: 'research', usd: 0.03, turns: 2 }]);
+  });
+
   it('an unsplit total under 0.00005 is not reported (float dust)', () => {
     const r = receipt([ev('turn_ended', { model: 'a' }), ev('engine_cost', { usd: 0.1 + 0.2, models: { a: 0.3 } })]);
     expect(r).not.toHaveProperty('unsplitUsd');
     expect(r.models).toEqual([{ model: 'a', usd: 0.3, turns: 1 }]);
+  });
+});
+
+describe('receipt: subagents, edges', () => {
+  it('a subagent_started row with no title falls back to the step id, and the dollars are rounded to 6 places', () => {
+    const r = receipt([
+      ev('subagent_started', { step: 's' }),
+      ev('turn_ended', { step: 's', cost: 0.1 }), ev('turn_ended', { step: 's', cost: 0.2 }),
+    ]);
+    expect(r.subagents).toEqual([{ step: 's', title: 's', usd: 0.3, turns: 2 }]);
   });
 });
