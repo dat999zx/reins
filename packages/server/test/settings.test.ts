@@ -25,6 +25,29 @@ describe('readSetting', () => {
   });
 });
 
+describe('readSetting subagentApprovals', () => {
+  it("is 'ask' by default, 'deny' once stored, and 'ask' again for anything that is not exactly ask or deny", () => {
+    const store = openStore(':memory:');
+    expect(readSetting(store, 'subagentApprovals')).toBe('ask');
+    store.putSetting('subagentApprovals', 'deny');
+    expect(readSetting(store, 'subagentApprovals')).toBe('deny');
+    store.putSetting('subagentApprovals', 'ask');
+    expect(readSetting(store, 'subagentApprovals')).toBe('ask');
+    for (const bad of ['nope', 3, null, 'ASK', '', 'Deny']) {
+      store.putSetting('subagentApprovals', 'deny');
+      store.putSetting('subagentApprovals', bad as never);
+      expect(readSetting(store, 'subagentApprovals')).toBe('ask');
+    }
+    store.close();
+  });
+  it('the validator itself takes only the two words', async () => {
+    const { SETTINGS } = await import('../src/settings.js');
+    const ok = (v: unknown) => SETTINGS.subagentApprovals.valid(v);
+    expect([ok('ask'), ok('deny')]).toEqual([true, true]);
+    expect([ok(3), ok(null), ok(undefined), ok('ASK'), ok(''), ok('nope'), ok(true)]).toEqual([false, false, false, false, false, false, false]);
+  });
+});
+
 describe('contextSize', () => {
   it('is the newest usage, and unknown once anything else happened after it', () => {
     expect(contextSize([])).toBeUndefined();

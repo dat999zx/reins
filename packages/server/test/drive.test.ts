@@ -143,6 +143,13 @@ describe('driveRun on a USD pause (Task 2, milestone C)', () => {
     const o = runOptions(testIo().io, { workflow: wf([]), engine: new FakeEngine(), cwd: process.cwd(), resolveBlock: () => undefined, onEvent: () => {}, switchModel });
     expect(o.switchModel).toBe(switchModel);
   });
+
+  it('runOptions passes openSubagent through, and has no such key without it', () => {
+    const openSubagent = async () => { throw new Error('unused'); };
+    const base = { workflow: wf([]), engine: new FakeEngine(), cwd: process.cwd(), resolveBlock: () => undefined, onEvent: () => {} };
+    expect(runOptions(testIo().io, { ...base, openSubagent }).openSubagent).toBe(openSubagent);
+    expect('openSubagent' in runOptions(testIo().io, base)).toBe(false);
+  });
 });
 
 describe('driveRun', () => {
@@ -224,6 +231,17 @@ describe('askTool and askJudge', () => {
     expect(await askTool(no.io, { tool: 'Edit', input: { file_path: 'a.ts' } })).toEqual({ behavior: 'deny', message: 'The user said no: not now' });
     expect(await askTool(testIo(() => 'n').io, { tool: 'Edit', input: {} })).toEqual({ behavior: 'deny', message: 'The user said no.' });
     expect(await askTool(testIo(() => null).io, { tool: 'Edit', input: {} })).toEqual({ behavior: 'deny', message: 'The user said no.' });
+  });
+
+  it('askTool with a title puts it on the question; without one there is no title key (not even undefined)', async () => {
+    const t = testIo(() => 'y');
+    await askTool(t.io, { tool: 'Bash', input: { command: 'ls' } }, 'Subagent research (`subagent-1`)');
+    expect(t.questions[0]!.title).toBe('Subagent research (`subagent-1`)');
+    expect(t.questions[0]).toMatchObject({ kind: 'tool', prompt: '? Allow Bash: ls  [y / n <reason>]' });
+    await askTool(t.io, { tool: 'Bash', input: { command: 'ls' } });
+    expect('title' in t.questions[1]!).toBe(false);
+    await askTool(t.io, { tool: 'Bash', input: { command: 'ls' } }, '');
+    expect('title' in t.questions[2]!).toBe(false);
   });
 
   it('askJudge: prints the question and the last 15 lines, y is yes, anything else is no', async () => {

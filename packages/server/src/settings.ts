@@ -9,11 +9,13 @@ export const SETTINGS = {
   pickerLimit: { default: 8, valid: (v: unknown) => Number.isInteger(v) && (v as number) > 0 },
   // The fraction of the window at which a reply is preceded by a compression. 1 is off: at 100 % the window is already full.
   autoCompressAt: { default: 0.9, valid: (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 1 },
+  // A subagent's tool request: a card on the parent run (ask), or refused with a note and a hook row (deny, Hermes's default).
+  subagentApprovals: { default: 'ask' as 'ask' | 'deny', valid: (v: unknown) => v === 'ask' || v === 'deny' },
 };
 
-export function readSetting(store: Store, key: keyof typeof SETTINGS): number {
+export function readSetting<K extends keyof typeof SETTINGS>(store: Store, key: K): (typeof SETTINGS)[K]['default'] {
   const v = store.getSetting(key);
-  return SETTINGS[key].valid(v) ? (v as number) : SETTINGS[key].default;
+  return SETTINGS[key].valid(v) ? (v as (typeof SETTINGS)[K]['default']) : SETTINGS[key].default;
 }
 
 const type = (r: LogRow) => (r.data as { type?: string } | null)?.type;

@@ -7,7 +7,9 @@ import {
 } from '@reins/core';
 import { runCommand } from './commands.js';
 
-export interface Question { id: string; kind: 'gate' | 'budget' | 'resume' | 'tool' | 'judge' | 'trust' | 'switch' | 'usd'; prompt: string; detail?: string }
+export interface Question { id: string; kind: 'gate' | 'budget' | 'resume' | 'tool' | 'judge' | 'trust' | 'switch' | 'usd'; prompt: string; detail?: string;
+  /** Who asks, when not the run's own agent (a subagent, D); the card shows it. */
+  title?: string }
 export interface DriveIo { ask(q: Question): Promise<string | null>; say(line: string): void; write(chunk: string): void }
 
 export type Answer =
@@ -140,10 +142,10 @@ async function onPause(run: Run, io: DriveIo): Promise<boolean> {
   return true;
 }
 
-export async function askTool(io: DriveIo, req: ToolRequest): Promise<Decision> {
+export async function askTool(io: DriveIo, req: ToolRequest, title?: string): Promise<Decision> {
   const i = req.input ?? {};
   const what = String(i.command ?? i.file_path ?? i.path ?? JSON.stringify(i)).slice(0, 200);
-  const a = await io.ask({ id: questionId(), kind: 'tool', prompt: `? Allow ${req.tool}: ${what}  [y / n <reason>]`, detail: JSON.stringify(req.input ?? {}) });
+  const a = await io.ask({ id: questionId(), kind: 'tool', prompt: `? Allow ${req.tool}: ${what}  [y / n <reason>]`, detail: JSON.stringify(req.input ?? {}), ...(title ? { title } : {}) });
   if (a !== null && /^(y|yes)$/i.test(a)) return { behavior: 'allow' };
   const reason = a?.replace(/^(n|no)\b\s*/i, '').trim();
   return { behavior: 'deny', message: reason ? `The user said no: ${reason}` : 'The user said no.' };
@@ -162,6 +164,7 @@ export function runOptions(io: DriveIo, o: {
   resolveBlock: (name: string) => Workflow | undefined;
   onEvent: (ev: RunEventRecord) => void; session?: EngineSession;
   switchModel?: RunOptions['switchModel'];
+  openSubagent?: RunOptions['openSubagent'];
 }): RunOptions {
   const { cwd } = o;
   const startCommit = git(cwd, ['rev-parse', 'HEAD']).trim();
@@ -172,6 +175,7 @@ export function runOptions(io: DriveIo, o: {
     resolveBlock: o.resolveBlock,
     ...(o.session ? { session: o.session } : {}),
     ...(o.switchModel ? { switchModel: o.switchModel } : {}),
+    ...(o.openSubagent ? { openSubagent: o.openSubagent } : {}),
     commandRunner: async (cmd) => {
       io.say(`$ ${cmd}`);
       const r = await runCommand(cmd, { cwd, onOutput: (s) => io.write(s) });

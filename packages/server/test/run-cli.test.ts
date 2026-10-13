@@ -194,6 +194,23 @@ describe('reins run against fake-claude', () => {
     store.close();
   }, 60_000);
 
+  it('a subagent step prints when it starts and when it hands back, with its cost to 4 decimals', async () => {
+    const f = fakeSetup([]);
+    const file = path.join(f.dir, 'w.reins.md');
+    fs.writeFileSync(file, '---\nreins: 1\nname: s\nbudget: { turns: 9, minutes: 9, usd: 2.00 }\nalways: []\n---\n\n## subagent research\nmodel: m1\nusd: 0.50\n> Look.\n\n## phase one\n> a\n');
+    const store = openStore(':memory:');
+    const d = drive({ file, cwd: f.dir, store });
+    const res = await d.h.done;
+    expect(res.status).toBe('done');
+    const evs = store.loadRun(res.runId)!.snapshot.events;
+    const result = of(evs, 'subagent_result')[0]!;
+    expect(result.data.step).toBe('subagent-1');
+    expect(d.text()).toContain('· subagent-1: subagent research started on m1');
+    expect(d.text()).toContain(`· subagent-1: handed back its result ($${Number(result.data.cost ?? 0).toFixed(4)})`);
+    expect(d.text().indexOf('started on m1')).toBeLessThan(d.text().indexOf('handed back its result'));
+    store.close();
+  }, 60_000);
+
   it('check errors stop the run before claude starts', async () => {
     const f = fakeSetup([]);
     const file = path.join(f.dir, 'bad.reins.md');

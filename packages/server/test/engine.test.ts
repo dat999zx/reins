@@ -61,6 +61,27 @@ describe('claude adapter', () => {
     expect(nonceA).not.toBe(nonceB);
   });
 
+  it('maxUsd becomes --max-budget-usd right after --effort, as String(); absent gives no flag; 0 is a value', async () => {
+    const f = fakeSetup([]);
+    const e = engine();
+    const open = async (maxUsd?: number) => {
+      const n = f.log().filter((l) => l.kind === 'args').length;
+      const s = await e.open({ cwd: f.dir, policy: () => write, ...(maxUsd !== undefined ? { maxUsd } : {}) });
+      await until(() => f.log().filter((l) => l.kind === 'args').length === n + 1);
+      await s.close();
+      return f.log().filter((l) => l.kind === 'args')[n].args as string[];
+    };
+    const half = await open(0.5);
+    const at = half.indexOf('--effort');
+    expect(half.slice(at, at + 4)).toEqual(['--effort', 'medium', '--max-budget-usd', '0.5']);
+    expect(half.filter((a) => a === '--max-budget-usd')).toHaveLength(1);
+    const fifth = await open(0.2);
+    expect(fifth[fifth.indexOf('--max-budget-usd') + 1]).toBe('0.2');
+    const zero = await open(0);
+    expect(zero[zero.indexOf('--max-budget-usd') + 1]).toBe('0');
+    expect(await open()).not.toContain('--max-budget-usd');
+  });
+
   it('a guard refusal comes back in the turn events, with the hook call logged', async () => {
     const f = fakeSetup([{ fixture: 'claude-2.1.281-hook-deny.jsonl' }]);
     const s = await engine().open({ cwd: f.dir, policy: () => write });
