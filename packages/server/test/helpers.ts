@@ -14,6 +14,8 @@ export interface FakeTurn {
   delayMs?: number;
   /** With `cumulative`: the result carries no modelUsage. */
   noModelUsage?: boolean;
+  /** With `cumulative`: the raw per-model running totals the result carries, instead of the fake's own sums. */
+  modelUsage?: Record<string, number>;
 }
 
 /** A temp project folder plus a fake-claude script; `log()` reads what the fake saw. */

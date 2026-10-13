@@ -38,7 +38,7 @@ export const BUDGET_ERRORS: Record<BudgetKey, string> = {
   usd: 'USD must be an amount above 0, like 2.50. Leave it empty for no USD limit.',
 };
 export const BUDGET_BOTH = 'Fill in both Turns and Minutes.';
-export const BUDGET_HINT = 'Turns stop the run when used up. USD pauses it after the reply that reaches it: allow more or stop. Minutes are shown, not enforced.';
+export const BUDGET_HINT = 'Turns stop the run when used up. USD pauses it before the next step once a reply reaches it: allow more or stop. Minutes are shown, not enforced.';
 
 // What one budget field's commit writes. While either of Turns and Minutes is 0 ("not set") the pair is written together,
 // or the file would print `minutes: 0` and the run meter would read "over" at once.

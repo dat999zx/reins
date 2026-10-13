@@ -1353,7 +1353,7 @@ describe('model step in a run (C)', () => {
     expect(x.s.runFile(file)).toEqual({ ok: true });
   });
 
-  it('resume refuses a model the provider no longer lists, with nothing logged', async () => {
+  it('resume of a run whose model is no longer listed starts, and Stop ends it', async () => {
     let known = true;
     const x = setup([{ usage: 1000 }, {}], { describe: (_e: string, m: string) => ({ listed: m !== 'nope' && (known || m !== 'model-b'), label: m, estimate: 0.01 }) });
     x.s.message('first');
@@ -1364,9 +1364,13 @@ describe('model step in a run (C)', () => {
     await x.s.shutdown();
     known = false;
     const s2 = x.reopen();
-    const before = x.log().length;
-    expect(s2.resume(rid(x))).toEqual({ ok: false, code: 400, error: "Unknown model model-b in step `model-1`: it is not in this session's provider list." });
-    expect(x.log()).toHaveLength(before);
+    expect(s2.resume(rid(x))).toEqual({ ok: true });
+    const r = await x.question('resume');
+    expect(s2.status()).toBe('waiting');
+    s2.answer(r.id, 'stop');
+    await s2.idle();
+    expect(x.rows('run_stopped')).toHaveLength(1);
+    expect(x.rows('run_finished')).toEqual([]);
   });
 
   it('with no price known the card says so (P3: no price asks)', async () => {

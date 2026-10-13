@@ -316,6 +316,25 @@ describe('claude adapter', () => {
       expect(sum(r3.models)).toBeCloseTo(r3.cost!, 9);
     });
 
+    it('a split that does not add up to the reply cost is not given: a model that dropped out and came back', async () => {
+      const f = fakeSetup([
+        { ...T0, modelUsage: { a: 0.04, b: 0.0240898 } },
+        { ...T1, modelUsage: { a: 0.0561466 } },
+        { ...T0, modelUsage: { a: 0.0561466, b: 0.0881796 } },
+      ], 10, { cumulative: true });
+      const s = await open(f.dir, { model: 'a' });
+      const r1 = await s.turn('one');
+      const r2 = await s.turn('two');
+      const r3 = await s.turn('three');
+      await s.close();
+      expect(sum(r1.models)).toBeCloseTo(r1.cost!, 9);
+      expect(Object.keys(r1.models!).sort()).toEqual(['a', 'b']);
+      expect(r2.cost).toBeCloseTo(0.0161466, 9);
+      expect(sum(r2.models)).toBeCloseTo(r2.cost!, 9);
+      expect(r3.cost).toBeCloseTo(0.0640898, 9);
+      expect(r3.models).toBeUndefined();
+    });
+
     it('an interrupt kill is no result: it carries neither a split nor totals', async () => {
       const f = fakeSetup([{ fixture: 'claude-2.1.281-card-marker-hook.jsonl', ignoreInterrupt: true }], 400, { cumulative: true });
       const live: EngineEvent[] = [];

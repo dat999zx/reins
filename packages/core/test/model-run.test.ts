@@ -1,8 +1,9 @@
 // A run executes NODE steps through the kind's exec and enforces USD after each reply (milestone C, Task 2).
 import { describe, it, expect } from 'vitest';
 import { Run, type RunSnapshot } from '../src/run.js';
-import { FakeEngine, type ScriptedTurn } from '../src/fake-engine.js';
+import { FakeEngine, type Engine, type OpenOptions, type ScriptedTurn, type TurnResult } from '../src/fake-engine.js';
 import type { SwitchOutcome } from '../src/nodes/index.js';
+import { parseWorkflow } from '../src/index.js';
 import type { Step, Workflow } from '../src/model.js';
 
 const step = (id: string, kind: Step['kind'], over: Partial<Step> = {}): Step => ({ id, kind, attrs: {}, cards: [], links: [], ...over });
@@ -72,6 +73,49 @@ describe('USD slices on a model step', () => {
     expect(run.status).toBe('paused');
     expect(run.allowUsd(0.08)).toBeUndefined();
     expect(run.status).toBe('running');
+  });
+
+  it('with less than a cent left the allowance is capped, not refused, and the next overrun pauses on the workflow', async () => {
+    const run = new Run({
+      workflow: wf([model('model-1', { model: 'claude-x', usd: '0.10' }), phase('a'), phase('b'), phase('c'), phase('d')], 0.2),
+      engine: new FakeEngine(costs(0.096, 0.1, 0.01)), switchModel: switched(),
+    });
+    await go(run);
+    expect(run.pauseReason).toMatchObject({ type: 'usd-budget-used', stepId: 'model-1', spent: 0.196 });
+    expect(run.usdLeft()).toBeCloseTo(0.004, 9);
+    expect(run.allowUsd(0.01)).toBeUndefined();
+    expect(run.status).toBe('running');
+    expect(named(run, 'run_resumed').at(-1)!.data).toEqual({ allowUsd: 0.004, usd: 0.2, step: 'model-1' });
+    await go(run);
+    expect(run.pauseReason).toEqual({ type: 'usd-budget-used', limit: 0.2, spent: 0.206 });
+  });
+
+  it('the cap covers everything under a cent, not only under half a cent (0.7 of a cent left: an allowance of a cent is capped, not refused)', async () => {
+    const run = new Run({
+      workflow: wf([model('model-1', { model: 'claude-x', usd: '0.05' }), phase('a'), phase('b'), phase('c')], 0.2),
+      engine: new FakeEngine(costs(0.193, 0.01, 0.01)), switchModel: switched(),
+    });
+    await go(run);
+    expect(run.pauseReason).toMatchObject({ type: 'usd-budget-used', stepId: 'model-1', spent: 0.193 });
+    expect(run.usdLeft()).toBeCloseTo(0.007, 9);
+    expect(run.allowUsd(0.01)).toBeUndefined();
+    expect(run.status).toBe('running');
+    expect(named(run, 'run_resumed').at(-1)!.data).toEqual({ allowUsd: 0.007, usd: 0.2, step: 'model-1' });
+  });
+
+  it('a loop that passes the model step again keeps the slice spend: the second pass pauses when the sum reaches it', async () => {
+    const text = '---\nreins: 1\nname: t\nbudget: { turns: 50, minutes: 50, usd: 2.00 }\nalways: []\n---\n\n' +
+      '## repeat\nmax: 3\nuntil: `t` passes\n\n### model claude-x\nusd: 0.10\n\n### phase a\n> go\n';
+    const parsed = parseWorkflow(text);
+    expect(parsed.diagnostics).toEqual([]);
+    const run = new Run({
+      workflow: parsed.workflow!, engine: new FakeEngine(costs(0.06, 0.06, 0.06)), switchModel: switched(),
+      commandRunner: async () => ({ exitCode: 1, stdout: '', stderr: '' }),
+    });
+    await go(run);
+    // each pass alone spends 0.06, under the 0.10 slice; only the sum of both reaches it
+    expect(named(run, 'turn_ended')).toHaveLength(2);
+    expect(run.pauseReason).toMatchObject({ type: 'usd-budget-used', limit: 0.1, spent: 0.12 });
   });
 
   it('allowUsd does nothing outside a USD pause', () => {
@@ -208,6 +252,61 @@ describe('snapshot and restore', () => {
     delete snap.runCost;
     const back = Run.restore(snap, { engine: new FakeEngine() });
     expect(back.snapshot().runCost).toBeCloseTo(0.12, 9);
+  });
+});
+
+describe('a restored run tells a fresh engine process what was already counted', () => {
+  // A FakeEngine whose replies carry the provider's raw totals, and which keeps what open() received.
+  const metered = (per: Array<Partial<TurnResult>>, opened: OpenOptions[]): Engine => {
+    const base = new FakeEngine(costs(0.06, 0.06, 0.06));
+    return {
+      id: base.id,
+      probe: () => base.probe(),
+      open: async (o) => {
+        opened.push(o);
+        const s = await base.open(o);
+        let i = 0;
+        return { ...s, turn: async (t) => ({ ...(await s.turn(t)), ...(per[i++] ?? {}) }) };
+      },
+    };
+  };
+  const twoSteps = async (per: Array<Partial<TurnResult>>) => {
+    const run = new Run({ workflow: wf([phase('a'), phase('b'), phase('c')]), engine: metered(per, []) });
+    await run.step();
+    await run.step();
+    return run;
+  };
+
+  it('opens with the last raw total and per-model totals the run saw', async () => {
+    const run = await twoSteps([{ total: 0.06, totals: { a: 0.06 } }, { total: 0.13, totals: { a: 0.08, b: 0.05 } }]);
+    const snap: RunSnapshot = JSON.parse(JSON.stringify(run.snapshot()));
+    expect(snap.lastTotal).toBe(0.13);
+    expect(snap.lastTotals).toEqual({ a: 0.08, b: 0.05 });
+    const opened: OpenOptions[] = [];
+    const back = Run.restore(snap, { engine: metered([], opened) });
+    await back.step();
+    expect(opened).toHaveLength(1);
+    expect(opened[0]!.costBase).toBe(0.13);
+    expect(opened[0]!.costBaseByModel).toEqual({ a: 0.08, b: 0.05 });
+  });
+
+  it('a later reply with no total keeps the last total the run saw (it is not wiped)', async () => {
+    const run = await twoSteps([{ total: 0.06, totals: { a: 0.06 } }, {}]);
+    const snap: RunSnapshot = JSON.parse(JSON.stringify(run.snapshot()));
+    expect(snap.lastTotal).toBe(0.06);
+    expect(snap.lastTotals).toEqual({ a: 0.06 });
+  });
+
+  it('an old snapshot with neither field opens with neither key', async () => {
+    const run = await twoSteps([{ total: 0.06, totals: { a: 0.06 } }, { total: 0.13 }]);
+    const snap: RunSnapshot = JSON.parse(JSON.stringify(run.snapshot()));
+    delete snap.lastTotal;
+    delete snap.lastTotals;
+    const opened: OpenOptions[] = [];
+    await Run.restore(snap, { engine: metered([], opened) }).step();
+    expect(opened).toHaveLength(1);
+    expect('costBase' in opened[0]!).toBe(false);
+    expect('costBaseByModel' in opened[0]!).toBe(false);
   });
 });
 

@@ -390,6 +390,9 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await slice.fill('abc');
     await slice.blur();
     await expect.poll(() => panel.getByRole('alert').textContent(), { timeout: W }).toBe('USD must be an amount above 0, like 2.50. Leave it empty for no USD limit.');
+    // the words are tied to the input that was refused
+    expect(await slice.getAttribute('aria-invalid')).toBe('true');
+    expect(await slice.getAttribute('aria-describedby')).toBe(await panel.getByRole('alert').getAttribute('id'));
     await textTab.click();
     expect(await editor.inputValue()).not.toContain('usd: abc');
     await blocksTab.click();

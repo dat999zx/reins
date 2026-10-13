@@ -148,7 +148,9 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
       if (usage) emit({ type: 'usage', ...usage });
       const cost = base === undefined ? undefined : turnCost(total, base);
       base = total;
-      const models = baseBy && byModel ? modelCosts(byModel, baseBy) : undefined;
+      // A split that does not add up to the reply's cost (a model dropped out and came back) is no split.
+      const split = baseBy && byModel ? modelCosts(byModel, baseBy) : undefined;
+      const models = split && cost !== undefined && Math.abs(Object.values(split).reduce((a, b) => a + b, 0) - cost) < 1e-6 ? split : undefined;
       baseBy = byModel;
       const events = turnEvents;
       turnEvents = [];

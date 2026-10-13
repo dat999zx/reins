@@ -124,6 +124,9 @@ export interface RunSnapshot {
   /** What an Allow added to a limit beyond its base; the key '' is the workflow's. */
   usdExtra?: Record<string, number>;
   openSlice?: { step: string; usd: number };
+  /** The engine's last raw running total and per-model totals, so a fresh engine process opens with what was already counted. */
+  lastTotal?: number;
+  lastTotals?: Record<string, number>;
 }
 
 /** Money sums carry float noise (0.1 + 0.07): six decimals keep every logged figure exact to the cent and below. */
@@ -174,6 +177,8 @@ export class Run {
   private usdSpent: Record<string, number> = {};
   private usdExtra: Record<string, number> = {};
   private openSlice?: { step: string; usd: number };
+  private lastTotal?: number;
+  private lastTotals?: Record<string, number>;
 
   constructor(opts: RunOptions) {
     this.workflow = opts.workflow;
@@ -236,6 +241,8 @@ export class Run {
       this.engineSession = await this.engine.open({
         ...(this.cwd !== undefined ? { cwd: this.cwd } : {}),
         ...(this.resumeSessionId ? { sessionId: this.resumeSessionId } : {}),
+        ...(this.lastTotal !== undefined ? { costBase: this.lastTotal } : {}),
+        ...(this.lastTotals ? { costBaseByModel: this.lastTotals } : {}),
         policy: () => this.policy(),
         pendingCards: () => this.takeCards(),
       });
@@ -324,7 +331,9 @@ export class Run {
     if (p.stepId !== undefined) {
       const left = this.usdLeft();
       if (left !== undefined && n > left + 1e-9) {
-        return `Allow at most $${(Math.floor(Math.max(left, 0) * 100 + 1e-6) / 100).toFixed(2)}: the workflow's USD budget has that much left.`;
+        // Under a cent no allowance the parser takes fits: cap it and go on; the next overrun pauses on the workflow's own card, which can be raised.
+        if (left < 0.01) n = Math.max(left, 0);
+        else return `Allow at most $${(Math.floor(left * 100 + 1e-6) / 100).toFixed(2)}: the workflow's USD budget has that much left.`;
       }
     }
     this.usdExtra[key] = r6(Math.max(this.usdExtra[key] ?? 0, spent - base) + n);
@@ -349,7 +358,7 @@ export class Run {
    * USD is checked between steps, after the fact, so a reply can run past a limit. The workflow's
    * budget comes first: a slice pause then always has workflow money left, so its Allow is never a dead end.
    */
-  // ponytail: a reply with an unknown cost counts 0; an auto-compaction whose reply failed is logged outside the run and not counted
+  // ponytail: a reply with an unknown cost counts 0; an auto-compaction whose reply failed is logged outside the run and not counted; a `now` card's follow-up reply is part of its step and is not checked between replies
   private usdOver(): boolean {
     const hit = (stepId: string | undefined, limit: number, spent: number) => {
       this.status = 'paused';
@@ -424,6 +433,8 @@ export class Run {
       this.lastTurnText = result.text;
       this.handleTurnResult(result);
       this.runCost += result.cost ?? 0;
+      if (result.total !== undefined) this.lastTotal = result.total;
+      if (result.totals) this.lastTotals = result.totals;
       const slice = this.openSlice;
       if (slice) this.usdSpent[slice.step] = (this.usdSpent[slice.step] ?? 0) + (result.cost ?? 0);
       const usage = result.events?.find((e): e is Extract<typeof e, { type: 'usage' }> => e.type === 'usage');
@@ -619,6 +630,8 @@ export class Run {
       usdSpent: { ...this.usdSpent },
       usdExtra: { ...this.usdExtra },
       ...(this.openSlice ? { openSlice: { ...this.openSlice } } : {}),
+      ...(this.lastTotal !== undefined ? { lastTotal: this.lastTotal } : {}),
+      ...(this.lastTotals ? { lastTotals: { ...this.lastTotals } } : {}),
     };
   }
 
@@ -667,6 +680,8 @@ export class Run {
     if (snapshot.usdSpent) run.usdSpent = { ...snapshot.usdSpent };
     if (snapshot.usdExtra) run.usdExtra = { ...snapshot.usdExtra };
     if (snapshot.openSlice) run.openSlice = { ...snapshot.openSlice };
+    if (snapshot.lastTotal !== undefined) run.lastTotal = snapshot.lastTotal;
+    if (snapshot.lastTotals) run.lastTotals = { ...snapshot.lastTotals };
 
     return run;
   }

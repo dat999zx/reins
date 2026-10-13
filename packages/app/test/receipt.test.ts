@@ -19,10 +19,10 @@ describe('receiptFields', () => {
       { model: 'b', label: 'Opus 5.5', usd: 0.16, turns: 2 },
     ];
     expect(receiptFields({ ...base, models }).slice(3)).toEqual([
-      ['cost', '$0.5000'], ['models', 'Sonnet 5.5 $0.13 (4 turns) · Opus 5.5 $0.16 (2 turns)'],
+      ['cost', '$0.5000'], ['models', 'Sonnet 5.5 $0.1300 (4 turns) · Opus 5.5 $0.1600 (2 turns)'],
     ]);
     expect(receiptFields({ ...base, models, unsplitUsd: 0.05 })[4]).toEqual(
-      ['models', 'Sonnet 5.5 $0.13 (4 turns) · Opus 5.5 $0.16 (2 turns) · not split by model $0.05']);
+      ['models', 'Sonnet 5.5 $0.1300 (4 turns) · Opus 5.5 $0.1600 (2 turns) · not split by model $0.0500']);
     expect(receiptFields({ ...base, models: [{ model: 'raw-id', usd: 0.007, turns: 1 }] })[4]).toEqual(['models', 'raw-id $0.0070 (1 turn)']);
   });
 

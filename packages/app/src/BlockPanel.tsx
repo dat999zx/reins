@@ -10,7 +10,8 @@ import { modelOptions } from './usage.js';
 const usdText = (usd: number) => (Number(usd.toFixed(2)) === usd ? usd.toFixed(2) : String(usd));
 
 type Models = Array<{ id: string; label: string }>;
-type InputProps = { label: string; value: string; ids: string[]; models: Models; rev: unknown; commit: (v: string) => void };
+// `alert` is the id of the words under a refused value: the input says it is invalid and points at them.
+type InputProps = { label: string; value: string; ids: string[]; models: Models; rev: unknown; commit: (v: string) => void; alert?: string };
 
 // A field shows a draft while typing and commits on blur / Enter. It re-syncs from the model after every
 // preview (`rev`), so a commit the editor dropped never leaves a value the model does not have.
@@ -33,12 +34,13 @@ export function StepOptions({ value, ids }: { value: string; ids: string[] }) {
   return <>{[...new Set(['', value, ...ids])].map((id) => <option key={id} value={id}>{id || '(none)'}</option>)}</>;
 }
 
-const line = (type: 'text' | 'number', mono?: boolean) => function LineInput({ label, value, rev, commit }: InputProps) {
+const line = (type: 'text' | 'number', mono?: boolean) => function LineInput({ label, value, rev, commit, alert }: InputProps) {
   const { v, setV, done, onKeyDown } = useLine(value, rev, commit);
   return (
     <label className="bfield">{label}
       <input type={type} min={type === 'number' ? 1 : undefined} className={mono ? 'mono' : undefined} value={v}
-        onChange={(e) => setV(e.target.value)} onBlur={done} onKeyDown={onKeyDown} />
+        onChange={(e) => setV(e.target.value)} onBlur={done} onKeyDown={onKeyDown}
+        aria-invalid={alert ? true : undefined} aria-describedby={alert} />
     </label>
   );
 };
@@ -86,15 +88,16 @@ function PanelField({ f, step, ids, models, rev, onCommit }: {
 }) {
   const [bad, setBad] = useState('');
   const Input = INPUTS[f.input];
+  const alertId = `${step.id}-${f.key}-bad`;
   return (
     <>
-      <Input label={f.label} value={fieldValue(step, f.key)} ids={ids} models={models} rev={rev}
+      <Input label={f.label} value={fieldValue(step, f.key)} ids={ids} models={models} rev={rev} alert={bad ? alertId : undefined}
         commit={(v) => {
           const ok = applyField(structuredClone(step), f.key, v);
           setBad(ok ? '' : f.error ?? '');
           if (ok) onCommit(v);
         }} />
-      {bad && <div className="bad" role="alert">{bad}</div>}
+      {bad && <div id={alertId} className="bad" role="alert">{bad}</div>}
     </>
   );
 }

@@ -685,7 +685,7 @@ describe.skipIf(skip)('live run e2e', () => {
     await usdQ.getByRole('button', { name: 'Stop', exact: true }).click();
     const models = dock.locator('.sx-dockreceipt > div', { has: page.locator('dt', { hasText: /^models$/ }) }).locator('dd');
     await models.waitFor();
-    expect(await models.innerText()).toBe('Opus 5.5 $0.06 (1 turn)');
+    expect(await models.innerText()).toBe('Opus 5.5 $0.0641 (1 turn)');
     expect(errors).toEqual([]);
   }, T);
 });

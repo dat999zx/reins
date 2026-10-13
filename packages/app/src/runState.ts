@@ -93,6 +93,8 @@ const FOLD: Record<string, Fold> = {
     const parents: string[] = Array.isArray(x.parents) ? x.parents.filter((p: unknown) => typeof p === 'string') : [];
     begin(v, [...parents, x.step]);
     a.started.push(x.step);
+    // a block outlives nothing: its model step closes or replaces the slice, so the item goes with it
+    if (v.stepsAtStart?.find((s) => s.id === x.step)?.kind === 'model') delete v.slice;
   },
   turn_started: (r, x, v, a) => { setStep(r, x, v, a); a.inTurn = true; },
   gate_paused: setStep,

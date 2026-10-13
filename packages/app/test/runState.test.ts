@@ -58,6 +58,16 @@ describe('dock facts', () => {
       { key: 'minutes', text: '1m 00s / 30m', level: 'ok', enforced: false },
     ]);
   });
+  it('a block item goes when its model step starts again, not only at the next reply', () => {
+    reset();
+    const steps = [{ id: 'plan', kind: 'phase' }, { id: 'model-1', kind: 'model' }];
+    const slice = { step: 'model-1', spent: 0.52, usd: 0.5 };
+    const open = [started(steps), row('turn_ended', { step: 'plan', cost: 0.52, slice })];
+    expect(view(open).slice).toEqual(slice);
+    expect(view([...open, ss('plan')]).slice).toEqual(slice);
+    expect(view([...open, ss('model-1')]).slice).toBeUndefined();
+  });
+
   it('a block item shows the open slice as enforced, and goes when a later turn carries none', () => {
     reset();
     const slice = { step: 'model-1', spent: 0.52, usd: 0.5 };

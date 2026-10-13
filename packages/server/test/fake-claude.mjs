@@ -120,6 +120,7 @@ const withModels = (m, share, spec) => {
   modelTotals[key] = (modelTotals[key] ?? 0) + share;
   if (spec?.noModelUsage) return { modelUsage: undefined };
   const entry = Object.values(m.modelUsage ?? {})[0] ?? {};
+  if (spec?.modelUsage) return { modelUsage: Object.fromEntries(Object.entries(spec.modelUsage).map(([k, v]) => [k, { ...entry, costUSD: v }])) }; // scripted raw per-model totals
   return { modelUsage: Object.fromEntries(Object.entries(modelTotals).map(([k, v]) => [k, { ...entry, costUSD: v }])) };
 };
 let turnIndex = 0;

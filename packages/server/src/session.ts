@@ -541,8 +541,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     const w = snapshot.workflow;
     const tagged = path.resolve(saved.workflowPath) === path.resolve(dir, 'runs', `${rid}.reins.md`); // exactly the file taggedRun wrote
     const { resolveBlock } = loadWorkflow(saved.workflowPath);
-    const unknown = unknownModel(w, resolveBlock);
-    if (unknown) return unknown;
+    // No unknownModel check here: a detached run is stopped only through Resume, so a model that dropped off the list must not lock the session out.
     begin();
     start(async () => {
       if (!tagged && !(await trustedCommands(saved.workflowPath, w, resolveBlock))) return;
