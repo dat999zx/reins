@@ -144,7 +144,7 @@ export function Chat({ sess, catalogue, providers, takeRefill, tab, onTab, resto
         </>
       ) : (
         restore === undefined ? <p className="hint">Loading…</p>
-          : <TextTab view={tab} onView={onTab} sess={sess} run={run} act={act} restore={restore} onState={onState} onDirty={onDirty} onRun={() => onTab('chat')}
+          : <TextTab view={tab} onView={onTab} sess={sess} models={providers.find((p) => p.id === sess.engine)?.models ?? []} run={run} act={act} restore={restore} onState={onState} onDirty={onDirty} onRun={() => onTab('chat')}
             reveal={reveal} onRevealed={() => setReveal(undefined)} onChat={onChat} dockOpen={dockOpen.blocks} onDockOpen={(o) => setDockOpen((d) => ({ ...d, blocks: o }))} dismissed={dismissed} onDismiss={setDismissed} />
       )}
     </main>

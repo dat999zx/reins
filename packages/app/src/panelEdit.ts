@@ -10,6 +10,13 @@ const validMax = (v: string) => /^\d+$/.test(v) && Number.isSafeInteger(Number(v
 // Returns false when the value is refused (nothing changed).
 export function applyField(s: Step, key: FieldKey, v: string): boolean {
   if (key === 'max' && !validMax(v)) return false;
+  if (key === 'usd') {
+    const r = parseBudget('usd', v);
+    if ('error' in r) return false;
+    if (r.value === undefined) delete s.attrs.usd;
+    else s.attrs.usd = v.trim();
+    return true;
+  }
   if (key === 'title' || key === 'prompt') {
     if (v === '') delete s[key];
     else s[key] = v;

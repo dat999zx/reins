@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseWorkflow, printWorkflow } from '@reins/core';
+import { parseWorkflow, printWorkflow, type Step } from '@reins/core';
 import { editStep } from '../src/canvas.js';
 import { applyField, applyLinkMax, BUDGET_ERRORS, budgetCount, budgetPatch, fieldValue, parseBudget } from '../src/panelEdit.js';
 
@@ -58,6 +58,26 @@ describe('panelEdit', () => {
     expect(s).toEqual(w().steps[1]);
     expect(applyField(s, 'max', '5')).toBe(true);
     expect(applyField(s, 'title', 'x')).toBe(true);
+  });
+
+  it('usd: trimmed text is written; junk is refused and changes nothing; empty removes it', () => {
+    const s = { id: 'model-1', kind: 'model', attrs: { model: 'x', usd: '1.00' }, cards: [], links: [] } as Step;
+    expect(applyField(s, 'usd', ' 0.50 ')).toBe(true);
+    expect(s.attrs.usd).toBe('0.50');
+    for (const bad of ['abc', '0', '1.234']) {
+      expect(applyField(s, 'usd', bad), bad).toBe(false);
+      expect(s.attrs.usd, bad).toBe('0.50');
+    }
+    expect(applyField(s, 'usd', '')).toBe(true);
+    expect('usd' in s.attrs).toBe(false);
+  });
+
+  it('model: sets the id; empty removes it', () => {
+    const s = { id: 'model-1', kind: 'model', attrs: {}, cards: [], links: [] } as Step;
+    expect(applyField(s, 'model', 'x')).toBe(true);
+    expect(s.attrs.model).toBe('x');
+    expect(applyField(s, 'model', '')).toBe(true);
+    expect('model' in s.attrs).toBe(false);
   });
 
   it('editStep returns the same workflow when the edit is refused', () => {

@@ -371,6 +371,64 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
       return (await editor.inputValue()).includes('usd:');
     }, { timeout: W }).toBe(u0 !== '');
     await blocksTab.click();
+
+    // 8d.3c. the model block: the palette adds it, the panel's Model select lists the session's catalog, a wrong Budget (USD) is refused in words
+    // (`tidy` is not the file here: 8d.3 added an Always rule, so the file is compared with itself from before the block)
+    await textTab.click();
+    const beforeModel = await editor.inputValue();
+    await blocksTab.click();
+    await card('model').click();
+    await row('model-1').waitFor();
+    await panel.locator('h3', { hasText: 'model-1' }).waitFor();
+    const pick = panel.getByRole('combobox', { name: 'Model', exact: true });
+    expect(await pick.locator('option').first().textContent()).toBe('(pick a model)');
+    await pick.selectOption('claude-opus-5-5');
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('## model claude-opus-5-5');
+    await blocksTab.click();
+    const slice = panel.getByRole('textbox', { name: 'Budget (USD)' });
+    await slice.fill('abc');
+    await slice.blur();
+    await expect.poll(() => panel.getByRole('alert').textContent(), { timeout: W }).toBe('USD must be an amount above 0, like 2.50. Leave it empty for no USD limit.');
+    await textTab.click();
+    expect(await editor.inputValue()).not.toContain('usd: abc');
+    await blocksTab.click();
+    // retried inside the poll: a preview landing between fill and blur resets the draft
+    await expect.poll(async () => {
+      await blocksTab.click();
+      await slice.fill('0.50');
+      await slice.blur();
+      await textTab.click();
+      return editor.inputValue();
+    }, { timeout: W }).toContain('usd: 0.50');
+    await expect.poll(() => diags.textContent(), { timeout: W }).toContain("Set the workflow's USD budget first: block budgets are carved out of it.");
+    await blocksTab.click();
+    // the face shows both pills, the id and the USD
+    await expect.poll(() => row('model-1').locator('input').nth(0).inputValue(), { timeout: W }).toBe('claude-opus-5-5');
+    await expect.poll(() => row('model-1').locator('input').nth(1).inputValue(), { timeout: W }).toBe('0.50');
+    // the words under Budget (USD) go away as soon as a good value is committed (no tab switch in between)
+    await expect.poll(async () => {
+      await slice.fill('abc');
+      await slice.blur();
+      return panel.getByRole('alert').count();
+    }, { timeout: W }).toBe(1);
+    await expect.poll(async () => {
+      await slice.fill('1.25');
+      await slice.blur();
+      return panel.getByRole('alert').count();
+    }, { timeout: W }).toBe(0);
+    // a model typed in Text that the catalog does not list stays the select's value
+    await textTab.click();
+    await editor.fill((await editor.inputValue()).replace('## model claude-opus-5-5', '## model claude-unlisted-9'));
+    await blocksTab.click();
+    await row('model-1').click();
+    await expect.poll(() => pick.inputValue(), { timeout: W }).toBe('claude-unlisted-9');
+    await panel.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect.poll(() => row('model-1').count(), { timeout: W }).toBe(0);
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toBe(beforeModel);
+    await blocksTab.click();
+
     // 8d.4. a block's grip dragged onto the top half of another block moves it before that block
     await blocksTab.click();
     await row('build').locator('.sx-grip').first().dragTo(row('plan').locator('.sx-row').first(), { targetPosition: { x: 30, y: 3 } });

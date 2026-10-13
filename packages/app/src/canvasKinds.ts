@@ -1,7 +1,10 @@
 import type { CardKind, Step, StepKind } from '@reins/core';
 
-export type FieldKey = 'title' | 'prompt' | 'mode' | 'cmd' | 'max' | 'against' | 'knowl' | 'to' | 'focus';
-export type Field = { key: FieldKey; label: string; input: 'text' | 'mono' | 'textarea' | 'number' | 'mode' | 'step' };
+import { BUDGET_ERRORS } from './panelEdit.js';
+
+export type FieldKey = 'title' | 'prompt' | 'mode' | 'cmd' | 'max' | 'against' | 'knowl' | 'to' | 'focus' | 'model' | 'usd';
+// `error` is what the panel says when applyField refuses the value
+export type Field = { key: FieldKey; label: string; input: 'text' | 'mono' | 'textarea' | 'number' | 'mode' | 'step' | 'model'; error?: string };
 export type Token = string | 'cond' | 'sub' | { field: FieldKey };
 export type KindView = {
   group?: 'kids' | 'kids+else';
@@ -45,7 +48,11 @@ export const KINDS: Record<StepKind, KindView> = {
     line: ['hand off to', { field: 'to' }],
     card: { label: 'hand off', section: 'Flow' }, fresh: () => ({}),
   },
-  model: { fields: [], line: ['model'], card: { label: 'model', section: 'Flow' }, fresh: () => ({}) },
+  model: {
+    fields: [{ key: 'model', label: 'Model', input: 'model' }, { key: 'usd', label: 'Budget (USD)', input: 'text', error: BUDGET_ERRORS.usd }],
+    line: ['model', { field: 'model' }, 'USD', { field: 'usd' }],
+    card: { label: 'model', section: 'Flow' }, fresh: () => ({}),
+  },
   end: { stops: true, fields: [], line: ['end'], card: { label: 'end', section: 'Flow' }, fresh: () => ({}) },
   use: { fields: [], line: ['use', 'sub'], sub: (s) => s.title || s.attrs.use || s.id },
 };

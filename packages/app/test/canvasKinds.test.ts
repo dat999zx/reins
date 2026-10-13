@@ -81,6 +81,13 @@ describe('fresh', () => {
       expect(text).not.toContain('\nid:');
     });
   }
+  it('model: a fresh step prints `## model`, and one with a model and a slice prints both', () => {
+    expect(KINDS.model.fields.map((f) => f.key)).toEqual(['model', 'usd']);
+    const base = '---\nreins: 1\nname: t\nbudget: { turns: 10, minutes: 30, usd: 2.00 }\nalways: []\n---\n\n## phase plan\n> Plan it.\n';
+    const w = parseWorkflow(base).workflow!;
+    w.steps.push({ id: 'model-1', kind: 'model', attrs: { model: 'x', usd: '0.50' }, cards: [], links: [] });
+    expect(printWorkflow(w)).toContain('## model x\nusd: 0.50\n');
+  });
   it('gives a new attrs object per call', () => {
     expect(KINDS.repeat.fresh!().attrs).not.toBe(KINDS.repeat.fresh!().attrs);
   });

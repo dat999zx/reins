@@ -37,9 +37,9 @@ const toWorkspace = (ok: boolean) => { if (ok) document.querySelector<HTMLElemen
 const template = (name: string) =>
   `---\nreins: 1\nname: ${name}\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n## phase plan\n> Plan the change.\n\n## phase build\n> Make the change.\n`;
 
-export function TextTab({ view, onView, sess, run, act, restore, onState, onDirty, onRun, reveal, onRevealed, onChat, dockOpen, onDockOpen, dismissed, onDismiss }: {
+export function TextTab({ view, onView, sess, models, run, act, restore, onState, onDirty, onRun, reveal, onRevealed, onChat, dockOpen, onDockOpen, dismissed, onDismiss }: {
   view: Exclude<Tab, 'chat'>; onView: (t: Exclude<Tab, 'chat'>) => void;
-  sess: Sess; run: RunView; act: Actions; restore?: EditorState; onState: (patch: Partial<EditorState>) => void; onDirty: (dirty: boolean) => void; onRun: () => void;
+  sess: Sess; models: Array<{ id: string; label: string }>; run: RunView; act: Actions; restore?: EditorState; onState: (patch: Partial<EditorState>) => void; onDirty: (dirty: boolean) => void; onRun: () => void;
   reveal?: { runId: string; id: string; n: number }; onRevealed: () => void; onChat: (step?: string) => void;
   dockOpen: boolean; onDockOpen(o: boolean): void; dismissed?: string; onDismiss(runId?: string): void;
 }) {
@@ -405,7 +405,7 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
                     <button className="danger" onClick={() => del([...withoutNested(prev.workflow!, sels)], toWorkspace)}>Delete</button>
                   </aside>
                 ) : sel ? <BlockPanel key={sel.id} step={sel} all={flatSteps(prev.workflow.steps)} cond={prev.steps.find((s) => s.id === sel.id)?.cond}
-                  turn={prev.turn} rev={prev} onEdit={edit} onShowInChat={ran(sel.id) ? () => onChat(sel.id) : undefined} onDelete={() => del([stepKey(sel.id)], toWorkspace)} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />
+                  turn={prev.turn} rev={prev} models={models} onEdit={edit} onShowInChat={ran(sel.id) ? () => onChat(sel.id) : undefined} onDelete={() => del([stepKey(sel.id)], toWorkspace)} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />
                   : [...sels].some((k) => k.startsWith('l:')) ? <aside className="bpanel" aria-label="Loose block"><p className="hint">Loose block: not part of the workflow, never runs. Drag it into the script to use it.</p></aside>
                   : <WorkflowPanel w={prev.workflow} rev={prev} onEdit={edit} />}
               </div>
