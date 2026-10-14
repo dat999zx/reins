@@ -1,6 +1,6 @@
 import type { Workflow } from '@reins/core';
 import { splitAtEnd } from './arrange.js';
-import { edgeId, flatSteps, type Mark } from './canvas.js';
+import { AGAINST, edgeId, flatSteps, type Mark } from './canvas.js';
 import { KINDS } from './canvasKinds.js';
 import type { Pt, Rect } from './surface.js';
 
@@ -20,6 +20,9 @@ export function linksToDraw(w: Workflow, wires: Map<string, Mark>): { arrows: Li
       const mark = wires.get(edgeId(s.id, index, l.to));
       arrows.push(mark ? { ...ref, mark } : ref);
     });
+    // `against` is an attribute, not a link: no line position, so no mark
+    const a = s.attrs.against;
+    if (a) (ids.has(a) ? arrows : missing).push({ from: s.id, index: AGAINST, kind: 'against', to: a });
   }
   return { arrows, missing, then };
 }
@@ -28,7 +31,7 @@ export function linksToDraw(w: Workflow, wires: Map<string, Mark>): { arrows: Li
 export function taken(arrows: LinkArrow[], then: Array<{ from: string; to: string }>, went: Array<{ from: string; to: string }>): Set<string> {
   const pairs = new Set(went.map((p) => `${p.from}>${p.to}`));
   return new Set([
-    ...arrows.filter((a) => pairs.has(`${a.from}>${a.to}`)).map((a) => `${a.from}/${a.index}`),
+    ...arrows.filter((a) => a.kind !== 'against' && pairs.has(`${a.from}>${a.to}`)).map((a) => `${a.from}/${a.index}`),
     ...then.map((t) => `${t.from}>${t.to}`).filter((k) => pairs.has(k)),
   ]);
 }

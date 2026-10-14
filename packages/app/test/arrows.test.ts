@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { parseWorkflow, type Workflow } from '@reins/core';
-import { edgeId, type Mark } from '../src/canvas.js';
+import { AGAINST, edgeId, type Mark } from '../src/canvas.js';
 import { LinkLayer } from '../src/LinkLayer.js';
 import { arrowPath, labelAt, labelW, lanes, linksToDraw, placeLabels, taken, type LinkArrow } from '../src/arrows.js';
 
@@ -63,6 +63,36 @@ describe('linksToDraw', () => {
     const r = linksToDraw(parse('next: build'), new Map<string, Mark>([[edgeId('plan', 0, 'build'), 'error']]));
     expect(r.arrows.find((a) => a.from === 'plan')!.mark).toBe('error');
     expect(r.arrows.find((a) => a.from === 't')!.mark).toBeUndefined();
+  });
+});
+
+describe('the against arrow', () => {
+  const v = (a: string) => parseWorkflow(text('').replace('## phase build\n', `## verify\nid: v\n${a}\n\n## phase build\n`)).workflow!;
+  it('is drawn for a step with an against that exists, keyed by AGAINST', () => {
+    const { arrows, missing } = linksToDraw(v('against: build'), none);
+    expect(arrows.find((a) => a.from === 'v')).toEqual({ from: 'v', index: AGAINST, kind: 'against', to: 'build' });
+    expect(missing).toEqual([]);
+  });
+  it('goes to missing when the target does not exist', () => {
+    const { arrows, missing } = linksToDraw(v('against: ghost'), none);
+    expect(arrows.some((a) => a.from === 'v')).toBe(false);
+    expect(missing).toEqual([{ from: 'v', index: AGAINST, kind: 'against', to: 'ghost' }]);
+  });
+  it('is absent when empty', () => {
+    const r = linksToDraw(v(''), none);
+    expect([...r.arrows, ...r.missing].some((a) => a.kind === 'against')).toBe(false);
+  });
+  it('is never marked as taken by the run', () => {
+    const { arrows } = linksToDraw(v('against: build'), none);
+    expect(taken(arrows, [], [{ from: 'v', to: 'build' }]).size).toBe(0);
+  });
+  it('shares lanes and a label like any arrow, and is named in the layer', () => {
+    const a: LinkArrow = { from: 'v', index: AGAINST, kind: 'against', to: 'build' };
+    expect(lanes([a], ['v', 'build']).get(`v/${AGAINST}`)).toBe(0);
+    const html = renderToStaticMarkup(createElement(LinkLayer, { arrows: [a], then: [], rects: new Map([['v', { x: 0, y: 0, w: 100, h: 20 }], ['build', { x: 0, y: 60, w: 100, h: 20 }]]), lanes: new Map() }));
+    expect(html).toContain('against link from v to build');
+    expect(html).toContain('#5aa9e6');
+    expect(html).toContain('>against</text>');
   });
 });
 

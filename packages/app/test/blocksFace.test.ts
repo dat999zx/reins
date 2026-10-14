@@ -3,6 +3,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { Step, Workflow } from '@reins/core';
 import { BlocksPane } from '../src/BlocksPane.js';
+import { wiresOf } from '../src/canvasKinds.js';
 
 const models = [{ id: 'm1', label: 'Model One' }, { id: 'm2', label: 'Model Two' }];
 const step = (kind: string, over: Partial<Step> = {}) => ({ id: `${kind}-1`, kind, attrs: {}, cards: [], links: [], ...over }) as Step;
@@ -32,6 +33,41 @@ describe('the block face', () => {
     expect(face(step('phase', { title: 'plan' }))).toContain('<span class="sx-faint">no prompt yet</span>');
     expect(face(step('say'))).not.toContain('no prompt yet');
     expect(face(step('subagent', { prompt: 'Look.' }))).not.toContain('no prompt yet');
+  });
+  it('a verify block has three handles in order, a run block two, a phase one', () => {
+    const lks = (html: string) => [...html.matchAll(/data-lk="([^"]+)"/g)].map((m) => m[1]);
+    expect(lks(face(step('verify')))).toEqual(['next', 'on-fail', 'against']);
+    expect(lks(face(step('run', { attrs: { cmd: 'x' } })))).toEqual(['next', 'on-fail']);
+    expect(lks(face(step('phase')))).toEqual(['next']);
+    expect(wiresOf('verify')).toEqual(['next', 'on-fail', 'against']);
+    expect(wiresOf('end')).toEqual([]);
+  });
+  it('handles stack by count: two get sx-two, three get sx-three, one gets neither', () => {
+    const cls = (html: string) => [...html.matchAll(/class="sx-handle([^"]*)"/g)].map((m) => m[1]!.trim());
+    expect(cls(face(step('verify')))).toEqual(['sx-three', 'sx-three', 'sx-three']);
+    expect(cls(face(step('run', { attrs: { cmd: 'ls' } })))).toEqual(['sx-two', 'sx-two']);
+    expect(cls(face(step('phase', { title: 'p' })))).toEqual(['']);
+  });
+  it('a loose verify block shows its links as chips but not its against target', () => {
+    const loose = step('verify', { attrs: { against: 'plan' }, links: [{ kind: 'on-fail', to: 'plan' }] as Step['links'] });
+    const w = { name: 't', budget: { turns: 10, minutes: 30 }, always: [], steps: [loose] } as unknown as Workflow;
+    const html = renderToStaticMarkup(createElement(BlocksPane, {
+      w, steps: [loose], diags: [], text: '', sel: new Set<string>(), rev: 0, at: { x: 0, y: 0 }, loose: { key: 'l:1', selected: false, moving: false, onPick: () => {} },
+      models, sessionModel: { id: 'm1', label: 'Model One' }, onEdit: () => true, onSelect: () => {},
+    } as never));
+    expect(html).toContain('on-fail');
+    expect(html).not.toContain('against \u2192');
+    expect(html).not.toContain('class="sx-handle');
+  });
+  it('the against handle says what it does', () => {
+    expect(face(step('verify'))).toContain("title=\"Compares this block&#x27;s work against the block you drag this to. Drag to a block to link.\"");
+  });
+  it('verify against: no dropdown, the target as faint text (its title if it has one), a hint when empty', () => {
+    const html = face(step('verify', { attrs: { against: 'phase-1' } }), step('phase', { id: 'phase-1', title: 'Plan' }));
+    expect(html).not.toContain('Against of');
+    expect(html).toContain('<span class="sx-faint">Plan</span>');
+    expect(face(step('verify', { attrs: { against: 'x' } }))).toContain('<span class="sx-faint">x</span>');
+    expect(face(step('verify'))).toContain('<span class="sx-faint">drag the blue dot to a block</span>');
   });
   it('the two handles say what they do', () => {
     const html = face(step('run', { attrs: { cmd: 'x' } }));

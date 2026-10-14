@@ -854,6 +854,34 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await textTab.click();
     expect(await editor.inputValue()).toBe(textBeforeHat);
     await blocksTab.click();
+    // 8e.5b. S-against: a verify block's blue handle, dragged onto a block, writes `against:`; select the arrow and press Delete: the line is gone
+    await card('verify against').click();
+    await row('verify-1').waitFor();
+    await row('verify-1').locator('.sx-row').first().hover();
+    const vb = (await row('verify-1').locator('.sx-handle[data-lk="against"]').boundingBox())!;
+    await drag(centre(vb), centre((await row('plan').locator('.sx-row').first().boundingBox())!));
+    const against = page.locator('[data-link="verify-1/-1"]');
+    await against.waitFor({ state: 'attached', timeout: W });
+    await textTab.click();
+    expect(await editor.inputValue()).toContain('against: plan\n');
+    await blocksTab.click();
+    const againstAt = (await page.evaluate(`(() => {
+      const p = document.querySelector('[data-link="verify-1/-1"] .sx-hit'), q = p.getPointAtLength(p.getTotalLength() / 2), m = p.getScreenCTM();
+      return { x: m.a * q.x + m.c * q.y + m.e, y: m.b * q.x + m.d * q.y + m.f };
+    })()`)) as { x: number; y: number };
+    await page.mouse.click(againstAt.x, againstAt.y);
+    await expect.poll(() => page.locator('[data-link="verify-1/-1"].sx-lsel').count(), { timeout: W }).toBe(1);
+    await page.keyboard.press('Delete');
+    await expect.poll(() => against.count(), { timeout: W }).toBe(0);
+    await textTab.click();
+    expect(await editor.inputValue()).not.toContain('against:');
+    await blocksTab.click();
+    await row('verify-1').locator('.sx-row').first().click();
+    await page.keyboard.press('Delete');
+    await expect.poll(() => row('verify-1').count(), { timeout: W }).toBe(0);
+    await textTab.click();
+    expect(await editor.inputValue()).toBe(textBeforeHat);
+    await blocksTab.click();
     // 8e.6. detach `plan` from its menu: it moves behind an `end`, no new error, a note names the capped link; Ctrl+Z restores the text
     const errs = () => page.locator('.diags .bad').count();
     await textTab.click();

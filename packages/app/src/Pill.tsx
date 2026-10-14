@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { StepOptions, useLine } from './BlockPanel.js';
+import { useLine } from './BlockPanel.js';
 
 const LOOKS = { pill: 'sx-pill', code: 'sx-code', num: 'sx-pill sx-num', bold: 'sx-bold' };
 
@@ -29,13 +29,5 @@ export function Pill({ label, value, look, rev, commit, valid, dead, ph: own }: 
         if (e.key === 'Enter' && !e.nativeEvent.isComposing) send();
         else if (e.key === 'Escape') { dirty.current = false; setBad(false); line.setV(value); }
       }} />
-  );
-}
-
-export function StepPick({ label, value, ids, commit, dead }: { label: string; value: string; ids: string[]; commit: (v: string) => void; dead?: boolean }) {
-  return (
-    <select className="sx-pill" aria-label={label} value={value} inert={dead} onChange={(e) => commit(e.target.value)}>
-      <StepOptions value={value} ids={ids} />
-    </select>
   );
 }

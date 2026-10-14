@@ -2,7 +2,7 @@ import { arrowPath, labelAt, labelW, placeLabels, type LinkArrow } from './arrow
 import { cx } from './generic.js';
 import type { Pt, Rect } from './surface.js';
 
-const WIRES: Record<string, string> = { next: '#a3a19b', 'on-fail': '#e05d5a' };
+const WIRES: Record<string, string> = { next: '#a3a19b', 'on-fail': '#e05d5a', against: '#5aa9e6' };
 const OTHER = '#6f6e6b', BAD = '#e05d5a', WARN = '#cf9433';
 const colour = (a: LinkArrow) => (a.mark === 'error' ? BAD : a.mark === 'warning' ? WARN : WIRES[a.kind] ?? OTHER);
 const text = (a: LinkArrow) => (a.kind === 'on-fail' ? 'on fail' : a.kind);

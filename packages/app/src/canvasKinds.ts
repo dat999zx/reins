@@ -1,5 +1,6 @@
 import type { CardKind, Step, StepKind } from '@reins/core';
 
+import type { WireKind } from './canvas.js';
 import { BUDGET_ERRORS } from './panelEdit.js';
 
 export type FieldKey = 'title' | 'prompt' | 'mode' | 'cmd' | 'max' | 'against' | 'knowl' | 'to' | 'focus' | 'model' | 'usd';
@@ -14,6 +15,7 @@ export type KindView = {
   group?: 'kids' | 'kids+else';
   fails?: true;
   stops?: true; // ends the workflow: no links out, drawn as a cap
+  against?: true; // has a third wire: the step whose work it compares
   cards?: true;
   fields: Field[];
   line: Token[];
@@ -45,6 +47,7 @@ export const KINDS: Record<StepKind, KindView> = {
     line: ['verify against', { field: 'against' }],
     cards: true,
     fails: true,
+    against: true,
     card: { label: 'verify against', section: 'Flow' }, fresh: () => ({}),
   },
   recall: { fields: [{ key: 'knowl', label: 'Knowl', input: 'text' }], line: ['recall from Knowl', { field: 'knowl' }], card: { label: 'recall', section: 'Memory' }, fresh: () => ({}) },
@@ -67,6 +70,12 @@ export const KINDS: Record<StepKind, KindView> = {
   },
   end: { stops: true, fields: [], line: ['end'], card: { label: 'end', section: 'Flow' }, fresh: () => ({}) },
   use: { fields: [], line: ['use', 'sub'], sub: (s) => s.title || s.attrs.use || s.id },
+};
+
+// The handles on a block, top to bottom.
+export const wiresOf = (kind: StepKind): WireKind[] => {
+  const k = KINDS[kind];
+  return k.stops ? [] : ['next', ...(k.fails ? ['on-fail' as const] : []), ...(k.against ? ['against' as const] : [])];
 };
 
 // whenever-only kinds (now, stop) are left out

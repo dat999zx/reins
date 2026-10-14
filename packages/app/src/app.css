@@ -333,8 +333,12 @@ select.sx-pill { cursor: pointer; }
 .sx-row { position: relative; }
 .sx-handle { position: absolute; right: -15px; top: calc(50% - 4.5px); width: 9px; height: 9px; box-sizing: border-box; border-radius: 50%; background: #a3a19b; border: 1.5px solid #fff; cursor: crosshair; opacity: 0; pointer-events: none; z-index: 5; }
 .sx-handle[data-lk='on-fail'] { background: #e05d5a; }
+.sx-handle[data-lk='against'] { background: #5aa9e6; }
 .sx-handle.sx-two[data-lk='next'] { top: calc(50% - 10px); }
 .sx-handle.sx-two[data-lk='on-fail'] { top: calc(50% + 1px); }
+.sx-handle.sx-three[data-lk='next'] { top: calc(50% - 15px); }
+.sx-handle.sx-three[data-lk='on-fail'] { top: calc(50% - 4.5px); }
+.sx-handle.sx-three[data-lk='against'] { top: calc(50% + 6px); }
 :is(.sx-blk, .sx-chead):is(:hover, :focus) > .sx-row > .sx-handle, .sx-c:focus > .sx-chead > .sx-row > .sx-handle,
 .sx-blk.sx-sel > .sx-row > .sx-handle, .sx-c.sx-sel > .sx-chead > .sx-row > .sx-handle { opacity: 1; pointer-events: auto; }
 .blk.sx-linkover, .sx-loose.sx-linkover { outline: 2px solid var(--brand); outline-offset: 2px; }

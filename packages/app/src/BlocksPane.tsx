@@ -1,8 +1,8 @@
 import { useContext, useMemo, type MouseEvent, type ReactNode } from 'react';
 import type { Cond, Diagnostic, Step, Workflow } from '@reins/core';
-import { KINDS, type Token } from './canvasKinds.js';
+import { KINDS, wiresOf, type Token } from './canvasKinds.js';
 import { applyParam, COND_KINDS, type CondParam } from './condKinds.js';
-import { editStep, marksOf } from './canvas.js';
+import { AGAINST, editStep, flatSteps, marksOf } from './canvas.js';
 import { setCond, type CondPath } from './blocks.js';
 import { applyField, fieldValue } from './panelEdit.js';
 import type { Pt } from './surface.js';
@@ -12,7 +12,7 @@ import { zoneAttrs, zoneKey, type Zone } from './gesture.js';
 import type { Over } from './useDrag.js';
 import type { SessionModel } from './BlockPanel.js';
 import { ModelPicker } from './ModelPicker.js';
-import { Pill, StepPick } from './Pill.js';
+import { Pill } from './Pill.js';
 import { cx } from './generic.js';
 import { ENDED, StatusCtx, StepChips } from './StepChips.js';
 
@@ -21,6 +21,7 @@ const LOOK = { code: 'code', str: 'pill', num: 'num', pill: 'pill' } as const sa
 const HANDLE_TITLE: Record<string, string> = {
   next: 'Runs next when this block finishes. Drag to a block to link.',
   'on-fail': 'Runs if this block fails. Drag to a block to link.',
+  against: "Compares this block's work against the block you drag this to. Drag to a block to link.",
 };
 
 export function BlocksPane({ w, steps, diags, text, sel, primary, rev, models, sessionModel, condDrag, src, over, linkOver, at, missing, loose, free, onEdit, onSelect }: {
@@ -113,9 +114,8 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, models, s
     if (f?.input === 'model') {
       return <ModelPicker key={i} className="sx-pill" label={label} models={models} value={v} blank={f.inherits ? sessionModel?.label : undefined} disabled={dead} onChange={set} />;
     }
-    if (f?.input === 'step') {
-      const ids = steps.filter((x) => x.id !== s.id).map((x) => x.id);
-      return <StepPick key={i} label={label} value={v} ids={ids} dead={dead} commit={set} />;
+    if (f?.input === 'step') { // set by the blue wire, or in the panel
+      return <span key={i} className="sx-faint">{v ? flatSteps(w.steps).find((x) => x.id === v)?.title || v : 'drag the blue dot to a block'}</span>;
     }
     const look = t.field === 'title' ? 'bold' : f?.input === 'mono' ? 'code' : f?.input === 'number' ? 'num' : 'pill';
     return <Pill key={i} label={label} value={v} look={look} ph={f?.ph} rev={rev} dead={dead} valid={(nv) => applyField(structuredClone(s), t.field, nv)}
@@ -125,7 +125,8 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, models, s
   const head = (s: Step) => {
     const info = show ? status[s.id] : undefined, end = stopped(s);
     // a loose block has no arrows, so it keeps all its link chips
-    const chips = s.links.flatMap((l, i) => (loose || missing?.has(`${s.id}/${i}`) ? [<span key={`l${i}`} className={cx('sx-mod sx-link', !loose && 'sx-missing')} data-lk={l.kind}>{l.kind} → {l.to}</span>] : []));
+    const wires = [...s.links.map((l, i) => ({ i, kind: l.kind as string, to: l.to })), ...(s.attrs.against ? [{ i: AGAINST, kind: 'against', to: s.attrs.against }] : [])];
+    const chips = wires.flatMap((l) => ((loose && l.i !== AGAINST) || missing?.has(`${s.id}/${l.i}`) ? [<span key={`l${l.i}`} className={cx('sx-mod sx-link', !loose && 'sx-missing')} data-lk={l.kind}>{l.kind} → {l.to}</span>] : []));
     return (
       <>
         <div className="sx-row">
@@ -136,8 +137,8 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, models, s
             const prev = all[i - 1];
             return typeof t === 'object' && typeof prev === 'string' ? <span key={i} className="sx-grp">{token(s, prev, i - 1)}{token(s, t, i)}</span> : token(s, t, i);
           })}
-          {!loose && !KINDS[s.kind].stops && (['next', ...(KINDS[s.kind].fails ? ['on-fail'] : [])] as const).map((k, _, all) => (
-            <span key={k} className={cx('sx-handle', all.length > 1 && 'sx-two')} data-zid={s.id} data-lk={k} title={HANDLE_TITLE[k]} aria-hidden />
+          {!loose && wiresOf(s.kind).map((k, _, all) => (
+            <span key={k} className={cx('sx-handle', all.length === 2 && 'sx-two', all.length > 2 && 'sx-three')} data-zid={s.id} data-lk={k} title={HANDLE_TITLE[k]} aria-hidden />
           ))}
         </div>
         {(s.cards.length > 0 || chips.length > 0) && (
