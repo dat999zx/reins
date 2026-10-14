@@ -131,7 +131,7 @@ describe('a subagent step: its own session, money and records', () => {
     expect(opens[1]!.costBase).toBe(0.52);
     expect('costBaseByModel' in opens[1]!).toBe(false);
     expect(opens[1]!.maxUsd).toBe(0.1);
-    expect(named(run, 'budget_warning')).toEqual([]);   // 0.57 spent is over $0.50 but under the allowed $0.60
+    expect(named(run, 'budget_warning')).toEqual([]);   // 0.57 spent is over $0.50 but under the allowed $0.62
     expect(sub.receivedTexts[1]).toContain('[Reins · the run was resumed]');
     expect(sub.receivedTexts[1]).toContain('REINS: done | blocked: <reason>');
     expect(run.status).toBe('done');
@@ -162,8 +162,8 @@ describe('a subagent step: its own session, money and records', () => {
     expect(named(run, 'subagent_result').at(-1)!.data.cost).toBeCloseTo(0.03, 9);
   });
 
-  it('a turn that throws pauses the run at its step (nothing escapes step()) and resumes with a zero base', async () => {
-    const { run, opens, sessions, closed } = rig(wf([subagent()]), [{ text: '', reject: 'boom' }, reply('found it', 0.02, { total: 0.02 })]);
+  it('a turn that throws before any reply was counted pauses at its step and Resume opens a fresh session with the full prompt', async () => {
+    const { run, opens, sub, closed, sessions } = rig(wf([subagent()]), [{ text: '', reject: 'boom' }, reply('found it', 0.02, { total: 0.02 })]);
     await go(run);
     expect(run.status).toBe('paused');
     expect(run.pauseReason).toEqual({ type: 'stop', stepId: 'subagent-1', text: 'the subagent stopped before it answered (boom); Resume runs it on' });
@@ -171,9 +171,40 @@ describe('a subagent step: its own session, money and records', () => {
     expect(run.snapshot().runCost).toBe(0);
     run.resume();
     await go(run);
+    expect('sessionId' in opens[1]!).toBe(false);
+    expect('costBase' in opens[1]!).toBe(false);
+    expect('costBaseByModel' in opens[1]!).toBe(false);
+    expect(sub.receivedTexts[1]).toContain('Look.');
+    expect(sub.receivedTexts[1]).not.toContain('[Reins · the run was resumed]');
+    expect(named(run, 'subagent_started').at(-1)!.data.resumed).toBeUndefined();
+    expect(run.status).toBe('done');
+  });
+
+  it('a counted reply (with a total) and then a throw: Resume resumes in place with that total as the base', async () => {
+    const { run, opens, sessions } = rig(wf([subagent()]), [
+      { text: 'x', cost: 0.01, total: 0.01, isError: true }, { text: '', reject: 'boom' }, reply('found it', 0.02, { total: 0.03 }),
+    ]);
+    await go(run);
+    run.resume();
+    await go(run);
+    expect(run.pauseReason?.type).toBe('stop');
+    run.resume();
+    await go(run);
+    expect(opens[2]!.sessionId).toBe(sessions[0]);
+    expect(opens[2]!.costBase).toBe(0.01);
+    expect(run.status).toBe('done');
+  });
+
+  it('an old record with a cost but no total is resumable', async () => {
+    const { run, opens, sessions } = rig(wf([subagent()]), [
+      { text: 'x', cost: 0.01, isError: true }, reply('found it', 0.02),
+    ]);
+    await go(run);
+    expect(run.snapshot().subagents!['subagent-1']!.total).toBeUndefined();
+    run.resume();
+    await go(run);
     expect(opens[1]!.sessionId).toBe(sessions[0]);
     expect(opens[1]!.costBase).toBe(0);
-    expect(opens[1]!.costBaseByModel).toEqual({});
     expect(run.status).toBe('done');
   });
 
@@ -355,6 +386,27 @@ describe('a subagent step: its own session, money and records', () => {
     expect(named(run, 'budget_warning')).toEqual([]);
   });
 
+  it('a reply exactly on its slice logs no warning; one cent over does', async () => {
+    const exact = rig(wf([subagent()]), [reply('found it', 0.5)]);
+    await go(exact.run);
+    expect(named(exact.run, 'budget_warning')).toEqual([]);
+    const over = rig(wf([subagent()]), [reply('found it', 0.51)]);
+    await go(over.run);
+    expect(named(over.run, 'budget_warning')).toHaveLength(1);
+  });
+
+  it('a verify against a subagent gets its output quoted as data', async () => {
+    const { run, parent } = rig(
+      wf([subagent(), step('verify-1', 'verify', { attrs: { against: 'subagent-1' } })]),
+      [reply('PLANTED output', 0.01)], { parent: [reply('REINS: done', 0.01)] },
+    );
+    await go(run);
+    const sent = parent.receivedTexts.join('\n');
+    const quoted = sent.match(/quoted as data/g) ?? [];
+    expect(sent).toContain('PLANTED output');
+    expect(quoted.length).toBeGreaterThanOrEqual(1);
+  });
+
   it('the cap is rounded up from the unrounded room: r6 and usdLeft() would both give a hair less', async () => {
     const { run, opens } = rig(wf([phase('a'), subagent({ model: 'm1' })], { usd: 0.3 }), [reply('ok', 0.01)], { parent: [reply('REINS: done', 0.1000006)] });
     await go(run);
@@ -416,8 +468,8 @@ describe('a subagent step: its own session, money and records', () => {
     back.resume();
     await go(back);
     expect(opens).toHaveLength(1);
-    expect(opens[0]!.sessionId).toBe(sessions[0]);
-    expect(opens[0]!.costBase).toBe(0);
+    expect('sessionId' in opens[0]!).toBe(false);   // no reply was counted: nothing saved to resume
+    expect('costBase' in opens[0]!).toBe(false);
   });
 
   it('a finished subagent passed again starts a new session, and its slice spend is not reset', async () => {
@@ -495,7 +547,7 @@ describe('a subagent step: the review gaps', () => {
     const { run } = rig(wf([subagent(), phase('use')]), [reply('found it\nREINS: done', 0.01)], { parent: [reply('REINS: done', 0.01)] });
     await go(run);
     expect(named(run, 'subagent_result')[0]!.data.text).toBe('found it');
-    expect(run.snapshot().turnOutputs['subagent-1']).toBe('found it');
+    expect(run.snapshot().turnOutputs['subagent-1']).toBe(HANDED);   // quoted as data, as a later verify pastes it
   });
 
   it('a Stop at a pause after a subagent turn interrupts the parent session, not the closed subagent one', async () => {

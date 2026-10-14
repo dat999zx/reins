@@ -222,7 +222,7 @@ const OVER: Record<MeterItem['key'], string> = {
   usd: ' · USD budget used: the run pauses',
   block: ' · block budget used: the run pauses',
 };
-// a subagent's finished reply over its slice does not pause the run: it is noted and its result kept
+// a subagent's finished reply over its slice does not pause the run (it is noted and its result kept); a capped reply does, on the usd card, and then the block's words apply
 const SUBAGENT_OVER = ' · subagent budget used';
 export function meter(v: RunView, budget: Workflow['budget'], now: number): MeterItem[] {
   const ms = Math.max(0, (v.endedTs ?? now) - (v.startedAt ?? now));
@@ -237,7 +237,7 @@ export function meter(v: RunView, budget: Workflow['budget'], now: number): Mete
   return values.map(({ key, used, limit, text }) => {
     const level = used >= limit ? 'over' : used >= limit * 0.8 ? 'near' : 'ok';
     const enforced = key !== 'minutes';
-    return { key, text: text + (level === 'over' ? (key === 'block' && v.stepsAtStart?.find((s) => s.id === v.slice?.step)?.kind === 'subagent' ? SUBAGENT_OVER : OVER[key]) : level === 'near' ? ' · near' : ''), level, enforced };
+    return { key, text: text + (level === 'over' ? (key === 'block' && v.stepsAtStart?.find((s) => s.id === v.slice?.step)?.kind === 'subagent' && !v.open.some((r) => data(r).kind === 'usd') ? SUBAGENT_OVER : OVER[key]) : level === 'near' ? ' · near' : ''), level, enforced };
   });
 }
 

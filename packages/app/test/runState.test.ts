@@ -429,6 +429,12 @@ describe('a subagent in the run view', () => {
     expect(meter(sub, budget, 0)[3]).toEqual({ key: 'block', text: 'subagent-1: $0.55 / $0.50 · subagent budget used', level: 'over', enforced: true });
     const model = view([started(steps), row('turn_ended', { step: 'plan', cost: 0.55, slice: slice('model-1') })]);
     expect(meter(model, budget, 0)[3]!.text).toBe('model-1: $0.55 / $0.50 · block budget used: the run pauses');
+    // a capped reply pauses on the usd card: the words are the block's, which name the pause
+    const capped = view([started(steps), row('turn_ended', { step: 'subagent-1', cost: 0.55, slice: slice('subagent-1') }), row('question', { id: 'q1', kind: 'usd', prompt: 'x' })]);
+    expect(meter(capped, budget, 0)[3]!.text).toBe('subagent-1: $0.55 / $0.50 · block budget used: the run pauses');
+    // any other open question (a tool card) does not pause on the money: the subagent words stay
+    const tool = view([started(steps), row('turn_ended', { step: 'subagent-1', cost: 0.55, slice: slice('subagent-1') }), row('question', { id: 'q2', kind: 'tool', prompt: 'x' })]);
+    expect(meter(tool, budget, 0)[3]!.text).toContain('subagent budget used');
     // only the block item takes the subagent words: the workflow's own USD item, over while a subagent slice is open, keeps its own
     const wf = meter(view([started(steps), row('turn_ended', { step: 'subagent-1', cost: 5, slice: slice('subagent-1') })]), budget, 0);
     const usd = wf.find((i) => i.key === 'usd')!;

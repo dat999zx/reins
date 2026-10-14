@@ -424,7 +424,8 @@ export class Run {
     const slice = usd === undefined ? this.openSlice : { step: id, usd };
     if (this.usdOver(slice)) return false;   // checked where the work starts: a resumed subagent with its slice used up asks first
     const old = this.subagents[id];
-    const resumed = old && !old.done ? old : undefined;
+    // Resumable only once a reply was counted on it: before that the CLI has nothing saved to --resume.
+    const resumed = old && !old.done && (old.total !== undefined || old.cost > 0) ? old : undefined;
     const wf = this.workflow.budget.usd;   // not usdLeft(): it is already rounded by r6, which the cap must not inherit
     const room = [slice && slice.usd + (this.usdExtra[slice.step] ?? 0) - (this.usdSpent[slice.step] ?? 0), wf === undefined ? undefined : wf + (this.usdExtra[''] ?? 0) - this.runCost]
       .filter((x): x is number => x !== undefined);
@@ -450,7 +451,7 @@ export class Run {
     }
     const s = opened.session;
     if (this.status !== 'running') { await s.close().catch(() => {}); return false; }   // a Stop while it opened sends nothing
-    const rec: SubagentRecord = resumed ?? { sessionId: s.sessionId, cost: 0 };
+    const rec: SubagentRecord = resumed ?? { sessionId: s.sessionId, cost: 0 };   // an unresumable old record never cost anything: cost > 0 means a reply was counted
     this.subagents[id] = rec;   // before the row below: its snapshot holds the session id, so a crash resumes it
     this.logEvent('subagent_started', { step: id, title, ...(opened.model ? { model: opened.model } : {}), ...(opened.label ? { label: opened.label } : {}), ...(resumed ? { resumed: true } : {}) });
     // A note typed with Resume (drive.ts queues it as a steer card) was meant for the subagent.
@@ -476,12 +477,13 @@ export class Run {
     if (blocked) { this.status = 'paused'; this.pauseReason = { type: 'agent-blocked', reason: blocked[1] || 'blocked' }; return false; }
     const text = result.text.split(/\r?\n/).filter((l) => !/^\s*REINS:\s*/.test(l)).join('\n').trim();
     // A finished reply over its own slice (the cap rounds, or a provider with no cap) is kept: said, not paused (the step is done).
-    if (usd !== undefined && (this.usdSpent[id] ?? 0) >= usd + (this.usdExtra[id] ?? 0) - 1e-9) {
+    if (usd !== undefined && (this.usdSpent[id] ?? 0) > usd + (this.usdExtra[id] ?? 0) + 1e-9) {
       this.logEvent('budget_warning', { step: id, text: `Subagent ${title} went over its $${usdText(usd)} budget; its result was kept.` });
     }
     rec.done = true;
-    this.turnOutputs.set(id, text);
-    this.handback.push(handbackText(title, id, text));   // before the row: the snapshot it saves has the result
+    const quoted = handbackText(title, id, text);
+    this.turnOutputs.set(id, quoted);   // a later verify against this subagent pastes it: quoted as data too
+    this.handback.push(quoted);   // before the row: the snapshot it saves has the result
     this.logEvent('subagent_result', { step: id, title, text, cost: rec.cost });
     return true;
   }

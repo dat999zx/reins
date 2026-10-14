@@ -129,7 +129,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       ...(cur.model ? { model: cur.model } : {}),
       ...(cur.effort ? { effort: cur.effort } : {}),
       // A request from the CLI's own task child is a card titled with the task, under the subagent approvals setting.
-      onApprove: (r) => (r.via !== undefined ? subagentApprove(`Task ${r.via}`, r) : askTool(io, r)),
+      onApprove: (r) => (r.via !== undefined ? subagentApprove(`Task ${r.via.slice(0, 80).trim()}`, r) : askTool(io, r)),
       onLive: (e) => log('engine', e, runId),
     }));
   };

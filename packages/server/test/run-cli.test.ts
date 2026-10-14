@@ -211,6 +211,19 @@ describe('reins run against fake-claude', () => {
     store.close();
   }, 60_000);
 
+  it('a subagent over its slice prints the budget warning line', async () => {
+    const f = fakeSetup([]);
+    const file = path.join(f.dir, 'w.reins.md');
+    fs.writeFileSync(file, '---\nreins: 1\nname: s\nbudget: { turns: 9, minutes: 9, usd: 2.00 }\nalways: []\n---\n\n## subagent research\nmodel: m1\nusd: 0.01\n> Look.\n\n## phase one\n> a\n');
+    const store = openStore(':memory:');
+    const d = drive({ file, cwd: f.dir, store });
+    const res = await d.h.done;
+    const warn = of(store.loadRun(res.runId)!.snapshot.events, 'budget_warning')[0]!;
+    expect(warn).toBeDefined();
+    expect(d.text()).toContain(`· ${String(warn.data.text)}`);
+    store.close();
+  }, 60_000);
+
   it('check errors stop the run before claude starts', async () => {
     const f = fakeSetup([]);
     const file = path.join(f.dir, 'bad.reins.md');

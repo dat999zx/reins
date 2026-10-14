@@ -2094,6 +2094,15 @@ describe('subagent (D)', () => {
       expect(x.t.decisions).toEqual([{ behavior: 'allow' }]);
     });
 
+    it('a long task description is cut to 80 characters in the card title', async () => {
+      const x = await ready(taskTurn('y'.repeat(200)));
+      await go(x, PHASE);
+      const q = await x.question('tool');
+      expect(q.title).toBe(`Task ${'y'.repeat(80)}`);
+      x.s.answer(q.id, 'y');
+      await x.s.idle();
+    });
+
     it('a task child with deny: refused with the same message, a note naming "Task probe child", no card', async () => {
       const x = await ready(taskTurn('probe child'));
       x.store.putSetting('subagentApprovals', 'deny');
