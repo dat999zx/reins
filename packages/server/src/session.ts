@@ -261,9 +261,12 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   const ensureEngine = (): Promise<EngineSession | undefined> =>
     live ? Promise.resolve(live) : (opening ??= openEngine().finally(() => { opening = undefined; }));
 
-  /** A subagent never asks the user itself (Hermes): its tool request is a card on the parent run, titled with it. */
-  // 3b-1: always asks; 3b-2 adds the deny setting.
+  /** A subagent never asks the user itself (Hermes): its tool request is a card on the parent run, titled with it, or refused by the setting. */
   function subagentApprove(title: string, r: ToolRequest): Promise<Decision> {
+    if (readSetting(store, 'subagentApprovals') === 'deny') {
+      log('note', { text: `Denied ${r.tool} for ${title}: subagent approvals are set to deny.` }, runId);
+      return Promise.resolve({ behavior: 'deny', message: 'Denied by Reins: subagent approvals are set to deny. Carry on without this tool.' });
+    }
     return askTool(io, r, title);
   }
 

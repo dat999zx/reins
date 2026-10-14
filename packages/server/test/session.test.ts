@@ -2008,6 +2008,206 @@ describe('subagent (D)', () => {
     const file = put(x.cwd, 'n.reins.md', `${FRONT_D}## subagent x\nmodel: nope\n> a\n`);
     expect(x.s.runFile(file)).toEqual({ ok: false, code: 400, error: 'Unknown model nope in step `subagent-1`: it is not in this session\'s provider list.' });
   });
+
+  // 3b-2: approvals and the races on the cards a subagent leaves waiting.
+  const BASH = [{ tool: 'Bash', input: { command: 'ls' }, approve: true }];
+  const WITH_TOOL: TestTurn[] = [
+    { usage: 1000 },
+    { text: 'found it', cost: 0.06, total: 0.06, usage: 5000, model: 'model-h', tools: BASH },
+    { text: 'used', cost: 0.02, usage: 1200 },
+  ];
+  const TITLE = 'Subagent research (`subagent-1`)';
+  const runIdOf = (x: X) => x.rows('run_started')[0]!.runId!;
+  const subId = (x: X) => x.t.turnsBy.find((t) => t.text.includes('Look.'))!.session;
+  const parentId = (x: X) => x.store.getSession('s1')!.engineSessionId!;
+  const hooks = (x: X) => x.store.loadRun(runIdOf(x))!.snapshot.events.filter((e) => e.type === 'hook').map((e) => e.data as any);
+  const times = (xs: string[], v: string) => xs.filter((i) => i === v).length;
+
+  describe('approvals', () => {
+    it('ask: a tool card on the run id titled with the subagent; y allows it', async () => {
+      const x = await ready(WITH_TOOL);
+      await go(x);
+      const q = await x.question('tool');
+      expect(q.title).toBe(TITLE);
+      expect(q.prompt).toBe('? Allow Bash: ls  [y / n <reason>]');
+      expect(q.detail).toBe('{"command":"ls"}');
+      expect(x.rows('question').find((r) => (r.data as Question).id === q.id)!.runId).toBe(runIdOf(x));
+      x.s.answer(q.id, 'y');
+      await x.s.idle();
+      expect(x.t.decisions).toEqual([{ behavior: 'allow' }]);
+      expect(x.rows('run_finished')).toHaveLength(1);
+    });
+
+    it('ask: n <reason> refuses it with the reason', async () => {
+      const x = await ready(WITH_TOOL);
+      await go(x);
+      const q = await x.question('tool');
+      x.s.answer(q.id, 'n too risky');
+      await x.s.idle();
+      expect(x.t.decisions).toEqual([{ behavior: 'deny', message: 'The user said no: too risky' }]);
+    });
+
+    it('ask with autoApprove: answered y at once, the question row is followed by its answer and no card stays open', async () => {
+      const x = await ready(WITH_TOOL);
+      x.s.settings({ autoApprove: true });
+      await go(x);
+      await x.s.idle();
+      expect(x.t.decisions).toEqual([{ behavior: 'allow' }]);
+      const l = x.log();
+      const qi = l.findIndex((r) => r.type === 'question' && (r.data as Question).kind === 'tool');
+      expect(qi).toBeGreaterThan(-1);
+      expect(l[qi]!.runId).toBe(runIdOf(x));
+      expect(l[qi + 1]).toMatchObject({ type: 'answer', runId: runIdOf(x), data: { questionId: (l[qi]!.data as Question).id, answer: 'y' } });
+      expect(x.open()).toEqual([]);
+    });
+
+    it('deny: no question, the exact refusal, a note with the run id and a hook row', async () => {
+      const x = await ready(WITH_TOOL);
+      x.store.putSetting('subagentApprovals', 'deny');
+      await go(x);
+      await x.s.idle();
+      expect(x.rows('question').filter((r) => (r.data as Question).kind === 'tool')).toEqual([]);
+      expect(x.t.decisions).toEqual([{ behavior: 'deny', message: 'Denied by Reins: subagent approvals are set to deny. Carry on without this tool.' }]);
+      const note = x.rows('note').filter((r) => (r.data as { text: string }).text.startsWith('Denied Bash'));
+      expect(note).toEqual([expect.objectContaining({ runId: runIdOf(x), data: { text: `Denied Bash for ${TITLE}: subagent approvals are set to deny.` } })]);
+      expect(hooks(x)).toEqual([expect.objectContaining({ decision: 'deny', tool: 'Bash' })]);
+      expect(x.rows('run_finished')).toHaveLength(1);
+    });
+
+    it('deny wins over autoApprove', async () => {
+      const x = await ready(WITH_TOOL);
+      x.s.settings({ autoApprove: true });
+      x.store.putSetting('subagentApprovals', 'deny');
+      await go(x);
+      await x.s.idle();
+      expect(x.rows('question').filter((r) => (r.data as Question).kind === 'tool')).toEqual([]);
+      expect(x.t.decisions.map((d) => d.behavior)).toEqual(['deny']);
+    });
+  });
+
+  describe('races on the waiting tool card', () => {
+    it('a Stop card settles it stop: the run pauses with no step, and the subagent was interrupted and closed once, the parent not interrupted', async () => {
+      const x = await ready(WITH_TOOL);
+      await go(x);
+      const q = await x.question('tool');
+      expect(x.s.card('halt', 'stop')).toEqual({ ok: true });
+      const r = await x.question('resume');
+      expect(x.data('answer')).toContainEqual({ questionId: q.id, answer: 'stop' });
+      expect(says(x).some((t) => t.startsWith('⏹ stopped by a card'))).toBe(true);
+      expect(x.t.interruptedIds).toContain(subId(x));
+      expect(x.t.interruptedIds).not.toContain(parentId(x));
+      expect(times(x.t.closedIds, subId(x))).toBe(1);
+      x.s.answer(r.id, 'stop');
+      await x.s.idle();
+      expect(times(x.t.closedIds, subId(x))).toBe(1);
+    });
+
+    it('close() ends the run stopped, closes the question, and closes the subagent once, with no second question', async () => {
+      const x = await ready(WITH_TOOL);
+      await go(x);
+      await x.question('tool');
+      await x.s.close();
+      expect(x.rows('run_stopped')).toHaveLength(1);
+      expect(x.rows('closed')).toHaveLength(1);
+      expect(times(x.t.closedIds, subId(x))).toBe(1);
+      expect(x.rows('question').map((r) => (r.data as Question).kind)).toEqual(['trust', 'tool']);
+      expect(x.t.decisions.map((d) => d.behavior)).toEqual(['deny']);
+    });
+
+    it('shutdown() stops the run (a tool card does not detach) and closes the subagent once', async () => {
+      const x = await ready(WITH_TOOL);
+      await go(x);
+      await x.question('tool');
+      await x.s.shutdown();
+      expect(x.rows('run_stopped')).toHaveLength(1);
+      expect(x.rows('run_detached')).toEqual([]);
+      expect(times(x.t.closedIds, subId(x))).toBe(1);
+      expect(x.t.decisions.map((d) => d.behavior)).toEqual(['deny']);
+    });
+
+    it('a Stop card typed during the subagent turn interrupts the SUBAGENT session, never the parent', async () => {
+      const x = await ready([{ usage: 1000 }, { hold: true }]);
+      await go(x);
+      await until(() => x.t.turnsBy.some((t) => t.text.includes('Look.')));
+      expect(x.s.card('halt', 'stop')).toEqual({ ok: true });
+      const r = await x.question('resume');
+      expect(x.t.interruptedIds).toEqual([subId(x)]);
+      expect(x.t.interruptedIds).not.toContain(parentId(x));
+      expect(times(x.t.closedIds, subId(x))).toBe(1);
+      x.s.answer(r.id, 'stop');
+      await x.s.idle();
+    });
+
+    it('a stop that arrives as the folder is trusted starts no subagent engine', async () => {
+      const x = setup([], { cwd: claudeFolder(), describe: describeH });
+      await go(x, `${FRONT_D}## subagent research\nmodel: model-h\n> Look.\n`);
+      await until(() => x.open().some((q) => q.kind === 'trust' && q.prompt.startsWith('This folder has Claude settings')));
+      const q = x.open().find((o) => o.kind === 'trust')!;
+      x.s.answer(q.id, 'y');
+      await x.s.close();
+      expect(x.t.opens).toHaveLength(0);
+      expect(x.t.closedIds).toEqual([]);
+      expect(x.rows('run_stopped')).toHaveLength(1);
+      expect(x.rows('subagent_started')).toEqual([]);
+    });
+  });
+
+  describe('races on the subagent usd card', () => {
+    const CAPPED: TestTurn[] = [{ usage: 1000 }, { isError: true, text: '', cost: 0.6, total: 0.6 }];
+    const atCard = async () => {
+      const x = await ready(CAPPED);
+      await go(x);
+      const q = await x.question('usd');
+      return { x, q };
+    };
+
+    it('says exactly what was used and what is left; the subagent is closed once before the card', async () => {
+      const { x, q } = await atCard();
+      expect(q.detail).toBe('Block `subagent-1` has used $0.60 of its $0.50. The workflow\'s USD budget has $1.40 left.');
+      expect(times(x.t.closedIds, subId(x))).toBe(1);
+      x.s.answer(q.id, 'stop');
+      await x.s.idle();
+    });
+
+    it('allow $0.20 reopens the SAME claude session with its counted total and the new room', async () => {
+      const { x, q } = await atCard();
+      const first = subId(x);
+      expect(first).not.toBe(parentId(x));
+      x.s.answer(q.id, 'allow $0.20');
+      await x.s.idle();
+      const again = x.t.opens[2]!;
+      expect(x.t.opens).toHaveLength(3);
+      expect(again.sessionId).toBe(first);
+      expect(again.costBase).toBe(0.6);
+      expect(again.maxUsd).toBe(0.2);
+      expect(x.rows('run_finished')).toHaveLength(1);
+    });
+
+    it('shutdown detaches the run; a reopened session asks the usd card again', async () => {
+      const { x, q } = await atCard();
+      await x.s.shutdown();
+      expect(x.data('question_closed')).toContainEqual({ questionId: q.id, why: 'the server stopped' });
+      expect(x.rows('run_detached')).toEqual([expect.objectContaining({ runId: runIdOf(x) })]);
+      expect(x.rows('run_stopped')).toEqual([]);
+      expect(times(x.t.closedIds, subId(x))).toBe(1);
+      const s2 = x.reopen();
+      expect(s2.resume(runIdOf(x))).toEqual({ ok: true });
+      const again = await x.question('usd');
+      expect(again.id).not.toBe(q.id);
+      expect(again.detail).toBe(q.detail);
+      s2.answer(again.id, 'stop');
+      await s2.idle();
+    });
+
+    it('Stop ends the run stopped with the subagent closed once', async () => {
+      const { x, q } = await atCard();
+      x.s.answer(q.id, 'stop');
+      await x.s.idle();
+      expect(x.rows('run_stopped')).toHaveLength(1);
+      expect(x.rows('run_detached')).toEqual([]);
+      expect(times(x.t.closedIds, subId(x))).toBe(1);
+    });
+  });
 });
 
 describe('subagent (D): what it inherits and how it ends', () => {
@@ -2029,6 +2229,18 @@ describe('subagent (D): what it inherits and how it ends', () => {
     expect(x.models).toEqual(['model-s', 'model-s']);
     expect(x.efforts).toEqual(['high', 'high']);
     expect(x.rows('subagent_started')[0]!.data).toMatchObject({ model: 'model-s', label: 'S' });
+  });
+
+  it("a tool request from the subagent that arrives after its turn ended is denied at once and never left as a card (the subagent is the last step: no parent turn resets the flag)", async () => {
+    const x = setup([{}, { text: 'found', cost: 0.03, total: 0.03, lateApprove: true }], { describe: listed });
+    x.s.message('first');
+    await x.s.idle();
+    await run(x, `${FRONT}## subagent research\n> Look.\n`);
+    expect(x.rows('run_finished')).toHaveLength(1);
+    await until(() => x.t.decisions.length === 1);
+    expect(x.t.decisions).toEqual([{ behavior: 'deny', message: 'The user said no.' }]);
+    expect(x.rows('question').filter((r) => (r.data as { kind?: string }).kind === 'tool')).toEqual([]);
+    expect(x.open().filter((q) => q.kind === 'tool')).toEqual([]);
   });
 
   it('its engine takes no mid-turn steer cards of its own, and its session is closed when the step is done', async () => {

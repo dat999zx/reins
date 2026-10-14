@@ -437,7 +437,8 @@ export class Run {
       ...(resumed ? { sessionId: resumed.sessionId, costBase: resumed.total ?? 0,
         ...(resumed.total === undefined ? { costBaseByModel: {} } : resumed.totals ? { costBaseByModel: resumed.totals } : {}) } : {}),
       // Rounded up: a cap a hair under Reins' limit would end the reply as an error that usdOver (1e-9) does not see as reached.
-      ...(room.length ? { maxUsd: Math.ceil(Math.min(...room) * 1e6) / 1e6 } : {}),
+      // The room is first rounded to nano-dollars: a float sum's noise (0.2000000000000001) must not push the cap up a whole micro-dollar.
+      ...(room.length ? { maxUsd: Math.ceil(Math.round(Math.min(...room) * 1e9) / 1e3) / 1e6 } : {}),
     };
     const why = (e: unknown) => String((e as Error)?.message ?? e);
     let opened: SubagentOpened;
