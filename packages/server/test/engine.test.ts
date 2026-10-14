@@ -177,6 +177,35 @@ describe('claude adapter', () => {
     ]);
   });
 
+  it("a tool request carries via only when its id is a task child's (the recorded session through the real stream parser)", async () => {
+    const fx = 'claude-2.1.293-task-child.jsonl';
+    const f = fakeSetup([{ fixture: fx, turn: 0, approve: true }, { fixture: fx, turn: 1, approve: true }]);
+    const asked: any[] = [];
+    const s = await engine({ approve: (r) => { asked.push(r); return { behavior: 'allow' }; } }).open({ cwd: f.dir, policy: () => write });
+    await s.turn('control');
+    await s.turn('task');
+    await s.close();
+    expect(asked.map((r) => [r.tool, r.id, r.via])).toEqual([
+      ['PowerShell', 'toolu_01FZapCrLaz5DEt6fixYy8jT', undefined],
+      ['PowerShell', 'toolu_01XxTapXhzAcjre733F5ZqH9', 'probe child'],
+    ]);
+    expect('via' in asked[0]).toBe(false);
+  });
+
+  it("an approver given at open() gets the requests, with via, and the engine's own approver gets none", async () => {
+    const fx = 'claude-2.1.293-task-child.jsonl';
+    const f = fakeSetup([{ fixture: fx, turn: 0, approve: true }, { fixture: fx, turn: 1, approve: true }]);
+    const own: any[] = [];
+    const given: any[] = [];
+    const s = await engine({ approve: (r) => { own.push(r); return { behavior: 'allow' }; } })
+      .open({ cwd: f.dir, policy: () => write, onApprove: async (r) => { given.push(r); return { behavior: 'allow' }; } });
+    await s.turn('control');
+    await s.turn('task');
+    await s.close();
+    expect(own).toEqual([]);
+    expect(given.map((r) => r.via)).toEqual([undefined, 'probe child']);
+  });
+
   it('resume passes --resume with the saved session id', async () => {
     const f = fakeSetup([]);
     const s = await engine().open({ cwd: f.dir, sessionId: '11111111-2222-3333-4444-555555555555', policy: () => write });

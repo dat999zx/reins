@@ -3,7 +3,7 @@ import type { MakeEngine } from '../src/session.js';
 
 export interface TestTurn {
   text?: string;                                                          // the result text (default 'ok')
-  tools?: Array<{ tool: string; input?: unknown; approve?: boolean; hold?: boolean }>;
+  tools?: Array<{ tool: string; input?: unknown; approve?: boolean; hold?: boolean; via?: string }>;
   hold?: boolean;                                                         // wait at the end of the turn
   reject?: string;                                                        // turn() rejects with this message
   error?: string;                                                         // the result carries an error event (never emitted live, as the adapter's interrupt timeout)
@@ -74,7 +74,7 @@ export function testEngine(script: TestTurn[] = []) {
             emit({ type: 'tool_call', tool: tool.tool, input });
             for (const card of opts.pendingCards?.() ?? []) emit({ type: 'card_delivered', card, channel: 'mid-turn' });
             if (tool.approve) {
-              const d = await onApprove({ tool: tool.tool, input });
+              const d = await onApprove({ tool: tool.tool, input, ...(tool.via !== undefined ? { via: tool.via } : {}) });
               state.decisions.push(d);
               emit({ type: 'hook', event: 'approve', tool: tool.tool, decision: d.behavior });
               if (d.behavior === 'deny') emit({ type: 'refusal', reason: d.message ?? 'denied' });

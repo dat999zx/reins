@@ -20,6 +20,10 @@ export interface StreamOut {
  */
 export function createStreamParser(o: { windows?: Record<string, number> } = {}) {
   const toolNames = new Map<string, string>();
+  // tool_use id -> the task call it ran under (its parent_tool_use_id), and task call id -> its title.
+  // ponytail: kept for the parser's life (one session, a few ids per task call); prune on result lines if a very long session ever shows it.
+  const parentOf = new Map<string, string>();
+  const taskTitle = new Map<string, string>();
   let sawInit = false;
   // ponytail: a row at a burst start and each further 1,000 tokens: the last burst of a turn shows its start figure; emit at the burst end too if that reads wrong.
   // tokens of this turn's finished bursts, the open burst's latest estimate, whether one is open, the last total emitted
@@ -28,7 +32,7 @@ export function createStreamParser(o: { windows?: Record<string, number> } = {})
   // the model named by the last init, and the model and usage of the last parent (not sidechain) assistant line of this turn
   let initModel: string | undefined, model: string | undefined, usage: any;
 
-  return (m: any): StreamOut => {
+  const parse = (m: any): StreamOut => {
     const out: StreamOut = { events: [] };
     if (m?.type === 'system' && m.subtype === 'init') {
       if (!sawInit && typeof m.session_id === 'string') out.sessionId = m.session_id;
@@ -62,6 +66,8 @@ export function createStreamParser(o: { windows?: Record<string, number> } = {})
         if (b.type === 'text' && b.text) out.events.push({ type: 'text', text: b.text });
         if (b.type === 'tool_use') {
           toolNames.set(b.id, b.name);
+          if (typeof m.parent_tool_use_id === 'string') parentOf.set(b.id, m.parent_tool_use_id);
+          if (TASK_TOOLS.has(b.name)) taskTitle.set(b.id, taskTitleOf(b.input));
           out.events.push({ type: 'tool_call', tool: b.name, input: b.input });
         }
       }
@@ -91,6 +97,24 @@ export function createStreamParser(o: { windows?: Record<string, number> } = {})
     }
     return out;
   };
+  /** The title of the task a tool call ran under, or undefined for the model's own call (or an id not seen yet). */
+  const via = (id: string): string | undefined => {
+    const parent = parentOf.get(id);
+    return parent === undefined ? undefined : taskTitle.get(parent);
+  };
+  return Object.assign(parse, { via });
+}
+
+/** The CLI's task tool: `Agent` in 2.1.293, `Task` before. A small set, to extend when the CLI renames it again. */
+const TASK_TOOLS = new Set(['Agent', 'Task']);
+
+/** The task's description; empty or missing falls back to its subagent type, then to 'task', so a title is never ''. */
+function taskTitleOf(input: any): string {
+  for (const k of ['description', 'subagent_type']) {
+    const v = input?.[k];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return 'task';
 }
 
 const count = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0;

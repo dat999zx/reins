@@ -16,6 +16,10 @@ export interface EngineProbe {
 export interface ToolRequest {
   tool: string;
   input: any;
+  /** The provider's id for this tool call, when it names one. */
+  id?: string;
+  /** The title of the provider's own task (a child of the model's task tool) this call came from; absent for the model's own calls. */
+  via?: string;
 }
 
 export interface Decision {

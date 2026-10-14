@@ -269,3 +269,54 @@ describe('thinking tokens', () => {
     expect(tokens(feed(line(50), line(200), block({ type: 'tool_use', id: 't', name: 'Read', input: {} }), line(30)))).toEqual([50, 230]);
   });
 });
+
+describe('via: which task a tool call belongs to', () => {
+  const asst = (id: string, name: string, input: unknown, parent: string | null = null) =>
+    ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name, input }] }, parent_tool_use_id: parent });
+  const PARENT = 'toolu_01FZapCrLaz5DEt6fixYy8jT';
+  const CHILD = 'toolu_01XxTapXhzAcjre733F5ZqH9';
+
+  it("the recorded task-child session: the child's tool call is via 'probe child'; the parent's own and an unknown id have none", () => {
+    const lines = fs.readFileSync(path.join(FIX, 'claude-2.1.293-task-child.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    const parse = createStreamParser();
+    for (const m of lines) parse(m);
+    expect(parse.via(CHILD)).toBe('probe child');
+    expect(parse.via(PARENT)).toBeUndefined();
+    expect(parse.via('toolu_nope')).toBeUndefined();
+    expect(parse.via('toolu_01MB6m8eSaiF6xgXcB2h3KSC')).toBeUndefined(); // the Agent call itself is the parent's own
+  });
+
+  it('an id is unknown until its assistant line has been parsed', () => {
+    const parse = createStreamParser();
+    parse(asst('a1', 'Agent', { description: 'dig' }));
+    expect(parse.via('c1')).toBeUndefined();
+    parse(asst('c1', 'Bash', {}, 'a1'));
+    expect(parse.via('c1')).toBe('dig');
+  });
+
+  it('the task tool is Agent or Task; any other tool with a child is no task', () => {
+    const parse = createStreamParser();
+    parse(asst('a1', 'Task', { description: 'old name' }));
+    parse(asst('c1', 'Bash', {}, 'a1'));
+    parse(asst('a2', 'Read', { description: 'not a task' }));
+    parse(asst('c2', 'Bash', {}, 'a2'));
+    expect(parse.via('c1')).toBe('old name');
+    expect(parse.via('c2')).toBeUndefined();
+  });
+
+  it("an empty or missing description falls back to the subagent type, then to 'task'", () => {
+    const parse = createStreamParser();
+    parse(asst('a1', 'Agent', { description: '  ', subagent_type: 'explorer' }));
+    parse(asst('a2', 'Agent', { prompt: 'x' }));
+    parse(asst('a3', 'Agent', { description: 'real', subagent_type: 'explorer' }));
+    for (const [a, c] of [['a1', 'c1'], ['a2', 'c2'], ['a3', 'c3']] as const) parse(asst(c, 'Bash', {}, a));
+    expect([parse.via('c1'), parse.via('c2'), parse.via('c3')]).toEqual(['explorer', 'task', 'real']);
+  });
+
+  it('a title is trimmed: spaces around the description never reach the card', () => {
+    const parse = createStreamParser();
+    parse(asst('a1', 'Agent', { description: '  dig into it  ' }));
+    parse(asst('c1', 'Bash', {}, 'a1'));
+    expect(parse.via('c1')).toBe('dig into it');
+  });
+});

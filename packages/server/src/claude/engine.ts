@@ -60,12 +60,18 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
     turnEvents.push(ev);
     cfg.onLive?.(ev);
   };
+  // Made before the hook server: an approval names the tool call that asked, and the parser knows which task ran it.
+  const parse = createStreamParser({ windows: provider.windows });
   const hooks = await startHookServer({
     cwd,
     policy: opts.policy,
     pendingCards: opts.pendingCards ?? (() => []),
     nonce,
-    onApprove: opts.onApprove ?? cfg.onApprove,
+    // A request whose id is not a task child's (or not seen yet) has no via: asked as the parent's own.
+    onApprove: (r) => {
+      const via = r.id === undefined ? undefined : parse.via(r.id);
+      return (opts.onApprove ?? cfg.onApprove)(via === undefined ? r : { ...r, via });
+    },
     onEvent: emit,
   });
 
@@ -135,7 +141,6 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
   child.on('close', (code) => failTurn(dead ?? `claude exited (code ${code}). ${stderr.trim().split('\n').slice(-3).join(' ')}`));
   child.stdin.on('error', () => {}); // a write after exit is reported through 'close'
 
-  const parse = createStreamParser({ windows: provider.windows });
   readline.createInterface({ input: child.stdout }).on('line', (line) => {
     let m: unknown;
     try {

@@ -2074,6 +2074,67 @@ describe('subagent (D)', () => {
       expect(x.rows('run_finished')).toHaveLength(1);
     });
 
+    // Batch 4: the CLI's own Task-tool children, through the PARENT's engine (its request carries `via`).
+    const PHASE = `${FRONT_D}## phase use\n> Use it.\n`;
+    const taskTurn = (...via: Array<string | undefined>): TestTurn[] => [
+      { usage: 1000 },
+      { text: 'used', cost: 0.02, usage: 1200, tools: via.map((v) => ({ tool: 'Bash', input: { command: 'ls' }, approve: true, ...(v !== undefined ? { via: v } : {}) })) },
+    ];
+    const toolQuestions = (x: X) => x.rows('question').filter((r) => (r.data as Question).kind === 'tool');
+
+    it('a task child: a tool card on the run id titled exactly "Task probe child"; y allows it', async () => {
+      const x = await ready(taskTurn('probe child'));
+      await go(x, PHASE);
+      const q = await x.question('tool');
+      expect(q.title).toBe('Task probe child');
+      expect(q.prompt).toBe('? Allow Bash: ls  [y / n <reason>]');
+      expect(x.rows('question').find((r) => (r.data as Question).id === q.id)!.runId).toBe(runIdOf(x));
+      x.s.answer(q.id, 'y');
+      await x.s.idle();
+      expect(x.t.decisions).toEqual([{ behavior: 'allow' }]);
+    });
+
+    it('a task child with deny: refused with the same message, a note naming "Task probe child", no card', async () => {
+      const x = await ready(taskTurn('probe child'));
+      x.store.putSetting('subagentApprovals', 'deny');
+      await go(x, PHASE);
+      await x.s.idle();
+      expect(toolQuestions(x)).toEqual([]);
+      expect(x.t.decisions).toEqual([{ behavior: 'deny', message: 'Denied by Reins: subagent approvals are set to deny. Carry on without this tool.' }]);
+      const note = x.rows('note').filter((r) => (r.data as { text: string }).text.startsWith('Denied Bash'));
+      expect(note).toEqual([expect.objectContaining({ runId: runIdOf(x), data: { text: 'Denied Bash for Task probe child: subagent approvals are set to deny.' } })]);
+    });
+
+    it('a task child with autoApprove and ask: answered y at once, no card stays open', async () => {
+      const x = await ready(taskTurn('probe child'));
+      x.s.settings({ autoApprove: true });
+      await go(x, PHASE);
+      await x.s.idle();
+      expect(x.t.decisions).toEqual([{ behavior: 'allow' }]);
+      expect(x.open()).toEqual([]);
+      expect(toolQuestions(x).map((r) => (r.data as Question).title)).toEqual(['Task probe child']);
+    });
+
+    it("a request with no via keeps today's card: no title", async () => {
+      const x = await ready(taskTurn(undefined));
+      await go(x, PHASE);
+      const q = await x.question('tool');
+      expect(q.title).toBeUndefined();
+      x.s.answer(q.id, 'y');
+      await x.s.idle();
+    });
+
+    it('the setting is read per request: ask for the first, deny for the next', async () => {
+      const x = await ready(taskTurn('probe child', 'probe child'));
+      await go(x, PHASE);
+      const q = await x.question('tool');
+      x.store.putSetting('subagentApprovals', 'deny');
+      x.s.answer(q.id, 'y');
+      await x.s.idle();
+      expect(x.t.decisions.map((d) => d.behavior)).toEqual(['allow', 'deny']);
+      expect(toolQuestions(x)).toHaveLength(1);
+    });
+
     it('deny wins over autoApprove', async () => {
       const x = await ready(WITH_TOOL);
       x.s.settings({ autoApprove: true });
