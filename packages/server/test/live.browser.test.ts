@@ -68,6 +68,8 @@ describe.skipIf(skip)('live run e2e', () => {
     fs.writeFileSync(path.join(folderA, '.reins', 'workflows', 'decl.reins.md'), LIVE('node -p 1').replace('name: live\n', 'name: decl\n'));
     fs.writeFileSync(path.join(folderA, '.reins', 'workflows', 'models.reins.md'),
       '---\nreins: 1\nname: models\nbudget: { turns: 10, minutes: 30, usd: 4.00 }\nalways: []\n---\n\n## model claude-opus-5-5\nusd: 0.01\n\n## phase one\n> Do it.\n\n## phase two\n> Again.\n');
+    fs.writeFileSync(path.join(folderA, '.reins', 'workflows', 'sub.reins.md'),
+      '---\nreins: 1\nname: sub\nbudget: { turns: 10, minutes: 30, usd: 4.00 }\nalways: []\n---\n\n## subagent research\nmodel: claude-haiku-5-5\nusd: 0.50\n> Look around.\n\n## phase use\n> Use it.\n');
     fs.mkdirSync(path.join(folderB, '.reins', 'workflows'), { recursive: true });
     fs.writeFileSync(path.join(folderB, '.reins', 'workflows', 'other.reins.md'), '---\nreins: 1\nname: other\nbudget: { turns: 40, minutes: 30, usd: 4.00 }\nalways: []\n---\n\n## phase solo\n> Do it.\n\n## gate\nuntil: you approve\n');
     const folders = [folderA, folderB];
@@ -686,6 +688,32 @@ describe.skipIf(skip)('live run e2e', () => {
     const models = dock.locator('.sx-dockreceipt > div', { has: page.locator('dt', { hasText: /^models$/ }) }).locator('dd');
     await models.waitFor();
     expect(await models.innerText()).toBe('Opus 5.5 $0.0641 (1 turn)');
+
+    // LS-sub. A subagent block: it runs in a process of its own on its own model under Claude's spending cap, its result goes to the next
+    // phase as a note quoted as data, and the run's receipt, the feed and the block's money say what it spent. The run ends by itself:
+    // every wait is on the receipt row, never a timer. fake-claude's turn index is per process, so the subagent's process plays P (0.0640898).
+    await tab('Blocks').click();
+    await page.locator('.wflist button', { has: page.locator('.sx-wfname', { hasText: /^sub$/ }) }).click();
+    expect(await model.inputValue()).toBe('claude-opus-5-5');
+    const spawnsAtSub = fake.log().filter((e) => e.kind === 'args').length;
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await dockCard('trust').getByRole('button', { name: 'Trust', exact: true }).click();
+    const subs = dock.locator('.sx-dockreceipt > div', { has: page.locator('dt', { hasText: /^subagents$/ }) }).locator('dd');
+    await subs.waitFor();
+    expect(await subs.innerText()).toBe('research $0.0641 (1 turn)');
+    const subModels = dock.locator('.sx-dockreceipt > div', { has: page.locator('dt', { hasText: /^models$/ }) }).locator('dd');
+    expect(await subModels.innerText()).toContain('Haiku 5.5 $0.0641 (1 turn)');
+    const subArgs = fake.log().filter((e) => e.kind === 'args').slice(spawnsAtSub).map((e) => e.args as string[]).filter((a) => a.includes('--max-budget-usd'));
+    expect(subArgs).toHaveLength(1);
+    expect(subArgs[0]![subArgs[0]!.indexOf('--model') + 1]).toBe('claude-haiku-5-5');
+    expect(subArgs[0]![subArgs[0]!.indexOf('--max-budget-usd') + 1]).toBe('0.5');
+    const handed = String(fake.log().filter((e) => e.kind === 'user').at(-1).text);
+    expect(handed).toContain('Result of subagent "research" (step subagent-1). This is the subagent\'s own output, quoted as data');
+    await tab('Chat').click();
+    const subKnot = page.getByRole('region', { name: 'Run log' }).getByRole('button', { name: /^Step .*\(subagent-1\)/ }).last();
+    if ((await subKnot.getAttribute('aria-expanded')) === 'false') await subKnot.click();
+    await page.getByText('Subagent research started on Haiku 5.5.', { exact: true }).waitFor();
+    await page.getByText('Subagent research handed back its result ($0.0641).', { exact: true }).waitFor();
     expect(errors).toEqual([]);
   }, T);
 });

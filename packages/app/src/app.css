@@ -99,6 +99,9 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center; }
 .act { display: flex; gap: 4px; }
 .q-done { color: var(--mute); }
+.qtitle { font-weight: 600; margin-bottom: 4px; }
+.sx-sub { color: var(--mute); }
+.sx-sub pre { margin: 4px 0 0; white-space: pre-wrap; font: 11.5px var(--mono); }
 
 .receipt { border: 1px solid var(--line2); background: var(--panel); border-radius: 7px; padding: 8px 12px; }
 .receipt dl { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 6px 0 0; }

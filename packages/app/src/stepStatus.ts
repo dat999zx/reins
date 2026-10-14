@@ -33,6 +33,12 @@ const handlers: Record<string, Handler> = {
     if (i.state !== 'waiting') { i.state = 'active'; delete i.why; }
     cur.step = d.step;
   },
+  subagent_started: (m, cur, d) => {
+    if (typeof d.step !== 'string') return;
+    const name = typeof d.label === 'string' ? d.label : typeof d.model === 'string' ? d.model : undefined;
+    if (name) at(m, d.step).model = name;
+    if (typeof d.label === 'string' && typeof d.model === 'string') (cur.labels ??= {})[d.model] = d.label;
+  },
   command_result: (m, _cur, d) => {
     if (typeof d.step === 'string' && typeof d.exitCode === 'number' && d.exitCode !== 0) Object.assign(at(m, d.step), { state: 'failed', why: `exit ${d.exitCode}` });
   },

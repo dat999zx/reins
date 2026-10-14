@@ -22,6 +22,7 @@ export interface RunView {
   stepOf: Map<number, string>;
   thinking?: number;                 // tokens, while the newest engine row of the live run is a thinking row
   slice?: { step: string; spent: number; usd: number };   // the open USD slice, from the newest run turn_ended
+  sub?: { step: string; title: string; label?: string };   // the subagent at work: subagent_started, gone at its result or the run's end
   usdLimit?: number;                 // the workflow's USD limit after allowances (the newest run_resumed with `usd` and no `step`)
 }
 
@@ -46,7 +47,7 @@ export const PHASE: Record<RunPhase, { words: (v: RunView, pos?: Pos) => string;
   // a switch card after an ended run waits in phase busy: say so, not "working"
   busy: { words: (v, pos) => (v.open.length ? PHASE.waiting.words(v, pos) : 'The agent is working (not a workflow run).'), ended: false, resumable: false },
   running: {
-    words: (v, pos) => `${v.current.length ? `Running \`${v.current.at(-1)}\`` : 'Running'}${pos ? ` · step ${pos.n} of ${pos.m}` : ''}${v.thinking !== undefined ? ` · ${thinkingWords(v.thinking)}` : ''}`,
+    words: (v, pos) => `${v.current.length ? `Running \`${v.current.at(-1)}\`` : 'Running'}${pos ? ` · step ${pos.n} of ${pos.m}` : ''}${v.sub ? ` · subagent ${v.sub.title} on ${v.sub.label ?? 'the default model'}` : ''}${v.thinking !== undefined ? ` · ${thinkingWords(v.thinking)}` : ''}`,
     ended: false, resumable: false,
   },
   waiting: {
@@ -69,7 +70,7 @@ const begin = (v: RunView, path: string[]) => { v.current = path; delete v.ended
 const setStep: Fold = (_r, x, v, a) => {
   if (typeof x.step === 'string' && !(a.v2 && v.current.at(-1) === x.step)) begin(v, [x.step]);
 };
-const ends: Fold = (_r, _x, v) => { v.endedAt = v.current.at(-1); v.current = []; delete v.error; }; // an old error goes with the next end; run_detached sets its own after
+const ends: Fold = (_r, _x, v) => { v.endedAt = v.current.at(-1); v.current = []; delete v.error; delete v.sub; }; // an old error goes with the next end; run_detached sets its own after
 const delivered = (text: unknown, v: RunView) => {
   const c = v.cards.find((k) => k.state === 'queued' && k.text === text);
   if (c) c.state = 'delivered';
@@ -98,6 +99,10 @@ const FOLD: Record<string, Fold> = {
   },
   turn_started: (r, x, v, a) => { setStep(r, x, v, a); a.inTurn = true; },
   gate_paused: setStep,
+  subagent_started: (_r, x, v) => {
+    if (typeof x.step === 'string' && typeof x.title === 'string') v.sub = { step: x.step, title: x.title, ...(typeof x.label === 'string' ? { label: x.label } : {}) };
+  },
+  subagent_result: (_r, _x, v) => { delete v.sub; },
   say: (r, x, v) => { v.last = { seq: r.seq, text: String(x.text ?? '') }; },
   turn_failed: (r, x, v) => { v.last = { seq: r.seq, text: String(x.error ?? '') }; },
   turn_ended: (_r, x, v) => {
@@ -217,6 +222,8 @@ const OVER: Record<MeterItem['key'], string> = {
   usd: ' · USD budget used: the run pauses',
   block: ' · block budget used: the run pauses',
 };
+// a subagent's finished reply over its slice does not pause the run: it is noted and its result kept
+const SUBAGENT_OVER = ' · subagent budget used';
 export function meter(v: RunView, budget: Workflow['budget'], now: number): MeterItem[] {
   const ms = Math.max(0, (v.endedTs ?? now) - (v.startedAt ?? now));
   const seconds = Math.floor(ms / 1000);
@@ -230,7 +237,7 @@ export function meter(v: RunView, budget: Workflow['budget'], now: number): Mete
   return values.map(({ key, used, limit, text }) => {
     const level = used >= limit ? 'over' : used >= limit * 0.8 ? 'near' : 'ok';
     const enforced = key !== 'minutes';
-    return { key, text: text + (level === 'over' ? OVER[key] : level === 'near' ? ' · near' : ''), level, enforced };
+    return { key, text: text + (level === 'over' ? (key === 'block' && v.stepsAtStart?.find((s) => s.id === v.slice?.step)?.kind === 'subagent' ? SUBAGENT_OVER : OVER[key]) : level === 'near' ? ' · near' : ''), level, enforced };
   });
 }
 

@@ -31,3 +31,13 @@ describe('receiptFields', () => {
     expect(f.slice(4)).toEqual([['gates held', '1'], ['refusals', '2'], ['guard refusals', '2'], ['verify passed', '1'], ['Knowl recalls', '4']]);
   });
 });
+
+describe('receiptFields: subagents', () => {
+  it('says the dollars and turns per subagent after the models, and nothing without any', () => {
+    const subagents = [{ step: 's', title: 'research', usd: 0.0640898, turns: 1 }, { step: 't', title: 'check', usd: 0.2, turns: 2 }];
+    expect(receiptFields({ ...base, subagents })).toEqual([
+      ['status', 'done'], ['turns', '3'], ['time', '12s'], ['cost', '$0.5000'], ['subagents', 'research $0.0641 (1 turn) · check $0.2000 (2 turns)'],
+    ]);
+    expect(receiptFields({ ...base, subagents: [] })).toEqual(receiptFields(base));
+  });
+});

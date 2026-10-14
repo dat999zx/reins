@@ -218,3 +218,16 @@ describe('runRows', () => {
     expect(runRows([row('run_resumed')]).workflow).toBeUndefined();
   });
 });
+
+describe('stepStatus: a subagent', () => {
+  it('its start gives the chip its model at once, and a later reply keeps that label and adds the cost', () => {
+    const start = row('subagent_started', { step: 's', model: 'h', label: 'Haiku 5.5' });
+    expect(stepStatus([row('step_started', { step: 's' }), start]).s!.model).toBe('Haiku 5.5');
+    const m = stepStatus([row('step_started', { step: 's' }), start, row('turn_ended', { step: 's', model: 'h', cost: 0.06 })]);
+    expect(m.s!.model).toBe('Haiku 5.5');
+    expect(m.s!.cost).toBe(0.06);
+    expect(stepStatus([row('subagent_started', { step: 's', model: 'raw' })]).s!.model).toBe('raw');
+    expect(stepStatus([row('subagent_started', { title: 'x' })])).toEqual({});
+    expect(stepStatus([row('subagent_started', { model: 'raw', label: 'Raw' })])).toEqual({});   // no step: no entry to hang the model on
+  });
+});

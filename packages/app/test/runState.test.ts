@@ -403,3 +403,36 @@ describe('sameSteps, firstRowOf', () => {
     expect(firstRowOf(v, rows.filter((r) => r.type !== 'step_started'), 'b')).toBe(rows[4]!.seq);
   });
 });
+
+describe('a subagent in the run view', () => {
+  const steps = [{ id: 'plan', kind: 'phase' }, { id: 'subagent-1', kind: 'subagent' }, { id: 'model-1', kind: 'model' }];
+  const budget = { turns: 40, minutes: 30, usd: 4 };
+  const slice = (step: string) => ({ step, spent: 0.55, usd: 0.5 });
+  it('the handle names the subagent at work and its model until its result, and the run end drops it', () => {
+    reset();
+    const open = [started(steps), ss('subagent-1'), row('subagent_started', { step: 'subagent-1', title: 'research', label: 'Haiku 5.5' }), row('turn_started', { step: 'subagent-1' })];
+    expect(view(open).sub).toEqual({ step: 'subagent-1', title: 'research', label: 'Haiku 5.5' });
+    expect(PHASE.running.words(view(open))).toBe('Running `subagent-1` · subagent research on Haiku 5.5');
+    const bare = [started(steps), ss('subagent-1'), row('subagent_started', { step: 'subagent-1', title: 'research' }), row('turn_started', { step: 'subagent-1' })];
+    expect(PHASE.running.words(view(bare))).toBe('Running `subagent-1` · subagent research on the default model');
+    const done = [...open, row('subagent_result', { step: 'subagent-1', title: 'research', text: 'x', cost: 0.06 })];
+    expect(view(done).sub).toBeUndefined();
+    expect(PHASE.running.words(view(done))).toBe('Running `subagent-1`');
+    expect(view([...open, row('run_stopped')]).sub).toBeUndefined();
+  });
+  it("a subagent's reply feeds the cost and the block item; over its slice the words say it is not a pause", () => {
+    reset();
+    const ok = view([started(steps), row('turn_ended', { step: 'subagent-1', cost: 0.06, slice: { step: 'subagent-1', spent: 0.06, usd: 0.5 } })]);
+    expect(ok.cost).toBe(0.06);
+    expect(meter(ok, budget, 0)[3]!.text).toBe('subagent-1: $0.06 / $0.50');
+    const sub = view([started(steps), row('turn_ended', { step: 'subagent-1', cost: 0.55, slice: slice('subagent-1') })]);
+    expect(meter(sub, budget, 0)[3]).toEqual({ key: 'block', text: 'subagent-1: $0.55 / $0.50 · subagent budget used', level: 'over', enforced: true });
+    const model = view([started(steps), row('turn_ended', { step: 'plan', cost: 0.55, slice: slice('model-1') })]);
+    expect(meter(model, budget, 0)[3]!.text).toBe('model-1: $0.55 / $0.50 · block budget used: the run pauses');
+    // only the block item takes the subagent words: the workflow's own USD item, over while a subagent slice is open, keeps its own
+    const wf = meter(view([started(steps), row('turn_ended', { step: 'subagent-1', cost: 5, slice: slice('subagent-1') })]), budget, 0);
+    const usd = wf.find((i) => i.key === 'usd')!;
+    expect(usd.level).toBe('over');
+    expect(usd.text).not.toContain('subagent budget used');
+  });
+});
