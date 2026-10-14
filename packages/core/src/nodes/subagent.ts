@@ -9,6 +9,7 @@ declare module '../model.js' {
 const subagent: NodeType = {
   kind: 'subagent',
   attrs: ['model', 'usd', 'mode'],
+  sendsTurn: true,
   heading: {
     parse(arg, step) { step.title = arg; return false; },
     print(step) { return { text: step.title ? `subagent ${step.title}` : 'subagent', condInHeading: false }; },

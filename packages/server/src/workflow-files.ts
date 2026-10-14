@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { compileProgram, compileTurn, parseWorkflow, printCond, printWorkflow, type Step } from '@reins/core';
+import { compileProgram, compileTurn, NODES, parseWorkflow, printCond, printWorkflow, type Step } from '@reins/core';
 import { loadWorkflowText } from './run-cli.js';
 import { under } from './session.js';
 
@@ -98,8 +98,9 @@ export function previewWorkflow(cwd: string, dir: string, p: string, text: strin
   let turn: string | undefined;
   const w = loaded.workflow;
   if (w && stepId !== undefined) {
-    const instr = compileProgram(w, loaded.resolveBlock).find((i) => i.op === 'TURN' && i.step === stepId);
-    const step = instr?.op === 'TURN' ? instr.src ?? flat.find((f) => f.step.id === stepId)?.step : undefined;
+    // a TURN, or a NODE whose kind runs a turn of the step's own (a subagent's goes through its own session)
+    const instr = compileProgram(w, loaded.resolveBlock).find((i) => (i.op === 'TURN' || (i.op === 'NODE' && NODES.get(i.kind)?.sendsTurn)) && i.step === stepId);
+    const step = instr?.op === 'TURN' || instr?.op === 'NODE' ? instr.src ?? flat.find((f) => f.step.id === stepId)?.step : undefined;
     if (instr && step) turn = compileTurn(step, { workflowName: w.name, stepIndex: instr.top ?? 0, totalSteps: w.steps.length, always: w.always });
   }
   return { status: 200, body: { diagnostics: loaded.diagnostics, steps, ...(w?.name !== undefined ? { name: w.name } : {}), ...(turn !== undefined ? { turn } : {}), ...(raw ? { workflow: raw } : {}), ...(reformats !== undefined ? { reformats } : {}) } };

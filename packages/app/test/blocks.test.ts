@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseWorkflow, printCond, printWorkflow, validate, type Workflow } from '@reins/core';
 import { flatSteps } from '../src/canvas.js';
-import { addPlace, addStep, addStepAt, stackEnd, capBackward, deleteStep, deleteSteps, dropPlace, dropSteps, duplicateSteps, insertSteps, moveStep, nestPlace, newId, placeOf, setAlways, setBudget, setCond, takeSteps, withFreshIds } from '../src/blocks.js';
+import { addPlace, addStep, addStepAt, stackEnd, capBackward, deleteStep, deleteSteps, dropPlace, dropSteps, duplicateSteps, insertSteps, moveStep, nestPlace, newId, placeOf, commitBudget, setAlways, setBudget, setCond, takeSteps, withFreshIds } from '../src/blocks.js';
 
 const HEAD = '---\nreins: 1\nname: demo\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n';
 const TEXT = `${HEAD}## phase plan
@@ -525,6 +525,20 @@ describe('the end of the stack', () => {
   it('a drop on the end strip lands before the end', () => {
     expect(dropPlace(wf, { top: 'end' })).toEqual({ branch: 'kids', index: 2 });
     expect(ids(dropSteps(wf, ['a'], { top: 'end' }))).toEqual(['b', 'a', 'end-1', 'f']);
+  });
+});
+describe('commitBudget', () => {
+  const w = parseWorkflow(`${HEAD}## phase a\n`).workflow!;
+  const drafts = { turns: '10', minutes: '30' };
+  it('a refused value is said in words and nothing is sent', () => {
+    let sent = 0;
+    const r = commitBudget(w, 'turns', 'zero', drafts, () => { sent++; return true; });
+    expect(typeof r).toBe('string');
+    expect(sent).toBe(0);
+  });
+  it('an accepted value is sent: true when the editor took it, false when it refused it', () => {
+    expect(commitBudget(w, 'turns', '12', drafts, () => true)).toBe(true);
+    expect(commitBudget(w, 'turns', '12', drafts, () => false)).toBe(false);
   });
 });
 describe('setBudget', () => {

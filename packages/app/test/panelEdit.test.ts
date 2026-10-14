@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseWorkflow, printWorkflow, type Step } from '@reins/core';
 import { editStep } from '../src/canvas.js';
-import { applyField, applyLinkMax, BUDGET_ERRORS, budgetCount, budgetPatch, fieldValue, parseBudget } from '../src/panelEdit.js';
+import { applyField, applyLinkMax, BUDGET_ERRORS, budgetCount, budgetPatch, fieldValue, MODES, parseBudget } from '../src/panelEdit.js';
 
 const TEXT = `---
 reins: 1
@@ -44,6 +44,18 @@ describe('panelEdit', () => {
   it('writes an attribute; empty removes it', () => {
     expect(edit('t', (s) => applyField(s, 'cmd', 'npm run lint'))).toContain('### run `npm run lint`');
     expect(edit('plan', (s) => applyField(s, 'mode', ''))).not.toContain('mode:');
+  });
+
+  it('mode: only write and read-only; an absent mode reads write; choosing write removes the attribute', () => {
+    expect(MODES.map((m) => m.value)).toEqual(['write', 'read-only']);
+    const s = { id: 'p', kind: 'phase', attrs: {}, cards: [], links: [] } as Step;
+    expect(fieldValue(s, 'mode')).toBe('write');
+    expect(applyField(s, 'mode', 'read-only')).toBe(true);
+    expect(s.attrs.mode).toBe('read-only');
+    expect(applyField(s, 'mode', 'write')).toBe(true);
+    expect('mode' in s.attrs).toBe(false);
+    expect(edit('plan', (x) => applyField(x, 'mode', 'write'))).not.toContain('mode:');
+    expect(fieldValue(w().steps[0]!, 'mode')).toBe('write');
   });
 
   it('writes max as a string; empty, zero, fractions and junk are not written', () => {

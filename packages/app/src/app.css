@@ -305,7 +305,9 @@ select.sx-pill { cursor: pointer; }
 .sx-ghost-card { position: fixed; }
 .sx-endstrip { position: relative; align-self: stretch; min-width: 190px; height: 24px; }
 .sx-endstrip.sx-end::before { top: -2px; bottom: auto; }
-.sx-hat { cursor: grab; }
+.sx-hat { cursor: grab; flex-wrap: wrap; }
+.sx-hat b { font-weight: 600; }
+.sx-hat .sx-bad { flex-basis: 100%; font-size: 12px; color: #ffd0d0; cursor: default; }
 .sx-pal .sx-card { touch-action: none; user-select: none; }
 .sx-view.sx-dragging { cursor: grabbing; }
 .sx-view.sx-nodrop { cursor: not-allowed; }

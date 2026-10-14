@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type JSX, type KeyboardEvent } from 'react';
 import type { CardKind, Step, Workflow } from '@reins/core';
 import { CARD_KINDS, KINDS, type Field } from './canvasKinds.js';
-import { setAlways, setBudget } from './blocks.js';
+import { commitBudget, setAlways } from './blocks.js';
 import { editStep, removeLinks, setLink } from './canvas.js';
-import { applyField, applyLinkMax, budgetCount, budgetPatch, BUDGET_HINT, fieldValue, type BudgetKey } from './panelEdit.js';
+import { applyField, applyLinkMax, budgetCount, BUDGET_HINT, fieldValue, MODES, type BudgetKey } from './panelEdit.js';
 import { ModelPicker } from './ModelPicker.js';
 
 // The same rule as usdText in packages/core/src/format/print.ts (the app imports only core's types): two decimals when that loses nothing.
-const usdText = (usd: number) => (Number(usd.toFixed(2)) === usd ? usd.toFixed(2) : String(usd));
+export const usdText = (usd: number) => (Number(usd.toFixed(2)) === usd ? usd.toFixed(2) : String(usd));
 
 type Models = Array<{ id: string; label: string }>;
 export type SessionModel = { id: string; label: string }; // what a field that inherits the session's model runs on
@@ -61,7 +61,7 @@ const INPUTS: Record<Field['input'], (p: InputProps) => JSX.Element> = {
   mode: ({ label, value, commit }) => (
     <label className="bfield">{label}
       <select value={value} onChange={(e) => commit(e.target.value)}>
-        <option value="">default</option><option value="write">write</option><option value="read-only">read-only</option>
+        {MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
       </select>
     </label>
   ),
@@ -201,10 +201,8 @@ export function BudgetFields({ w, rev, onEdit }: { w: Workflow; rev: unknown; on
   const b = w.budget;
   const [bad, setBad] = useState('');
   const commit = (key: BudgetKey, raw: string) => {
-    const r = budgetPatch(key, raw, b, drafts);
-    if ('error' in r) return setBad(r.error);
-    setBad('');
-    onEdit((m) => setBudget(m, r.patch));
+    const r = commitBudget(w, key, raw, drafts, onEdit);
+    setBad(typeof r === 'string' ? r : '');
   };
   const turns = useLine(budgetCount(b.turns), rev, (v) => commit('turns', v));
   const minutes = useLine(budgetCount(b.minutes), rev, (v) => commit('minutes', v));

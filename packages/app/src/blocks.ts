@@ -1,7 +1,7 @@
 import type { Cond, Step, StepKind, Workflow } from '@reins/core';
 import { flatSteps } from './canvas.js';
 import { KINDS } from './canvasKinds.js';
-import type { BudgetKey } from './panelEdit.js';
+import { budgetPatch, type BudgetKey } from './panelEdit.js';
 
 export type Place = { parent?: string; branch: 'kids' | 'else'; index: number };
 
@@ -228,4 +228,12 @@ export function setBudget(w: Workflow, patch: Partial<Record<BudgetKey, number |
   const budget = { ...rest, ...(usd !== undefined ? { usd } : {}) };
   const same = budget.turns === w.budget.turns && budget.minutes === w.budget.minutes && budget.usd === w.budget.usd;
   return same ? w : { ...w, budget };
+}
+// One budget field's commit, shared by the panel's form and the hat's pills: the words of a refusal, else whether the edit was sent.
+export function commitBudget(
+  w: Workflow, key: BudgetKey, raw: string, drafts: { turns: string; minutes: string }, onEdit: (fn: (w: Workflow) => Workflow) => boolean | void,
+): string | boolean {
+  const r = budgetPatch(key, raw, w.budget, drafts);
+  if ('error' in r) return r.error;
+  return onEdit((m) => setBudget(m, r.patch)) !== false;
 }

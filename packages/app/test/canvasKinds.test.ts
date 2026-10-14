@@ -123,7 +123,7 @@ describe('fresh', () => {
   it('subagent: the panel labels, the Budget (USD) refusal words, the face line and the palette card are exactly the plan\'s', () => {
     expect(KINDS.subagent.fields.map((f) => f.label)).toEqual(['Title', 'Prompt', 'Mode', 'Model', 'Budget (USD)']);
     expect(KINDS.subagent.fields.find((f) => f.key === 'usd')!.error).toBe(BUDGET_ERRORS.usd);
-    expect(KINDS.subagent.line).toEqual(['subagent', { field: 'title' }, 'on', { field: 'model' }, 'USD', { field: 'usd' }, { field: 'prompt' }]);
+    expect(KINDS.subagent.line).toEqual(['subagent', { field: 'title' }, 'on', { field: 'model' }, { field: 'mode' }, 'USD', { field: 'usd' }, { field: 'prompt' }]);
     expect(KINDS.subagent.card).toEqual({ label: 'subagent', section: 'Flow' });
     const s = { id: 'subagent-1', kind: 'subagent', attrs: { usd: '0.50' }, cards: [], links: [] } as unknown as Step;
     expect(applyField(s, 'usd', 'abc')).toBe(false);

@@ -1,16 +1,16 @@
-import { useContext, useMemo, type MouseEvent, type ReactNode } from 'react';
+import { useContext, useMemo, useRef, type MouseEvent, type ReactNode } from 'react';
 import type { Cond, Diagnostic, Step, Workflow } from '@reins/core';
 import { KINDS, wiresOf, type Token } from './canvasKinds.js';
 import { applyParam, COND_KINDS, type CondParam } from './condKinds.js';
 import { AGAINST, editStep, flatSteps, marksOf } from './canvas.js';
-import { setCond, type CondPath } from './blocks.js';
-import { applyField, fieldValue } from './panelEdit.js';
+import { commitBudget, setCond, type CondPath } from './blocks.js';
+import { applyField, budgetCount, budgetPatch, BUDGET_OVER, fieldValue, MODES, type BudgetKey } from './panelEdit.js';
 import type { Pt } from './surface.js';
 import { stepKey, type Key } from './selection.js';
 import { splitAtEnd } from './arrange.js';
 import { zoneAttrs, zoneKey, type Zone } from './gesture.js';
 import type { Over } from './useDrag.js';
-import type { SessionModel } from './BlockPanel.js';
+import { usdText, type SessionModel } from './BlockPanel.js';
 import { ModelPicker } from './ModelPicker.js';
 import { Pill } from './Pill.js';
 import { cx } from './generic.js';
@@ -114,6 +114,11 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, models, s
     if (f?.input === 'model') {
       return <ModelPicker key={i} className="sx-pill" label={label} models={models} value={v} blank={f.inherits ? sessionModel?.label : undefined} disabled={dead} onChange={set} />;
     }
+    if (f?.input === 'mode') {
+      return <select key={i} aria-label={label} className="sx-pill" value={v} inert={dead} onChange={(e) => set(e.target.value)}>
+        {MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+      </select>;
+    }
     if (f?.input === 'step') { // set by the blue wire, or in the panel
       return <span key={i} className="sx-faint">{v ? flatSteps(w.steps).find((x) => x.id === v)?.title || v : 'drag the blue dot to a block'}</span>;
     }
@@ -206,12 +211,40 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, models, s
   return (
     <>
       <div className={cx('sx-script', condDrag && 'sx-drag-cond')} style={{ left: at.x, top: at.y }}>
-        <div {...hat} className={cx('sx-blk', 'sx-hat', hat.className)}><b>{w.name}</b>{w.task && <span className="sx-pill">{w.task}</span>}</div>
+        <div {...hat} className={cx('sx-blk', 'sx-hat', hat.className)}><b>{w.name}</b>{w.task && <span className="sx-pill">{w.task}</span>}
+          {!w.block && <HatBudget w={w} rev={rev} onEdit={onEdit} over={diags.find((d) => d.severity === 'error' && BUDGET_OVER.test(d.message))?.message} />}
+        </div>
         {stack(cap ? [...inStack, cap] : inStack, undefined, 'kids')}
         <div {...end} className={cx('sx-endstrip', end.className)} />
         <div className="sx-autofree">{tail.filter((s) => !place(s)).map(freeBlock)}</div>
       </div>
       {tail.filter(place).map(freeBlock)}
+    </>
+  );
+}
+
+// The workflow's budget on the hat: the panel form's commit (commitBudget), a refusal as the pill's invalid state with its words.
+// `pending` keeps a value the pair rule refused (Turns before Minutes) so the other pill's commit can write both.
+function HatBudget({ w, rev, onEdit, over }: { w: Workflow; rev: unknown; onEdit: (fn: (w: Workflow) => Workflow) => boolean; over?: string }) {
+  const pending = useRef<Partial<Record<BudgetKey, string>>>({});
+  const b = w.budget;
+  const drafts = (key: BudgetKey, raw: string) => ({ turns: pending.current.turns ?? budgetCount(b.turns), minutes: pending.current.minutes ?? budgetCount(b.minutes), [key]: raw });
+  const pill = (key: BudgetKey, label: string, value: string, ph: string) => (
+    <Pill label={label} value={value} look="num" ph={ph} rev={rev}
+      why={(raw) => { const r = budgetPatch(key, raw, b, drafts(key, raw)); return 'error' in r ? r.error : undefined; }}
+      commit={(raw) => {
+        const r = commitBudget(w, key, raw, drafts(key, raw), onEdit);
+        if (typeof r === 'string') pending.current[key] = raw;
+        else pending.current = {};
+        return r === true;
+      }} />
+  );
+  return (
+    <>
+      {pill('turns', 'Turns of the workflow', budgetCount(b.turns), 'not set')}<b>turns</b>
+      {pill('minutes', 'Minutes of the workflow', budgetCount(b.minutes), 'not set')}<b>min</b>
+      <span className="sx-grp"><b>USD</b>{pill('usd', 'USD of the workflow', b.usd === undefined ? '' : usdText(b.usd), 'optional')}</span>
+      {over && <div className="sx-bad">{over}</div>}
     </>
   );
 }

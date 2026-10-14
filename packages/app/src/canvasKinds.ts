@@ -64,7 +64,7 @@ export const KINDS: Record<StepKind, KindView> = {
   },
   subagent: {
     fields: [title, mustPrompt, mode, { key: 'model', label: 'Model', input: 'model', inherits: true }, usd],
-    line: ['subagent', { field: 'title' }, 'on', { field: 'model' }, 'USD', { field: 'usd' }, { field: 'prompt' }],
+    line: ['subagent', { field: 'title' }, 'on', { field: 'model' }, { field: 'mode' }, 'USD', { field: 'usd' }, { field: 'prompt' }],
     cards: true,
     card: { label: 'subagent', section: 'Flow' }, fresh: () => ({}),
   },

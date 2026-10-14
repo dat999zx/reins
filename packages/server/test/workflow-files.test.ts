@@ -227,6 +227,17 @@ describe('preview (3c.9)', () => {
     expect(engine.receivedTexts[0]).toContain('- Keep it small.');
   });
 
+  it('a subagent step returns the turn its own session receives; a model step returns none', async () => {
+    const x = await world();
+    const file = path.join(x.project, 'demo.reins.md');
+    const text = PREVIEW.split('## repeat')[0]! + '## model claude-sonnet-5-5\n\n## subagent research\n> Look into it.\n';
+    const steps = (await x.preview(file, text)).json.steps as Array<{ id: string; kind: string }>;
+    const sub = await x.preview(file, text, steps.find((s) => s.kind === 'subagent')!.id);
+    expect(sub.json.turn).toContain('Look into it.');
+    expect(sub.json.turn).toContain('- Keep it small.');
+    expect((await x.preview(file, text, steps.find((s) => s.kind === 'model')!.id)).json.turn).toBeUndefined();
+  });
+
   it('no turn when there are errors, for an unknown step, or for a step that is not a turn', async () => {
     const x = await world();
     const file = path.join(x.project, 'demo.reins.md');

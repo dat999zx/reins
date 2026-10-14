@@ -141,7 +141,7 @@ export function validate(
     NODES.get(step.kind)?.validate?.late?.(step, vctx(pos));
   }
 
-  // D5: block budgets (`usd:` on a kind that owns it) are carved out of the workflow's USD budget.
+  // D5: block budgets (`usd:` on a kind that owns it) are carved out of the workflow's USD budget; with none set, they are caps of their own.
   // ponytail: a block file's slices (`use`) are not counted here: the run enforces them anyway; count through resolveBlock if it bites.
   const owns = (s: Step) => NODES.get(s.kind)?.attrs.includes('usd') === true;
   const validUsd = (s: Step) => /^\d+(\.\d{1,2})?$/.test(s.attrs.usd!.trim()) && Number(s.attrs.usd) > 0;   // the app's parseBudget rule (panelEdit.ts:60)
@@ -163,8 +163,7 @@ export function validate(
   if (!w.block && sliced.length) {
     const pos = sliced[0]!.pos || { line: 1, col: 1 };
     const sum = sliced.reduce((a, s) => a + (Number(s.attrs.usd) || 0), 0);
-    if (w.budget.usd === undefined) diagnostics.push({ severity: 'error', message: "Set the workflow's USD budget first: block budgets are carved out of it.", pos });
-    else if (sum > w.budget.usd + 1e-9) diagnostics.push({ severity: 'error', message: `The blocks' budgets add up to $${usdText(Math.round(sum * 100) / 100)}, over the workflow's $${usdText(w.budget.usd)}.`, pos });
+    if (w.budget.usd !== undefined && sum > w.budget.usd + 1e-9) diagnostics.push({ severity: 'error', message: `The blocks' budgets add up to $${usdText(Math.round(sum * 100) / 100)}, over the workflow's $${usdText(w.budget.usd)}.`, pos });
   }
 
   // Ids inside each container's body (all depths), for the jump-into-a-loop rule.

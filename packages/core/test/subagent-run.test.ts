@@ -137,6 +137,18 @@ describe('a subagent step: its own session, money and records', () => {
     expect(run.status).toBe('done');
   });
 
+  it('a slice in a workflow with no USD budget still pauses at the slice, and Allow continues', async () => {
+    const { run, opens } = rig(wf([subagent(), phase('use')], {}), [capped(0.6), reply('found it', 0.05, { total: 0.65 })]);
+    await go(run);
+    expect(run.status).toBe('paused');
+    expect(run.pauseReason).toEqual({ type: 'usd-budget-used', stepId: 'subagent-1', limit: 0.5, spent: 0.6 });
+    expect(run.usdLeft()).toBeUndefined();
+    expect(run.allowUsd(0.2)).toBeUndefined();
+    await go(run);
+    expect(opens[1]!.maxUsd).toBe(0.2);
+    expect(run.status).toBe('done');
+  });
+
   it('an allow on a subagent pause with a model slice open takes the subagent slice as its base, not the model one', async () => {
     const { run } = rig(
       wf([model('model-1', { model: 'claude-x', usd: '0.40' }), subagent({ model: 'm1', usd: '0.10' }), phase('use')]),

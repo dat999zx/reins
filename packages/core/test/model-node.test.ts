@@ -70,11 +70,9 @@ describe('model step: validate', () => {
     expect(errors(wf('## model m1\nusd: 0.10\n\n## model m2\nusd: 0.20\n', ', usd: 0.25'))).toEqual(["The blocks' budgets add up to $0.30, over the workflow's $0.25."]);
   });
 
-  it("no workflow USD asks for it, once, at the first slice's line", () => {
+  it('no workflow USD is no limit: slices alone give no diagnostic', () => {
     const text = wf('## model m1\nusd: 0.50\n\n## model m2\nusd: 0.25\n', '');
-    const d = validate(ok(text)).filter((x) => x.severity === 'error');
-    expect(d.map((x) => x.message)).toEqual(["Set the workflow's USD budget first: block budgets are carved out of it."]);
-    expect(d[0]!.pos.line).toBe(ok(text).steps[0]!.pos!.line);
+    expect(validate(ok(text)).filter((x) => x.severity === 'error')).toEqual([]);
   });
 
   for (const bad of ['abc', '0', '-1', '1.234', '1e3']) {

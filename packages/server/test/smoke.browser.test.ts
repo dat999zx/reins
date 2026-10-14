@@ -404,7 +404,7 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
       await textTab.click();
       return editor.inputValue();
     }, { timeout: W }).toContain('usd: 0.50');
-    await expect.poll(() => diags.textContent(), { timeout: W }).toContain("Set the workflow's USD budget first: block budgets are carved out of it.");
+    await expect.poll(() => diags.textContent(), { timeout: W }).not.toContain("Set the workflow's USD budget first");
     await blocksTab.click();
     // the face shows both pills, the id and the USD
     await expect.poll(() => row('model-1').getByRole('combobox', { name: 'Model of model-1', exact: true }).inputValue(), { timeout: W }).toBe('claude-opus-5-5');

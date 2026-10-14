@@ -1,8 +1,11 @@
 import type { Link, Step } from '@reins/core';
 import type { FieldKey } from './canvasKinds.js';
 
+// The two modes of a step. An absent `mode:` is the first, so choosing it removes the attribute.
+export const MODES = [{ value: 'write', label: 'write' }, { value: 'read-only', label: 'read-only' }] as const;
+
 export const fieldValue = (s: Step, key: FieldKey): string =>
-  (key === 'title' ? s.title : key === 'prompt' ? s.prompt : s.attrs[key]) ?? '';
+  (key === 'title' ? s.title : key === 'prompt' ? s.prompt : s.attrs[key] || (key === 'mode' ? MODES[0].value : undefined)) ?? '';
 
 const validMax = (v: string) => /^\d+$/.test(v) && Number.isSafeInteger(Number(v)) && Number(v) >= 1;
 
@@ -10,6 +13,7 @@ const validMax = (v: string) => /^\d+$/.test(v) && Number.isSafeInteger(Number(v
 // Returns false when the value is refused (nothing changed).
 export function applyField(s: Step, key: FieldKey, v: string): boolean {
   if (key === 'max' && !validMax(v)) return false;
+  if (key === 'mode' && v === MODES[0].value) v = '';
   if (key === 'usd') {
     const r = parseBudget('usd', v);
     if ('error' in r) return false;
@@ -38,6 +42,8 @@ export const BUDGET_ERRORS: Record<BudgetKey, string> = {
   usd: 'USD must be an amount above 0, like 2.50. Leave it empty for no USD limit.',
 };
 export const BUDGET_BOTH = 'Fill in both Turns and Minutes.';
+// The over-sum error of core's validate (what the hat says under its pills).
+export const BUDGET_OVER = /^The blocks' budgets add up to /;
 export const BUDGET_HINT = 'Turns stop the run when used up. USD pauses it before the next step once a reply reaches it: allow more or stop. Minutes are shown, not enforced.';
 
 // What one budget field's commit writes. While either of Turns and Minutes is 0 ("not set") the pair is written together,

@@ -25,6 +25,13 @@ describe('the block face', () => {
     expect(face(step('model'))).toContain('<option value="" disabled="" selected="">Pick a model</option>');
     expect(face(step('model', { attrs: { model: 'm2' } }))).toContain('<option value="m2" selected="">Model Two</option>');
   });
+  it('a subagent shows its mode as a pill: write when the file has none, read-only when it says so; a phase has none', () => {
+    const html = face(step('subagent'));
+    expect(html).toContain('<select aria-label="Mode of subagent-1" class="sx-pill">');
+    expect(html).toContain('<option value="write" selected="">write</option><option value="read-only">read-only</option>');
+    expect(face(step('subagent', { attrs: { mode: 'read-only' } }))).toContain('<option value="write">write</option><option value="read-only" selected="">read-only</option>');
+    expect(face(step('phase', { title: 'p' }))).not.toContain('Mode of');
+  });
   it('the budget pill says optional', () => {
     expect(face(step('subagent'))).toContain('aria-label="Budget (USD) of subagent-1" placeholder="optional"');
   });
@@ -68,6 +75,33 @@ describe('the block face', () => {
     expect(html).toContain('<span class="sx-faint">Plan</span>');
     expect(face(step('verify', { attrs: { against: 'x' } }))).toContain('<span class="sx-faint">x</span>');
     expect(face(step('verify'))).toContain('<span class="sx-faint">drag the blue dot to a block</span>');
+  });
+  describe('the hat holds the workflow budget', () => {
+    const hat = (w: Partial<Workflow>, diags: unknown[] = []) => renderToStaticMarkup(createElement(BlocksPane, {
+      w: { name: 't', budget: { turns: 10, minutes: 30 }, always: [], steps: [], ...w } as unknown as Workflow, steps: [], diags, text: '', sel: new Set<string>(), rev: 0, at: { x: 0, y: 0 },
+      models, onEdit: () => true, onSelect: () => {},
+    } as never));
+    it('three pills: turns, minutes, USD (empty says optional)', () => {
+      const html = hat({});
+      expect(html).toContain('aria-label="Turns of the workflow"');
+      expect(html).toContain('aria-label="Minutes of the workflow"');
+      expect(html).toContain('aria-label="USD of the workflow"');
+      expect(html).toMatch(/aria-label="Turns of the workflow"[^>]*value="10"/);
+      expect(html).toMatch(/aria-label="Minutes of the workflow"[^>]*value="30"/);
+      expect(html).toMatch(/aria-label="USD of the workflow" placeholder="optional"/);
+      expect(hat({ budget: { turns: 10, minutes: 30, usd: 2 } })).toMatch(/aria-label="USD of the workflow"[^>]*value="2.00"/);
+    });
+    it('a block file has no budget, so no pills', () => {
+      expect(hat({ block: 'b' } as never)).not.toContain('of the workflow');
+    });
+    it('the over-sum error is said under the pills, only while it is true', () => {
+      const d = { severity: 'error', message: "The blocks' budgets add up to $3.00, over the workflow's $2.00.", pos: { line: 9, col: 1 } };
+      expect(hat({}, [d])).toContain('<div class="sx-bad">The blocks&#x27; budgets add up to $3.00, over the workflow&#x27;s $2.00.</div>');
+      expect(hat({})).not.toContain('sx-bad');
+      // any other error is not the hat's to say
+      expect(hat({}, [{ severity: 'error', message: 'Unknown attribute "x"', pos: { line: 9, col: 1 } }])).not.toContain('sx-bad');
+      expect(hat({}, [{ severity: 'warning', message: d.message, pos: d.pos }])).not.toContain('sx-bad');
+    });
   });
   it('the two handles say what they do', () => {
     const html = face(step('run', { attrs: { cmd: 'x' } }));

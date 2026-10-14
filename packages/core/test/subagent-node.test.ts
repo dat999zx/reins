@@ -62,8 +62,8 @@ describe('subagent step: validate', () => {
     expect(errors(wf('## model m\nusd: 1.10\n\n## subagent r\nusd: 0.90\n> Go.\n'))).toEqual([]);
   });
 
-  it('a slice with no workflow USD asks for it', () => {
-    expect(errors(wf('## subagent r\nusd: 0.50\n> Go.\n', ''))).toEqual(["Set the workflow's USD budget first: block budgets are carved out of it."]);
+  it('a slice with no workflow USD is fine: no USD limit, the slice is a cap of its own', () => {
+    expect(errors(wf('## subagent r\nusd: 0.50\n> Go.\n', ''))).toEqual([]);
   });
 
   it('a malformed slice is refused in words', () => {

@@ -53,6 +53,8 @@ export interface NodeType {
   container?: 'kids' | 'kids+else';
   /** True when the step can fail, so an on-fail link on it can fire. */
   fails?: true;
+  /** True when this kind's exec runs a turn compiled from the step's own prompt, so a preview can show it. */
+  sendsTurn?: true;
   heading?: {
     parse(arg: string, step: Step, ctx: HeadingCtx): boolean;
     print(step: Step): { text: string; condInHeading: boolean };
