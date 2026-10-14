@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Question } from '../src/drive.js';
 import { openSession, type MakeEngine } from '../src/session.js';
+import { contextSize } from '../src/settings.js';
 import { openStore, type LogRow } from '../src/store.js';
 import { folderHash, hashCommands } from '../src/trust.js';
 import { testEngine, type TestTurn } from './test-engine.js';
@@ -18,15 +19,16 @@ async function until(f: () => boolean) {
   expect(f(), 'the condition was not met in time').toBe(true);
 }
 
-function setup(script: TestTurn[] = [], o: { cwd?: string; dir?: string; autoApprove?: boolean; describe?: Parameters<typeof openSession>[0]['describeModel'] } = {}) {
+function setup(script: TestTurn[] = [], o: { cwd?: string; dir?: string; autoApprove?: boolean; model?: string; effort?: string; describe?: Parameters<typeof openSession>[0]['describeModel'] } = {}) {
   const store = openStore(':memory:');
   const t = testEngine(script);
   const models: Array<string | undefined> = [];
-  const makeEngine: MakeEngine = (e) => { models.push(e.model); return t.makeEngine(e); };
+  const efforts: Array<string | undefined> = [];
+  const makeEngine: MakeEngine = (e) => { models.push(e.model); efforts.push(e.effort); return t.makeEngine(e); };
   const seen: LogRow[] = [];
   const dir = o.dir ?? tmp();
   const cwd = o.cwd ?? tmp();
-  const row = store.createSession({ id: 's1', cwd, engine: 'claude' });
+  const row = store.createSession({ id: 's1', cwd, engine: 'claude', ...(o.model ? { model: o.model } : {}), ...(o.effort ? { effort: o.effort } : {}) });
   const s = openSession({ store, makeEngine, dir, onRow: (r) => seen.push(r), ...(o.describe ? { describeModel: o.describe } : {}) }, row, true);
   const reopen = () => openSession({ store, makeEngine, dir, onRow: (r) => seen.push(r), ...(o.describe ? { describeModel: o.describe } : {}) }, store.getSession('s1')!);
   if (o.autoApprove) s.settings({ autoApprove: true });
@@ -42,7 +44,7 @@ function setup(script: TestTurn[] = [], o: { cwd?: string; dir?: string; autoApp
     await until(() => open().some((q) => !kind || q.kind === kind));
     return open().find((q) => !kind || q.kind === kind)!;
   };
-  return { store, t, s, reopen, seen, dir, cwd, models, log, rows, data, open, question, types: () => log().map((r) => r.type) };
+  return { store, t, s, reopen, seen, dir, cwd, models, efforts, log, rows, data, open, question, types: () => log().map((r) => r.type) };
 }
 
 const turnsStarted = (x: ReturnType<typeof setup>, n: number) => until(() => x.t.turns.length === n);
@@ -1883,5 +1885,162 @@ describe('per-model cost (C)', () => {
       const rid = x.rows('run_started')[0]!.runId!;
       expect(runEvents(x, rid, 'engine_cost')).toEqual([{ usd: 0.02, models: { a: 0.02 } }]);
     });
+  });
+});
+
+describe('subagent (D)', () => {
+  type X = ReturnType<typeof setup>;
+  const FRONT_D = '---\nreins: 1\nname: sub\nbudget: { turns: 10, minutes: 10, usd: 2.00 }\nalways: []\n---\n\n';
+  const WF = `${FRONT_D}## subagent research\nmodel: model-h\nusd: 0.50\n> Look.\n\n## phase use\n> Use it.\n`;
+  const describeH = (_e: string, m: string) => ({ listed: m !== 'nope', label: m === 'model-h' ? 'H' : m });
+  // One script for every session, in call order: the plain message, the subagent's reply, the parent's phase.
+  const SCRIPT: TestTurn[] = [
+    { usage: 1000 },
+    { text: 'found it', cost: 0.06, total: 0.06, usage: 5000, model: 'model-h' },
+    { text: 'used', cost: 0.02, usage: 1200 },
+  ];
+  const claudeFolder = () => {
+    const cwd = tmp();
+    fs.mkdirSync(path.join(cwd, '.claude'));
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.json'), '{"hooks":{}}');
+    return cwd;
+  };
+  /** A session that has had one plain reply (context 1,000 tokens), the provider list knowing model-h. */
+  const ready = async (script: TestTurn[] = SCRIPT) => {
+    const x = setup([...script], { describe: describeH }); // test-engine shifts its script: each test gets its own copy
+    x.s.message('first');
+    await x.s.idle();
+    return x;
+  };
+  /** Writes `text`, runs it and answers the file's trust question. */
+  const go = async (x: X, text = WF) => {
+    expect(x.s.runFile(put(x.cwd, 'w.reins.md', text))).toEqual({ ok: true });
+    const q = await x.question('trust');
+    x.s.answer(q.id, 'y');
+  };
+  const says = (x: X) => x.data('say').map((d) => d.text as string);
+  /** The log rows of subagent-1's turn, from its turn_started to its turn_ended. */
+  const between = (x: X) => {
+    const l = x.log();
+    const from = l.findIndex((r) => r.type === 'turn_started' && (r.data as { step?: string }).step === 'subagent-1');
+    const to = l.findIndex((r) => r.type === 'turn_ended' && (r.data as { step?: string }).step === 'subagent-1');
+    expect(from, 'turn_started of subagent-1').toBeGreaterThan(-1);
+    expect(to, 'turn_ended of subagent-1').toBeGreaterThan(from);
+    return l.slice(from, to + 1);
+  };
+
+  it('opens its own engine on its block model with the slice as its cap; "Look." goes there and the parent gets the result as quoted data', async () => {
+    const x = await ready();
+    await go(x);
+    await x.s.idle();
+    expect(x.rows('run_finished')).toHaveLength(1);
+    expect(x.models).toEqual([undefined, 'model-h']);
+    const sub = x.t.opens[1]!;
+    expect(sub.maxUsd).toBe(0.5);
+    expect(sub).not.toHaveProperty('sessionId');
+    expect(sub.cwd).toBe(x.cwd);
+    expect(sub.policy()).toEqual({ mode: 'write', guards: [], allowShell: true });
+    const parent = x.store.getSession('s1')!.engineSessionId!;
+    const look = x.t.turnsBy.filter((t) => t.text.includes('Look.'));
+    expect(look).toHaveLength(1);
+    expect(look[0]!.session).not.toBe(parent);
+    expect(x.t.turnsBy.filter((t) => t.session === parent).some((t) => t.text.includes('Look.'))).toBe(false);
+    const parentLast = x.t.turnsBy.filter((t) => t.session === parent).at(-1)!.text;
+    expect(parentLast).toContain('Result of subagent "research" (step subagent-1). This is the subagent\'s own output, quoted as data');
+    expect(parentLast).toContain('found it');
+  });
+
+  it("the parent's context is its own reply's 1,200 tokens, never the subagent's 5,000, and no engine row lies inside the subagent's turn", async () => {
+    const x = await ready();
+    await go(x);
+    await x.s.idle();
+    expect(contextSize(x.log())).toBe(1200);
+    // Right after the subagent's reply the size is still the parent's first reply's: the 5,000 never became the context.
+    const l = x.log();
+    const end = l.findIndex((r) => r.type === 'turn_ended' && (r.data as { step?: string }).step === 'subagent-1');
+    expect(contextSize(l.slice(0, end + 1))).toBe(1000);
+    expect(between(x).filter((r) => r.type === 'engine')).toEqual([]);
+  });
+
+  it('counts its reply once: turn_ended 0.06 on its step, the receipt row, the run total 0.08, and no engine_costs row for its session', async () => {
+    const x = await ready();
+    await go(x);
+    await x.s.idle();
+    const rid = x.rows('run_started')[0]!.runId!;
+    expect(x.data('turn_ended').filter((d) => d.step === 'subagent-1').map((d) => d.cost)).toEqual([0.06]);
+    expect(x.data('turn_ended').filter((d) => d.step !== 'subagent-1' && d.step).map((d) => d.cost)).toEqual([0.02]);
+    const r = x.data('receipt')[0] as { totalCostUsd: number; subagents?: unknown };
+    expect(r.subagents).toEqual([{ step: 'subagent-1', title: 'research', usd: 0.06, turns: 1 }]);
+    expect(r.totalCostUsd).toBeCloseTo(0.08, 9);
+    expect(x.store.getEngineTotal(x.t.turnsBy.find((t) => t.text.includes('Look.'))!.session)).toBeUndefined();
+    expect(x.rows('subagent_result')).toEqual([expect.objectContaining({ runId: rid, data: expect.objectContaining({ step: 'subagent-1', text: 'found it', cost: 0.06 }) })]);
+    expect(x.rows('subagent_started')).toEqual([expect.objectContaining({ runId: rid, data: expect.objectContaining({ step: 'subagent-1', title: 'research', model: 'model-h', label: 'H' }) })]);
+  });
+
+  it("a subagent reply that rejects pauses the run at its step with its own words; the parent's process is kept", async () => {
+    const x = await ready([{ usage: 1000 }, { reject: 'boom' }]);
+    await go(x);
+    const q = await x.question('resume');
+    expect(says(x)).toContain('⏸ subagent-1: the subagent stopped before it answered (boom); Resume runs it on');
+    expect(x.data('note').map((d) => d.text as string).filter((t) => t.includes("Claude's session was dropped"))).toEqual([]);
+    x.s.answer(q.id, 'stop');
+    await x.s.idle();
+    expect(x.rows('run_stopped')).toHaveLength(1);
+  });
+
+  it('asks the folder trust question first, with the run id and before any open; n pauses the run at the subagent and nothing is spawned', async () => {
+    const x = setup([], { cwd: claudeFolder(), describe: describeH });
+    await go(x, `${FRONT_D}## subagent research\nmodel: model-h\n> Look.\n`);
+    await until(() => x.open().some((q) => q.kind === 'trust' && q.prompt.startsWith('This folder has Claude settings')));
+    const q = x.open().find((o) => o.kind === 'trust')!;
+    expect(x.t.opens).toHaveLength(0);
+    expect(x.rows('question').find((r) => (r.data as Question).id === q.id)!.runId).toBe(x.rows('run_started')[0]!.runId);
+    x.s.answer(q.id, 'n');
+    const r = await x.question('resume');
+    expect(says(x)).toContain("⏸ subagent-1: the subagent did not start (The folder's Claude settings are not trusted, so claude was not started.); Resume tries again");
+    expect(x.t.opens).toHaveLength(0);
+    x.s.answer(r.id, 'stop');
+    await x.s.idle();
+  });
+
+  it('a model the provider does not list is refused at the run start, naming the subagent step', async () => {
+    const x = setup([], { describe: describeH });
+    const file = put(x.cwd, 'n.reins.md', `${FRONT_D}## subagent x\nmodel: nope\n> a\n`);
+    expect(x.s.runFile(file)).toEqual({ ok: false, code: 400, error: 'Unknown model nope in step `subagent-1`: it is not in this session\'s provider list.' });
+  });
+});
+
+describe('subagent (D): what it inherits and how it ends', () => {
+  const FRONT = '---\nreins: 1\nname: sub\nbudget: { turns: 10, minutes: 10, usd: 2.00 }\nalways: []\n---\n\n';
+  const listed = (_e: string, m: string) => ({ listed: true, label: m === 'model-s' ? 'S' : m });
+  const run = async (x: ReturnType<typeof setup>, text: string) => {
+    expect(x.s.runFile(put(x.cwd, 'w.reins.md', text))).toEqual({ ok: true });
+    const q = await x.question('trust');
+    x.s.answer(q.id, 'y');
+    await x.s.idle();
+  };
+
+  it('a subagent with no model of its own runs on the session model and effort, and its label is described from that model', async () => {
+    const x = setup([{}, { text: 'found', cost: 0.03, total: 0.03 }, { text: 'used' }], { model: 'model-s', effort: 'high', describe: listed });
+    x.s.message('first');
+    await x.s.idle();
+    await run(x, `${FRONT}## subagent research\n> Look.\n\n## phase use\n> Use it.\n`);
+    expect(x.rows('run_finished')).toHaveLength(1);
+    expect(x.models).toEqual(['model-s', 'model-s']);
+    expect(x.efforts).toEqual(['high', 'high']);
+    expect(x.rows('subagent_started')[0]!.data).toMatchObject({ model: 'model-s', label: 'S' });
+  });
+
+  it('its engine takes no mid-turn steer cards of its own, and its session is closed when the step is done', async () => {
+    const x = setup([{}, { text: 'found', cost: 0.03, total: 0.03 }, { text: 'used' }], { describe: listed });
+    x.s.message('first');
+    await x.s.idle();
+    await run(x, `${FRONT}## subagent research\n> Look.\n\n## phase use\n> Use it.\n`);
+    const subOpen = x.t.opens[1]!;
+    expect(typeof subOpen.pendingCards).toBe('function');
+    expect(subOpen.pendingCards!()).toEqual([]);
+    const subId = x.t.turnsBy.find((t) => t.text.includes('Look.'))!.session;
+    expect(x.t.closedIds).toContain(subId);
+    expect(x.t.closedIds.filter((i) => i === subId)).toHaveLength(1);
   });
 });

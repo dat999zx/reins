@@ -4,7 +4,7 @@ import path from 'node:path';
 import {
   Run, receipt,
   type Decision, type Diagnostic, type Engine, type EngineEvent, type EngineSession, type Policy,
-  type Receipt, type RunEventRecord, type RunOptions, type SwitchOutcome, type ToolRequest, type TurnResult, type Workflow,
+  type Receipt, type RunEventRecord, type RunOptions, type SubagentOpen, type SubagentOpened, type SwitchOutcome, type ToolRequest, type TurnResult, type Workflow,
 } from '@reins/core';
 import { askTool, driveRun, questionId, runOptions, type DriveIo, type Question } from './drive.js';
 import { contextSize, contextWindow, detachedRuns, readSetting, stillOverAfterCompaction, switchCheck, type SwitchCheck } from './settings.js';
@@ -220,8 +220,8 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     return { ...r, models: r.models.map((m) => ({ ...m, label: describe(engine, m.model, undefined).label })) };
   }
 
-  async function openEngine(): Promise<EngineSession | undefined> {
-    cancelOpen = false;
+  /** The folder's own Claude settings run without asking: trusted once per hash, before any claude process starts here. */
+  async function trustFolder() {
     const f = folderHash(cwd);
     if (f && !store.isTrusted(cwd, FOLDER_PATH, f.hash)) {
       const a = await ask({
@@ -235,6 +235,11 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       }
       store.trust(cwd, FOLDER_PATH, f.hash);
     }
+  }
+
+  async function openEngine(): Promise<EngineSession | undefined> {
+    cancelOpen = false;
+    await trustFolder();
     await retiring;
     if (cancelOpen || stopping) return undefined;
     const sid = store.getSession(id)!.engineSessionId;
@@ -255,6 +260,40 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   }
   const ensureEngine = (): Promise<EngineSession | undefined> =>
     live ? Promise.resolve(live) : (opening ??= openEngine().finally(() => { opening = undefined; }));
+
+  /** A subagent never asks the user itself (Hermes): its tool request is a card on the parent run, titled with it. */
+  // 3b-1: always asks; 3b-2 adds the deny setting.
+  function subagentApprove(title: string, r: ToolRequest): Promise<Decision> {
+    return askTool(io, r, title);
+  }
+
+  // ponytail: the subagent runs on its block's model, else the session's; its live text is not in the feed (only its cards, notes and result), and its guard refusals count in the receipt but not on its chip (run `refusal` rows are not in the session log, :43).
+  /** A subagent's own engine (D): its model, its own hook server, and none of its events in the session's engine rows (they measure the parent's context). */
+  async function openSubagent(o: SubagentOpen): Promise<SubagentOpened> {
+    await trustFolder();
+    if (stopping) throw new Error('The session was stopped before the subagent started.');
+    const cur = store.getSession(id)!;
+    const model = o.model ?? cur.model;
+    const title = `Subagent ${o.title} (\`${o.step}\`)`;
+    const e = deps.makeEngine({
+      ...(model ? { model } : {}), ...(cur.effort ? { effort: cur.effort } : {}),
+      onApprove: (r) => subagentApprove(title, r),
+      onLive: () => {},
+    });
+    const { step: _s, title: _t, ...open } = o;
+    const s = await e.open({ ...open, cwd, pendingCards: () => [] });
+    const session: EngineSession = {
+      sessionId: s.sessionId,
+      async turn(text) {
+        turnOpen = true; // ask() takes tool questions only while a turn is open
+        try { return await s.turn(text); } finally { turnOpen = false; closeQuestions('the turn ended', 'tool'); }
+      },
+      interrupt: () => s.interrupt(),
+      events: s.events,
+      close: () => s.close(),
+    };
+    return { session, ...(model ? { model, label: describe(cur.engine, model, undefined).label } : {}) };
+  }
 
   /** One engine call (a reply or a compaction): the process, the cost total, the unknown-cost note, a failed switch. */
   async function call(f: (s: EngineSession) => Promise<TurnResult>): Promise<TurnResult> {
@@ -439,7 +478,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   ): Promise<string | undefined> {
     runId = rid;
     const opts = runOptions(io, {
-      workflow: wf, engine: getEngine(), cwd, resolveBlock, session: lent, switchModel: runSwitch,
+      workflow: wf, engine: getEngine(), cwd, resolveBlock, session: lent, switchModel: runSwitch, openSubagent,
       onEvent: (ev) => {
         store.appendEvent(rid, ev);
         if (run) store.saveSnapshot(rid, run.snapshot());

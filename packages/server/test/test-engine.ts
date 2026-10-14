@@ -28,6 +28,10 @@ export function testEngine(script: TestTurn[] = []) {
     decisions: [] as Decision[],
     interrupts: 0,
     closes: 0,
+    // The engine session ids: `closes` and `interrupts` count the parent's too, and `turns` has no owner.
+    turnsBy: [] as Array<{ session: string; text: string }>,
+    closedIds: [] as string[],
+    interruptedIds: [] as string[],
     release: () => {},
     holdClose: () => {},
     releaseClose: () => {},
@@ -49,10 +53,11 @@ export function testEngine(script: TestTurn[] = []) {
     open: async (opts) => {
       state.opens.push(opts);
       let interrupted = false;
+      const sessionId = opts.sessionId ?? `test-${nextId++}`;
       // One body for turn() and compact(): a compaction shifts a script entry too, but is no message (state.compacts, not state.turns).
       const run = async (text: string, compact: boolean): Promise<TurnResult> => {
         if (compact) state.compacts++;
-        else state.turns.push(text);
+        else { state.turns.push(text); state.turnsBy.push({ session: sessionId, text }); }
         interrupted = false;
         let end!: () => void;
         turnDone = new Promise<void>((r) => { end = r; });
@@ -98,18 +103,19 @@ export function testEngine(script: TestTurn[] = []) {
         }
       };
       const session: EngineSession = {
-        sessionId: opts.sessionId ?? `test-${nextId++}`,
+        sessionId,
         turn: (text) => run(text, false),
         compact: () => run('/compact', true),
         // Like the real adapter (engine.ts:155-173): a turn that waits on an approval keeps the interrupt waiting until the question is settled.
         async interrupt() {
           interrupted = true;
           state.interrupts++;
+          state.interruptedIds.push(sessionId);
           freeze?.();
           await turnDone;
         },
         events: { async *[Symbol.asyncIterator]() {} },
-        async close() { state.closes++; await closeGate; },
+        async close() { state.closes++; state.closedIds.push(sessionId); await closeGate; },
       };
       return session;
     },
