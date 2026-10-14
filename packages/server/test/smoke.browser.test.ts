@@ -432,6 +432,30 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await expect.poll(() => editor.inputValue(), { timeout: W }).toBe(beforeModel);
     await blocksTab.click();
 
+    // 8d.3d. the subagent block: the Model select starts with the session's model, a model and a title land in the file (print keeps the `model:` line), the face shows the model
+    await textTab.click();
+    const beforeSub = await editor.inputValue();
+    await blocksTab.click();
+    await card('subagent').click();
+    await row('subagent-1').waitFor();
+    await panel.locator('h3', { hasText: 'subagent-1' }).waitFor();
+    const subPick = panel.getByRole('combobox', { name: 'Model', exact: true });
+    expect(await subPick.locator('option').first().textContent()).toBe("(the session's model)");
+    await subPick.selectOption('claude-haiku-5-5');
+    const subTitle = panel.getByRole('textbox', { name: 'Title' });
+    await subTitle.fill('research');
+    await subTitle.blur();
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('## subagent research');
+    expect(await editor.inputValue()).toContain('model: claude-haiku-5-5');
+    await blocksTab.click();
+    await expect.poll(() => row('subagent-1').locator('input').nth(1).inputValue(), { timeout: W }).toBe('claude-haiku-5-5');
+    await panel.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect.poll(() => row('subagent-1').count(), { timeout: W }).toBe(0);
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toBe(beforeSub);
+    await blocksTab.click();
+
     // 8d.4. a block's grip dragged onto the top half of another block moves it before that block
     await blocksTab.click();
     await row('build').locator('.sx-grip').first().dragTo(row('plan').locator('.sx-row').first(), { targetPosition: { x: 30, y: 3 } });

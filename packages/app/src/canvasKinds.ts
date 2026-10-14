@@ -3,8 +3,8 @@ import type { CardKind, Step, StepKind } from '@reins/core';
 import { BUDGET_ERRORS } from './panelEdit.js';
 
 export type FieldKey = 'title' | 'prompt' | 'mode' | 'cmd' | 'max' | 'against' | 'knowl' | 'to' | 'focus' | 'model' | 'usd';
-// `error` is what the panel says when applyField refuses the value
-export type Field = { key: FieldKey; label: string; input: 'text' | 'mono' | 'textarea' | 'number' | 'mode' | 'step' | 'model'; error?: string };
+// `error` is what the panel says when applyField refuses the value; `empty` is the Model select's first option when not '(pick a model)'
+export type Field = { key: FieldKey; label: string; input: 'text' | 'mono' | 'textarea' | 'number' | 'mode' | 'step' | 'model'; error?: string; empty?: string };
 export type Token = string | 'cond' | 'sub' | { field: FieldKey };
 export type KindView = {
   group?: 'kids' | 'kids+else';
@@ -53,7 +53,12 @@ export const KINDS: Record<StepKind, KindView> = {
     line: ['model', { field: 'model' }, 'USD', { field: 'usd' }],
     card: { label: 'model', section: 'Flow' }, fresh: () => ({}),
   },
-  subagent: { fields: [], line: ['subagent'], card: { label: 'subagent', section: 'Flow' }, fresh: () => ({}) },
+  subagent: {
+    fields: [title, prompt, mode, { key: 'model', label: 'Model', input: 'model', empty: "(the session's model)" }, { key: 'usd', label: 'Budget (USD)', input: 'text', error: BUDGET_ERRORS.usd }],
+    line: ['subagent', { field: 'title' }, 'on', { field: 'model' }, 'USD', { field: 'usd' }],
+    cards: true,
+    card: { label: 'subagent', section: 'Flow' }, fresh: () => ({}),
+  },
   end: { stops: true, fields: [], line: ['end'], card: { label: 'end', section: 'Flow' }, fresh: () => ({}) },
   use: { fields: [], line: ['use', 'sub'], sub: (s) => s.title || s.attrs.use || s.id },
 };

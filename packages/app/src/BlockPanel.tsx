@@ -11,7 +11,7 @@ const usdText = (usd: number) => (Number(usd.toFixed(2)) === usd ? usd.toFixed(2
 
 type Models = Array<{ id: string; label: string }>;
 // `alert` is the id of the words under a refused value: the input says it is invalid and points at them.
-type InputProps = { label: string; value: string; ids: string[]; models: Models; rev: unknown; commit: (v: string) => void; alert?: string };
+type InputProps = { label: string; value: string; ids: string[]; models: Models; rev: unknown; commit: (v: string) => void; alert?: string; empty?: string };
 
 // A field shows a draft while typing and commits on blur / Enter. It re-syncs from the model after every
 // preview (`rev`), so a commit the editor dropped never leaves a value the model does not have.
@@ -72,10 +72,10 @@ const INPUTS: Record<Field['input'], (p: InputProps) => JSX.Element> = {
     </label>
   ),
   // the session's own catalog; a model the catalog does not list (typed in Text) stays selectable
-  model: ({ label, value, models, commit }) => (
+  model: ({ label, value, models, commit, empty }) => (
     <label className="bfield">{label}
       <select value={value} onChange={(e) => commit(e.target.value)}>
-        <option value="">(pick a model)</option>
+        <option value="">{empty ?? '(pick a model)'}</option>
         {modelOptions(models, value).slice(1).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
       </select>
     </label>
@@ -83,7 +83,7 @@ const INPUTS: Record<Field['input'], (p: InputProps) => JSX.Element> = {
 };
 
 // One panel field; a value applyField refuses is said in words under it (the file is left as it was).
-function PanelField({ f, step, ids, models, rev, onCommit }: {
+export function PanelField({ f, step, ids, models, rev, onCommit }: {
   f: Field; step: Step; ids: string[]; models: Models; rev: unknown; onCommit: (v: string) => void;
 }) {
   const [bad, setBad] = useState('');
@@ -91,7 +91,7 @@ function PanelField({ f, step, ids, models, rev, onCommit }: {
   const alertId = `${step.id}-${f.key}-bad`;
   return (
     <>
-      <Input label={f.label} value={fieldValue(step, f.key)} ids={ids} models={models} rev={rev} alert={bad ? alertId : undefined}
+      <Input label={f.label} value={fieldValue(step, f.key)} ids={ids} models={models} rev={rev} empty={f.empty} alert={bad ? alertId : undefined}
         commit={(v) => {
           const ok = applyField(structuredClone(step), f.key, v);
           setBad(ok ? '' : f.error ?? '');
