@@ -9,6 +9,8 @@ export interface Provider {
   label: string;
   /** The CURATED models, in picker order: ids already run on the real CLI. The catalog adds extras after them. */
   models: Array<{ id: string; label: string }>;
+  /** What a new session uses, like Hermes `model.default`; one of `models`. */
+  defaultModel: string;
   /** The catalog's key for this provider (models.dev), if it has one. */
   catalog?: string;
   /** Models whose stream reports no context window. */

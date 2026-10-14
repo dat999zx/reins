@@ -37,7 +37,7 @@ const num = (n: number) => n.toLocaleString('en-US');
 
 /** `fallback` is the catalog's window for the model; the usage row's own window (the stream's) wins. */
 export function contextWords(u?: Usage, fallback?: number): { text: string; title: string } {
-  if (!u) return { text: 'Context —', title: 'Known after the next reply.' };
+  if (!u) return { text: `Context 0 / ${fallback === undefined ? '?' : tokens(fallback)}`, title: 'Measured after the first reply.' };
   const window = u.window ?? fallback;
   const text = `Context ${u.stale ? '≥' : ''}${tokens(u.used)} / ${window === undefined ? '?' : tokens(window)}`;
   if (u.compressed) return { text, title: "At least this: the provider's figure after compressing. The next reply measures it again." };
@@ -45,11 +45,16 @@ export function contextWords(u?: Usage, fallback?: number): { text: string; titl
   return { text, title: `${u.model}: ${num(u.used)}${window === undefined ? '' : ` of ${num(window)}`} tokens after the last reply.` };
 }
 
-/** Default first, the provider's list, then the current model when the list does not have it. */
+/** The provider's list, then the current model when the list does not have it. */
 export function modelOptions(models: Array<{ id: string; label: string }>, current?: string): Array<{ id: string; label: string }> {
-  const out = [{ id: '', label: 'Default' }, ...models];
+  const out = [...models];
   if (current && !models.some((m) => m.id === current)) out.push({ id: current, label: current });
   return out;
+}
+
+/** The model a session runs on: its own, else the last reply's (a session from before every session had one), else its provider's default. */
+export function shownModel(sess: { engine?: string; model?: string | null }, usage: Usage | undefined, providers: Array<{ id: string; defaultModel: string }>): string | undefined {
+  return sess.model ?? usage?.model ?? providers.find((p) => p.id === sess.engine)?.defaultModel;
 }
 
 /**

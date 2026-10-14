@@ -6,13 +6,13 @@ const LOOKS = { pill: 'sx-pill', code: 'sx-code', num: 'sx-pill sx-num', bold: '
 // commit returns false when the edit was not sent: on blur the draft then reverts; on Enter (still focused) it
 // stays until Escape, blur or more typing, and is marked invalid only if `valid` says the value itself is refused
 // (a busy editor refuses nothing: the draft stays, unmarked). `dead`: a loose block's controls do nothing.
-export function Pill({ label, value, look, rev, commit, valid, dead }: {
-  label: string; value: string; look: keyof typeof LOOKS; rev: unknown; commit: (v: string) => boolean; valid?: (v: string) => boolean; dead?: boolean;
+export function Pill({ label, value, look, rev, commit, valid, dead, ph: own }: {
+  label: string; value: string; look: keyof typeof LOOKS; rev: unknown; commit: (v: string) => boolean; valid?: (v: string) => boolean; dead?: boolean; ph?: string;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   const dirty = useRef(false);
   const [bad, setBad] = useState(false);
-  const ph = label.split(' of ')[0]!.toLowerCase(); // the empty pill names its field
+  const ph = own ?? label.split(' of ')[0]!.toLowerCase(); // the empty pill names its field
   // Held while focused: a click on a pill selects its block, which re-runs the preview, and a reset would wipe the typing.
   const line = useLine(value, rev, (v) => {
     if (commit(v)) return;

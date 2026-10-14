@@ -109,8 +109,8 @@ describe('reins run against fake-claude', () => {
     // steer card delivered mid-turn in plan, inside this session's nonce marker
     const steer = evs.findIndex((e) => e.type === 'card_delivered' && e.data.channel === 'mid-turn' && /PINEAPPLE/.test(e.data.card));
     expect(stepOf(evs, steer)).toBe('plan');
-    const nonce = /\[REINS CARD ([0-9a-f]{32}) /.exec(f.log().find((l) => l.kind === 'args').note)![1];
-    expect(f.log().some((l) => l.kind === 'hook' && String(l.response.hookSpecificOutput?.additionalContext).includes(`[REINS CARD ${nonce} `))).toBe(true);
+    const nonce = /\[REINS CARD ([0-9a-f]{32}): /.exec(f.log().find((l) => l.kind === 'args').note)![1];
+    expect(f.log().some((l) => l.kind === 'hook' && String(l.response.hookSpecificOutput?.additionalContext).includes(`[REINS CARD ${nonce}: `))).toBe(true);
     // the gate held: no turn between gate_paused and the changes request, and none of implement before approval
     const gp = evs.findIndex((e) => e.type === 'gate_paused');
     const ga = evs.findIndex((e) => e.type === 'gate_approved');

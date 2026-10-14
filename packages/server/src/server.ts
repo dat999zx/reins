@@ -190,7 +190,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     for (const k of ['model', 'effort', 'title'] as const) if (b[k] !== undefined && !str(b[k])) return fail(400, `${k} must be a string.`);
     const row = o.store.createSession({
       id: randomBytes(6).toString('hex'), cwd: b.cwd, engine: 'claude',
-      ...(str(b.model) ? { model: b.model } : {}), ...(str(b.effort) ? { effort: b.effort } : {}), ...(str(b.title) ? { title: b.title } : {}),
+      model: str(b.model) ? b.model : providers.find((p) => p.id === 'claude')!.defaultModel, ...(str(b.effort) ? { effort: b.effort } : {}), ...(str(b.title) ? { title: b.title } : {}),
     });
     const s = openSession(deps, row, true);
     sessions.set(row.id, s);
@@ -228,7 +228,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     const p = url.pathname;
     if (req.method === 'GET' && p === '/api/state') {
       void catalog?.refresh(); // never rejects; a no-op inside 4 hours
-      return ok({ sessions: [...sessions.values()].map(view), engines, providers: providers.map((pr) => ({ id: pr.id, label: pr.label, models: list(pr) })) });
+      return ok({ sessions: [...sessions.values()].map(view), engines, providers: providers.map((pr) => ({ id: pr.id, label: pr.label, defaultModel: pr.defaultModel, models: list(pr) })) });
     }
     if (req.method === 'POST' && p === '/api/state/probe') { engines = await probeNow(); return ok({ engines }); }
     if (req.method === 'GET' && p === '/api/tags') return ok({ tags: tagCatalogue() });

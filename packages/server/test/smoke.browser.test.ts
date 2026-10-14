@@ -381,7 +381,7 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await row('model-1').waitFor();
     await panel.locator('h3', { hasText: 'model-1' }).waitFor();
     const pick = panel.getByRole('combobox', { name: 'Model', exact: true });
-    expect(await pick.locator('option').first().textContent()).toBe('(pick a model)');
+    expect(await pick.locator('option').first().textContent()).toBe('Pick a model');
     await pick.selectOption('claude-opus-5-5');
     await textTab.click();
     await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('## model claude-opus-5-5');
@@ -407,8 +407,8 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await expect.poll(() => diags.textContent(), { timeout: W }).toContain("Set the workflow's USD budget first: block budgets are carved out of it.");
     await blocksTab.click();
     // the face shows both pills, the id and the USD
-    await expect.poll(() => row('model-1').locator('input').nth(0).inputValue(), { timeout: W }).toBe('claude-opus-5-5');
-    await expect.poll(() => row('model-1').locator('input').nth(1).inputValue(), { timeout: W }).toBe('0.50');
+    await expect.poll(() => row('model-1').getByRole('combobox', { name: 'Model of model-1', exact: true }).inputValue(), { timeout: W }).toBe('claude-opus-5-5');
+    await expect.poll(() => row('model-1').locator('input').nth(0).inputValue(), { timeout: W }).toBe('0.50');
     // the words under Budget (USD) go away as soon as a good value is committed (no tab switch in between)
     await expect.poll(async () => {
       await slice.fill('abc');
@@ -440,7 +440,7 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await row('subagent-1').waitFor();
     await panel.locator('h3', { hasText: 'subagent-1' }).waitFor();
     const subPick = panel.getByRole('combobox', { name: 'Model', exact: true });
-    expect(await subPick.locator('option').first().textContent()).toBe("(the session's model)");
+    expect(await subPick.locator('option').first().textContent()).toBe('Sonnet 5.5 (session)');
     await subPick.selectOption('claude-haiku-5-5');
     const subTitle = panel.getByRole('textbox', { name: 'Title' });
     await subTitle.fill('research');
@@ -449,7 +449,13 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('## subagent research');
     expect(await editor.inputValue()).toContain('model: claude-haiku-5-5');
     await blocksTab.click();
-    await expect.poll(() => row('subagent-1').locator('input').nth(1).inputValue(), { timeout: W }).toBe('claude-haiku-5-5');
+    const facePick = row('subagent-1').getByRole('combobox', { name: 'Model of subagent-1', exact: true });
+    await expect.poll(() => facePick.inputValue(), { timeout: W }).toBe('claude-haiku-5-5');
+    // the face's own picker writes the same file line
+    await facePick.selectOption('claude-opus-5-5');
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('model: claude-opus-5-5');
+    await blocksTab.click();
     await panel.getByRole('button', { name: 'Delete', exact: true }).click();
     await expect.poll(() => row('subagent-1').count(), { timeout: W }).toBe(0);
     await textTab.click();

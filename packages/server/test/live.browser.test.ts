@@ -607,8 +607,8 @@ describe.skipIf(skip)('live run e2e', () => {
     // The estimate depends on list prices; this step tests the switch, not the limit.
     store!.putSetting('switchApprovalUsd', 100);
     const model = page.getByRole('combobox', { name: 'Model', exact: true });
-    expect(await model.inputValue()).toBe('');
-    expect(await model.locator('option').allInnerTexts()).toEqual(['Default', 'Opus 5.5', 'Sonnet 5.5', 'Haiku 5.5', 'Fable 5.1']);
+    expect(await model.inputValue()).toBe('claude-sonnet-5-5');
+    expect(await model.locator('option').allInnerTexts()).toEqual(['Opus 5.5', 'Sonnet 5.5', 'Haiku 5.5', 'Fable 5.1']);
     await model.selectOption('claude-opus-5-5');
     await tab('Chat').click();
     await page.getByText('Model set to Opus 5.5 from the next reply.', { exact: false }).waitFor();

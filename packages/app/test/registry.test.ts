@@ -141,7 +141,7 @@ describe('subagent rows and the titled card', () => {
       expect(drawable(row(t, {})), t).toBe(true);
     }
     expect(text(renderRow(row('subagent_started', { title: 'research', label: 'Haiku 5.5' }), ctx))).toBe('Subagent research started on Haiku 5.5.');
-    expect(text(renderRow(row('subagent_started', { title: 'research', resumed: true }), ctx))).toBe('Subagent research resumed on the default model.');
+    expect(text(renderRow(row('subagent_started', { title: 'research', resumed: true }), ctx))).toBe('Subagent research resumed on the session model.');
     expect(text(renderRow(row('subagent_started', { title: 'research', model: 'claude-haiku-5-5' }), ctx))).toBe('Subagent research started on claude-haiku-5-5.');
     expect(text(renderRow(row('subagent_started', { title: 'research', label: 'Haiku 5.5', model: 'claude-haiku-5-5' }), ctx))).toBe('Subagent research started on Haiku 5.5.');
     const html = renderToStaticMarkup(renderRow(row('subagent_result', { title: 'research', text: 'found it', cost: 0.0640898 }), ctx) as never);

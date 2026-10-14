@@ -3,8 +3,12 @@ import type { CardKind, Step, StepKind } from '@reins/core';
 import { BUDGET_ERRORS } from './panelEdit.js';
 
 export type FieldKey = 'title' | 'prompt' | 'mode' | 'cmd' | 'max' | 'against' | 'knowl' | 'to' | 'focus' | 'model' | 'usd';
-// `error` is what the panel says when applyField refuses the value; `empty` is the Model select's first option when not '(pick a model)'
-export type Field = { key: FieldKey; label: string; input: 'text' | 'mono' | 'textarea' | 'number' | 'mode' | 'step' | 'model'; error?: string; empty?: string };
+// `error` is what the panel says when applyField refuses the value; `inherits`: an empty model is the session's model; `ph` overrides the
+// empty pill's placeholder; `required`: the validator warns while it is empty, so the face says so.
+export type Field = {
+  key: FieldKey; label: string; input: 'text' | 'mono' | 'textarea' | 'number' | 'mode' | 'step' | 'model';
+  error?: string; inherits?: true; ph?: string; required?: true;
+};
 export type Token = string | 'cond' | 'sub' | { field: FieldKey };
 export type KindView = {
   group?: 'kids' | 'kids+else';
@@ -21,9 +25,11 @@ export type KindView = {
 const title: Field = { key: 'title', label: 'Title', input: 'text' };
 const prompt: Field = { key: 'prompt', label: 'Prompt', input: 'textarea' };
 const mode: Field = { key: 'mode', label: 'Mode', input: 'mode' };
+const mustPrompt: Field = { ...prompt, required: true }; // phase and subagent: core warns "has no prompt"
+const usd: Field = { key: 'usd', label: 'Budget (USD)', input: 'text', error: BUDGET_ERRORS.usd, ph: 'optional' };
 
 export const KINDS: Record<StepKind, KindView> = {
-  phase: { fields: [title, prompt, mode], line: [{ field: 'title' }, { field: 'prompt' }], cards: true, card: { label: 'phase', section: 'Flow' }, fresh: () => ({}) },
+  phase: { fields: [title, mustPrompt, mode], line: [{ field: 'title' }, { field: 'prompt' }], cards: true, card: { label: 'phase', section: 'Flow' }, fresh: () => ({}) },
   say: { fields: [prompt, mode], line: ['say', { field: 'prompt' }], cards: true, card: { label: 'custom prompt', section: 'Flow' }, fresh: () => ({}) },
   run: { fields: [{ key: 'cmd', label: 'Command', input: 'mono' }], line: ['run', { field: 'cmd' }], fails: true, card: { label: 'run command', section: 'Flow' }, fresh: () => ({ attrs: { cmd: 'npm test' } }) },
   gate: { fields: [], line: ['wait until', 'cond'], card: { label: 'wait until', section: 'Flow' }, fresh: () => ({ cond: { t: 'approve' } }) },
@@ -49,13 +55,13 @@ export const KINDS: Record<StepKind, KindView> = {
     card: { label: 'hand off', section: 'Flow' }, fresh: () => ({}),
   },
   model: {
-    fields: [{ key: 'model', label: 'Model', input: 'model' }, { key: 'usd', label: 'Budget (USD)', input: 'text', error: BUDGET_ERRORS.usd }],
+    fields: [{ key: 'model', label: 'Model', input: 'model' }, usd],
     line: ['model', { field: 'model' }, 'USD', { field: 'usd' }],
     card: { label: 'model', section: 'Flow' }, fresh: () => ({}),
   },
   subagent: {
-    fields: [title, prompt, mode, { key: 'model', label: 'Model', input: 'model', empty: "(the session's model)" }, { key: 'usd', label: 'Budget (USD)', input: 'text', error: BUDGET_ERRORS.usd }],
-    line: ['subagent', { field: 'title' }, 'on', { field: 'model' }, 'USD', { field: 'usd' }],
+    fields: [title, mustPrompt, mode, { key: 'model', label: 'Model', input: 'model', inherits: true }, usd],
+    line: ['subagent', { field: 'title' }, 'on', { field: 'model' }, 'USD', { field: 'usd' }, { field: 'prompt' }],
     cards: true,
     card: { label: 'subagent', section: 'Flow' }, fresh: () => ({}),
   },

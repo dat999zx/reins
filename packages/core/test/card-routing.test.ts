@@ -6,7 +6,7 @@ const tool = { type: 'tool_call' as const, tool: 'Read', input: { file_path: 'a.
 const delivered = (run: Run) => run.getEvents().filter((e) => e.type === 'card_delivered');
 
 describe('queueCard never loses a card (3b.1)', () => {
-  it('spec test: stop then now in one tool call — paused on stop, n delivered exactly once mid-turn', async () => {
+  it('spec test: stop then now in one tool call: paused on stop, n delivered exactly once mid-turn', async () => {
     const engine = new FakeEngine([{ events: [tool], text: 'x' }]);
     const interrupts = countInterrupts(engine);
     const run = new Run({ workflow: workflow([phase('a')]), engine });

@@ -15,6 +15,12 @@ describe('provider discovery', () => {
     expect(claude?.models.map((m) => m.id)).toEqual(['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1']);
   });
 
+  it('every provider has a default model that is one of its models', async () => {
+    const found = await loadProviders();
+    expect(found.length).toBeGreaterThan(0);
+    for (const p of found) expect(p.models.map((m) => m.id), p.id).toContain(p.defaultModel);
+  });
+
   it('a folder with a provider file is a provider; a folder without one is not', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'reins-prov-'));
     tmps.push(root);

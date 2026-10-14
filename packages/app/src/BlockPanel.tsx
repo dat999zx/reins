@@ -4,14 +4,15 @@ import { CARD_KINDS, KINDS, type Field } from './canvasKinds.js';
 import { setAlways, setBudget } from './blocks.js';
 import { editStep, removeLinks, setLink } from './canvas.js';
 import { applyField, applyLinkMax, budgetCount, budgetPatch, BUDGET_HINT, fieldValue, type BudgetKey } from './panelEdit.js';
-import { modelOptions } from './usage.js';
+import { ModelPicker } from './ModelPicker.js';
 
 // The same rule as usdText in packages/core/src/format/print.ts (the app imports only core's types): two decimals when that loses nothing.
 const usdText = (usd: number) => (Number(usd.toFixed(2)) === usd ? usd.toFixed(2) : String(usd));
 
 type Models = Array<{ id: string; label: string }>;
+export type SessionModel = { id: string; label: string }; // what a field that inherits the session's model runs on
 // `alert` is the id of the words under a refused value: the input says it is invalid and points at them.
-type InputProps = { label: string; value: string; ids: string[]; models: Models; rev: unknown; commit: (v: string) => void; alert?: string; empty?: string };
+type InputProps = { label: string; value: string; ids: string[]; models: Models; rev: unknown; commit: (v: string) => void; alert?: string; blank?: string };
 
 // A field shows a draft while typing and commits on blur / Enter. It re-syncs from the model after every
 // preview (`rev`), so a commit the editor dropped never leaves a value the model does not have.
@@ -72,26 +73,23 @@ const INPUTS: Record<Field['input'], (p: InputProps) => JSX.Element> = {
     </label>
   ),
   // the session's own catalog; a model the catalog does not list (typed in Text) stays selectable
-  model: ({ label, value, models, commit, empty }) => (
+  model: ({ label, value, models, commit, blank }) => (
     <label className="bfield">{label}
-      <select value={value} onChange={(e) => commit(e.target.value)}>
-        <option value="">{empty ?? '(pick a model)'}</option>
-        {modelOptions(models, value).slice(1).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-      </select>
+      <ModelPicker label={label} models={models} value={value} blank={blank} onChange={commit} />
     </label>
   ),
 };
 
 // One panel field; a value applyField refuses is said in words under it (the file is left as it was).
-export function PanelField({ f, step, ids, models, rev, onCommit }: {
-  f: Field; step: Step; ids: string[]; models: Models; rev: unknown; onCommit: (v: string) => void;
+export function PanelField({ f, step, ids, models, sessionModel, rev, onCommit }: {
+  f: Field; step: Step; ids: string[]; models: Models; sessionModel?: SessionModel; rev: unknown; onCommit: (v: string) => void;
 }) {
   const [bad, setBad] = useState('');
   const Input = INPUTS[f.input];
   const alertId = `${step.id}-${f.key}-bad`;
   return (
     <>
-      <Input label={f.label} value={fieldValue(step, f.key)} ids={ids} models={models} rev={rev} empty={f.empty} alert={bad ? alertId : undefined}
+      <Input label={f.label} value={fieldValue(step, f.key)} ids={ids} models={models} rev={rev} blank={f.inherits ? sessionModel?.label : undefined} alert={bad ? alertId : undefined}
         commit={(v) => {
           const ok = applyField(structuredClone(step), f.key, v);
           setBad(ok ? '' : f.error ?? '');
@@ -102,8 +100,8 @@ export function PanelField({ f, step, ids, models, rev, onCommit }: {
   );
 }
 
-export function BlockPanel({ step, all, cond, turn, rev, models, onEdit, onEditInText, onShowInChat, onDelete }: {
-  step: Step; all: Step[]; cond?: string; turn?: string; rev: unknown; models: Models;
+export function BlockPanel({ step, all, cond, turn, rev, models, sessionModel, onEdit, onEditInText, onShowInChat, onDelete }: {
+  step: Step; all: Step[]; cond?: string; turn?: string; rev: unknown; models: Models; sessionModel?: SessionModel;
   onEdit: (fn: (w: Workflow) => Workflow) => void; onEditInText: () => void; onShowInChat?: () => void; onDelete: () => void;
 }) {
   const k = KINDS[step.kind];
@@ -122,7 +120,7 @@ export function BlockPanel({ step, all, cond, turn, rev, models, onEdit, onEditI
       {onShowInChat && <button onClick={onShowInChat}>Show in Chat</button>}
 
       {k.fields.map((f) => (
-        <PanelField key={`${id}/${f.key}`} f={f} step={step} ids={others} models={models} rev={rev}
+        <PanelField key={`${id}/${f.key}`} f={f} step={step} ids={others} models={models} sessionModel={sessionModel} rev={rev}
           onCommit={(v) => change((s) => applyField(s, f.key, v))} />
       ))}
 

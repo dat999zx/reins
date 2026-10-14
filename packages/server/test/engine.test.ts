@@ -56,8 +56,8 @@ describe('claude adapter', () => {
     expect(urlA).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/hook\/[0-9a-f]{64}$/);
     expect(la.settings.hooks.PreToolUse[0].matcher.split('|')).toEqual(expect.arrayContaining(['Edit', 'Write', 'MultiEdit', 'Bash', 'PowerShell']));
     expect(urlA).not.toBe(lb.settings.hooks.PreToolUse[0].hooks[0].url);
-    const nonceA = /\[REINS CARD ([0-9a-f]{32}) /.exec(la.note)![1];
-    const nonceB = /\[REINS CARD ([0-9a-f]{32}) /.exec(lb.note)![1];
+    const nonceA = /\[REINS CARD ([0-9a-f]{32}): /.exec(la.note)![1];
+    const nonceB = /\[REINS CARD ([0-9a-f]{32}): /.exec(lb.note)![1];
     expect(nonceA).not.toBe(nonceB);
   });
 
@@ -100,10 +100,10 @@ describe('claude adapter', () => {
     const s = await engine().open({ cwd: f.dir, policy: () => write, pendingCards: () => cards.splice(0) });
     const r = await s.turn('read three files');
     await s.close();
-    const nonce = /\[REINS CARD ([0-9a-f]{32}) /.exec(f.log()[0].note)![1];
+    const nonce = /\[REINS CARD ([0-9a-f]{32}): /.exec(f.log()[0].note)![1];
     const withCtx = f.log().filter((l) => l.kind === 'hook' && l.response.hookSpecificOutput?.additionalContext);
     expect(withCtx).toHaveLength(1);
-    expect(withCtx[0].response.hookSpecificOutput.additionalContext).toContain(`[REINS CARD ${nonce} `);
+    expect(withCtx[0].response.hookSpecificOutput.additionalContext).toContain(`[REINS CARD ${nonce}: `);
     expect(withCtx[0].response.hookSpecificOutput.additionalContext).toContain('PINEAPPLE');
     expect(r.events).toContainEqual({ type: 'card_delivered', card: cards[0] ?? 'End your answer with PINEAPPLE.', channel: 'mid-turn' });
   });

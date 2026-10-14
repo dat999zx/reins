@@ -38,7 +38,7 @@ export function Rail({ state, selected, onSelect, onNew, onPlus, onRename, pathB
     <nav className="rail" aria-label="Sessions">
       <button className="primary new" onClick={onNew}>New session <kbd>Ctrl+O</kbd></button>
       {pathBox}
-      {waiting.length === 0 && groups.length === 0 && <p className="hint">No sessions yet — New session, or Ctrl+O</p>}
+      {waiting.length === 0 && groups.length === 0 && <p className="hint">No sessions yet. New session, or Ctrl+O</p>}
       {waiting.length > 0 && <ul className="waiting" aria-label="Waiting for you">{waiting.map(item)}</ul>}
       {groups.map((g) => (
         <section key={g.cwd} className="group">

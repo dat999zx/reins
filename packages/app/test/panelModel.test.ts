@@ -8,15 +8,16 @@ import { KINDS } from '../src/canvasKinds.js';
 const step = { id: 'subagent-1', kind: 'subagent', attrs: {}, cards: [], links: [] } as Step;
 const models = [{ id: 'm1', label: 'Model One' }];
 const html = (f: (typeof KINDS)['model']['fields'][number]) =>
-  renderToStaticMarkup(createElement(PanelField, { f, step, ids: [], models, rev: 0, onCommit: () => {} }));
+  renderToStaticMarkup(createElement(PanelField, { f, step, ids: [], models, sessionModel: { id: 'm1', label: 'Model One' }, rev: 0, onCommit: () => {} }));
 
-describe("the Model select's first option", () => {
-  it("says what an empty model means when the field has `empty`", () => {
+describe("the panel's Model picker", () => {
+  it("shows the session's model by name when the field inherits it", () => {
     const f = KINDS.subagent.fields.find((x) => x.key === 'model')!;
-    expect(html(f)).toContain(`<option value="" selected="">(the session&#x27;s model)</option>`);
-    expect(html(f)).not.toContain('(pick a model)');
+    expect(html(f)).toContain('<option value="" selected="">Model One</option>');
+    expect(html(f)).not.toContain('Pick a model');
+    expect(html(f)).not.toContain('(the session');
   });
-  it('is (pick a model) without it', () => {
-    expect(html(KINDS.model.fields[0]!)).toContain('<option value="" selected="">(pick a model)</option>');
+  it('asks to pick a model without it', () => {
+    expect(html(KINDS.model.fields[0]!)).toContain('<option value="" disabled="" selected="">Pick a model</option>');
   });
 });

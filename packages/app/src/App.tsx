@@ -210,7 +210,7 @@ export function App() {
             }}
           />
         ) : (
-          <main className="chat empty"><p className="hint">{Object.keys(st.sessions).length ? 'Select a session.' : 'No sessions yet — New session, or Ctrl+O'}</p></main>
+          <main className="chat empty"><p className="hint">{Object.keys(st.sessions).length ? 'Select a session.' : 'No sessions yet. New session, or Ctrl+O'}</p></main>
         )}
       </div>
     </div>

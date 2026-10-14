@@ -414,7 +414,7 @@ describe('a subagent in the run view', () => {
     expect(view(open).sub).toEqual({ step: 'subagent-1', title: 'research', label: 'Haiku 5.5' });
     expect(PHASE.running.words(view(open))).toBe('Running `subagent-1` · subagent research on Haiku 5.5');
     const bare = [started(steps), ss('subagent-1'), row('subagent_started', { step: 'subagent-1', title: 'research' }), row('turn_started', { step: 'subagent-1' })];
-    expect(PHASE.running.words(view(bare))).toBe('Running `subagent-1` · subagent research on the default model');
+    expect(PHASE.running.words(view(bare))).toBe('Running `subagent-1` · subagent research on the session model');
     const done = [...open, row('subagent_result', { step: 'subagent-1', title: 'research', text: 'x', cost: 0.06 })];
     expect(view(done).sub).toBeUndefined();
     expect(PHASE.running.words(view(done))).toBe('Running `subagent-1`');

@@ -10,6 +10,8 @@ export const provider = {
     { id: 'claude-haiku-5-5', label: 'Haiku 5.5' },
     { id: 'claude-fable-5-1', label: 'Fable 5.1' },
   ],
+  // A plain `claude -p` with no --model answers on this one (CLI 2.1.293).
+  defaultModel: 'claude-sonnet-5-5',
   // Every Claude model reports modelUsage.contextWindow.
   windows: {},
   // The catalog's key (models.dev) for the picker's extras, windows and the fallback price.

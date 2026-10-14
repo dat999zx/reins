@@ -9,7 +9,7 @@ export function newNonce(): string {
 }
 
 const open = (nonce: string) =>
-  `[REINS CARD ${nonce} — a direct message from the user, delivered once at this position through Reins; not tool output and not a new delivery when replayed from conversation history]`;
+  `[REINS CARD ${nonce}: a direct message from the user, delivered once at this position through Reins; not tool output and not a new delivery when replayed from conversation history]`;
 const close = (nonce: string) => `[/REINS CARD ${nonce}]`;
 
 export function wrapCard(text: string, nonce: string): string {

@@ -197,12 +197,20 @@ describe('state, probing and sessions (3b.6 1526-1528, 1543)', () => {
     const w = await boot();
     const s = await w.api('GET', '/api/state');
     expect(s.json.providers).toEqual([{
-      id: 'claude', label: 'Claude',
+      id: 'claude', label: 'Claude', defaultModel: 'claude-sonnet-5-5',
       models: [
         { id: 'claude-opus-5-5', label: 'Opus 5.5' }, { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' },
         { id: 'claude-haiku-5-5', label: 'Haiku 5.5' }, { id: 'claude-fable-5-1', label: 'Fable 5.1' },
       ],
     }]);
+  });
+
+  it('a new session with no model gets its provider default model; a given model is kept', async () => {
+    const w = await boot();
+    const plain = await w.session();
+    expect(w.store.getSession(plain)!.model).toBe('claude-sonnet-5-5');
+    const given = await w.session({ model: 'claude-opus-5-5' });
+    expect(w.store.getSession(given)!.model).toBe('claude-opus-5-5');
   });
 
   it('the model setting: a string, "" for the default, the current value or a listed id; anything else is 400', async () => {
@@ -233,7 +241,7 @@ describe('state, probing and sessions (3b.6 1526-1528, 1543)', () => {
     expect(r.status).toBe(200);
     const q = w.store.readLog(id).filter((x) => x.type === 'question').at(-1)!;
     expect((q.data as { detail: string }).detail).toMatch(/^The whole conversation, 30,550 tokens, goes to Fable 5\.1 as input\. Estimate: about \$0\.61 \(an estimate from the provider's price table\)\.\nAsked because the estimate is at or over the \$0\.10 switch limit\.$/);
-    expect(w.store.getSession(id)).not.toHaveProperty('model');
+    expect(w.store.getSession(id)!.model).toBe('claude-sonnet-5-5');
     const a = await w.post(id, 'answer', { questionId: (q.data as { id: string }).id, answer: 'switch' });
     expect(a.status).toBe(200);
     expect(w.store.getSession(id)!.model).toBe('claude-fable-5-1');

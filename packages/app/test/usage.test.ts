@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { LogRow } from '@reins/server/store.js';
-import { compressBlock, compressBusy, contextWords, hasReplied, modelOptions, pickerBlock, tokens, usageOf } from '../src/usage.js';
+import { compressBlock, compressBusy, contextWords, hasReplied, modelOptions, pickerBlock, shownModel, tokens, usageOf } from '../src/usage.js';
 
 let seq = 0;
 const row = (type: string, data: unknown = {}): LogRow => ({ sessionId: 's1', seq: ++seq, ts: 1000 + seq, type, data });
@@ -57,7 +57,7 @@ describe('contextWords', () => {
     expect(contextWords({ model: 'm1', used: 30_550, window: 1_000_000, stale: true })).toEqual({
       text: 'Context ≥31k / 1M', title: 'At least this: measured before the latest activity.',
     });
-    expect(contextWords(undefined)).toEqual({ text: 'Context —', title: 'Known after the next reply.' });
+    expect(contextWords(undefined)).toEqual({ text: 'Context 0 / ?', title: 'Measured after the first reply.' });
   });
 
   it('reads a figure after compressing as a lower bound the next reply measures again', () => {
@@ -66,19 +66,29 @@ describe('contextWords', () => {
     });
   });
 
-  it('falls back to the catalog window only when the usage row has none; no usage stays unknown', () => {
+  it('falls back to the catalog window only when the usage row has none; no usage reads 0 of the catalog window', () => {
     expect(contextWords({ model: 'm1', used: 30_550, stale: false }, 200_000).text).toBe('Context 31k / 200k');
     expect(contextWords({ model: 'm1', used: 30_550, window: 1_000_000, stale: false }, 200_000).text).toBe('Context 31k / 1M');
-    expect(contextWords(undefined, 200_000).text).toBe('Context —');
+    expect(contextWords(undefined, 200_000).text).toBe('Context 0 / 200k');
   });
 });
 
 describe('modelOptions', () => {
   const list = [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }];
-  it('puts Default first, keeps the list order, and appends an off-list current id once', () => {
-    expect(modelOptions(list)).toEqual([{ id: '', label: 'Default' }, ...list]);
-    expect(modelOptions(list, 'b')).toEqual([{ id: '', label: 'Default' }, ...list]);
-    expect(modelOptions(list, 'sonnet')).toEqual([{ id: '', label: 'Default' }, ...list, { id: 'sonnet', label: 'sonnet' }]);
+  it('keeps the list order and appends an off-list current id once', () => {
+    expect(modelOptions(list)).toEqual(list);
+    expect(modelOptions(list, 'b')).toEqual(list);
+    expect(modelOptions(list, 'sonnet')).toEqual([...list, { id: 'sonnet', label: 'sonnet' }]);
+  });
+});
+
+describe('shownModel', () => {
+  const providers = [{ id: 'claude', label: 'Claude', defaultModel: 'a', models: [{ id: 'a', label: 'A' }] }];
+  const usage = { model: 'u', used: 1, stale: false };
+  it("is the session's model, else the last reply's, else the provider's default", () => {
+    expect(shownModel({ engine: 'claude', model: 's' }, usage, providers)).toBe('s');
+    expect(shownModel({ engine: 'claude', model: null }, usage, providers)).toBe('u');
+    expect(shownModel({ engine: 'claude', model: null }, undefined, providers)).toBe('a');
   });
 });
 

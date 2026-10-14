@@ -10,14 +10,22 @@ import { stepKey, type Key } from './selection.js';
 import { splitAtEnd } from './arrange.js';
 import { zoneAttrs, zoneKey, type Zone } from './gesture.js';
 import type { Over } from './useDrag.js';
+import type { SessionModel } from './BlockPanel.js';
+import { ModelPicker } from './ModelPicker.js';
 import { Pill, StepPick } from './Pill.js';
 import { cx } from './generic.js';
 import { ENDED, StatusCtx, StepChips } from './StepChips.js';
 
 const LOOK = { code: 'code', str: 'pill', num: 'num', pill: 'pill' } as const satisfies Record<CondParam['look'], string>;
 
-export function BlocksPane({ w, steps, diags, text, sel, primary, rev, condDrag, src, over, linkOver, at, missing, loose, free, onEdit, onSelect }: {
+const HANDLE_TITLE: Record<string, string> = {
+  next: 'Runs next when this block finishes. Drag to a block to link.',
+  'on-fail': 'Runs if this block fails. Drag to a block to link.',
+};
+
+export function BlocksPane({ w, steps, diags, text, sel, primary, rev, models, sessionModel, condDrag, src, over, linkOver, at, missing, loose, free, onEdit, onSelect }: {
   w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; sel: Set<Key>; primary?: string; rev: unknown;
+  models: Array<{ id: string; label: string }>; sessionModel?: SessionModel;
   condDrag?: boolean; src?: Set<string>; over?: Over; linkOver?: string; at: Pt;
   missing?: Set<string>; // `from/index` of links whose target does not exist: the only links shown as chips (the others are arrows)
   loose?: { key: string; selected: boolean; moving: boolean; onPick: (add: boolean) => void }; // w is then a wrapper of the one parked step: read-only, no ids, no zones
@@ -99,15 +107,19 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, condDrag,
     if (typeof t === 'string') return <b key={i}>{t}</b>;
     const f = KINDS[s.kind].fields.find((x) => x.key === t.field);
     const v = fieldValue(s, t.field);
-    if (f?.input === 'textarea') return v ? <span key={i} className="sx-faint">{v.split('\n')[0]}</span> : null;
+    if (f?.input === 'textarea') return v ? <span key={i} className="sx-faint">{v.split('\n')[0]}</span> : f.required ? <span key={i} className="sx-faint">no prompt yet</span> : null;
     const label = `${f?.label} of ${s.id}`;
+    const set = (nv: string) => onEdit((m) => editStep(m, s.id, (x) => applyField(x, t.field, nv)));
+    if (f?.input === 'model') {
+      return <ModelPicker key={i} className="sx-pill" label={label} models={models} value={v} blank={f.inherits ? sessionModel?.label : undefined} disabled={dead} onChange={set} />;
+    }
     if (f?.input === 'step') {
       const ids = steps.filter((x) => x.id !== s.id).map((x) => x.id);
-      return <StepPick key={i} label={label} value={v} ids={ids} dead={dead} commit={(nv) => onEdit((m) => editStep(m, s.id, (x) => applyField(x, t.field, nv)))} />;
+      return <StepPick key={i} label={label} value={v} ids={ids} dead={dead} commit={set} />;
     }
     const look = t.field === 'title' ? 'bold' : f?.input === 'mono' ? 'code' : f?.input === 'number' ? 'num' : 'pill';
-    return <Pill key={i} label={label} value={v} look={look} rev={rev} dead={dead} valid={(nv) => applyField(structuredClone(s), t.field, nv)}
-      commit={(nv) => onEdit((m) => editStep(m, s.id, (x) => applyField(x, t.field, nv)))} />;
+    return <Pill key={i} label={label} value={v} look={look} ph={f?.ph} rev={rev} dead={dead} valid={(nv) => applyField(structuredClone(s), t.field, nv)}
+      commit={set} />;
   };
 
   const head = (s: Step) => {
@@ -125,7 +137,7 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, condDrag,
             return typeof t === 'object' && typeof prev === 'string' ? <span key={i} className="sx-grp">{token(s, prev, i - 1)}{token(s, t, i)}</span> : token(s, t, i);
           })}
           {!loose && !KINDS[s.kind].stops && (['next', ...(KINDS[s.kind].fails ? ['on-fail'] : [])] as const).map((k, _, all) => (
-            <span key={k} className={cx('sx-handle', all.length > 1 && 'sx-two')} data-zid={s.id} data-lk={k} aria-hidden />
+            <span key={k} className={cx('sx-handle', all.length > 1 && 'sx-two')} data-zid={s.id} data-lk={k} title={HANDLE_TITLE[k]} aria-hidden />
           ))}
         </div>
         {(s.cards.length > 0 || chips.length > 0) && (
