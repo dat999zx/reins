@@ -694,6 +694,78 @@ describe('a subagent step: the handback to the parent', () => {
   });
 });
 
+describe('a subagent step: a verify and a knowl store get the handback like a plain step', () => {
+  const verify = (against: string) => step('verify-1', 'verify', { attrs: { against } });
+  const two = [subagent({ model: 'm1' }, 'thinker'), subagent({ model: 'm1' }, 'writer')];
+
+  it('a verify right after two subagents carries both quoted results, and a later phase does not repeat them', async () => {
+    const { run, parent } = rig(wf([...two, verify('ghost'), phase('after')]), [reply('the plan', 0.01), reply('written', 0.01)], { parent: [reply('REINS: done', 0.01), reply('REINS: done', 0.01)] });
+    await go(run);
+    expect(parent.receivedTexts).toHaveLength(2);
+    expect(parent.receivedTexts[0]).toContain('(step thinker)');
+    expect(parent.receivedTexts[0]).toContain('the plan');
+    expect(parent.receivedTexts[0]).toContain('(step writer)');
+    expect(parent.receivedTexts[0]).toContain('written');
+    expect(parent.receivedTexts[1]).not.toContain('Result of subagent');
+  });
+
+  it('a knowl store after a subagent gets the result too', async () => {
+    const { run, parent } = rig(wf([subagent(), step('store-1', 'store', { attrs: { knowl: 'decisions' } })]), [reply('found it', 0.01)], { parent: [reply('a summary', 0.01)] });
+    await go(run);
+    expect(parent.receivedTexts).toHaveLength(1);
+    expect(parent.receivedTexts[0]).toContain(HANDED);
+    expect('handback' in run.snapshot()).toBe(false);
+  });
+
+  it('a verify against a step that never ran says so; against one that ran keeps the old words', async () => {
+    const ghost = rig(wf([phase('a'), verify('ghost')]), [], { parent: [reply('REINS: done', 0.01), reply('ok', 0.01)] });
+    await go(ghost.run);
+    expect(ghost.parent.receivedTexts[1]).toContain('Step "ghost" has not run, so there is no output of it to compare against. Compare against what the earlier steps produced.');
+
+    const ran = rig(wf([phase('a'), verify('a')]), [], { parent: [reply('REINS: done', 0.01), reply('ok', 0.01)] });
+    await go(ran.run);
+    expect(ran.parent.receivedTexts[1]).toContain('Compare what you built against step "a":\nREINS: done\nList anything missing or extra.');
+    expect(ran.parent.receivedTexts[1]).not.toContain('has not run');
+
+    // a step that ran and said nothing is not a step that did not run
+    const quiet = rig(wf([phase('a'), verify('a')]), [], { parent: [reply('', 0.01), reply('ok', 0.01)] });
+    await go(quiet.run);
+    expect(quiet.parent.receivedTexts[1]).toContain('Compare what you built against step "a":');
+    expect(quiet.parent.receivedTexts[1]).not.toContain('has not run');
+
+    // no against: at all (the step names nothing): it says so in plain words, not Step "" has not run
+    const none = rig(wf([phase('a'), verify('')]), [], { parent: [reply('REINS: done', 0.01), reply('ok', 0.01)] });
+    await go(none.run);
+    expect(none.parent.receivedTexts[1]).toContain('Compare what you built against the earlier steps.\nList anything missing or extra.');
+    expect(none.parent.receivedTexts[1]).not.toContain('Step ""');
+  });
+
+  it('a verify turn that throws leaves the results for its re-run; one that ends with no result has taken them', async () => {
+    const thrown = rig(wf([subagent(), verify('ghost')]), [reply('found it', 0.01)], { parent: [{ text: '', reject: 'boom' }, reply('ok', 0.01)] });
+    await thrown.run.step();
+    await expect(thrown.run.step()).rejects.toThrow('boom');
+    expect(thrown.run.snapshot().handback).toEqual([HANDED]);
+    await go(thrown.run);
+    expect(thrown.parent.receivedTexts[1]).toContain(HANDED);
+    expect('handback' in thrown.run.snapshot()).toBe(false);
+
+    const g = gate();
+    const { run, parent } = rig(wf([subagent(), verify('ghost')]), [reply('found it', 0.01)], { parent: [reply('', 0.01, { hold: g.hold }), reply('ok', 0.01)] });
+    await run.step();
+    const p = run.step();
+    try {
+      await g.entered;
+      run.queueCard('wait', 'stop');
+    } finally {
+      g.release();
+    }
+    await p;
+    expect(run.status).toBe('paused');
+    expect(parent.receivedTexts[0]).toContain(HANDED);
+    expect('handback' in run.snapshot()).toBe(false);
+  });
+});
+
 describe('a subagent step: the handback records are copies', () => {
   it('a snapshot taken before the parent turn keeps its handback after the run goes on; a restored run never edits the snapshot it came from', async () => {
     const { run, events, openSubagent } = rig(wf([subagent(), phase('use')]), [reply('found it', 0.01)], { parent: [reply('REINS: done', 0.01)] });

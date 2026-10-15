@@ -491,7 +491,25 @@ input.sx-num { min-width: 2.5ch; padding: 1px 6px; text-align: center; }
 .sx-spin { display: inline-block; width: 11px; height: 11px; border: 2px solid var(--mute); border-right-color: transparent; border-radius: 50%; vertical-align: middle; }
 .sx-wave { display: inline-block; color: var(--c, var(--brand)); margin-right: 4px; }
 .sx-working, .sx-feed .row.think { color: var(--mute); font-size: 12px; }
-.sx-feed .row.think .reasoning { white-space: pre-wrap; margin-top: 4px; }
+.sx-feed .row.think .reasoning { margin-top: 4px; }
+/* markdown: its own block spacing, so the parent's pre-wrap must not add blank lines */
+.md { white-space: normal; overflow-wrap: anywhere; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md p, .md ul, .md ol, .md pre, .md table, .md blockquote { margin: 0 0 6px; }
+.md h1, .md h2, .md h3, .md h4, .md h5, .md h6 { font-size: 1.08em; line-height: 1.3; margin: 8px 0 4px; }
+.md ul, .md ol { padding-left: 20px; }
+.md ul { list-style: disc; }
+.md ol { list-style: decimal; }
+.md li > p { margin: 0; }
+.md a { color: var(--brand); }
+.md code { background: rgb(255 255 255 / 0.07); border-radius: 3px; padding: 0 3px; }
+.md pre { white-space: pre; overflow-x: auto; background: #16171a; border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; color: var(--mute); }
+.md pre code { background: none; padding: 0; }
+.md table { border-collapse: collapse; display: block; overflow-x: auto; }
+.md th, .md td { border: 1px solid var(--line2); padding: 2px 6px; text-align: left; }
+.md blockquote { border-left: 2px solid var(--line2); padding-left: 8px; color: var(--mute); }
+.md hr { border: 0; border-top: 1px solid var(--line); margin: 6px 0; }
 .sx-bead:empty { display: none; }
 .sx-knot[data-state='waiting'] > .sx-knotrow > .sx-seg { width: 3px; background: var(--gate); }
 .sx-knot[data-state='waiting'] > .sx-knotrow::before { top: 26px; left: calc(12px + var(--depth) * 14px); height: 2px; width: 9px; background: var(--gate); }

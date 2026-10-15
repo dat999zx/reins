@@ -1,4 +1,5 @@
 import type { LogRow } from '@reins/server/store.js';
+import { Md } from '../Md.js';
 
 export const type = 'subagent_result';
 export const render = (row: LogRow) => {
@@ -6,7 +7,7 @@ export const render = (row: LogRow) => {
   return (
     <details className="row sx-sub">
       <summary>Subagent {d.title} handed back its result{typeof d.cost === 'number' ? ` ($${d.cost.toFixed(4)})` : ''}.</summary>
-      <pre>{d.text}</pre>
+      <Md text={d.text ?? ''} />
     </details>
   );
 };

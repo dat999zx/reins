@@ -44,7 +44,7 @@ describe("a subagent's rows in the feed", () => {
     expect(knots.find((x) => x.step === 'phase-2')!.tools.count).toBe(0);
     const open = Object.fromEntries(knots.map((x) => [x.key, true]));
     const html = renderToStaticMarkup(createElement(Feed, { f, sess: s, run, act: { answer: async () => {}, resume: () => {} }, thinking: { heads: thinkingHeads(s.rows) }, open, onToggle: () => {}, onBlock: () => {}, logRef: { current: null }, onScroll: () => {} }));
-    expect(html).toContain('<div class="msg agent txt">found it</div>');
+    expect(html).toContain('<div class="msg agent txt"><div class="md"><p>found it</p></div></div>');
     expect(html).toContain('Reasoning ~50 tokens');
     expect(html).toContain('because');
     expect(html).toContain('<b>Read</b>');

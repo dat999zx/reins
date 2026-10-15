@@ -559,6 +559,14 @@ export class Run {
    * Send one turn. A now card that interrupted it is sent as the next turn and the step goes
    * on; a stop card pauses the run and returns undefined.
    */
+  /** A turn of the parent that carries the subagent results. A copy, spliced only after the turn returns: a turn that throws leaves them for the re-run; one that returns, with a result or not, has taken them. */
+  private async handedTurn(session: EngineSession, stepId: string, compile: (handed: string[]) => string): Promise<TurnResult | undefined> {
+    const handed = [...this.handback];
+    const result = await this.runTurn(session, stepId, compile(handed));
+    this.handback.splice(0, handed.length);
+    return result;
+  }
+
   private async runTurn(
     session: EngineSession, stepId: string, text: string,
     sub?: { rec: SubagentRecord; slice: { step: string; usd: number } | undefined },
@@ -966,23 +974,17 @@ export class Run {
           this.logEvent('card_delivered', { card, channel: 'next-turn' });
         }
 
-        // A copy: spliced only after the turn returns, so a turn that throws leaves the results for the step's re-run.
-        const handed = [...this.handback];
-
         const recallCtx = [...this.lastRecallContext];
         this.lastRecallContext = [];
 
-        const turnText = compileTurn(stepModel, {
+        const result = await this.handedTurn(session, instr.step, (handed) => compileTurn(stepModel, {
           workflowName: this.workflow.name,
           stepIndex: instr.top ?? 0,
           totalSteps: this.workflow.steps.length,
           always: this.workflow.always,
           recallContext: recallCtx.length > 0 ? recallCtx : undefined,
           extras: [...textCards, ...handed],
-        });
-
-        const result = await this.runTurn(session, instr.step, turnText);
-        this.handback.splice(0, handed.length);   // the turn took them, whether or not it returned a result
+        }));
         if (!result) return this.status;
         this.turnOutputs.set(instr.step, result.text);
 
@@ -1086,7 +1088,7 @@ export class Run {
 
       case 'VERIFY': {
         const session = await this.ensureSession();
-        const againstOutput = this.turnOutputs.get(instr.against) || '';
+        const againstOutput = this.turnOutputs.get(instr.against);
 
         const verifyStep: Step = {
           id: instr.step,
@@ -1095,17 +1097,20 @@ export class Run {
           attrs: { against: instr.against },
           cards: [],
           links: [],
-          prompt: `Compare what you built against step "${instr.against}":\n${againstOutput}\nList anything missing or extra.`,
+          prompt: !instr.against
+            ? 'Compare what you built against the earlier steps.\nList anything missing or extra.'
+            : againstOutput === undefined
+            ? `Step "${instr.against}" has not run, so there is no output of it to compare against. Compare against what the earlier steps produced.`
+            : `Compare what you built against step "${instr.against}":\n${againstOutput}\nList anything missing or extra.`,
         };
 
-        const turnText = compileTurn(verifyStep, {
+        const result = await this.handedTurn(session, instr.step, (handed) => compileTurn(verifyStep, {
           workflowName: this.workflow.name,
           stepIndex: instr.top ?? 0,
           totalSteps: this.workflow.steps.length,
           always: this.workflow.always,
-        });
-
-        const result = await this.runTurn(session, instr.step, turnText);
+          extras: handed,
+        }));
         if (!result) return this.status;
 
         const isFail = result.text.includes('REINS: fail');
@@ -1135,14 +1140,13 @@ export class Run {
           prompt: `Provide a one-paragraph decision summary for "${instr.what}".`,
         };
 
-        const turnText = compileTurn(storeStep, {
+        const result = await this.handedTurn(session, instr.step, (handed) => compileTurn(storeStep, {
           workflowName: this.workflow.name,
           stepIndex: instr.top ?? 0,
           totalSteps: this.workflow.steps.length,
           always: this.workflow.always,
-        });
-
-        const result = await this.runTurn(session, instr.step, turnText);
+          extras: handed,
+        }));
         if (!result) return this.status;
 
         const summary = result.text

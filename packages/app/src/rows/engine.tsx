@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import type { EngineEvent } from '@reins/core';
 import type { LogRow } from '@reins/server/store.js';
 import { generic, short } from '../generic.js';
+import { Md } from '../Md.js';
 import type { Ctx } from '../rows.js';
 import { thinkingWords } from '../runState.js';
 import { tokens } from '../usage.js';
@@ -35,13 +36,13 @@ function Reasoning({ e, live }: { e: { tokens?: number; text: string }; live: bo
   return (
     <details className="row think" open={open} onToggle={(ev) => { if (ev.currentTarget.open !== open) setMine(ev.currentTarget.open); }}>
       <summary>Reasoning{typeof e.tokens === 'number' ? ` ~${e.tokens.toLocaleString('en-US')} tokens` : ''}</summary>
-      <div className="reasoning">{e.text}</div>
+      <div className="reasoning"><Md text={e.text} /></div>
     </details>
   );
 }
 
 export const engineEvents = new Map<EngineEvent['type'], Render>([
-  ['text', (e) => <div className="msg agent txt">{e.text}</div>],
+  ['text', (e) => <div className="msg agent txt"><Md text={e.text} /></div>],
   ['tool_call', (e, row, ctx) => <ToolBead e={e} row={row} ctx={ctx} />],
   ['refusal', (e) => <div className="row bad">refused: {e.reason}</div>],
   ['card_delivered', (e) => chip(e)],
