@@ -104,6 +104,8 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
     ...(opts.effort ?? cfg.effort ? ['--effort', (opts.effort ?? cfg.effort)!] : []),
     // The provider's own spending cap on this process (a subagent's room); 0 is a value.
     ...(opts.maxUsd !== undefined ? ['--max-budget-usd', String(opts.maxUsd)] : []),
+    // Without it the stream's thinking blocks are empty (CLI 2.1.293: hidden flag).
+    '--thinking-display', 'summarized',
   ];
   const [cmd, cmdArgs] = claudeCommand(cfg.bin, args);
   // shell: false, always: through a shell or the npm shim an interrupt orphans claude.exe.

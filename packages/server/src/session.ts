@@ -41,6 +41,8 @@ const real = (p: string) => {
 };
 const msg = (e: unknown) => String((e as Error)?.message ?? e);
 // Already in session_log as engine rows, or (cost) in turn_ended (plan 15d 3b.3, line 1405).
+/** The engine events of a subagent that are kept in the log (with its step). */
+const KEPT = new Set(['text', 'thinking', 'tool_call', 'tool_result', 'refusal', 'error']);
 const SKIPPED = new Set(['tool_call', 'refusal', 'hook', 'engine_cost']);
 /** Two replies' per-model dollars added; a side that is missing adds nothing, both missing stays missing. */
 const sumModels = (a?: Record<string, number>, b?: Record<string, number>): Record<string, number> | undefined => {
@@ -288,8 +290,8 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     return askTool(io, r, title);
   }
 
-  // ponytail: the subagent runs on its block's model, else the session's; its live text is not in the feed (only its cards, notes and result), and its guard refusals count in the receipt but not on its chip (run `refusal` rows are not in the session log, :43).
-  /** A subagent's own engine (D): its model, its own hook server, and none of its events in the session's engine rows (they measure the parent's context). */
+  // ponytail: the subagent runs on its block's model, else the session's; its guard refusals count in the receipt but not on its chip (run `refusal` rows are not in the session log, :43).
+  /** A subagent's own engine (D): its model, its own hook server, and its text, reasoning and tools kept as engine rows with its `step` (never usage or cost: they measure the parent's context). */
   async function openSubagent(o: SubagentOpen): Promise<SubagentOpened> {
     await trustFolder();
     if (stopping) throw new Error('The session was stopped before the subagent started.');
@@ -299,7 +301,8 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     const e = deps.makeEngine({
       ...(model ? { model } : {}), ...(o.reasoning ?? cur.effort ? { effort: (o.reasoning ?? cur.effort)! } : {}),
       onApprove: (r) => subagentApprove(title, r),
-      onLive: () => {},
+      // usage, cost, compacted and hook measure or note the parent's context, so they stay out; the rest is kept under the step
+      onLive: (ev) => { if (KEPT.has(ev.type)) log('engine', { ...ev, step: o.step }, runId); },
     });
     const { step: _s, title: _t, reasoning: _r, ...open } = o;
     const s = await e.open({ ...open, cwd, pendingCards: () => [] });

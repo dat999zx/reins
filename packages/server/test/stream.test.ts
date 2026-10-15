@@ -249,6 +249,22 @@ describe('thinking tokens', () => {
     expect(tokens(r.events)).toEqual([50]);
   });
 
+  it('summarized fixture: the thinking block text comes out once, with the last estimate, then the text', () => {
+    const r = replay('claude-2.1.293-thinking-summarized.jsonl');
+    const block = r.lines.flatMap((m) => (m.type === 'assistant' ? m.message.content : [])).find((b: any) => b.type === 'thinking' && b.thinking);
+    const withText = r.events.filter((e) => e.type === 'thinking' && e.text !== undefined);
+    expect(withText).toEqual([{ type: 'thinking', tokens: 210, text: block.thinking }]);
+    expect(r.events.at(-1)!.type).toBe('text');
+    expect(r.events.filter((e) => e.type === 'thinking' && e.text === undefined).length).toBeGreaterThan(0);
+  });
+
+  it('a thinking block with text is emitted whole and ends its burst; an empty one emits nothing', () => {
+    const think = block({ type: 'thinking', thinking: 'because', signature: 's' });
+    expect(feed(line(50), think, line(30))).toEqual([
+      { type: 'thinking', tokens: 50 }, { type: 'thinking', tokens: 50, text: 'because' }, { type: 'thinking', tokens: 80 },
+    ]);
+  });
+
   it('one long burst emits its start and each further 1,000 tokens', () => {
     const lines = Array.from({ length: 21 }, (_, i) => line(50 + i * 100));
     expect(tokens(feed(...lines))).toEqual([50, 1050, 2050]);

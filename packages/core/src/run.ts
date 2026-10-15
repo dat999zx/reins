@@ -468,7 +468,8 @@ export class Run {
     try {
       const top = this.program[this.programCounter]?.top ?? 0;
       result = await this.runTurn(s, id, resumed ? CARRY_ON + notes.map((n) => `\n\n[Reins · a note from the user]\n${n}`).join('')
-        : compileTurn(step, { workflowName: this.workflow.name, stepIndex: top, totalSteps: this.workflow.steps.length, always: this.workflow.always }), { rec, slice });
+        : compileTurn(step, { workflowName: this.workflow.name, stepIndex: top, totalSteps: this.workflow.steps.length, always: this.workflow.always,
+          extras: [...this.handback] }), { rec, slice });   // copied, not taken: the parent's next TURN still gets every result
     } catch (e) {
       if (this.status === 'running' && !this.usdOver(slice)) this.pauseForStop(`the subagent stopped before it answered (${why(e)}); Resume runs it on`, id);
       return false;

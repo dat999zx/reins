@@ -39,6 +39,7 @@ describe('claude adapter', () => {
     expect(args[args.indexOf('--permission-prompt-tool') + 1]).toBe('mcp__reins__approve');
     expect(args[args.indexOf('--model') + 1]).toBe('sonnet');
     expect(args[args.indexOf('--effort') + 1]).toBe('medium');
+    expect(args[args.indexOf('--thinking-display') + 1]).toBe('summarized');
     expect(f.log().filter((l) => l.kind === 'user').map((l) => l.text)).toEqual(['one', 'two', 'three']);
   });
 

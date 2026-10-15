@@ -664,6 +664,34 @@ describe('a subagent step: the handback to the parent', () => {
     expect(count(parent.receivedTexts, 'Result of subagent')).toBe(1);
     expect(parent.receivedTexts[1]).not.toContain('Result of subagent');
   });
+
+  it('a subagent starts with the earlier results quoted as data; the parent still gets them all later', async () => {
+    const { run, parent, sub } = rig(
+      wf([subagent({ model: 'm1' }, 'thinker'), subagent({ model: 'm1' }, 'writer'), phase('use')]),
+      [reply('the plan', 0.01), reply('written', 0.01)], { parent: [reply('REINS: done', 0.01)] },
+    );
+    await go(run);
+    expect(sub.receivedTexts[0]).not.toContain('Result of subagent');   // a lone first subagent has no extras
+    expect(sub.receivedTexts[1]).toContain('(step thinker)');
+    expect(sub.receivedTexts[1]).toContain('the plan');
+    expect(sub.receivedTexts[1]).not.toContain('(step writer)');
+    expect(parent.receivedTexts[0]).toContain('(step thinker)');
+    expect(parent.receivedTexts[0]).toContain('(step writer)');
+  });
+
+  it('a resumed subagent does not repeat the handback', async () => {
+    const { run, sub } = rig(
+      wf([subagent({ model: 'm1' }, 'a'), subagent({ model: 'm1' }, 'b')]),
+      [reply('first', 0.01), { text: 'x', cost: 0.01, total: 0.01, isError: true }, reply('second', 0.01)],
+    );
+    await go(run);
+    run.resume();
+    await go(run);
+    expect(run.status).toBe('done');
+    expect(sub.receivedTexts).toHaveLength(3);
+    expect(sub.receivedTexts[1]).toContain('(step a)');
+    expect(sub.receivedTexts[2]).not.toContain('Result of subagent');
+  });
 });
 
 describe('a subagent step: the handback records are copies', () => {

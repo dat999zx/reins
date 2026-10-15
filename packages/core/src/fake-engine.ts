@@ -53,8 +53,8 @@ export type EngineEvent =
   | { type: 'card_delivered'; card: string; channel: 'mid-turn' | 'next-turn' }
   | { type: 'cost'; usd: number }
   | { type: 'error'; message: string }
-  // The agent's running thinking estimate for this turn; claude sends no thinking text, only a count.
-  | { type: 'thinking'; tokens: number }
+  // The agent's running thinking estimate for this turn; `text` is the finished summary, when the provider sends it (a row without it is a count only).
+  | { type: 'thinking'; tokens: number; text?: string }
   // The parent context after a successful turn: tokens used, and the model's window when the provider knows it.
   | { type: 'usage'; model: string; used: number; window?: number }
   // The provider compressed the context in place; before and after are its own figures (after leaves the system prompt out, so it is a lower bound).

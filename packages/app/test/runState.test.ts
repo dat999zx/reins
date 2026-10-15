@@ -366,6 +366,16 @@ describe('thinking', () => {
     expect(thinkingHeads([]).size).toBe(0);
   });
 
+  it('thinkingHeads: a row with text is the burst\'s one head; the token-only rows of that burst do not draw', () => {
+    reset();
+    const a = think(50), b = think(317);
+    const words = row('engine', { type: 'thinking', tokens: 317, text: 'because' });
+    expect([...thinkingHeads([a, b, words])]).toEqual([words.seq]);
+    expect([...thinkingHeads([a, words, text('hi'), think(9)])]).toEqual([words.seq, expect.any(Number)]);
+    // count rows that come after the text row of the same burst do not draw either
+    expect([...thinkingHeads([a, words, think(400)])]).toEqual([words.seq]);
+  });
+
   it('RunView.thinking is the head tokens only while it is the run newest engine row and the run is live', () => {
     reset();
     const live = [status('running'), started(), ss('plan'), think(50), think(317)];

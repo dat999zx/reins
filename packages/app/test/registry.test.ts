@@ -87,6 +87,19 @@ describe('thinking row', () => {
     expect(text(renderRow(t(1509, 2), { ...ctx, thinking: { heads } }))).toBe('thought ~1,509 tokens');
     expect(text(renderRow(t(1509, 2), { ...ctx, thinking: { heads, now: 9 } }))).toBe('thought ~1,509 tokens');
   });
+
+  it('a row with text is a Reasoning block: open while live, collapsed after, text in the body', () => {
+    const r = { ...row('engine', { type: 'thinking', tokens: 210, text: 'it is 17 x 23' }), seq: 2 };
+    const live = renderToStaticMarkup(renderRow(r, { ...ctx, thinking: { heads, now: 2 } }) as never);
+    const done = renderToStaticMarkup(renderRow(r, { ...ctx, thinking: { heads } }) as never);
+    expect(live).toMatch(/<details class="row think" open="">/);
+    expect(done).toMatch(/<details class="row think">/);
+    expect(done).toContain('<summary>Reasoning ~210 tokens</summary>');
+    expect(done).toContain('it is 17 x 23');
+    expect(renderRow(r, { ...ctx, thinking: { heads: new Set() } })).toBeNull();
+    const noCount = { ...row('engine', { type: 'thinking', text: 'why' }), seq: 2 };
+    expect(renderToStaticMarkup(renderRow(noCount, { ...ctx, thinking: { heads } }) as never)).toContain('<summary>Reasoning</summary>');
+  });
 });
 describe('drawable and card words', () => {
   it('drawable is false for every hidden type and the silent engine events, true for engine text', () => {

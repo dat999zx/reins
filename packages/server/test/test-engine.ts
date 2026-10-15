@@ -3,7 +3,9 @@ import type { MakeEngine } from '../src/session.js';
 
 export interface TestTurn {
   text?: string;                                                          // the result text (default 'ok')
-  tools?: Array<{ tool: string; input?: unknown; approve?: boolean; hold?: boolean; via?: string }>;
+  tools?: Array<{ tool: string; input?: unknown; approve?: boolean; hold?: boolean; via?: string; result?: unknown }>;   // result: a tool_result event follows the call
+  thinking?: string;                                                      // a thinking event with this text, before the tools
+  liveCost?: number;                                                      // a live cost event with this figure, after the usage
   hold?: boolean;                                                         // wait at the end of the turn
   reject?: string;                                                        // turn() rejects with this message
   error?: string;                                                         // the result carries an error event (never emitted live, as the adapter's interrupt timeout)
@@ -66,12 +68,14 @@ export function testEngine(script: TestTurn[] = []) {
           if (t.reject) throw new Error(t.reject);
           const events: EngineEvent[] = [];
           const emit = (e: EngineEvent) => { events.push(e); onLive(e); };
+          if (t.thinking !== undefined) emit({ type: 'thinking', tokens: 50, text: t.thinking });
           for (const tool of t.tools ?? []) {
             if (interrupted) break;
             if (tool.hold) await wait();
             if (interrupted) break;
             const input = tool.input ?? {};
             emit({ type: 'tool_call', tool: tool.tool, input });
+            if ('result' in tool) emit({ type: 'tool_result', tool: tool.tool, output: tool.result });
             for (const card of opts.pendingCards?.() ?? []) emit({ type: 'card_delivered', card, channel: 'mid-turn' });
             if (tool.approve) {
               const d = await onApprove({ tool: tool.tool, input, ...(tool.via !== undefined ? { via: tool.via } : {}) });
@@ -87,6 +91,7 @@ export function testEngine(script: TestTurn[] = []) {
           } else {
             emit({ type: 'text', text: text2 });
             if (t.usage !== undefined) emit({ type: 'usage', model: t.model ?? 'm', used: t.usage, window: t.window ?? 1_000_000 });
+            if (t.liveCost !== undefined) emit({ type: 'cost', usd: t.liveCost });
           }
           if (t.error) events.push({ type: 'error', message: t.error });
           if (t.lateApprove) setTimeout(() => { void onApprove({ tool: 'Bash', input: { command: 'late' } }).then((d) => state.decisions.push(d)); }, 20);

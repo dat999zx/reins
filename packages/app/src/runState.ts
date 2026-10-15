@@ -76,7 +76,7 @@ const delivered = (text: unknown, v: RunView) => {
   if (c) c.state = 'delivered';
 };
 const ENGINE: Record<string, Fold> = {
-  text: (r, x, v) => { v.last = { seq: r.seq, text: String(x.text ?? '') }; },
+  text: (r, x, v) => { if (typeof x.step !== 'string') v.last = { seq: r.seq, text: String(x.text ?? '') }; },   // a subagent's text (it has a step) is not the run's reply
   card_delivered: (_r, x, v) => delivered(x.card, v),
 };
 
@@ -135,14 +135,18 @@ const END = new Set(['run_finished', 'run_stopped', 'run_detached']);
 
 const thinkingRow = (r: LogRow) => r.type === 'engine' && data(r).type === 'thinking';
 
-/** Seqs of the last thinking row of each burst: the thinking rows of one run with no other engine row between them. The parser emits several per burst; only the head draws. */
+/** Seqs of the head of each burst: the thinking rows of one run with no other engine row between them. The parser emits several count rows per burst and, with summaries on, one row with the text: the text row draws, else the last count row. */
 export function thinkingHeads(rows: LogRow[]): Set<number> {
   const heads = new Set<number>();
   let prev: LogRow | undefined;
+  let texted = false;   // the burst already has its text row
   for (const r of rows) {
     if (r.type !== 'engine') continue;
-    if (prev && thinkingRow(prev) && thinkingRow(r) && prev.runId === r.runId) heads.delete(prev.seq);
-    if (thinkingRow(r)) heads.add(r.seq);
+    const same = prev && thinkingRow(prev) && thinkingRow(r) && prev.runId === r.runId;
+    if (!same) texted = false;
+    else if (!texted) heads.delete(prev!.seq);
+    if (thinkingRow(r) && typeof data(r).text === 'string') { heads.add(r.seq); texted = true; }
+    else if (thinkingRow(r) && !texted) heads.add(r.seq);
     prev = r;
   }
   return heads;

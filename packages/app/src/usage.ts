@@ -14,7 +14,8 @@ export function usageOf(rows: LogRow[]): Usage | undefined {
     const r = rows[i]!;
     if (r.type === 'turn_failed') { stale = true; continue; }
     if (r.type !== 'engine') continue;
-    const d = (r.data ?? {}) as { type?: string; model?: unknown; used?: unknown; window?: unknown; after?: unknown };
+    const d = (r.data ?? {}) as { type?: string; model?: unknown; used?: unknown; window?: unknown; after?: unknown; step?: unknown };
+    if (typeof d.step === 'string') continue;   // a subagent's row is not the parent's activity
     if (d.type === 'compacted' && !compacted) {
       if (typeof d.after !== 'number' || !Number.isInteger(d.after) || d.after < 0) return undefined;
       compacted = true; after = d.after; stale = true;
@@ -76,7 +77,7 @@ export function hasReplied(rows: LogRow[]): boolean {
   for (const r of rows) {
     if (r.type === 'turn_failed') errored = false;
     else if (r.type === 'turn_ended') { if (!errored) return true; errored = false; }
-    else if (r.type === 'engine' && (r.data as { type?: string } | null)?.type === 'error') errored = true;
+    else if (r.type === 'engine' && (r.data as { type?: string; step?: unknown } | null)?.type === 'error' && typeof (r.data as { step?: unknown }).step !== 'string') errored = true;
   }
   return false;
 }

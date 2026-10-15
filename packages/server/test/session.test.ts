@@ -2048,7 +2048,30 @@ describe('subagent (D)', () => {
     const l = x.log();
     const end = l.findIndex((r) => r.type === 'turn_ended' && (r.data as { step?: string }).step === 'subagent-1');
     expect(contextSize(l.slice(0, end + 1))).toBe(1000);
-    expect(between(x).filter((r) => r.type === 'engine')).toEqual([]);
+    // what lies inside the subagent's turn is its own text, under its step: never its usage
+    expect(between(x).filter((r) => r.type === 'engine').map((r) => r.data)).toEqual([{ type: 'text', text: 'found it', step: 'subagent-1' }]);
+  });
+
+  it("keeps a subagent's text, reasoning, tool call and result under its step; its usage and cost are not logged and the parent's figures do not move", async () => {
+    const x = await ready([
+      { usage: 1000 },
+      { text: 'found it', thinking: 'because', tools: [{ tool: 'Read', input: { path: 'a' }, result: 'body' }], liveCost: 0.06, cost: 0.06, total: 0.06, usage: 5000, model: 'model-h' },
+      { text: 'used', cost: 0.02, usage: 1200 },
+    ]);
+    await go(x);
+    await x.s.idle();
+    const inside = between(x).filter((r) => r.type === 'engine').map((r) => r.data);
+    expect(inside).toEqual([
+      { type: 'thinking', tokens: 50, text: 'because', step: 'subagent-1' },
+      { type: 'tool_call', tool: 'Read', input: { path: 'a' }, step: 'subagent-1' },
+      { type: 'tool_result', tool: 'Read', output: 'body', step: 'subagent-1' },
+      { type: 'text', text: 'found it', step: 'subagent-1' },
+    ]);
+    const engine = x.log().filter((r) => r.type === 'engine').map((r) => r.data as { type: string; step?: string });
+    expect(engine.filter((d) => d.type === 'usage' || d.type === 'cost').every((d) => d.step === undefined)).toBe(true);
+    expect(engine.filter((d) => d.type === 'usage').map((d) => (d as unknown as { used: number }).used)).toEqual([1000, 1200]);
+    expect(contextSize(x.log())).toBe(1200);
+    expect(contextSize(x.log().slice(0, x.log().findIndex((r) => r.type === 'turn_ended' && (r.data as { step?: string }).step === 'subagent-1') + 1))).toBe(1000);
   });
 
   it('counts its reply once: turn_ended 0.06 on its step, the receipt row, the run total 0.08, and no engine_costs row for its session', async () => {

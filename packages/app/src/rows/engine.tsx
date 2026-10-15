@@ -28,6 +28,18 @@ function ToolBead({ e, row, ctx }: { e: any; row: LogRow; ctx: Ctx }) {
   );
 }
 
+// Open while it is the live head; after that it is the user's choice (as the tool bead's `seen`), starting collapsed.
+function Reasoning({ e, live }: { e: { tokens?: number; text: string }; live: boolean }) {
+  const [mine, setMine] = useState<boolean>();
+  const open = mine ?? live;
+  return (
+    <details className="row think" open={open} onToggle={(ev) => { if (ev.currentTarget.open !== open) setMine(ev.currentTarget.open); }}>
+      <summary>Reasoning{typeof e.tokens === 'number' ? ` ~${e.tokens.toLocaleString('en-US')} tokens` : ''}</summary>
+      <div className="reasoning">{e.text}</div>
+    </details>
+  );
+}
+
 export const engineEvents = new Map<EngineEvent['type'], Render>([
   ['text', (e) => <div className="msg agent txt">{e.text}</div>],
   ['tool_call', (e, row, ctx) => <ToolBead e={e} row={row} ctx={ctx} />],
@@ -48,8 +60,9 @@ export const engineEvents = new Map<EngineEvent['type'], Render>([
       </div>
     );
   }],
-  // the parser emits several rows per burst (a growing count, never the text): only the burst's head draws
+  // the parser emits several rows per burst (a growing count, then the text when the CLI sends it): only the burst's head draws
   ['thinking', (e, row, ctx) => !ctx.thinking?.heads.has(row.seq) ? null
+    : typeof e.text === 'string' ? <Reasoning e={e} live={ctx.thinking.now === row.seq} />
     : ctx.thinking.now === row.seq ? <div className="row think"><span className="sx-wave" aria-hidden="true">⌁</span>{thinkingWords(e.tokens)}</div>
       : <div className="row think">thought ~{e.tokens.toLocaleString('en-US')} tokens</div>],
 ]);

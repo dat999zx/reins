@@ -15,8 +15,9 @@ export interface StreamOut {
 /**
  * Turns claude `stream-json` lines into EngineEvents (plan 15b 2.3). Shapes come from the
  * recorded streams in spike/fixtures; everything else (hook lifecycle, rate limits, control
- * responses, later `system/init`s) is ignored. Thinking text is empty in 2.1.281 (only a
- * signature), so `system/thinking_tokens` estimates are used for a count, never the text.
+ * responses, later `system/init`s) is ignored. Thinking text is empty unless the CLI is run with
+ * `--thinking-display summarized`; `system/thinking_tokens` estimates are the count, the assistant
+ * message's thinking block (once, whole) is the text.
  */
 export function createStreamParser(o: { windows?: Record<string, number> } = {}) {
   const toolNames = new Map<string, string>();
@@ -64,6 +65,10 @@ export function createStreamParser(o: { windows?: Record<string, number> } = {})
       for (const b of blocks(m)) {
         if (b.type === 'text' || b.type === 'tool_use') closeBurst();
         if (b.type === 'text' && b.text) out.events.push({ type: 'text', text: b.text });
+        if (b.type === 'thinking' && typeof b.thinking === 'string' && b.thinking) {
+          out.events.push({ type: 'thinking', tokens: done + cur || shown, text: b.thinking });
+          closeBurst();   // the text is the end of its burst
+        }
         if (b.type === 'tool_use') {
           toolNames.set(b.id, b.name);
           if (typeof m.parent_tool_use_id === 'string') parentOf.set(b.id, m.parent_tool_use_id);

@@ -20,12 +20,12 @@ export function readSetting<K extends keyof typeof SETTINGS>(store: Store, key: 
 
 const type = (r: LogRow) => (r.data as { type?: string } | null)?.type;
 
-/** The newest usage's tokens, unknown once any later engine row (other than usage) or a failed turn exists. */
+/** The newest usage's tokens, unknown once any later engine row (other than usage) or a failed turn exists. A subagent's rows (they carry a `step`) are not the parent's. */
 export function contextSize(rows: LogRow[]): number | undefined {
   for (let i = rows.length - 1; i >= 0; i--) {
     const r = rows[i]!;
     if (r.type === 'turn_failed') return undefined;
-    if (r.type !== 'engine') continue;
+    if (r.type !== 'engine' || typeof (r.data as { step?: unknown } | null)?.step === 'string') continue;
     if (type(r) !== 'usage') return undefined;
     const used = (r.data as { used?: unknown }).used;
     return typeof used === 'number' ? used : undefined;
