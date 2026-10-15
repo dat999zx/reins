@@ -4,6 +4,7 @@ Format: [Keep a Changelog](https://keepachangelog.com). Versions: [SemVer](https
 
 ## Unreleased
 
+- Reasoning: the session header has a Reasoning picker (Low, Medium, High, Extra high, Max; a new session starts on Medium) that applies from the next reply, and a subagent block and a switch model block take a `reasoning:` line with the same Reasoning picker on their face and panel (empty is the session's). Claude ignores a level it does not know with a warning.
 - The hand-off block (`## handoff`) is removed: it only asked the same session for a summary, and its `to:` delivered nothing. A file that still has one gets an "Unknown step kind" error.
 - A block's cards are guards only. The cards nudge, role, checkpoint, budget, undo and note are removed (a note is just the prompt); a file with one of those lines gets an "Unknown attribute" error. A `whenever` block holds a `now:` or `stop:` card, so it can only interrupt with `now` or `stop`. Blocks' panel says Guards and has an Add guard button, and a block face shows `guard: <glob>`.
 - The Links section of a block's panel no longer adds links (draw them on the canvas); it keeps the list with each link's max and its remove button, and is not shown when a block has no links.

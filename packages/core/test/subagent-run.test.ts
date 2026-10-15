@@ -54,6 +54,12 @@ const rig = (workflow: Workflow, subScript: ScriptedTurn[] = [], o: { parent?: S
 };
 
 describe('a subagent step: its own session, money and records', () => {
+  it('the open carries the step reasoning; a step with none opens without it', async () => {
+    const { run, opens } = rig(wf([subagent({ model: 'm1', reasoning: 'high' }, 'a'), subagent({ model: 'm1' }, 'b')]), [reply('one', 0.01), reply('two', 0.01)]);
+    await go(run);
+    expect(opens.map((o) => o.reasoning)).toEqual(['high', undefined]);
+  });
+
   it('runs in the second engine, off the parent context, and counts its reply to its slice and the run', async () => {
     const { run, parent, sub, opens, closed, sessions } = rig(
       wf([subagent({ model: 'm1', usd: '0.50', mode: 'read-only' }), phase('use')]),

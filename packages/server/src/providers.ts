@@ -11,6 +11,10 @@ export interface Provider {
   models: Array<{ id: string; label: string }>;
   /** What a new session uses, like Hermes `model.default`; one of `models`. */
   defaultModel: string;
+  /** The reasoning levels the provider's CLI takes, in picker order. */
+  efforts: Array<{ id: string; label: string }>;
+  /** What a new session uses; one of `efforts`. */
+  defaultEffort: string;
   /** The catalog's key for this provider (models.dev), if it has one. */
   catalog?: string;
   /** Models whose stream reports no context window. */

@@ -6,7 +6,7 @@ import { BlockPanel } from '../src/BlockPanel.js';
 
 const step = (over: Partial<Step> = {}) => ({ id: 'plan', kind: 'phase', attrs: {}, cards: [], links: [], ...over }) as Step;
 const html = (s: Step, all: Step[] = [s]) => renderToStaticMarkup(createElement(BlockPanel, {
-  step: s, all, rev: 0, models: [], onEdit: () => {}, onEditInText: () => {}, onDelete: () => {},
+  step: s, all, rev: 0, models: [], efforts: [], onEdit: () => {}, onEditInText: () => {}, onDelete: () => {},
 }));
 
 describe('the block panel', () => {

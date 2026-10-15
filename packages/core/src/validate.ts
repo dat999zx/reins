@@ -153,10 +153,12 @@ export function validate(
       diagnostics.push({ severity: 'error', message: `Budget (USD) of \`${s.id}\` must be an amount above 0, like 0.50.`, pos });
     }
   }
-  // A `model:` line is parsed on any kind (a subagent owns it), so the kinds that do not own it say so here.
+  // A `model:` or `reasoning:` line is parsed on any kind (a subagent owns both), so the kinds that do not own it say so here.
   const ownsKey = (s: Step, k: string) => { const n = NODES.get(s.kind); return !!n && (n.attrs.includes(k) || !!n.heading?.owns?.includes(k)); };
   for (const s of allSteps) {
-    if (s.attrs.model !== undefined && !ownsKey(s, 'model')) diagnostics.push({ severity: 'warning', message: `\`model:\` does nothing on a ${s.kind} step`, pos: s.pos || { line: 1, col: 1 } });
+    for (const k of ['model', 'reasoning']) {
+      if (s.attrs[k] !== undefined && !ownsKey(s, k)) diagnostics.push({ severity: 'warning', message: `\`${k}:\` does nothing on a ${s.kind} step`, pos: s.pos || { line: 1, col: 1 } });
+    }
   }
   // Only valid slices are summed: a malformed one already has its own error.
   const sliced = allSteps.filter((s) => s.attrs.usd !== undefined && owns(s) && validUsd(s));

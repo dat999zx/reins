@@ -52,6 +52,20 @@ describe('model step: parse and print', () => {
   });
 });
 
+describe('model step: reasoning', () => {
+  it('reasoning: round-trips beside the model and the slice, and a reasoning-only block is valid', () => {
+    const text = wf('## model claude-opus-5-5\nreasoning: high\nusd: 0.50\n\n## model\nreasoning: low\n');
+    const w = ok(text);
+    expect(w.steps.map((s) => s.attrs)).toEqual([{ model: 'claude-opus-5-5', reasoning: 'high', usd: '0.50' }, { reasoning: 'low' }]);
+    expect(printWorkflow(w)).toBe(text);
+    expect(validate(w)).toEqual([]);
+  });
+
+  it('a block that names a model or a reasoning is not "nothing"', () => {
+    expect(warnings(wf('## model\nreasoning: low\n'))).toEqual([]);
+  });
+});
+
 describe('model step: validate', () => {
   const two = (a: string, b: string) => wf(`## model m1\nusd: ${a}\n\n## phase a\n> Go.\n\n## model m2\nusd: ${b}\n`);
 
@@ -154,6 +168,24 @@ describe('model step: exec', () => {
     expect(await exec(step({ model: 'm', usd: '0.50' }), ctx)).toBe('next');
     expect(ctx.log).toHaveBeenCalledWith('model_switched', { step: 'model-1', model: 'm', how: 'unsupported' });
     expect(ctx.slice).toHaveBeenCalledWith('model-1', 0.5);
+  });
+
+  it('reasoning: applied once the model is switched, with the step id; a reasoning-only block applies it with no model call', async () => {
+    const ctx = Object.assign(stub({ to: 'switched', label: 'L' }), { setReasoning: vi.fn() });
+    expect(await exec(step({ model: 'm', reasoning: 'high' }), ctx)).toBe('next');
+    expect(ctx.setReasoning).toHaveBeenCalledWith('high', 'model-1');
+    const only = Object.assign(stub({ to: 'switched', label: 'L' }), { setReasoning: vi.fn() });
+    await exec(step({ reasoning: 'low' }), only);
+    expect(only.switchModel).not.toHaveBeenCalled();
+    expect(only.setReasoning).toHaveBeenCalledWith('low', 'model-1');
+  });
+
+  it('reasoning: a kept model skips it; a stop or a closed question never reaches it', async () => {
+    for (const to of ['kept', 'stop', 'closed'] as const) {
+      const ctx = Object.assign(stub(to === 'kept' ? { to, label: 'L' } : { to }), { setReasoning: vi.fn() });
+      await exec(step({ model: 'm', reasoning: 'high' }), ctx);
+      expect(ctx.setReasoning, to).not.toHaveBeenCalled();
+    }
   });
 
   it('no model id: no switch, no log, the slice opens; no usd closes it', async () => {

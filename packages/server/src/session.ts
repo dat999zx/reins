@@ -21,7 +21,9 @@ export type MakeEngine = (o: {
 /** The provider's view of a model, for a switch: whether its list has it, its label, and the cost estimate of switching to it at `used` tokens. */
 export type DescribeModel = (engine: string, model: string, used: number | undefined) =>
   { listed: boolean; label: string; estimate?: number | undefined; source?: 'table' | 'catalog' };
-export interface SessionDeps { store: Store; makeEngine: MakeEngine; dir: string; onRow?: (row: LogRow) => void; describeModel?: DescribeModel }
+/** The provider's view of a reasoning level: whether its list has it, and its label. */
+export type DescribeEffort = (engine: string, id: string) => { listed: boolean; label: string };
+export interface SessionDeps { store: Store; makeEngine: MakeEngine; dir: string; onRow?: (row: LogRow) => void; describeModel?: DescribeModel; describeEffort?: DescribeEffort }
 export type Ack = { ok: true } | { ok: false; code: 400 | 409; error: string; text?: string; diagnostics?: Diagnostic[] };
 export type SessionStatus = 'idle' | 'running' | 'waiting' | 'closed';
 export type Session = ReturnType<typeof openSession>;
@@ -154,6 +156,11 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     store.updateSession(id, { model: p.from ?? null });
     log('settings', { model: p.from ?? '' });
     log('note', { text: `${p.to} did not answer (${why}). The model is back to ${p.from ?? 'the default'}.` });
+    dropEngine();
+  }
+
+  /** The next reply opens a new process (with the stored model and reasoning); the live one is closed. */
+  function dropEngine() {
     engine = undefined;
     if (live) {
       const s = live;
@@ -172,12 +179,23 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     log('note', { text: `Model set to ${to ? label ?? to : 'the default'} from the next reply. The whole conversation goes to it as input.` }, runId);
     const was = pendingSwitch ? pendingSwitch.from : from;
     pendingSwitch = (to || undefined) === was ? undefined : { from: was, to };
-    engine = undefined;
-    if (live) {
-      const s = live;
-      live = undefined;
-      retire(s);
-    }
+    dropEngine();
+  }
+
+  const describeLevel: DescribeEffort = deps.describeEffort ?? ((_e, id) => ({ listed: false, label: id }));
+
+  /** The one place a reasoning change lands (the header and a run's model step): no card, no cost; the next reply opens on the new level. */
+  function applyEffort(to: string, label: string) {
+    store.updateSession(id, { effort: to });
+    log('settings', { effort: to });
+    log('note', { text: `Reasoning set to ${label} from the next reply.` }, runId);
+    dropEngine();
+  }
+
+  /** A run's model step with a reasoning: applied as the header does, unless the session is on it already. */
+  function runReasoning(level: string) {
+    const cur = store.getSession(id)!;
+    if (level !== cur.effort) applyEffort(level, describeLevel(cur.engine, level).label);
   }
 
   // ponytail: a run's model step is never refused as busy or because another run is left detached; a detached run resumed later goes on with the model stored then.
@@ -279,11 +297,11 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     const model = o.model ?? cur.model;
     const title = `Subagent ${o.title} (\`${o.step}\`)`;
     const e = deps.makeEngine({
-      ...(model ? { model } : {}), ...(cur.effort ? { effort: cur.effort } : {}),
+      ...(model ? { model } : {}), ...(o.reasoning ?? cur.effort ? { effort: (o.reasoning ?? cur.effort)! } : {}),
       onApprove: (r) => subagentApprove(title, r),
       onLive: () => {},
     });
-    const { step: _s, title: _t, ...open } = o;
+    const { step: _s, title: _t, reasoning: _r, ...open } = o;
     const s = await e.open({ ...open, cwd, pendingCards: () => [] });
     const session: EngineSession = {
       sessionId: s.sessionId,
@@ -481,7 +499,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   ): Promise<string | undefined> {
     runId = rid;
     const opts = runOptions(io, {
-      workflow: wf, engine: getEngine(), cwd, resolveBlock, session: lent, switchModel: runSwitch, openSubagent,
+      workflow: wf, engine: getEngine(), cwd, resolveBlock, session: lent, switchModel: runSwitch, setReasoning: runReasoning, openSubagent,
       onEvent: (ev) => {
         store.appendEvent(rid, ev);
         if (run) store.saveSnapshot(rid, run.snapshot());
@@ -693,9 +711,14 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
    * `estimate` and `label` describe the target model (the server knows the provider's prices; the session does not).
    * A model switch retires the process; the next reply opens `--resume <same id>` on the new model (F1).
    */
-  function settings(p: { autoApprove?: boolean; title?: string; model?: string; estimate?: number | undefined; label?: string; source?: 'table' | 'catalog' }): Ack {
+  function settings(p: { autoApprove?: boolean; title?: string; model?: string; estimate?: number | undefined; label?: string; source?: 'table' | 'catalog'; effort?: string; effortLabel?: string }): Ack {
     const from = store.getSession(id)!.model;
     const switching = p.model !== undefined && p.model !== (from ?? '');
+    const leveling = p.effort !== undefined && p.effort !== store.getSession(id)!.effort;
+    if (leveling) {
+      if (closingP) return closingAck();
+      if (busy) return conflict('Change the reasoning when the session is idle.');
+    }
     let check: SwitchCheck;
     if (switching) {
       if (closingP) return closingAck();
@@ -713,6 +736,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       store.updateSession(id, patch);
       log('settings', patch);
     }
+    if (leveling) applyEffort(p.effort!, p.effortLabel ?? p.effort!);
     if (switching) {
       const to = p.model!;
       // ponytail: a switch card waits with no timeout; any new work closes it without switching; a server stop leaves it to recover.ts.

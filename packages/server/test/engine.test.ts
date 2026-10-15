@@ -279,7 +279,7 @@ describe('claude adapter', () => {
     const sum = (m?: Record<string, number>) => Object.values(m ?? {}).reduce((a, b) => a + b, 0);
     const T0 = { fixture: 'claude-2.1.281-turns.jsonl', turn: 0 };
     const T1 = { fixture: 'claude-2.1.281-turns.jsonl', turn: 1 };
-    const open = (dir: string, o: { model: string; sessionId?: string; costBase?: number; costBaseByModel?: Record<string, number> }) =>
+    const open = (dir: string, o: { model: string; effort?: string; sessionId?: string; costBase?: number; costBaseByModel?: Record<string, number> }) =>
       engine().open({ cwd: dir, policy: () => write, ...o });
 
     it('modelCosts: a model with no new spend is left out; a total that went down is a new count', () => {
@@ -300,6 +300,16 @@ describe('claude adapter', () => {
       expect(r2.models!.a).toBeCloseTo(0.0802364 - 0.0640898, 9);
       expect(r2.totals!.a).toBeCloseTo(0.0802364, 9);
       expect(sum(r2.models)).toBeCloseTo(r2.cost!, 9);
+    });
+
+    it("an open's own effort wins over the engine's for that process", async () => {
+      const f = fakeSetup([T0], 10, { cumulative: true });
+      const s = await open(f.dir, { model: 'a', effort: 'high' });
+      await s.turn('one');
+      await s.close();
+      const args: string[] = f.log().filter((l) => l.kind === 'args')[0].args;
+      expect(args[args.indexOf('--effort') + 1]).toBe('high');
+      expect(args.filter((a) => a === '--effort')).toHaveLength(1);
     });
 
     it('a switch: the resumed process on another model counts only that model, and the shares add up to the cost', async () => {

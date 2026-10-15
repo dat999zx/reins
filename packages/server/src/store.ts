@@ -30,7 +30,7 @@ const toLog = (r: any): LogRow => ({
   type: r.type, data: JSON.parse(r.data),
 });
 
-const sessionColumns = { autoApprove: 'auto_approve', title: 'title', engineSessionId: 'engine_session_id', model: 'model' } as const;
+const sessionColumns = { autoApprove: 'auto_approve', title: 'title', engineSessionId: 'engine_session_id', model: 'model', effort: 'effort' } as const;
 
 /**
  * Runs and their event log, chat sessions and their timeline, and folder trust (plan 6.7, 15b 2.5, 15d 3b.3).
@@ -127,7 +127,7 @@ export function openStore(file: string) {
       return listSessions.all().map(toSession);
     },
     /** `model: null` clears the model (the provider's default). */
-    updateSession(id: string, patch: { autoApprove?: boolean; title?: string; engineSessionId?: string; model?: string | null }) {
+    updateSession(id: string, patch: { autoApprove?: boolean; title?: string; engineSessionId?: string; model?: string | null; effort?: string | null }) {
       const sets: string[] = ['updated_at = ?'];
       const vals: Array<string | number | null> = [Date.now()];
       for (const k of Object.keys(sessionColumns) as Array<keyof typeof sessionColumns>) {

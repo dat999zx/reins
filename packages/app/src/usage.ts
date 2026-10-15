@@ -57,6 +57,16 @@ export function shownModel(sess: { engine?: string; model?: string | null }, usa
   return sess.model ?? usage?.model ?? providers.find((p) => p.id === sess.engine)?.defaultModel;
 }
 
+/** The reasoning level a session runs on: its own, else its provider's default (a session from before reasoning has none). */
+export function shownEffort(sess: { engine?: string; effort?: string | null }, providers: Array<{ id: string; defaultEffort: string }>): string | undefined {
+  return sess.effort ?? providers.find((p) => p.id === sess.engine)?.defaultEffort;
+}
+
+/** The disabled reasoning picker's title, or undefined while it may be used. The server refuses only while a turn is open (no card, no cost). */
+export function effortBlock(busy: boolean): string | undefined {
+  return busy ? 'Change the reasoning when the session is idle.' : undefined;
+}
+
 /**
  * The server keeps the engine's session id from the first reply that has no error event, and Compress needs it.
  * ponytail: the app has no such field, so this reads the log: some turn_ended whose rows since the previous turn_ended / turn_failed hold no error.

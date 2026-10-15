@@ -454,6 +454,13 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await textTab.click();
     await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('model: claude-opus-5-5');
     await blocksTab.click();
+    // reasoning: the panel's Reasoning select starts on the session's level, and a level lands as a `reasoning:` line
+    const levelPick = panel.getByRole('combobox', { name: 'Reasoning', exact: true });
+    expect(await levelPick.locator('option').first().textContent()).toBe('Medium (session)');
+    await levelPick.selectOption('high');
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('reasoning: high');
+    await blocksTab.click();
     await panel.getByRole('button', { name: 'Delete', exact: true }).click();
     await expect.poll(() => row('subagent-1').count(), { timeout: W }).toBe(0);
     await textTab.click();
@@ -557,7 +564,16 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
 
     // 8d.7. a grip dragged into an empty C body nests the block; a click on the nested block selects it, not the C block around it
     await blocksTab.click();
-    await row('run-1').locator('.sx-grip').first().dragTo(page.locator('[data-body="repeat-1/kids"]'));
+    // the condition drop above may still be settling the canvas: measure the grip and the body once they hold still, then move in steps
+    await page.getByRole('button', { name: 'Fit' }).click();   // the empty body sits at the canvas edge: fit the stack so it is fully in view
+    const gripEl = row('run-1').locator('.sx-grip').first(), bodyEl = page.locator('[data-body="repeat-1/kids"]');
+    const stillBoxes = async () => JSON.stringify([await gripEl.boundingBox(), await bodyEl.boundingBox()]);
+    await expect.poll(async () => { const a = await stillBoxes(); await page.waitForTimeout(150); return a === await stillBoxes(); }, { timeout: W }).toBe(true);
+    const gripBox = (await gripEl.boundingBox())!, bodyBox = (await bodyEl.boundingBox())!;
+    await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + gripBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(bodyBox.x + bodyBox.width / 2, bodyBox.y + bodyBox.height / 2, { steps: 8 });
+    await page.mouse.up();
     await textTab.click();
     await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('## repeat\nuntil: tests pass\nmax: 3\n\n### run `npm run lint`\n');
     await blocksTab.click();

@@ -6,16 +6,24 @@ import { BlocksPane } from '../src/BlocksPane.js';
 import { wiresOf } from '../src/canvasKinds.js';
 
 const models = [{ id: 'm1', label: 'Model One' }, { id: 'm2', label: 'Model Two' }];
+const efforts = [{ id: 'medium', label: 'Medium' }, { id: 'high', label: 'High' }];
 const step = (kind: string, over: Partial<Step> = {}) => ({ id: `${kind}-1`, kind, attrs: {}, cards: [], links: [], ...over }) as Step;
 const face = (...steps: Step[]) => {
   const w = { name: 't', budget: { turns: 10, minutes: 30 }, always: [], steps } as unknown as Workflow;
   return renderToStaticMarkup(createElement(BlocksPane, {
     w, steps: steps.map((s) => ({ id: s.id })), diags: [], text: '', sel: new Set<string>(), rev: 0, at: { x: 0, y: 0 },
-    models, sessionModel: { id: 'm1', label: 'Model One' }, onEdit: () => true, onSelect: () => {},
+    models, sessionModel: { id: 'm1', label: 'Model One' }, efforts, sessionEffort: { id: 'medium', label: 'Medium' }, onEdit: () => true, onSelect: () => {},
   } as never));
 };
 
 describe('the block face', () => {
+  it('a subagent and a switch-model block show a Reasoning picker: blank is the session level, a chosen level is selected', () => {
+    const sub = face(step('subagent', { title: 'research' }));
+    expect(sub).toContain('<select aria-label="Reasoning of subagent-1" class="sx-pill">');
+    expect(sub).toContain('<option value="" selected="">Medium</option><option value="medium">Medium</option><option value="high">High</option>');
+    expect(face(step('subagent', { attrs: { reasoning: 'high' } }))).toContain('<option value="high" selected="">High</option>');
+    expect(face(step('model', { attrs: { model: 'm2' } }))).toContain('<select aria-label="Reasoning of model-1" class="sx-pill">');
+  });
   it('a subagent with no model shows a model picker that names the session model, not a text pill', () => {
     const html = face(step('subagent', { title: 'research' }));
     expect(html).toContain('<select aria-label="Model of subagent-1" class="sx-pill">');

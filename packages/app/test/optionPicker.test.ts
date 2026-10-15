@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { ModelPicker } from '../src/ModelPicker.js';
+import { OptionPicker } from '../src/OptionPicker.js';
 
-const models = [{ id: 'm1', label: 'Model One' }, { id: 'm2', label: 'Model Two' }];
-const html = (p: Partial<Parameters<typeof ModelPicker>[0]>) =>
-  renderToStaticMarkup(createElement(ModelPicker, { models, value: '', onChange: () => {}, label: 'Model', ...p }));
+const options = [{ id: 'm1', label: 'Model One' }, { id: 'm2', label: 'Model Two' }];
+const html = (p: Partial<Parameters<typeof OptionPicker>[0]>) =>
+  renderToStaticMarkup(createElement(OptionPicker, { options, value: '', onChange: () => {}, label: 'Model', ...p }));
 
-describe('ModelPicker', () => {
-  it('an empty value with a blank shows that text as its one empty option, then the models', () => {
+describe('OptionPicker', () => {
+  it('an empty value with a blank shows that text as its one empty option, then the options', () => {
     expect(html({ blank: 'Model One' })).toBe(
       '<select aria-label="Model"><option value="" selected="">Model One</option><option value="m1">Model One</option><option value="m2">Model Two</option></select>');
   });
@@ -24,7 +24,7 @@ describe('ModelPicker', () => {
   });
   it('passes its class, title and disabled to the select, and the chosen value to onChange', () => {
     const got: string[] = [];
-    const el = ModelPicker({ models, value: 'm1', onChange: (v) => got.push(v), label: 'Model', className: 'sx-pill', title: 'why', disabled: true });
+    const el = OptionPicker({ options, value: 'm1', onChange: (v) => got.push(v), label: 'Model', className: 'sx-pill', title: 'why', disabled: true });
     expect(el.props).toMatchObject({ className: 'sx-pill', title: 'why', disabled: true, 'aria-label': 'Model', value: 'm1' });
     el.props.onChange({ target: { value: 'm2' } });
     expect(got).toEqual(['m2']);

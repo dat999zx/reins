@@ -197,7 +197,11 @@ describe('state, probing and sessions (3b.6 1526-1528, 1543)', () => {
     const w = await boot();
     const s = await w.api('GET', '/api/state');
     expect(s.json.providers).toEqual([{
-      id: 'claude', label: 'Claude', defaultModel: 'claude-sonnet-5-5',
+      id: 'claude', label: 'Claude', defaultModel: 'claude-sonnet-5-5', defaultEffort: 'medium',
+      efforts: [
+        { id: 'low', label: 'Low' }, { id: 'medium', label: 'Medium' }, { id: 'high', label: 'High' },
+        { id: 'xhigh', label: 'Extra high' }, { id: 'max', label: 'Max' },
+      ],
       models: [
         { id: 'claude-opus-5-5', label: 'Opus 5.5' }, { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' },
         { id: 'claude-haiku-5-5', label: 'Haiku 5.5' }, { id: 'claude-fable-5-1', label: 'Fable 5.1' },
@@ -229,6 +233,23 @@ describe('state, probing and sessions (3b.6 1526-1528, 1543)', () => {
     expect((await w.post(id, 'settings', { model: '' })).status).toBe(200);
     expect(await stateModel()).toBeUndefined();
     expect(w.store.getSession(id)).not.toHaveProperty('model');
+  });
+
+  it('a new session with no reasoning gets its provider default level; a given level is kept', async () => {
+    const w = await boot();
+    expect(w.store.getSession(await w.session())!.effort).toBe('medium');
+    expect(w.store.getSession(await w.session({ effort: 'high' }))!.effort).toBe('high');
+  });
+
+  it('the reasoning setting: a listed level is stored; anything else is 400', async () => {
+    const w = await boot();
+    const id = await w.session();
+    const bad = await w.post(id, 'settings', { effort: 5 });
+    expect([bad.status, bad.json.error]).toEqual([400, 'effort must be a string.']);
+    const unknown = await w.post(id, 'settings', { effort: 'nope' });
+    expect([unknown.status, unknown.json.error]).toEqual([400, 'Unknown reasoning level.']);
+    expect((await w.post(id, 'settings', { effort: 'xhigh' })).status).toBe(200);
+    expect((await w.api('GET', '/api/state')).json.sessions[0].effort).toBe('xhigh');
   });
 
   it('a switch over a limit is 200 and a question card with its words; nothing is stored until Switch', async () => {

@@ -10,10 +10,10 @@ import { RunDock, type Surface } from './RunDock.js';
 import { PHASE, runView, thinkingHeads, thinkingNow } from './runState.js';
 import { TextTab } from './TextTab.js';
 import { mergeOutput, openQuestions, title, type Sess } from './state.js';
-import { ModelPicker } from './ModelPicker.js';
-import { compressBlock, compressBusy, contextWords, hasReplied, pickerBlock, shownModel, usageOf } from './usage.js';
+import { OptionPicker } from './OptionPicker.js';
+import { compressBlock, compressBusy, contextWords, effortBlock, hasReplied, pickerBlock, shownEffort, shownModel, usageOf } from './usage.js';
 
-export type Provider = { id: string; label: string; defaultModel: string; models: Array<{ id: string; label: string; window?: number }> };
+export type Provider = { id: string; label: string; defaultModel: string; defaultEffort: string; efforts: Array<{ id: string; label: string }>; models: Array<{ id: string; label: string; window?: number }> };
 
 export function Chat({ sess, catalogue, providers, takeRefill, tab, onTab, restore, onState, onDirty, onError }: {
   sess: Sess; catalogue: TagEntry[]; providers: Provider[]; takeRefill: (input: string) => string; tab: Tab; onTab: (t: Tab) => void;
@@ -36,10 +36,14 @@ export function Chat({ sess, catalogue, providers, takeRefill, tab, onTab, resto
   const models = providers.find((p) => p.id === sess.engine)?.models ?? [];
   const shown = shownModel(sess, usage, providers) ?? '';
   const sessionModel = { id: shown, label: `${models.find((m) => m.id === shown)?.label ?? shown} (session)` };
+  const efforts = providers.find((p) => p.id === sess.engine)?.efforts ?? [];
+  const level = shownEffort(sess, providers) ?? '';
+  const sessionEffort = { id: level, label: `${efforts.find((e) => e.id === level)?.label ?? level} (session)` };
   // The stream's window wins; the catalog's (from /api/state) only fills a gap.
   const ctx = contextWords(usage, models.find((m) => m.id === shown)?.window);
   const asking = openQuestions(sess).some((r) => (r.data as { kind?: string }).kind === 'switch');
   const block = pickerBlock({ busy, detached: sess.detached.length, asking });
+  const effortOff = effortBlock(busy);
   // the server accepts Compress while only a switch card waits (it closes the card)
   const cb = compressBlock({
     busy: compressBusy(sess.status, openQuestions(sess).map((r) => (r.data as { kind?: string }).kind)),
@@ -110,9 +114,14 @@ export function Chat({ sess, catalogue, providers, takeRefill, tab, onTab, resto
         <span className={`status ${sess.status}`}><span className={`dot ${sess.status}`} /> {sess.status}</span>
         <label className="sx-model">
           Model
-          <ModelPicker label="Model" models={models} value={shown} disabled={block !== undefined}
+          <OptionPicker label="Model" options={models} value={shown} disabled={block !== undefined}
             title={block ?? (usage ? `In use: ${usage.model}` : undefined)}
             onChange={(v) => post(`${base}/settings`, { model: v }).catch((err) => onError(err.message))} />
+        </label>
+        <label className="sx-model">
+          Reasoning
+          <OptionPicker label="Reasoning" options={efforts} value={level} disabled={effortOff !== undefined} title={effortOff}
+            onChange={(v) => post(`/settings`, { effort: v }).catch((err) => onError(err.message))} />
         </label>
         <span className="sx-ctx" title={ctx.title}>{ctx.text}</span>
         <button className="sx-compress" disabled={cb !== undefined} title={cb ?? 'Summarise the conversation so far to free context. It costs one model call.'}
@@ -146,7 +155,7 @@ export function Chat({ sess, catalogue, providers, takeRefill, tab, onTab, resto
         </>
       ) : (
         restore === undefined ? <p className="hint">Loading…</p>
-          : <TextTab view={tab} onView={onTab} sess={sess} models={models} sessionModel={sessionModel} run={run} act={act} restore={restore} onState={onState} onDirty={onDirty} onRun={() => onTab('chat')}
+          : <TextTab view={tab} onView={onTab} sess={sess} models={models} efforts={efforts} sessionModel={sessionModel} sessionEffort={sessionEffort} run={run} act={act} restore={restore} onState={onState} onDirty={onDirty} onRun={() => onTab('chat')}
             reveal={reveal} onRevealed={() => setReveal(undefined)} onChat={onChat} dockOpen={dockOpen.blocks} onDockOpen={(o) => setDockOpen((d) => ({ ...d, blocks: o }))} dismissed={dismissed} onDismiss={setDismissed} />
       )}
     </main>

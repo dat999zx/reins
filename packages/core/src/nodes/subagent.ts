@@ -8,7 +8,7 @@ declare module '../model.js' {
 // ponytail: one reply per pass (plus now-card follow-ups) and no inner steps; a pass after the subagent handed back starts a fresh one.
 const subagent: NodeType = {
   kind: 'subagent',
-  attrs: ['model', 'usd', 'mode'],
+  attrs: ['model', 'reasoning', 'usd', 'mode'],
   sendsTurn: true,
   heading: {
     parse(arg, step) { step.title = arg; return false; },

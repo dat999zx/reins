@@ -3,11 +3,11 @@ import type { CardKind, Step, StepKind } from '@reins/core';
 import type { WireKind } from './canvas.js';
 import { BUDGET_ERRORS } from './panelEdit.js';
 
-export type FieldKey = 'title' | 'prompt' | 'mode' | 'cmd' | 'max' | 'against' | 'knowl' | 'model' | 'usd';
+export type FieldKey = 'title' | 'prompt' | 'mode' | 'cmd' | 'max' | 'against' | 'knowl' | 'model' | 'reasoning' | 'usd';
 // `error` is what the panel says when applyField refuses the value; `inherits`: an empty model is the session's model; `ph` overrides the
 // empty pill's placeholder; `required`: the validator warns while it is empty, so the face says so.
 export type Field = {
-  key: FieldKey; label: string; input: 'text' | 'mono' | 'textarea' | 'number' | 'mode' | 'step' | 'model';
+  key: FieldKey; label: string; input: 'text' | 'mono' | 'textarea' | 'number' | 'mode' | 'step' | 'model' | 'effort';
   error?: string; inherits?: true; ph?: string; required?: true;
 };
 export type Token = string | 'cond' | 'sub' | { field: FieldKey };
@@ -28,6 +28,7 @@ const title: Field = { key: 'title', label: 'Title', input: 'text' };
 const prompt: Field = { key: 'prompt', label: 'Prompt', input: 'textarea' };
 const mode: Field = { key: 'mode', label: 'Mode', input: 'mode' };
 const mustPrompt: Field = { ...prompt, required: true }; // phase and subagent: core warns "has no prompt"
+const reasoning: Field = { key: 'reasoning', label: 'Reasoning', input: 'effort', inherits: true };
 const usd: Field = { key: 'usd', label: 'Budget (USD)', input: 'text', error: BUDGET_ERRORS.usd, ph: 'optional' };
 
 export const KINDS: Record<StepKind, KindView> = {
@@ -53,13 +54,13 @@ export const KINDS: Record<StepKind, KindView> = {
   recall: { fields: [{ key: 'knowl', label: 'Knowl', input: 'text' }], line: ['recall from Knowl', { field: 'knowl' }], card: { label: 'recall', section: 'Memory' }, fresh: () => ({}) },
   store: { fields: [{ key: 'knowl', label: 'Knowl', input: 'text' }], line: ['store to Knowl', { field: 'knowl' }], card: { label: 'store', section: 'Memory' }, fresh: () => ({}) },
   model: {
-    fields: [{ key: 'model', label: 'Model', input: 'model' }, usd],
-    line: ['switch model to', { field: 'model' }, 'USD', { field: 'usd' }],
+    fields: [{ key: 'model', label: 'Model', input: 'model' }, reasoning, usd],
+    line: ['switch model to', { field: 'model' }, { field: 'reasoning' }, 'USD', { field: 'usd' }],
     card: { label: 'switch model', section: 'Flow' }, fresh: () => ({}),
   },
   subagent: {
-    fields: [title, mustPrompt, mode, { key: 'model', label: 'Model', input: 'model', inherits: true }, usd],
-    line: ['subagent', { field: 'title' }, 'on', { field: 'model' }, { field: 'mode' }, 'USD', { field: 'usd' }, { field: 'prompt' }],
+    fields: [title, mustPrompt, mode, { key: 'model', label: 'Model', input: 'model', inherits: true }, reasoning, usd],
+    line: ['subagent', { field: 'title' }, 'on', { field: 'model' }, { field: 'reasoning' }, { field: 'mode' }, 'USD', { field: 'usd' }, { field: 'prompt' }],
     cards: true,
     card: { label: 'subagent', section: 'Flow' }, fresh: () => ({}),
   },

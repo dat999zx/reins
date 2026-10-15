@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { LogRow } from '@reins/server/store.js';
-import { compressBlock, compressBusy, contextWords, hasReplied, modelOptions, pickerBlock, shownModel, tokens, usageOf } from '../src/usage.js';
+import { compressBlock, compressBusy, contextWords, effortBlock, hasReplied, modelOptions, pickerBlock, shownEffort, shownModel, tokens, usageOf } from '../src/usage.js';
 
 let seq = 0;
 const row = (type: string, data: unknown = {}): LogRow => ({ sessionId: 's1', seq: ++seq, ts: 1000 + seq, type, data });
@@ -89,6 +89,22 @@ describe('shownModel', () => {
     expect(shownModel({ engine: 'claude', model: 's' }, usage, providers)).toBe('s');
     expect(shownModel({ engine: 'claude', model: null }, usage, providers)).toBe('u');
     expect(shownModel({ engine: 'claude', model: null }, undefined, providers)).toBe('a');
+  });
+});
+
+describe('shownEffort', () => {
+  const providers = [{ id: 'claude', label: 'Claude', defaultModel: 'a', defaultEffort: 'medium', models: [] }];
+  it("is the session's level, else its provider's default (a session from before reasoning has none)", () => {
+    expect(shownEffort({ engine: 'claude', effort: 'high' }, providers)).toBe('high');
+    expect(shownEffort({ engine: 'claude' }, providers)).toBe('medium');
+    expect(shownEffort({ engine: 'other' }, providers)).toBeUndefined();
+  });
+});
+
+describe('effortBlock', () => {
+  it('says why the reasoning picker is off while a turn is open, or nothing', () => {
+    expect(effortBlock(true)).toBe('Change the reasoning when the session is idle.');
+    expect(effortBlock(false)).toBeUndefined();
   });
 });
 

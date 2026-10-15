@@ -30,9 +30,9 @@ const NATIVE = 'input, textarea, select, option, button, .sx-menu, .sx-zoom';
 const onOf = (t: Element): Press['on'] => (t.closest(NATIVE) ? 'input' : t.closest('.sx-handle') ? 'handle' : t.closest('[data-link]') ? 'link' : t.closest('.sx-hat') ? 'hat' : t.closest('.sx-loose') ? 'loose' : t.closest('.blk') ? 'block' : 'empty');
 
 // ponytail: Follow pans without animation, only when the block leaves the view; any press in the view stops it.
-export function Workspace({ w, steps, diags, text, sel, primary, rev, models, sessionModel, cam: saved, lay, press, reveal, ran, onShowInChat, follow, followTick, went, onUserCam, onMenu, onEdit, onSel, onDelete, onCam, onLayout, onUndo, onRedo, onNote, onEditInText }: {
+export function Workspace({ w, steps, diags, text, sel, primary, rev, models, efforts, sessionModel, sessionEffort, cam: saved, lay, press, reveal, ran, onShowInChat, follow, followTick, went, onUserCam, onMenu, onEdit, onSel, onDelete, onCam, onLayout, onUndo, onRedo, onNote, onEditInText }: {
   w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; sel: Set<Key>; primary?: string; rev: unknown;
-  models: Array<{ id: string; label: string }>; sessionModel?: { id: string; label: string };
+  models: Array<{ id: string; label: string }>; efforts: Array<{ id: string; label: string }>; sessionModel?: { id: string; label: string }; sessionEffort?: { id: string; label: string };
   cam?: Cam; lay: Layout; press: MutableRefObject<Start | undefined>;
   reveal?: { id: string; n: number }; ran?: (id: string) => boolean; onShowInChat?: (id: string) => void; // reveal: bring this block into view and focus it (Chat's "Blocks ↗")
   follow?: string; followTick?: number; went?: Array<{ from: string; to: string }>; onUserCam?: () => void; onMenu?: () => void; // onMenu: a context menu opens (the run panel's body closes); follow: keep this block (the running one) in view; went: the steps the run started, in order; onUserCam: the user moved the camera
@@ -577,12 +577,12 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, models, se
       style={{ backgroundPosition: `${cam.x}px ${cam.y}px`, backgroundSize: `${gridPx(cam.zoom)}px ${gridPx(cam.zoom)}px` }}
       onKeyDown={keydown} onContextMenu={contextmenu} onPointerDown={down} onPointerMove={(e) => { ptr.current = { x: e.clientX, y: e.clientY }; }} onPointerLeave={() => { ptr.current = undefined; }} onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}>
       <div className="sx-world" style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.zoom})` }}>
-        <BlocksPane w={w} steps={steps} diags={diags} text={text} sel={sel} primary={primary} rev={rev} models={models} sessionModel={sessionModel} condDrag={drag.kind === 'cond'} src={drag.src} over={drag.over} linkOver={band?.to}
+        <BlocksPane w={w} steps={steps} diags={diags} text={text} sel={sel} primary={primary} rev={rev} models={models} efforts={efforts} sessionModel={sessionModel} sessionEffort={sessionEffort} condDrag={drag.kind === 'cond'} src={drag.src} over={drag.over} linkOver={band?.to}
           at={scriptAt} missing={gone} free={{ at: freeAt, moving: movingFree }} onEdit={onEdit} onSelect={pick} />
         <LinkLayer arrows={arrows} then={then} rects={world} lanes={lane} selected={[...sel].find((k) => k.startsWith('k:'))?.slice(2)} band={band} went={wentKeys} />
         {(lay.loose ?? []).map((l) => {
           const k = `l:${l.key}`, d = drag.keys?.includes(k) ? drag.d : undefined;
-          return <BlocksPane key={l.key} w={{ ...w, steps: [l.step] }} steps={[]} diags={[]} text="" sel={sel} rev={rev} models={models} sessionModel={sessionModel} at={{ x: l.at.x + (d?.x ?? 0), y: l.at.y + (d?.y ?? 0) }} linkOver={band?.to}
+          return <BlocksPane key={l.key} w={{ ...w, steps: [l.step] }} steps={[]} diags={[]} text="" sel={sel} rev={rev} models={models} efforts={efforts} sessionModel={sessionModel} sessionEffort={sessionEffort} at={{ x: l.at.x + (d?.x ?? 0), y: l.at.y + (d?.y ?? 0) }} linkOver={band?.to}
             loose={{ key: l.key, selected: sel.has(k), moving: !!drag.keys?.includes(k), onPick: (add) => pickLoose(l.key, add) }} onEdit={() => false} onSelect={() => {}} />;
         })}
         <div className="sx-ghosts" ref={ghosts} />

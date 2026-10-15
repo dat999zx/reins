@@ -4,13 +4,13 @@ import type { SessionStatus } from '@reins/server/session.js';
 export interface Call { result?: unknown; refused?: string; ms?: number }
 export interface Sess {
   id: string; cwd: string; autoApprove: boolean; status: SessionStatus; rows: LogRow[]; lastSeq: number; lastTs: number; cost: number;
-  explicitTitle?: string; firstMessage?: string; engine?: string; model?: string;
+  explicitTitle?: string; firstMessage?: string; engine?: string; model?: string; effort?: string;
   replaySeq?: number;
   open: string[]; answers: Record<string, string>; closed: Record<string, string>;
   detached: string[]; calls: Record<number, Call>; queue: Array<{ seq: number; tool: string; ts: number }>; refill?: string;
 }
 export interface State { sessions: Record<string, Sess>; replayed?: boolean }
-export interface SessionView { id: string; cwd: string; title?: string; autoApprove: boolean; status: SessionStatus; createdAt?: number; updatedAt?: number; engine?: string; model?: string }
+export interface SessionView { id: string; cwd: string; title?: string; autoApprove: boolean; status: SessionStatus; createdAt?: number; updatedAt?: number; engine?: string; model?: string; effort?: string }
 
 export const initial = (): State => ({ sessions: {} });
 
@@ -25,7 +25,7 @@ export function loadSessions(state: State, views: SessionView[]): State {
   for (const v of views) {
     if (sessions[v.id]) continue;
     sessions[v.id] = { ...blank(v.id), ...(state.replayed ? { replaySeq: 0 } : {}), cwd: v.cwd, autoApprove: v.autoApprove, status: v.status, ...(v.title ? { explicitTitle: v.title } : {}),
-      ...(v.engine ? { engine: v.engine } : {}), ...(v.model ? { model: v.model } : {}) };
+      ...(v.engine ? { engine: v.engine } : {}), ...(v.model ? { model: v.model } : {}), ...(v.effort ? { effort: v.effort } : {}) };
   }
   return { ...state, sessions };
 }
@@ -52,12 +52,14 @@ function apply(s: Sess, row: LogRow, loadedAt: number): Sess {
       if (x.title) n.explicitTitle = x.title;
       if (typeof x.engine === 'string') n.engine = x.engine;
       if (typeof x.model === 'string' && x.model) n.model = x.model;
+      if (typeof x.effort === 'string' && x.effort) n.effort = x.effort;
       break;
     case 'status': n.status = x.status; break;
     case 'settings':
       if (typeof x.title === 'string') n.explicitTitle = x.title;
       if (typeof x.autoApprove === 'boolean') n.autoApprove = x.autoApprove;
       if (typeof x.model === 'string') { if (x.model) n.model = x.model; else delete n.model; } // '' is the default
+      if (typeof x.effort === 'string' && x.effort) n.effort = x.effort;
       break;
     case 'message':
       if (n.firstMessage === undefined && typeof x.text === 'string') n.firstMessage = x.text.slice(0, 60);

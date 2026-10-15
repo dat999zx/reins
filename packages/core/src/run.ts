@@ -86,6 +86,8 @@ export interface SubagentOpen {
   step: string;
   title: string;
   model?: string;
+  /** The step's own reasoning level; absent, the session's. */
+  reasoning?: string;
   cwd?: string;
   /** Present when an unfinished subagent resumes: its own claude session and what was counted on it. */
   sessionId?: string;
@@ -128,6 +130,8 @@ export interface RunOptions {
   session?: EngineSession;
   /** A model step asks the host to put the session on `model`; absent in a host that cannot (the terminal). */
   switchModel?: (model: string, step: string) => Promise<SwitchOutcome>;
+  /** A model step asks the host to put the session on reasoning level `level`; absent in a host that cannot (the terminal). */
+  setReasoning?: (level: string, step: string) => void;
   /** The host's opener for a subagent step's session; absent, the run's own engine opens it. */
   openSubagent?: (o: SubagentOpen) => Promise<SubagentOpened>;
 }
@@ -218,6 +222,7 @@ export class Run {
   private turnInFlight = false;
   private interruptCard?: { text: string; kind: 'now' | 'stop' };
   private switchModel?: (model: string, step: string) => Promise<SwitchOutcome>;
+  private setReasoning?: (level: string, step: string) => void;
   private runCost = 0;
   // ponytail: spent is per slice step and is not reset when a loop passes the model step again
   private usdSpent: Record<string, number> = {};
@@ -246,6 +251,7 @@ export class Run {
     this.borrowed = opts.session;
     this.engineSession = opts.session;
     this.switchModel = opts.switchModel;
+    this.setReasoning = opts.setReasoning;
     this.openSubagent = opts.openSubagent;
 
     this.program = compileProgram(this.workflow, this.resolveBlock, this.starts);
@@ -399,6 +405,7 @@ export class Run {
   private execCtx(step: string): ExecCtx {
     return {
       ...(this.switchModel ? { switchModel: this.switchModel } : {}),
+      ...(this.setReasoning ? { setReasoning: this.setReasoning } : {}),
       slice: (id, usd) => { this.openSlice = usd === undefined ? undefined : { step: id, usd }; },
       log: (type, data) => this.logEvent(type, data),
       pause: (text) => { if (this.status === 'running') this.pauseForStop(text, step); },
@@ -409,8 +416,8 @@ export class Run {
 
   /** No host opener (the terminal): the run's own engine opens the subagent's session. */
   private async ownSubagent(o: SubagentOpen): Promise<SubagentOpened> {
-    const { step: _s, title: _t, ...open } = o;
-    return { session: await this.engine.open({ ...open, pendingCards: () => [] }), ...(o.model ? { model: o.model, label: o.model } : {}) };
+    const { step: _s, title: _t, reasoning, ...open } = o;
+    return { session: await this.engine.open({ ...open, ...(reasoning ? { effort: reasoning } : {}), pendingCards: () => [] }), ...(o.model ? { model: o.model, label: o.model } : {}) };
   }
 
   // ponytail: steer cards typed while a subagent works wait for the parent's next turn (or go with a Resume); now and stop cards interrupt the subagent; a now card typed while it is still opening goes to the parent. An interrupt kill reports no total: that spend is counted only if the subagent is resumed, and a reply cut off by a kill or a crash is not counted (the provider drops it); after Stop it is never counted.
@@ -432,6 +439,7 @@ export class Run {
     const o: SubagentOpen = {
       step: id, title, policy: () => policy,
       ...(step.attrs.model ? { model: step.attrs.model } : {}),
+      ...(step.attrs.reasoning ? { reasoning: step.attrs.reasoning } : {}),
       ...(this.cwd !== undefined ? { cwd: this.cwd } : {}),
       // Reins made this claude session, so its running total starts at 0: a resumed subagent never has an unknown base.
       ...(resumed ? { sessionId: resumed.sessionId, costBase: resumed.total ?? 0,
@@ -796,6 +804,7 @@ export class Run {
       cwd: opts.cwd,
       session: opts.session,
       switchModel: opts.switchModel,
+      setReasoning: opts.setReasoning,
       openSubagent: opts.openSubagent,
     });
 

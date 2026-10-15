@@ -10,8 +10,8 @@ import { stepKey, type Key } from './selection.js';
 import { splitAtEnd } from './arrange.js';
 import { zoneAttrs, zoneKey, type Zone } from './gesture.js';
 import type { Over } from './useDrag.js';
-import { usdText, type SessionModel } from './BlockPanel.js';
-import { ModelPicker } from './ModelPicker.js';
+import { pickFor, usdText, type SessionModel } from './BlockPanel.js';
+import { OptionPicker } from './OptionPicker.js';
 import { Pill } from './Pill.js';
 import { cx } from './generic.js';
 import { ENDED, StatusCtx, StepChips } from './StepChips.js';
@@ -24,9 +24,9 @@ const HANDLE_TITLE: Record<string, string> = {
   against: "Compares this block's work against the block you drag this to. Drag to a block to link.",
 };
 
-export function BlocksPane({ w, steps, diags, text, sel, primary, rev, models, sessionModel, condDrag, src, over, linkOver, at, missing, loose, free, onEdit, onSelect }: {
+export function BlocksPane({ w, steps, diags, text, sel, primary, rev, models, efforts, sessionModel, sessionEffort, condDrag, src, over, linkOver, at, missing, loose, free, onEdit, onSelect }: {
   w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; sel: Set<Key>; primary?: string; rev: unknown;
-  models: Array<{ id: string; label: string }>; sessionModel?: SessionModel;
+  models: Array<{ id: string; label: string }>; efforts: Array<{ id: string; label: string }>; sessionModel?: SessionModel; sessionEffort?: SessionModel;
   condDrag?: boolean; src?: Set<string>; over?: Over; linkOver?: string; at: Pt;
   missing?: Set<string>; // `from/index` of links whose target does not exist: the only links shown as chips (the others are arrows)
   loose?: { key: string; selected: boolean; moving: boolean; onPick: (add: boolean) => void }; // w is then a wrapper of the one parked step: read-only, no ids, no zones
@@ -111,8 +111,9 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, models, s
     if (f?.input === 'textarea') return v ? <span key={i} className="sx-faint">{v.split('\n')[0]}</span> : f.required ? <span key={i} className="sx-faint">no prompt yet</span> : null;
     const label = `${f?.label} of ${s.id}`;
     const set = (nv: string) => onEdit((m) => editStep(m, s.id, (x) => applyField(x, t.field, nv)));
-    if (f?.input === 'model') {
-      return <ModelPicker key={i} className="sx-pill" label={label} models={models} value={v} blank={f.inherits ? sessionModel?.label : undefined} disabled={dead} onChange={set} />;
+    if (f?.input === 'model' || f?.input === 'effort') {
+      const pick = pickFor(f, { models, efforts, sessionModel, sessionEffort });
+      return <OptionPicker key={i} className="sx-pill" label={label} options={pick.options} value={v} blank={pick.blank} disabled={dead} onChange={set} />;
     }
     if (f?.input === 'mode') {
       return <select key={i} aria-label={label} className="sx-pill" value={v} inert={dead} onChange={(e) => set(e.target.value)}>

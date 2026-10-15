@@ -12,6 +12,16 @@ export const provider = {
   ],
   // A plain `claude -p` with no --model answers on this one (CLI 2.1.293).
   defaultModel: 'claude-sonnet-5-5',
+  // `claude --effort` takes these on Haiku 5.5 and Sonnet 5.5 (CLI 2.1.293); an unknown value is ignored with a warning.
+  // Reins sessions ran on medium before the picker, so a new session starts there.
+  efforts: [
+    { id: 'low', label: 'Low' },
+    { id: 'medium', label: 'Medium' },
+    { id: 'high', label: 'High' },
+    { id: 'xhigh', label: 'Extra high' },
+    { id: 'max', label: 'Max' },
+  ],
+  defaultEffort: 'medium',
   // Every Claude model reports modelUsage.contextWindow.
   windows: {},
   // The catalog's key (models.dev) for the picker's extras, windows and the fallback price.

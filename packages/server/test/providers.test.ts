@@ -21,6 +21,12 @@ describe('provider discovery', () => {
     for (const p of found) expect(p.models.map((m) => m.id), p.id).toContain(p.defaultModel);
   });
 
+  it('every provider has a default reasoning level that is one of its levels', async () => {
+    const found = await loadProviders();
+    for (const p of found) expect(p.efforts.map((e) => e.id), p.id).toContain(p.defaultEffort);
+    expect(found.find((p) => p.id === 'claude')!.efforts.map((e) => e.id)).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
+  });
+
   it('a folder with a provider file is a provider; a folder without one is not', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'reins-prov-'));
     tmps.push(root);

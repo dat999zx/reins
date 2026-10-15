@@ -101,7 +101,7 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
     '--settings', settingsFile,
     '--append-system-prompt-file', noteFile,
     ...(opts.model ?? cfg.model ? ['--model', (opts.model ?? cfg.model)!] : []),
-    ...(cfg.effort ? ['--effort', cfg.effort] : []),
+    ...(opts.effort ?? cfg.effort ? ['--effort', (opts.effort ?? cfg.effort)!] : []),
     // The provider's own spending cap on this process (a subagent's room); 0 is a value.
     ...(opts.maxUsd !== undefined ? ['--max-budget-usd', String(opts.maxUsd)] : []),
   ];

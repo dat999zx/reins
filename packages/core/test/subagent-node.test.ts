@@ -30,6 +30,14 @@ describe('subagent step: parse and print', () => {
     expect(printWorkflow(w)).toBe(text);
   });
 
+  it('reasoning: round-trips with the model line', () => {
+    const text = wf('## subagent research\nmodel: m\nreasoning: high\nusd: 0.50\n> Look.\n');
+    const w = ok(text);
+    expect(w.steps[0]!.attrs).toEqual({ model: 'm', reasoning: 'high', usd: '0.50' });
+    expect(validate(w)).toEqual([]);
+    expect(printWorkflow(w)).toBe(text);
+  });
+
   it('a bare heading prints "## subagent"', () => {
     const text = wf('## subagent\n> Look.\n');
     expect(printWorkflow(ok(text))).toBe(text);
@@ -74,6 +82,10 @@ describe('subagent step: validate', () => {
     const text = wf('## phase a\nmodel: x\n> Go.\n');
     expect(parseWorkflow(text).diagnostics).toEqual([]);
     expect(warnings(text)).toContain('`model:` does nothing on a phase step');
+  });
+
+  it('reasoning: on a phase warns like model: does', () => {
+    expect(warnings(wf('## phase a\nreasoning: high\n> Go.\n'))).toContain('`reasoning:` does nothing on a phase step');
   });
 
   it('model: on a model block with no heading id and on a subagent do not warn', () => {

@@ -20,6 +20,8 @@ export type SwitchOutcome = { to: 'switched' | 'same' | 'kept'; label: string } 
 export interface ExecCtx {
   /** The host puts the session on `model` before the next turn; absent in a host that cannot (the terminal). */
   switchModel?(model: string, step: string): Promise<SwitchOutcome>;
+  /** The host puts the session on reasoning level `level` before the next turn; absent in a host that cannot (the terminal). */
+  setReasoning?(level: string, step: string): void;
   /** Opens `step`'s USD slice from here on; undefined closes the one that is open. */
   slice(step: string, usd: number | undefined): void;
   log(type: RunEventRecord['type'], data: unknown): void;

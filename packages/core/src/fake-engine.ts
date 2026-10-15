@@ -31,6 +31,8 @@ export interface OpenOptions {
   cwd?: string;
   sessionId?: string;
   model?: string;
+  /** This process's reasoning level, when it differs from the engine's own (a subagent block's `reasoning:`). */
+  effort?: string;
   /** The provider's running cost total that Reins last counted for this session; undefined = not known. */
   costBase?: number;
   /** The per-model running totals Reins last counted for this session; undefined = not known. */

@@ -245,6 +245,14 @@ describe('snapshot and restore', () => {
     expect(calls).toEqual([['claude-x', 'model-1']]);
   });
 
+  it('a restored run still hands a model block its reasoning to the host', async () => {
+    const levels: Array<[string, string]> = [];
+    const fresh = new Run({ workflow: wf([model('model-1', { model: 'claude-x', reasoning: 'high' }), phase('a')]), engine: new FakeEngine(), switchModel: switched() });
+    const restored = Run.restore(fresh.snapshot(), { engine: new FakeEngine(), switchModel: switched(), setReasoning: (l, st) => levels.push([l, st]) });
+    await go(restored);
+    expect(levels).toEqual([['high', 'model-1']]);
+  });
+
   it('a snapshot from before C sums runCost from its engine_cost events', async () => {
     const run = new Run({ workflow: wf([phase('a'), phase('b')]), engine: new FakeEngine(costs(0.06, 0.06)) });
     await go(run);

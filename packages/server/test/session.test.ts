@@ -19,7 +19,7 @@ async function until(f: () => boolean) {
   expect(f(), 'the condition was not met in time').toBe(true);
 }
 
-function setup(script: TestTurn[] = [], o: { cwd?: string; dir?: string; autoApprove?: boolean; model?: string; effort?: string; describe?: Parameters<typeof openSession>[0]['describeModel'] } = {}) {
+function setup(script: TestTurn[] = [], o: { cwd?: string; dir?: string; autoApprove?: boolean; model?: string; effort?: string; describe?: Parameters<typeof openSession>[0]['describeModel']; levelLabel?: (id: string) => string } = {}) {
   const store = openStore(':memory:');
   const t = testEngine(script);
   const models: Array<string | undefined> = [];
@@ -29,8 +29,8 @@ function setup(script: TestTurn[] = [], o: { cwd?: string; dir?: string; autoApp
   const dir = o.dir ?? tmp();
   const cwd = o.cwd ?? tmp();
   const row = store.createSession({ id: 's1', cwd, engine: 'claude', ...(o.model ? { model: o.model } : {}), ...(o.effort ? { effort: o.effort } : {}) });
-  const s = openSession({ store, makeEngine, dir, onRow: (r) => seen.push(r), ...(o.describe ? { describeModel: o.describe } : {}) }, row, true);
-  const reopen = () => openSession({ store, makeEngine, dir, onRow: (r) => seen.push(r), ...(o.describe ? { describeModel: o.describe } : {}) }, store.getSession('s1')!);
+  const s = openSession({ store, makeEngine, dir, onRow: (r) => seen.push(r), ...(o.describe ? { describeModel: o.describe } : {}), ...(o.levelLabel ? { describeEffort: (_e: string, id: string) => ({ listed: true, label: o.levelLabel!(id) }) } : {}) }, row, true);
+  const reopen = () => openSession({ store, makeEngine, dir, onRow: (r) => seen.push(r), ...(o.describe ? { describeModel: o.describe } : {}), ...(o.levelLabel ? { describeEffort: (_e: string, id: string) => ({ listed: true, label: o.levelLabel!(id) }) } : {}) }, store.getSession('s1')!);
   if (o.autoApprove) s.settings({ autoApprove: true });
   const log = () => store.readLog('s1');
   const rows = (type: string) => log().filter((r) => r.type === type);
@@ -1129,6 +1129,95 @@ describe('switch approval (B)', () => {
     expect(sw(x)).toEqual({ ok: true });
     expect(x.rows('question')).toHaveLength(0);
     expect(modelRows(x)).toEqual([{ model: 'model-b' }]);
+  });
+});
+
+describe('reasoning level', () => {
+  const FRONT_R = '---\nreins: 1\nname: w\nbudget: { turns: 10, minutes: 10 }\nalways: []\n---\n\n';
+  const notes = (x: ReturnType<typeof setup>) => x.data('note').map((n) => n.text as string);
+  const effortRows = (x: ReturnType<typeof setup>) => x.data('settings').filter((d) => 'effort' in d);
+  const go = async (x: ReturnType<typeof setup>, text: string) => {
+    expect(x.s.runFile(put(x.cwd, 'w.reins.md', text))).toEqual({ ok: true });
+    const q = await x.question('trust');
+    x.s.answer(q.id, 'y');
+    await x.s.idle();
+  };
+
+  it('is stored with a settings row and a note, no card, and the next reply opens a new process on the same id with the level', async () => {
+    const x = setup([{ usage: 1000 }, {}], { effort: 'medium' });
+    x.s.message('one');
+    await x.s.idle();
+    const sid = x.store.getSession('s1')!.engineSessionId;
+    expect(x.s.settings({ effort: 'high', effortLabel: 'High' })).toEqual({ ok: true });
+    expect(x.store.getSession('s1')!.effort).toBe('high');
+    expect(effortRows(x)).toEqual([{ effort: 'high' }]);
+    expect(notes(x)).toEqual(['Reasoning set to High from the next reply.']);
+    expect(x.rows('question')).toEqual([]);
+    await until(() => x.t.closes === 1);
+    x.s.message('two');
+    await x.s.idle();
+    expect(x.efforts).toEqual(['medium', 'high']);
+    expect(x.t.opens[1]!.sessionId).toBe(sid);
+  });
+
+  it('the level it already has changes nothing', () => {
+    const x = setup([], { effort: 'high' });
+    expect(x.s.settings({ effort: 'high', effortLabel: 'High' })).toEqual({ ok: true });
+    expect(effortRows(x)).toEqual([]);
+  });
+
+  it('is refused while a turn is open', async () => {
+    const x = setup([{ hold: true }]);
+    x.s.message('busy');
+    await turnsStarted(x, 1);
+    expect(x.s.settings({ effort: 'high', effortLabel: 'High' })).toEqual({ ok: false, code: 409, error: 'Change the reasoning when the session is idle.' });
+    x.t.release();
+    await x.s.idle();
+  });
+
+  it('a subagent block runs on its own reasoning, the session level when it has none', async () => {
+    const x = setup([{}, { text: 'a', cost: 0.01, total: 0.01 }, { text: 'b', cost: 0.01, total: 0.01 }, { text: 'used' }], { effort: 'medium' });
+    x.s.message('first');
+    await x.s.idle();
+    await go(x, `${FRONT_R}## subagent one\nreasoning: max\n> Look.\n\n## subagent two\n> Look again.\n`);
+    expect(x.rows('run_finished')).toHaveLength(1);
+    expect(x.efforts).toEqual(['medium', 'max', 'medium']);
+  });
+
+  it('a model block with only a reasoning applies it, with the run id and the level label', async () => {
+    const x = setup([{ usage: 1000 }, {}], { effort: 'medium', levelLabel: (id) => id.toUpperCase() });
+    x.s.message('first');
+    await x.s.idle();
+    await go(x, `${FRONT_R}## model\nreasoning: low\n\n## phase one\n> Go.\n`);
+    expect(x.store.getSession('s1')!.effort).toBe('low');
+    expect(effortRows(x)).toEqual([{ effort: 'low' }]);
+    expect(x.rows('note').find((r) => (r.data as { text: string }).text === 'Reasoning set to LOW from the next reply.')!.runId).toBe(x.rows('run_started')[0]!.runId);
+    expect(x.efforts).toEqual(['medium', 'low']);
+  });
+
+  it('a model block with the level the session already has changes nothing', async () => {
+    const x = setup([{ usage: 1000 }, {}], { effort: 'low' });
+    x.s.message('first');
+    await x.s.idle();
+    await go(x, `${FRONT_R}## model\nreasoning: low\n\n## phase one\n> Go.\n`);
+    expect(effortRows(x)).toEqual([]);
+    expect(notes(x).filter((n) => n.startsWith('Reasoning set'))).toEqual([]);
+    expect(x.efforts).toEqual(['low']);   // no restart: one process for the whole conversation
+  });
+
+  it('a model block whose model switch is kept skips its reasoning too', async () => {
+    const x = setup([{ usage: 1000 }, {}], {
+      effort: 'medium', describe: (_e, m) => ({ listed: true, label: m, estimate: 0.01 }),
+    });
+    x.s.message('first');
+    await x.s.idle();
+    x.store.putSetting('switchApprovalTokens', 500);
+    expect(x.s.runFile(put(x.cwd, 'w.reins.md', `${FRONT_R}## model model-b\nreasoning: low\n\n## phase one\n> Go.\n`))).toEqual({ ok: true });
+    x.s.answer((await x.question('trust')).id, 'y');
+    x.s.answer((await x.question('switch')).id, 'keep');
+    await x.s.idle();
+    expect(x.store.getSession('s1')!.effort).toBe('medium');
+    expect(effortRows(x)).toEqual([]);
   });
 });
 

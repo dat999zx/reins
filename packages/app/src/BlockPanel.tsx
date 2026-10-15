@@ -4,13 +4,13 @@ import { CARD_KINDS, CARD_LABEL, KINDS, type Field } from './canvasKinds.js';
 import { commitBudget, setAlways } from './blocks.js';
 import { editStep, removeLinks } from './canvas.js';
 import { applyField, applyLinkMax, budgetCount, BUDGET_HINT, fieldValue, MODES, type BudgetKey } from './panelEdit.js';
-import { ModelPicker } from './ModelPicker.js';
+import { OptionPicker } from './OptionPicker.js';
 
 // The same rule as usdText in packages/core/src/format/print.ts (the app imports only core's types): two decimals when that loses nothing.
 export const usdText = (usd: number) => (Number(usd.toFixed(2)) === usd ? usd.toFixed(2) : String(usd));
 
 type Models = Array<{ id: string; label: string }>;
-export type SessionModel = { id: string; label: string }; // what a field that inherits the session's model runs on
+export type SessionModel = { id: string; label: string }; // what a field that inherits the session's model (or reasoning level) runs on
 // `alert` is the id of the words under a refused value: the input says it is invalid and points at them.
 type InputProps = { label: string; value: string; ids: string[]; models: Models; rev: unknown; commit: (v: string) => void; alert?: string; blank?: string };
 
@@ -46,6 +46,12 @@ const line = (type: 'text' | 'number', mono?: boolean) => function LineInput({ l
   );
 };
 
+const picker = ({ label, value, models, commit, blank }: InputProps) => (
+  <label className="bfield">{label}
+    <OptionPicker label={label} options={models} value={value} blank={blank} onChange={commit} />
+  </label>
+);
+
 const INPUTS: Record<Field['input'], (p: InputProps) => JSX.Element> = {
   text: line('text'),
   mono: line('text', true),
@@ -72,24 +78,28 @@ const INPUTS: Record<Field['input'], (p: InputProps) => JSX.Element> = {
       </select>
     </label>
   ),
-  // the session's own catalog; a model the catalog does not list (typed in Text) stays selectable
-  model: ({ label, value, models, commit, blank }) => (
-    <label className="bfield">{label}
-      <ModelPicker label={label} models={models} value={value} blank={blank} onChange={commit} />
-    </label>
-  ),
+  // the session's own catalog; a model the catalog does not list (typed in Text) stays selectable. A reasoning field is the same picker fed the levels.
+  model: picker,
+  effort: picker,
+};
+
+// What a field that picks from a provider list reads: the list (the models or the levels) and, when it inherits, the session's own label.
+export const pickFor = (f: Field, p: { models: Models; efforts: Models; sessionModel?: SessionModel; sessionEffort?: SessionModel }) => {
+  const level = f.input === 'effort';
+  return { options: level ? p.efforts : p.models, blank: f.inherits ? (level ? p.sessionEffort : p.sessionModel)?.label : undefined };
 };
 
 // One panel field; a value applyField refuses is said in words under it (the file is left as it was).
-export function PanelField({ f, step, ids, models, sessionModel, rev, onCommit }: {
-  f: Field; step: Step; ids: string[]; models: Models; sessionModel?: SessionModel; rev: unknown; onCommit: (v: string) => void;
+export function PanelField({ f, step, ids, models, efforts, sessionModel, sessionEffort, rev, onCommit }: {
+  f: Field; step: Step; ids: string[]; models: Models; efforts: Models; sessionModel?: SessionModel; sessionEffort?: SessionModel; rev: unknown; onCommit: (v: string) => void;
 }) {
   const [bad, setBad] = useState('');
   const Input = INPUTS[f.input];
   const alertId = `${step.id}-${f.key}-bad`;
+  const pick = pickFor(f, { models, efforts, sessionModel, sessionEffort });
   return (
     <>
-      <Input label={f.label} value={fieldValue(step, f.key)} ids={ids} models={models} rev={rev} blank={f.inherits ? sessionModel?.label : undefined} alert={bad ? alertId : undefined}
+      <Input label={f.label} value={fieldValue(step, f.key)} ids={ids} models={pick.options} rev={rev} blank={pick.blank} alert={bad ? alertId : undefined}
         commit={(v) => {
           const ok = applyField(structuredClone(step), f.key, v);
           setBad(ok ? '' : f.error ?? '');
@@ -100,8 +110,8 @@ export function PanelField({ f, step, ids, models, sessionModel, rev, onCommit }
   );
 }
 
-export function BlockPanel({ step, all, cond, turn, rev, models, sessionModel, onEdit, onEditInText, onShowInChat, onDelete }: {
-  step: Step; all: Step[]; cond?: string; turn?: string; rev: unknown; models: Models; sessionModel?: SessionModel;
+export function BlockPanel({ step, all, cond, turn, rev, models, efforts, sessionModel, sessionEffort, onEdit, onEditInText, onShowInChat, onDelete }: {
+  step: Step; all: Step[]; cond?: string; turn?: string; rev: unknown; models: Models; efforts: Models; sessionModel?: SessionModel; sessionEffort?: SessionModel;
   onEdit: (fn: (w: Workflow) => Workflow) => void; onEditInText: () => void; onShowInChat?: () => void; onDelete: () => void;
 }) {
   const k = KINDS[step.kind];
@@ -118,7 +128,7 @@ export function BlockPanel({ step, all, cond, turn, rev, models, sessionModel, o
       {onShowInChat && <button onClick={onShowInChat}>Show in Chat</button>}
 
       {k.fields.map((f) => (
-        <PanelField key={`${id}/${f.key}`} f={f} step={step} ids={others} models={models} sessionModel={sessionModel} rev={rev}
+        <PanelField key={`${id}/${f.key}`} f={f} step={step} ids={others} models={models} efforts={efforts} sessionModel={sessionModel} sessionEffort={sessionEffort} rev={rev}
           onCommit={(v) => change((s) => applyField(s, f.key, v))} />
       ))}
 

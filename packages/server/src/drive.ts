@@ -164,6 +164,7 @@ export function runOptions(io: DriveIo, o: {
   resolveBlock: (name: string) => Workflow | undefined;
   onEvent: (ev: RunEventRecord) => void; session?: EngineSession;
   switchModel?: RunOptions['switchModel'];
+  setReasoning?: RunOptions['setReasoning'];
   openSubagent?: RunOptions['openSubagent'];
 }): RunOptions {
   const { cwd } = o;
@@ -175,6 +176,7 @@ export function runOptions(io: DriveIo, o: {
     resolveBlock: o.resolveBlock,
     ...(o.session ? { session: o.session } : {}),
     ...(o.switchModel ? { switchModel: o.switchModel } : {}),
+    ...(o.setReasoning ? { setReasoning: o.setReasoning } : {}),
     ...(o.openSubagent ? { openSubagent: o.openSubagent } : {}),
     commandRunner: async (cmd) => {
       io.say(`$ ${cmd}`);
