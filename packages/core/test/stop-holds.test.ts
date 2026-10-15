@@ -79,7 +79,7 @@ describe('a stop during a judge holds (3b.1)', () => {
     let entered!: () => void;
     const started = new Promise<void>((r) => { entered = r; });
     const run = new Run({
-      workflow: workflow([phase('a')], { autos: [{ id: 'w', cond: { t: 'diff', n: 0 }, card: { kind: 'note', text: 'x' } }] }),
+      workflow: workflow([phase('a')], { autos: [{ id: 'w', cond: { t: 'diff', n: 0 }, card: { kind: 'now', text: 'x' } }] }),
       engine: new FakeEngine([{ text: 'REINS: blocked: x' }]),
       diffLines: () => new Promise<number>((r) => { release = r; entered(); }),
     });

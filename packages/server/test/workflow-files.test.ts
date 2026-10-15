@@ -185,7 +185,7 @@ describe('workflow GET/PUT (3c.9 path rule)', () => {
 
 const PREVIEW = [
   '---', 'reins: 1', 'name: demo', 'budget: { turns: 10, minutes: 30 }', 'always:', '  - Keep it small.', '---', '',
-  '## phase plan', 'mode: read-only', 'note: Be brief.', '> Plan the change.', '',
+  '## phase plan', 'mode: read-only', 'guard: secrets/**','> Plan the change.', '',
   '## phase build', '> Make the change.', '',
   '## repeat', 'until: `npm test` passes', 'max: 2', '', '### run `npm test`', '', '### phase fix', '> Fix it.', '',
   '## if tests pass', '', '### phase yes', '> Y.', '', '### else', '', '### phase no', '> N.', '',

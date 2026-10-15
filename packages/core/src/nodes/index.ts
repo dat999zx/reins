@@ -11,7 +11,6 @@ import verify from './verify.js';
 import use from './use.js';
 import recall from './recall.js';
 import store from './store.js';
-import handoff from './handoff.js';
 import model from './model.js';
 import subagent from './subagent.js';
 import end from './end.js';
@@ -76,7 +75,7 @@ export interface NodeType {
 }
 
 export const NODES = new Map<string, NodeType>(
-  [phase, say, run, gate, repeat, ifNode, verify, use, recall, store, handoff, model, subagent, end].map((n) => [n.kind, n]),
+  [phase, say, run, gate, repeat, ifNode, verify, use, recall, store, model, subagent, end].map((n) => [n.kind, n]),
 );
 
 export function defaultId(step: { kind: string; title?: string }, counters: Record<string, number>): string {
@@ -98,7 +97,6 @@ export { default as verifyNode } from './verify.js';
 export { default as useNode } from './use.js';
 export { default as recallNode } from './recall.js';
 export { default as storeNode } from './store.js';
-export { default as handoffNode } from './handoff.js';
 export { default as modelNode } from './model.js';
 export { default as subagentNode } from './subagent.js';
 export { default as endNode } from './end.js';

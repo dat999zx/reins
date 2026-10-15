@@ -46,9 +46,9 @@ describe('then arrows', () => {
 
 describe('linksToDraw', () => {
   it('keeps every kind, in step order, with the link index', () => {
-    const { arrows } = linksToDraw(parse('next: build\nretry: build'), none);
+    const { arrows } = linksToDraw(parse('next: build\non-fail: build'), none);
     expect(arrows.map((a) => [a.from, a.index, a.kind, a.to])).toEqual([
-      ['plan', 0, 'next', 'build'], ['plan', 1, 'retry', 'build'], ['t', 0, 'on-fail', 'plan'],
+      ['plan', 0, 'next', 'build'], ['plan', 1, 'on-fail', 'build'], ['t', 0, 'on-fail', 'plan'],
     ]);
   });
   it('finds links inside a C block', () => {

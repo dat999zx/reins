@@ -11,7 +11,6 @@ always:
 ## run `npm test`
 
 ## phase plan
-note: list moves, no code
 > List every move you will make. No code yet.
 
 ## gate
@@ -19,7 +18,6 @@ until: you approve
 
 ## phase refactor
 guard: src/api/**
-note: move code, change nothing else
 > Move code as planned. Do not change behaviour.
 
 ## repeat
@@ -29,15 +27,10 @@ max: 3
 ### run `npm test`
 
 ### phase fix
-note: restore behaviour
 > Restore the old behaviour. Do not change the tests.
 
 ## verify
 against: plan
 
-## handoff
-to: fresh session
-focus: summary
-
 ## whenever diff > 400 lines
-nudge: too big. split the refactor.
+now: too big. split the refactor.

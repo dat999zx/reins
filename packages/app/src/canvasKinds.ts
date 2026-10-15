@@ -3,7 +3,7 @@ import type { CardKind, Step, StepKind } from '@reins/core';
 import type { WireKind } from './canvas.js';
 import { BUDGET_ERRORS } from './panelEdit.js';
 
-export type FieldKey = 'title' | 'prompt' | 'mode' | 'cmd' | 'max' | 'against' | 'knowl' | 'to' | 'focus' | 'model' | 'usd';
+export type FieldKey = 'title' | 'prompt' | 'mode' | 'cmd' | 'max' | 'against' | 'knowl' | 'model' | 'usd';
 // `error` is what the panel says when applyField refuses the value; `inherits`: an empty model is the session's model; `ph` overrides the
 // empty pill's placeholder; `required`: the validator warns while it is empty, so the face says so.
 export type Field = {
@@ -52,15 +52,10 @@ export const KINDS: Record<StepKind, KindView> = {
   },
   recall: { fields: [{ key: 'knowl', label: 'Knowl', input: 'text' }], line: ['recall from Knowl', { field: 'knowl' }], card: { label: 'recall', section: 'Memory' }, fresh: () => ({}) },
   store: { fields: [{ key: 'knowl', label: 'Knowl', input: 'text' }], line: ['store to Knowl', { field: 'knowl' }], card: { label: 'store', section: 'Memory' }, fresh: () => ({}) },
-  handoff: {
-    fields: [{ key: 'to', label: 'To', input: 'text' }, { key: 'focus', label: 'Focus', input: 'text' }],
-    line: ['hand off to', { field: 'to' }],
-    card: { label: 'hand off', section: 'Flow' }, fresh: () => ({}),
-  },
   model: {
     fields: [{ key: 'model', label: 'Model', input: 'model' }, usd],
-    line: ['model', { field: 'model' }, 'USD', { field: 'usd' }],
-    card: { label: 'model', section: 'Flow' }, fresh: () => ({}),
+    line: ['switch model to', { field: 'model' }, 'USD', { field: 'usd' }],
+    card: { label: 'switch model', section: 'Flow' }, fresh: () => ({}),
   },
   subagent: {
     fields: [title, mustPrompt, mode, { key: 'model', label: 'Model', input: 'model', inherits: true }, usd],
@@ -78,5 +73,10 @@ export const wiresOf = (kind: StepKind): WireKind[] => {
   return k.stops ? [] : ['next', ...(k.fails ? ['on-fail' as const] : []), ...(k.against ? ['against' as const] : [])];
 };
 
-// whenever-only kinds (now, stop) are left out
-export const CARD_KINDS: CardKind[] = ['guard', 'note', 'nudge', 'role', 'checkpoint', 'budget', 'undo'];
+// The card kinds a block holds; whenever-only kinds (now, stop) are left out.
+// guard is enforced in core/src/policy.ts: the tool-approval hook blocks edits to a matching path and shell commands naming one.
+export const CARD_KINDS = ['guard'] as const satisfies readonly CardKind[];
+// The words the panel uses for a kind: a second kind is one entry here.
+export const CARD_LABEL: Record<(typeof CARD_KINDS)[number], { section: string; add: string }> = {
+  guard: { section: 'Guards', add: 'Add guard' },
+};

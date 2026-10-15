@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CARDS, NODES, parseWorkflow, printWorkflow, validate, type Step, type StepKind } from '@reins/core';
-import { CARD_KINDS, KINDS } from '../src/canvasKinds.js';
+import { CARD_KINDS, CARD_LABEL, KINDS } from '../src/canvasKinds.js';
 import { BUDGET_ERRORS, applyField } from '../src/panelEdit.js';
 
 const step = (kind: string, over: Partial<Step> = {}): Step =>
@@ -128,6 +128,15 @@ describe('fresh', () => {
     const s = { id: 'subagent-1', kind: 'subagent', attrs: { usd: '0.50' }, cards: [], links: [] } as unknown as Step;
     expect(applyField(s, 'usd', 'abc')).toBe(false);
     expect(s.attrs.usd).toBe('0.50');
+  });
+  it('the model block is shown as switch model; the hand-off block is gone', () => {
+    expect(KINDS.model.card).toEqual({ label: 'switch model', section: 'Flow' });
+    expect(KINDS.model.line).toEqual(['switch model to', { field: 'model' }, 'USD', { field: 'usd' }]);
+    expect('handoff' in KINDS).toBe(false);
+  });
+  it('guard is the one card kind, and the panel words come from its label', () => {
+    expect(CARD_KINDS).toEqual(['guard']);
+    expect(CARD_LABEL.guard).toEqual({ section: 'Guards', add: 'Add guard' });
   });
   it('gives a new attrs object per call', () => {
     expect(KINDS.repeat.fresh!().attrs).not.toBe(KINDS.repeat.fresh!().attrs);

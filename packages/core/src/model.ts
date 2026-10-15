@@ -5,7 +5,7 @@ export type StepKind = keyof NodeKinds;
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface CardKinds {}
 export type CardKind = keyof CardKinds;
-export type LinkKind = 'next' | 'on-pass' | 'on-fail' | 'retry' | 'verify-against' | 'hand-off';
+export type LinkKind = 'next' | 'on-fail';
 
 export interface Pos {
   line: number;
@@ -30,7 +30,7 @@ export interface Step {
   kind: StepKind;
   title?: string;
   prompt?: string; // prompt: the '>' lines, joined with \n
-  attrs: Record<string, string>; // kind-specific: mode, cmd, against, to, focus, knowl, max
+  attrs: Record<string, string>; // kind-specific: mode, cmd, against, knowl, max
   cond?: Cond;
   cards: Card[];
   links: Link[];
@@ -53,8 +53,6 @@ export interface Workflow {
   version: 1;
   name: string;
   task?: string;
-  engine?: 'claude' | 'codex';
-  model?: string;
   test?: string;
   budget: { turns: number; minutes: number; usd?: number };
   always: string[];

@@ -37,8 +37,6 @@ export function printWorkflow(w: Workflow): string {
       return s;
     };
     if (w.task) fm.push(`task: ${quoteYaml(w.task)}`);
-    if (w.engine) fm.push(`engine: ${w.engine}`);
-    if (w.model) fm.push(`model: ${w.model}`);
     if (w.test) fm.push(`test: ${w.test}`);
 
     const usdStr =
@@ -89,7 +87,7 @@ export function printWorkflow(w: Workflow): string {
     // Attributes in canonical order
     if (step.attrs.mode) lines.push(`mode: ${step.attrs.mode}`);
 
-    // Cards (guards, notes, nudges, etc.)
+    // Cards (guards)
     for (const card of step.cards) {
       lines.push(`${card.kind}: ${card.text}`);
     }
@@ -101,12 +99,10 @@ export function printWorkflow(w: Workflow): string {
     if (step.attrs.max) lines.push(`max: ${step.attrs.max}`);
     if (step.attrs.against) lines.push(`against: ${step.attrs.against}`);
     if (step.attrs.knowl) lines.push(`knowl: ${step.attrs.knowl}`);
-    if (step.attrs.to) lines.push(`to: ${step.attrs.to}`);
-    if (step.attrs.focus) lines.push(`focus: ${step.attrs.focus}`);
 
     // Extra attrs not handled
     for (const [k, v] of Object.entries(step.attrs)) {
-      if (['id', 'mode', 'until', 'max', 'against', 'knowl', 'to', 'focus'].includes(k) || ownedElsewhere(step.kind, k, owned)) {
+      if (['id', 'mode', 'until', 'max', 'against', 'knowl'].includes(k) || ownedElsewhere(step.kind, k, owned)) {
         continue;
       }
       lines.push(`${k}: ${v}`);

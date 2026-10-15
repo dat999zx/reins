@@ -62,9 +62,6 @@ export function generateTrees(n: number): Workflow[] {
         step.title = `step-${id}`;
         step.prompt = `Prompt for ${id}`;
         if (rand() < 0.3) {
-          step.cards.push({ kind: 'note', text: `Note for ${id}` });
-        }
-        if (rand() < 0.3) {
           step.cards.push({ kind: 'guard', text: `src/guard${randInt(1, 3)}/**` });
         }
       } else if (kind === 'say') {

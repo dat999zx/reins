@@ -175,12 +175,6 @@ export function validate(
     if (NODES.get(s.kind)?.container === 'kids') { const b = new Set<string>(); collectBody(s, b); bodies.set(s, b); }
   }
   const failKinds = [...NODES.values()].filter((n) => n.fails).map((n) => n.kind);
-  const DEPRECATED: Record<string, string> = {
-    'on-pass': '`on-pass` has no effect; use `next`',
-    retry: '`retry` has no effect; use a backward `next` with `max`',
-    'verify-against': '`verify-against` has no effect; use `against:`',
-    'hand-off': '`hand-off` has no effect; use a handoff step',
-  };
 
   // Rule 3 and Rule 4 (backward link): link targets and verify against
   for (const step of allSteps) {
@@ -198,8 +192,6 @@ export function validate(
       diagnostics.push({ severity: 'warning', message: `on-fail only applies to ${failKinds.join(', ')}`, pos });
     }
     for (const link of step.links) {
-      const msg = DEPRECATED[link.kind];
-      if (msg) diagnostics.push({ severity: 'warning', message: msg, pos: link.pos || pos });
       for (const [loop, body] of bodies) {
         if (body.has(link.to) && !body.has(step.id)) {
           diagnostics.push({

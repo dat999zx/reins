@@ -352,7 +352,7 @@ describe('Task 1.7: The Run Engine against FakeEngine', () => {
         {
           id: 'auto-1',
           cond: { t: 'same' },
-          card: { kind: 'nudge', text: 'same error twice nudge' },
+          card: { kind: 'now', text: 'same error twice nudge' },
         },
       ],
     };

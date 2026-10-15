@@ -627,13 +627,13 @@ describe('workflow files (3b.6)', () => {
     await x.s.idle();
   });
 
-  it('a workflow model: is ignored in a session, with a note carrying the run id', async () => {
+  it('a file that still has a front-matter model: runs, with no note about it', async () => {
     const x = setup([{ text: 'REINS: done' }]);
     x.s.runFile(put(x.cwd, 'm.reins.md', '---\nreins: 1\nname: t\nmodel: opus\nbudget: { turns: 30, minutes: 30 }\nalways: []\n---\n\n## phase go\n> x\n'));
     x.s.answer((await x.question('trust')).id, 'y');
     await x.s.idle();
-    const runId = x.rows('run_started')[0]!.runId;
-    expect(x.rows('note')).toEqual([expect.objectContaining({ runId, data: { text: expect.stringContaining('ignores') } })]);
+    expect(x.rows('run_started')).toHaveLength(1);
+    expect(x.rows('note')).toEqual([]);
   });
 
   it('is 409 while the session is busy', async () => {

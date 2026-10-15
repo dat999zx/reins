@@ -9,14 +9,7 @@ export interface ParseWorkflowResult {
   diagnostics: Diagnostic[];
 }
 
-const KNOWN_LINK_KINDS: Set<LinkKind> = new Set([
-  'next',
-  'on-pass',
-  'on-fail',
-  'retry',
-  'verify-against',
-  'hand-off',
-]);
+const KNOWN_LINK_KINDS: Set<LinkKind> = new Set(['next', 'on-fail']);
 
 const attrSet = () =>
   new Set<string>(['id', 'until', ...nodeAttrs(), ...CARDS.keys(), ...KNOWN_LINK_KINDS]);
@@ -241,12 +234,15 @@ export function parseWorkflow(input: string): ParseWorkflowResult {
         if (condRes.diag) diagnostics.push(condRes.diag);
 
         const parsedLines = parseBlockLines(blk);
-        const card = parsedLines.cards[0] || { kind: 'nudge', text: '' };
-        autos.push({
-          id: defaultId({ kind: 'auto' }, counters),
-          cond: condRes.cond || { t: 'drift' },
-          card,
-        });
+        // No card line (or only an unknown one, already an error): nothing to deliver, so no auto.
+        const card = parsedLines.cards[0];
+        if (card) {
+          autos.push({
+            id: defaultId({ kind: 'auto' }, counters),
+            cond: condRes.cond || { t: 'drift' },
+            card,
+          });
+        }
         continue;
       }
 
@@ -323,8 +319,6 @@ export function parseWorkflow(input: string): ParseWorkflowResult {
     steps: rootSteps,
     autos,
     ...(fm.task ? { task: String(fm.task) } : {}),
-    ...(fm.engine ? { engine: fm.engine } : {}),
-    ...(fm.model ? { model: String(fm.model) } : {}),
     ...(fm.test ? { test: String(fm.test) } : {}),
     ...(fm.drift ? { drift: fm.drift } : {}),
     ...(isBlock ? { block: name } : {}),

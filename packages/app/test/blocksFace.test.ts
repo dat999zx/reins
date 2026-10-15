@@ -32,7 +32,13 @@ describe('the block face', () => {
     expect(face(step('subagent', { attrs: { mode: 'read-only' } }))).toContain('<option value="write">write</option><option value="read-only" selected="">read-only</option>');
     expect(face(step('phase', { title: 'p' }))).not.toContain('Mode of');
   });
-  it('the budget pill says optional', () => {
+  it('a card chip reads guard: <glob>, with guard as its own chip', () => {
+    const html = face(step('phase', { title: 'p', cards: [{ kind: 'guard', text: 'src/**' }] }));
+    expect(html).toContain('<span class="sx-mod"><span class="sx-cardkind">guard:</span> src/**</span>');
+  });
+  it('a model block says switch model to', () => {
+    expect(face(step('model'))).toContain('switch model to');
+  });  it('the budget pill says optional', () => {
     expect(face(step('subagent'))).toContain('aria-label="Budget (USD) of subagent-1" placeholder="optional"');
   });
   it('an empty prompt says so only on a kind whose validator warns about it', () => {

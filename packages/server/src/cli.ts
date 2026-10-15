@@ -147,9 +147,8 @@ export async function main(argv: string[], io: Io): Promise<number> {
       output: io.stdout,
       store,
       yes: flags.yes === true,
-      makeEngine: ({ workflow, ...cb }) => {
-        if (workflow.engine === 'codex') throw new Error('This workflow asks for codex; the Codex adapter is Phase 5.');
-        const model = typeof flags.model === 'string' ? flags.model : workflow.model;
+      makeEngine: (cb) => {
+        const model = typeof flags.model === 'string' ? flags.model : undefined;
         return claudeEngine({
           bin: found?.path ?? '',
           ...(model ? { model } : {}),

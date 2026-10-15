@@ -31,7 +31,6 @@ export type Instr = (
   | { op: 'IF'; step: string; cond: Cond; elseJump: number }
   | { op: 'VERIFY'; step: string; against: string; onFailJump?: number; linkMax?: number }
   | { op: 'STORE'; step: string; what: string }
-  | { op: 'HANDOFF'; step: string; to: string; focus?: string }
   // A kind's own instruction (P12): run by `NodeType.exec` of `kind`, `src` the step as compiled.
   | { op: 'NODE'; step: string; kind: string; src: Step }
   | { op: 'JUMP'; target: number; step?: string; linkMax?: number }
@@ -44,6 +43,8 @@ export interface CompileTurnContext {
   totalSteps: number;
   always?: string[];
   recallContext?: string[];
+  /** Texts the run hands this turn (queued cards, a subagent's result): listed after the step's own cards, as they are. */
+  extras?: string[];
 }
 
 export function compileTurn(step: Step, ctx: CompileTurnContext): string {
@@ -82,6 +83,7 @@ export function compileTurn(step: Step, ctx: CompileTurnContext): string {
   for (const card of step.cards) {
     stepItems.push(CARDS.get(card.kind)?.turnLine?.(card) ?? `${card.kind}: ${card.text}`);
   }
+  stepItems.push(...(ctx.extras ?? []));
   if (step.attrs.mode === 'read-only') {
     stepItems.push(
       'Step is read-only. (Enforced: no file edits or write commands are permitted.)'

@@ -204,19 +204,17 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     expect(await editor.inputValue()).toMatch(/x$/);
     await editor.fill(clean);
 
-    // 8c.2. the inspector adds a `next` link to a new step ship; Ctrl+S in Blocks saves
+    // 8c.2. `next` links written in Text to a new step ship show in the inspector's list, which has no add controls; Ctrl+S in Blocks saves
     await textTab.click();
-    await editor.fill(`${clean}\n## phase ship\n> Ship it.\n`);
+    await editor.fill(`${clean.replace('## phase plan\n', '## phase plan\nnext: ship\n').replace('## phase build\n', '## phase build\nnext: ship\n').trimEnd()}\n\n## phase ship\n> Ship it.\n`);
     await blocksTab.click();
     await row('ship').waitFor();
     const panel = page.locator('aside[aria-label="Block panel"]');
     for (const id of ['plan', 'build']) {
       await row(id).locator('.sx-row').first().click();
-      await panel.getByLabel('Link kind').selectOption('next');
-      await panel.getByLabel('Link target').selectOption('ship');
-      await panel.getByRole('button', { name: 'Add link' }).click();
-      // an edit made while another is in flight is dropped, so wait for the link before the next one
       await panel.getByText('next → ship').waitFor();
+      expect(await panel.getByLabel('Link kind').count()).toBe(0);
+      expect(await panel.getByRole('button', { name: 'Add link' }).count()).toBe(0);
     }
     await textTab.click();
     await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('## phase plan\nnext: ship\n');
@@ -377,7 +375,7 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await textTab.click();
     const beforeModel = await editor.inputValue();
     await blocksTab.click();
-    await card('model').click();
+    await card('switch model').click();
     await row('model-1').waitFor();
     await panel.locator('h3', { hasText: 'model-1' }).waitFor();
     const pick = panel.getByRole('combobox', { name: 'Model', exact: true });

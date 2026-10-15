@@ -244,7 +244,7 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 [data-kind='gate'] { --c: var(--gate); }
 [data-kind='repeat'], [data-kind='if'] { --c: var(--loop); }
 [data-kind='verify'] { --c: var(--verify); }
-[data-kind='handoff'], [data-kind='end'] { --c: var(--hand); }
+[data-kind='end'] { --c: var(--hand); }
 [data-kind='recall'], [data-kind='store'] { --c: var(--mem); }
 [data-kind='use'], [data-kind='model'], [data-kind='subagent'] { --c: var(--mine); }
 
@@ -320,6 +320,7 @@ select.sx-pill { cursor: pointer; }
 .sx-hex.sx-hexover { background: #fff !important; color: #1b1408; box-shadow: 0 0 0 2px var(--brand), 0 0 10px 2px var(--brand); }
 .sx-mods { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; max-width: 100%; pointer-events: none; }
 .sx-mod { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-size: 11px; padding: 1px 7px; border-radius: 4px; background: var(--c); border: 1px solid rgb(255 255 255 / 0.4); color: #fff; }
+.sx-cardkind { padding: 0 5px; border-radius: 3px; background: rgb(0 0 0 / 0.28); font-weight: 600; }
 .sx-mod.sx-link { background: rgb(0 0 0 / 0.28); border: 1px dashed #9aa3b3; }
 .sx-mod.sx-missing { background: rgb(224 93 90 / 0.25); border: 1px solid var(--bad); }
 .sx-links { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }

@@ -65,7 +65,6 @@ export interface RunEventRecord {
     | 'verify_result'
     | 'recall'
     | 'store'
-    | 'handoff'
     | 'budget_warning'
     | 'engine_cost'
     | 'model_switched'
@@ -960,24 +959,16 @@ export class Run {
         // A copy: spliced only after the turn returns, so a turn that throws leaves the results for the step's re-run.
         const handed = [...this.handback];
 
-        const stepToCompile: Step = {
-          ...stepModel,
-          cards: [
-            ...stepModel.cards,
-            ...textCards.map((c) => ({ kind: 'note' as const, text: c })),
-            ...handed.map((t) => ({ kind: 'note' as const, text: t })),
-          ],
-        };
-
         const recallCtx = [...this.lastRecallContext];
         this.lastRecallContext = [];
 
-        const turnText = compileTurn(stepToCompile, {
+        const turnText = compileTurn(stepModel, {
           workflowName: this.workflow.name,
           stepIndex: instr.top ?? 0,
           totalSteps: this.workflow.steps.length,
           always: this.workflow.always,
           recallContext: recallCtx.length > 0 ? recallCtx : undefined,
+          extras: [...textCards, ...handed],
         });
 
         const result = await this.runTurn(session, instr.step, turnText);
@@ -1157,44 +1148,6 @@ export class Run {
           this.logEvent('store', { what: instr.what, skipped: 'no store function' });
         }
 
-        this.programCounter++;
-        return this.status;
-      }
-
-      case 'HANDOFF': {
-        const session = await this.ensureSession();
-        let prompt = 'Provide a hand-off summary: what changed, what is unverified.';
-        if (instr.focus) {
-          prompt += `\nFocus: ${instr.focus}`;
-        }
-
-        const handoffStep: Step = {
-          id: instr.step,
-          kind: 'handoff',
-          title: 'handoff',
-          attrs: { to: instr.to, ...(instr.focus ? { focus: instr.focus } : {}) },
-          cards: [],
-          links: [],
-          prompt,
-        };
-
-        const turnText = compileTurn(handoffStep, {
-          workflowName: this.workflow.name,
-          stepIndex: instr.top ?? 0,
-          totalSteps: this.workflow.steps.length,
-          always: this.workflow.always,
-        });
-
-        const result = await this.runTurn(session, instr.step, turnText);
-        if (!result) return this.status;
-
-        const summary = result.text
-          .split(/\r?\n/)
-          .filter((line) => !/^\s*REINS:\s*/.test(line))
-          .join('\n')
-          .trim();
-
-        this.logEvent('handoff', { to: instr.to, summary });
         this.programCounter++;
         return this.status;
       }

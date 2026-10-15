@@ -30,7 +30,6 @@ const PLAIN: Policy = { mode: 'write', guards: [], allowShell: true };
 const OK: Ack = { ok: true };
 const conflict = (error: string): Ack => ({ ok: false, code: 409, error });
 const bad = (error: string, diagnostics?: Diagnostic[]): Ack => ({ ok: false, code: 400, error, ...(diagnostics ? { diagnostics } : {}) });
-const IGNORED = 'This workflow sets model: or engine:. A session ignores them; pick the model in the session header.';
 export const under = (file: string, root: string) => {
   const rel = path.relative(root, file);
   return rel !== '' && rel.split(path.sep)[0] !== '..' && !path.isAbsolute(rel); // a folder named "..foo" is fine
@@ -561,11 +560,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       if (!(await trustedCommands(file, w, loaded.resolveBlock))) return;
       const rid = randomBytes(4).toString('hex');
       store.createRun({ id: rid, workflowPath: file, cwd });
-      const carry = await execute(rid, w, loaded.resolveBlock, (o) => {
-        const r = new Run(o);
-        if (w.model || w.engine) log('note', { text: IGNORED }, rid);
-        return r;
-      });
+      const carry = await execute(rid, w, loaded.resolveBlock, (o) => new Run(o));
       if (carry) await plainLoop(carry, true);
     });
     return OK;
@@ -590,7 +585,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       if (!tagged && !(await trustedCommands(saved.workflowPath, w, resolveBlock))) return;
       const carry = await execute(rid, w, resolveBlock, (o) => {
         const r = Run.restore(snapshot, o);
-        log('note', { text: `Resumed run ${rid}.${w.model || w.engine ? ` ${IGNORED}` : ''}` }, rid);
+        log('note', { text: `Resumed run ${rid}.` }, rid);
         // The session's model may have changed since the run's last model step (another run, a detached header switch).
         const chose = [...snapshot.events].reverse().find((e) => e.type === 'model_switched' && (e.data?.how === 'switched' || e.data?.how === 'same'));
         const cur = store.getSession(id)!;

@@ -148,7 +148,7 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, models, s
         </div>
         {(s.cards.length > 0 || chips.length > 0) && (
           <div className="sx-mods">
-            {s.cards.map((c, i) => <span key={`c${i}`} className="sx-mod">{c.kind}: {c.text}</span>)}
+            {s.cards.map((c, i) => <span key={`c${i}`} className="sx-mod"><span className="sx-cardkind">{c.kind}:</span> {c.text}</span>)}
             {chips}
           </div>
         )}

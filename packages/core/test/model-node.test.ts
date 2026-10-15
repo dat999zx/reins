@@ -28,10 +28,11 @@ describe('model step: parse and print', () => {
     expect(printWorkflow(w)).toBe(text);
   });
 
-  it('budget: in a model block is a card (the reason the slice is usd:)', () => {
-    const w = ok(wf('## model m\nbudget: 0.50\n'));
-    expect(w.steps[0]!.cards).toMatchObject([{ kind: 'budget', text: '0.50' }]);
-    expect(warnings(wf('## model m\nbudget: 0.50\n'))).toContain('a model step sends no turn; its cards and prompt do nothing');
+  it('a card in a model block warns that it does nothing; budget: is no card, the slice is usd:', () => {
+    const w = ok(wf('## model m\nguard: src/**\n'));
+    expect(w.steps[0]!.cards).toMatchObject([{ kind: 'guard', text: 'src/**' }]);
+    expect(warnings(wf('## model m\nguard: src/**\n'))).toContain('a model step sends no turn; its cards and prompt do nothing');
+    expect(parseWorkflow(wf('## model m\nbudget: 0.50\n')).diagnostics.map((d) => d.message)).toEqual(['Unknown attribute "budget"']);
   });
 
   it('the heading takes no condition: until: is parsed as a condition, as on any kind', () => {

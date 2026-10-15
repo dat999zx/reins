@@ -60,7 +60,7 @@ describe('end step', () => {
   it('a file without end is unchanged: bug-fix compiles and validates as before the node existed', () => {
     const p = parseWorkflow(readFileSync(new URL('../../../examples/bug-fix.reins.md', import.meta.url), 'utf8'));
     expect(p.diagnostics).toEqual([]);
-    expect(compileProgram(p.workflow!).map((i) => i.op)).toEqual(['TURN', 'GATE', 'LOOP_IN', 'TURN', 'RUN', 'LOOP_BK', 'IF', 'GATE', 'JUMP', 'TURN', 'HANDOFF', 'END']);
+    expect(compileProgram(p.workflow!).map((i) => i.op)).toEqual(['TURN', 'GATE', 'LOOP_IN', 'TURN', 'RUN', 'LOOP_BK', 'IF', 'GATE', 'JUMP', 'TURN', 'END']);
     const fallback = 'Condition "tests pass" with no test command set in frontmatter falls back to "npm test"';
     expect(validate(p.workflow!).map((d) => `${d.severity}:${d.message}`)).toEqual([`warning:${fallback}`, `warning:${fallback}`]);
   });

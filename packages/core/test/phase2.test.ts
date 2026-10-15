@@ -183,7 +183,7 @@ describe('what the terminal runner needs from Run', () => {
       { events: [{ type: 'tool_call', tool: 'Read', input: { file_path: 'D:\\repo\\src\\core\\a.ts' } }], text: 'REINS: done' },
       { text: 'REINS: done' },
     ]);
-    const run = new Run({ workflow: wf('## phase one\n> first\n\n## phase two\n> second\n\n## whenever touches src/core/**\ncheckpoint: core touched'), engine: eng, cwd: 'D:\\repo' });
+    const run = new Run({ workflow: wf('## phase one\n> first\n\n## phase two\n> second\n\n## whenever touches src/core/**\nnow: core touched'), engine: eng, cwd: 'D:\\repo' });
     await drive(run);
     expect(eng.receivedTexts[1]).toContain('core touched');
   });
@@ -233,12 +233,12 @@ describe('what the terminal runner needs from Run', () => {
   });
 
   it('a step inlined from a use block reaches the agent with its own prompt and cards', async () => {
-    const block = parseWorkflow('---\nreins: 1\nblock: rp\n---\n\n## phase review\nnote: as a harsh reviewer\n> Review the full diff.\n').workflow!;
+    const block = parseWorkflow('---\nreins: 1\nblock: rp\n---\n\n## phase review\nguard: src/api/**\n> Review the full diff.\n').workflow!;
     const eng = new FakeEngine();
     const run = new Run({ workflow: wf('## phase one\n> first\n\n## use rp'), engine: eng, resolveBlock: (n) => (n === 'rp' ? block : undefined) });
     await drive(run);
     expect(eng.receivedTexts[1]).toContain('Review the full diff.');
-    expect(eng.receivedTexts[1]).toContain('as a harsh reviewer');
+    expect(eng.receivedTexts[1]).toContain('Do not touch src/api/**.');
   });
 
   it('engine hook events reach the run log', async () => {

@@ -114,7 +114,7 @@ describe('review round 1: Knowl and I/O go through injected functions (plan 4, 1
   it('G: whenever diff > N fires using the injected diffLines', async () => {
     const eng = new FakeEngine([{ text: 'REINS: done' }, { text: 'REINS: done' }]);
     const run = new Run({
-      workflow: wf('## phase one\n> first\n\n## phase two\n> second\n\n## whenever diff > 100 lines\nnudge: split'),
+      workflow: wf('## phase one\n> first\n\n## phase two\n> second\n\n## whenever diff > 100 lines\nnow: split'),
       engine: eng,
       diffLines: async () => 250,
     });
@@ -127,7 +127,7 @@ describe('review round 1: Knowl and I/O go through injected functions (plan 4, 1
       { events: [{ type: 'tool_call', tool: 'Edit', input: { file_path: 'src/core/a.ts' } }], text: 'REINS: done' },
       { text: 'REINS: done' },
     ]);
-    const run = new Run({ workflow: wf('## phase one\n> first\n\n## phase two\n> second\n\n## whenever touches src/core/**\ncheckpoint: core touched'), engine: eng });
+    const run = new Run({ workflow: wf('## phase one\n> first\n\n## phase two\n> second\n\n## whenever touches src/core/**\nnow: core touched'), engine: eng });
     await drive(run);
     expect(eng.receivedTexts[1]).toContain('core touched');
   });
@@ -169,15 +169,6 @@ describe('review round 1: engine contract (plan 8.1)', () => {
     await drive(run);
     expect(run.getEvents().some((e) => e.type === 'refusal')).toBe(true);
   });
-
-  it('J: handoff sends the agent a turn asking for a summary (plan 6.2)', async () => {
-    const eng = new FakeEngine();
-    const run = new Run({ workflow: wf('## phase one\n> first\n\n## handoff\nto: fresh session\nfocus: what broke'), engine: eng });
-    await drive(run);
-    expect(eng.receivedTexts.length).toBe(2);
-    expect(eng.receivedTexts[1]!.toLowerCase()).toContain('summar');
-    expect(eng.receivedTexts[1]).toContain('what broke');
-  });
 });
 
 describe('review round 2: no judge means no in repeat and if too (plan 7.3)', () => {
@@ -213,7 +204,7 @@ describe('review round 2: no judge means no in repeat and if too (plan 7.3)', ()
 describe('review round 2: auto cards and the status line', () => {
   it('O: whenever agent says done fires only after a turn that really ended with REINS: done', async () => {
     const eng = new FakeEngine([{ text: 'still working\nREINS: blocked: need input' }]);
-    const run = new Run({ workflow: wf('## phase one\n> first\n\n## phase two\n> second\n\n## whenever agent says done\ncheckpoint: DONE-SEEN'), engine: eng });
+    const run = new Run({ workflow: wf('## phase one\n> first\n\n## phase two\n> second\n\n## whenever agent says done\nnow: DONE-SEEN'), engine: eng });
     await drive(run);
     expect(run.pauseReason?.type).toBe('agent-blocked');
     expect(run.getEvents().some((e) => e.type === 'card_queued' && String(e.data.card).includes('DONE-SEEN'))).toBe(false);
@@ -221,7 +212,7 @@ describe('review round 2: auto cards and the status line', () => {
 
   it('O2: ...and does fire after a real REINS: done', async () => {
     const eng = new FakeEngine([{ text: 'ok\nREINS: done' }, { text: 'ok\nREINS: done' }]);
-    const run = new Run({ workflow: wf('## phase one\n> first\n\n## phase two\n> second\n\n## whenever agent says done\ncheckpoint: DONE-SEEN'), engine: eng });
+    const run = new Run({ workflow: wf('## phase one\n> first\n\n## phase two\n> second\n\n## whenever agent says done\nnow: DONE-SEEN'), engine: eng });
     await drive(run);
     expect(eng.receivedTexts[1]).toContain('DONE-SEEN');
   });

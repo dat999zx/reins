@@ -141,12 +141,6 @@ describe('tagCatalogue (3b.5, GET /api/tags)', () => {
       { name: 'repeat', place: 'wrap', arg: 'until', argRequired: true, enforced: true },
       { name: 'verify', place: 'after', enforced: true },
       { name: 'guard', place: 'card', arg: 'guard', argRequired: true, enforced: true },
-      { name: 'note', place: 'card', arg: 'note', argRequired: true, enforced: false },
-      { name: 'nudge', place: 'card', arg: 'nudge', argRequired: true, enforced: false },
-      { name: 'role', place: 'card', arg: 'role', argRequired: true, enforced: false },
-      { name: 'checkpoint', place: 'card', arg: 'checkpoint', argRequired: true, enforced: false },
-      { name: 'budget', place: 'card', arg: 'budget', argRequired: true, enforced: false },
-      { name: 'undo', place: 'card', arg: 'undo', argRequired: true, enforced: false },
       { name: 'mode', place: 'attr', arg: 'mode', argRequired: true, enforced: true },
       { name: 'read-only', place: 'attr', argRequired: false, enforced: true },
     ]);

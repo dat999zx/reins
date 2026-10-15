@@ -349,54 +349,6 @@
                   "line": 8
                 },
                 "text": "migrations/**"
-              },
-              {
-                "kind": "note",
-                "pos": {
-                  "col": 6,
-                  "line": 9
-                },
-                "text": "n1"
-              },
-              {
-                "kind": "nudge",
-                "pos": {
-                  "col": 7,
-                  "line": 10
-                },
-                "text": "n2"
-              },
-              {
-                "kind": "role",
-                "pos": {
-                  "col": 6,
-                  "line": 11
-                },
-                "text": "n3"
-              },
-              {
-                "kind": "checkpoint",
-                "pos": {
-                  "col": 12,
-                  "line": 12
-                },
-                "text": "n4"
-              },
-              {
-                "kind": "budget",
-                "pos": {
-                  "col": 8,
-                  "line": 13
-                },
-                "text": "n5"
-              },
-              {
-                "kind": "undo",
-                "pos": {
-                  "col": 6,
-                  "line": 14
-                },
-                "text": "n6"
               }
             ],
             "id": "all-cards",
@@ -417,7 +369,7 @@
         }
       ],
       "turns": [
-        "[Reins · workflow \"t\" · step 1 of 1: all cards]\n\ndo\n\nFor this step:\n- Do not touch migrations/**. (Enforced: edits there are blocked.)\n- n1\n- nudge: n2\n- role: n3\n- checkpoint: n4\n- budget: n5\n- undo: n6\n- Step is read-only. (Enforced: no file edits or write commands are permitted.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+        "[Reins · workflow \"t\" · step 1 of 1: all cards]\n\ndo\n\nFor this step:\n- Do not touch migrations/**. (Enforced: edits there are blocked.)\n- Step is read-only. (Enforced: no file edits or write commands are permitted.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
       ]
     },
     "diags": []

@@ -36,7 +36,7 @@ id: i
 ### phase no
 
 ## whenever drift
-nudge: look up
+now: look up
 `;
 
 const parse = (text: string): Workflow => parseWorkflow(text).workflow!;
@@ -55,8 +55,8 @@ describe('setLink', () => {
     expect(links(setLink(a, 'plan', 'next', 'fix'), 'plan')).toStrictEqual([{ kind: 'next', to: 'fix' }]);
   });
   it('keeps links of other kinds', () => {
-    const a = setLink(parse(withPlanLink('retry: build')), 'plan', 'next', 'fix');
-    expect(links(a, 'plan').map((l) => l.kind)).toEqual(['retry', 'next']);
+    const a = setLink(parse(withPlanLink('on-fail: build')), 'plan', 'next', 'fix');
+    expect(links(a, 'plan').map((l) => l.kind)).toEqual(['on-fail', 'next']);
   });
   it('adds max 3 to a backward link', () => {
     expect(links(setLink(w, 'fix', 'next', 'plan'), 'fix')).toStrictEqual([{ kind: 'next', to: 'plan', max: 3 }]);
@@ -115,9 +115,9 @@ describe('the against wire', () => {
 
 describe('removeLinks', () => {
   it('removes several refs on one step and keeps the rest in order', () => {
-    const w = parse(TEXT.replace('## phase plan\n', '## phase plan\nnext: build\non-pass: fix\nretry: build\non-fail: fix (max 2)\n'));
+    const w = parse(TEXT.replace('## phase plan\n', '## phase plan\nnext: build\non-fail: fix (max 2)\nnext: fix\n'));
     const out = removeLinks(w, [{ from: 'plan', index: 0 }, { from: 'plan', index: 2 }]);
-    expect(flatSteps(out.steps).find((s) => s.id === 'plan')!.links.map((l) => l.kind)).toEqual(['on-pass', 'on-fail']);
+    expect(flatSteps(out.steps).find((s) => s.id === 'plan')!.links.map((l) => l.kind)).toEqual(['on-fail']);
   });
 });
 
@@ -158,7 +158,7 @@ describe('marksOf', () => {
     expect(marks([diag(lineOf(text, '> Build it.'))]).steps.get('build')).toBe('error');
   });
   it('marks nothing for line 1, a whenever block or an else heading', () => {
-    for (const line of [1, lineOf(text, '## whenever'), lineOf(text, 'nudge: look up'), lineOf(text, '### else')]) {
+    for (const line of [1, lineOf(text, '## whenever'), lineOf(text, 'now: look up'), lineOf(text, '### else')]) {
       const m = marks([diag(line)]);
       expect([m.steps.size, m.wires.size], `line ${line}`).toEqual([0, 0]);
     }

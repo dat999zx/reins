@@ -60,7 +60,7 @@ describe('3a proof: compile', () => {
       { text: WF('## verify\nagainst: plan\non-fail: mystery-1 (max 2)\n\n## phase plan\n> p\n\n## mystery\n> m'), resolve: exBlocks },
       { text: WF('## use vblock'), resolve: vblock },
       {
-        text: WF('## phase all cards\nguard: migrations/**\nnote: n1\nnudge: n2\nrole: n3\ncheckpoint: n4\nbudget: n5\nundo: n6\nmode: read-only\n> do'),
+        text: WF('## phase all cards\nguard: migrations/**\nmode: read-only\n> do'),
         resolve: exBlocks,
       },
     ];
@@ -77,8 +77,8 @@ describe('3a proof: parse and validate', () => {
     const inputs = [
       WF('## frobnicate\n> x'),
       WF('## phase a\ngaurd: x\n> x'),
-      WF('## phase a\n> a\n\n## else\n\n## phase b\n> b\n\n## whenever drift\nnudge: n'),
-      WF('## repeat\nmax: 2\nuntil: tests pass\n\n### whenever drift\nnudge: deep\n\n### run `npm test`'),
+      WF('## phase a\n> a\n\n## else\n\n## phase b\n> b\n\n## whenever drift\nnow: n'),
+      WF('## repeat\nmax: 2\nuntil: tests pass\n\n### whenever drift\nnow: deep\n\n### run `npm test`'),
       WF('## phase a\nnow: go\nstop: halt\n> a'),
       WF('## phase a\nguard: [oops\n> a\n\n## gate\nuntil: touches [x'),
       WF('## repeat\nuntil: tests pass\n\n### say\n> s\n\n## gate'),
@@ -95,7 +95,7 @@ describe('3a proof: parse and validate', () => {
       WF('## phase x\ncmd: foo\n> p'),
       WF('## say\nuse: foo\n> s'),
       WF('## run `a`\ncmd: b'),
-      WF('## say\n> s\n\n## whenever llm says "x" and touches [\nnudge: n'),
+      WF('## say\n> s\n\n## whenever llm says "x" and touches [\nnow: n'),
       WF('## phase a\nnow: go\nguard: [bad\nuntil: llm says "x"'),
       WF('## phase a\n> a\n\n## verify\nagainst: ghost\non-fail: nowhere\n\n## phase c\n> c\nretry: a'),
     ];
@@ -172,7 +172,7 @@ describe('3a proof: auto cards through a run', () => {
   const DONE = { text: 'ok\nREINS: done' };
 
   it('diff auto card goes async through diffLines', async () => {
-    const workflow = load(WF('## say\n> hi\n\n## whenever diff > 3 lines\nnudge: big'));
+    const workflow = load(WF('## say\n> hi\n\n## whenever diff > 3 lines\nnow: big'));
     let calls = 0;
     const run = new Run({
       workflow,
@@ -185,7 +185,7 @@ describe('3a proof: auto cards through a run', () => {
   });
 
   it('whenever not tests pass is true and runs nothing', async () => {
-    const workflow = load(WF('## say\n> hi\n\n## whenever not tests pass\nnudge: nt'));
+    const workflow = load(WF('## say\n> hi\n\n## whenever not tests pass\nnow: nt'));
     let ran = 0;
     const run = new Run({
       workflow,
@@ -198,7 +198,7 @@ describe('3a proof: auto cards through a run', () => {
   });
 
   it('a false left side keeps an and sync, and diffLines is never called', async () => {
-    const workflow = load(WF('## say\n> hi\n\n## whenever agent says done and diff > 3 lines\nnudge: x'));
+    const workflow = load(WF('## say\n> hi\n\n## whenever agent says done and diff > 3 lines\nnow: x'));
     let calls = 0;
     const run = new Run({
       workflow,
@@ -209,7 +209,7 @@ describe('3a proof: auto cards through a run', () => {
     expect(run.checkAutoCards()).toBeUndefined();
     expect(calls).toBe(0);
 
-    const workflow2 = load(WF('## say\n> hi\n\n## whenever diff > 3 lines\nnudge: y'));
+    const workflow2 = load(WF('## say\n> hi\n\n## whenever diff > 3 lines\nnow: y'));
     const run2 = new Run({
       workflow: workflow2,
       engine: new FakeEngine([DONE]),
@@ -222,7 +222,7 @@ describe('3a proof: auto cards through a run', () => {
   });
 
   it('sync cards queue before async ones', async () => {
-    const workflow = load(WF('## say\n> hi\n\n## whenever diff > 3 lines\nnudge: A\n\n## whenever not tests pass\nnudge: B'));
+    const workflow = load(WF('## say\n> hi\n\n## whenever diff > 3 lines\nnow: A\n\n## whenever not tests pass\nnow: B'));
     const run = new Run({
       workflow,
       engine: new FakeEngine([DONE]),
