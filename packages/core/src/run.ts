@@ -978,14 +978,7 @@ export class Run {
         const session = await this.ensureSession();
 
         // Find step model
-        const rawStep = instr.src ?? this.findStepById(this.workflow.steps, instr.step);
-        const stepModel: Step = rawStep || {
-          id: instr.step,
-          kind: 'phase',
-          attrs: {},
-          cards: instr.policy.guards.map((g) => ({ kind: 'guard', text: g })),
-          links: [],
-        };
+        const stepModel = instr.src;
 
         // Plan 6.5: everything queued before the turn goes into its text, exactly once.
         // Cards queued while the turn runs are drained by the engine at its next tool event.

@@ -13,7 +13,7 @@ export interface Policy {
 export interface Instrs {
   RECALL: { step: string; topics: string[] };
   // src: the step as compiled (block steps prefixed), so a step inlined by `use` keeps its prompt.
-  TURN: { step: string; policy: Policy; src?: Step };
+  TURN: { step: string; policy: Policy; src: Step };
   GATE: { step: string; cond: Cond };
   LOOP_IN: { step: string; max: number };
   RUN: {
