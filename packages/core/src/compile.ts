@@ -9,32 +9,35 @@ export interface Policy {
   pendingGate?: string;
 }
 
+// The instruction shapes, keyed by op. A kind adds its own by merging into this interface.
+export interface Instrs {
+  RECALL: { step: string; topics: string[] };
+  // src: the step as compiled (block steps prefixed), so a step inlined by `use` keeps its prompt.
+  TURN: { step: string; policy: Policy; src?: Step };
+  GATE: { step: string; cond: Cond };
+  LOOP_IN: { step: string; max: number };
+  RUN: {
+    step: string;
+    cmd: string;
+    onPassJump?: number;
+    onFailJump?: number;
+    linkMax?: number;
+    repeatCond?: Cond;
+    loopExit?: number;
+  };
+  LOOP_BK: { step: string; target: number; cond?: Cond };
+  IF: { step: string; cond: Cond; elseJump: number };
+  VERIFY: { step: string; against: string; onFailJump?: number; linkMax?: number };
+  STORE: { step: string; what: string };
+  // A kind's own instruction (P12): run by `NodeType.exec` of `kind`, `src` the step as compiled.
+  NODE: { step: string; kind: string; src: Step };
+  JUMP: { target: number; step?: string; linkMax?: number };
+  END: object;
+}
+
 // top: index of the top-level step this instruction belongs to (a repeat's inner steps and
 // steps inlined by `use` report their parent), so "step N of M" always counts the same things.
-export type Instr = (
-  | { op: 'RECALL'; step: string; topics: string[] }
-  // src: the step as compiled (block steps prefixed), so a step inlined by `use` keeps its prompt.
-  | { op: 'TURN'; step: string; policy: Policy; src?: Step }
-  | { op: 'GATE'; step: string; cond: Cond }
-  | { op: 'LOOP_IN'; step: string; max: number }
-  | {
-      op: 'RUN';
-      step: string;
-      cmd: string;
-      onPassJump?: number;
-      onFailJump?: number;
-      linkMax?: number;
-      repeatCond?: Cond;
-      loopExit?: number;
-    }
-  | { op: 'LOOP_BK'; step: string; target: number; cond?: Cond }
-  | { op: 'IF'; step: string; cond: Cond; elseJump: number }
-  | { op: 'VERIFY'; step: string; against: string; onFailJump?: number; linkMax?: number }
-  | { op: 'STORE'; step: string; what: string }
-  // A kind's own instruction (P12): run by `NodeType.exec` of `kind`, `src` the step as compiled.
-  | { op: 'NODE'; step: string; kind: string; src: Step }
-  | { op: 'JUMP'; target: number; step?: string; linkMax?: number }
-  | { op: 'END' }) & { top?: number };
+export type Instr = { [K in keyof Instrs]: { op: K } & Instrs[K] }[keyof Instrs] & { top?: number };
 
 export interface CompileTurnContext {
   workflowName: string;

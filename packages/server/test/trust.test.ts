@@ -3,7 +3,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { parseWorkflow, type Workflow } from '@reins/core';
+import { parseWorkflow, register, type NodeType, type Workflow } from '@reins/core';
 import { FOLDER_PATH, commandsOf, folderHash, hashCommands } from '../src/trust.js';
 import { golden } from '../../core/test/golden-3a/stable.js';
 
@@ -76,6 +76,21 @@ describe('workflow trust hash (3b.6)', () => {
     const cmds = commandsOf(w, none);
     expect(cmds).toEqual(['make build', '`lint.sh` passes', 'npm test', 'tests pass', '`npm run typecheck` passes', 'npm run unit']);
     golden('trust.json', { cmds, hash: hashOf(w) }, 'REINS_RECORD_M1', path.join(__dirname, 'golden-m1'));
+  });
+
+  it('lists the commands a registered kind brings, before the test command', () => {
+    const hop: NodeType = {
+      kind: 'hop',
+      attrs: [],
+      compile(step, ctx) { ctx.push({ op: 'HOP', step: step.id } as never); },
+      ops: { HOP: { async exec() {}, commands: () => ['echo hop'] } },
+    };
+    const dispose = register(hop);
+    try {
+      expect(commandsOf(wf('## hop\n\n## phase a\n> x'), none)).toEqual(['echo hop', 'npm test']);
+    } finally {
+      dispose();
+    }
   });
 
   it('changes when a command changes, including one inside a used block, and not when a prompt changes', () => {

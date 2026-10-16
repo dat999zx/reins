@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { CONDS, compileProgram, condAtoms, printCond, type Cond, type Workflow } from '@reins/core';
+import { CONDS, compileProgram, condAtoms, opOf, printCond, type Cond, type Workflow } from '@reins/core';
 
 // Files claude -p runs with no prompt: their hooks, MCP servers, apiKeyHelper and permissions.allow (plan 15d 3b.4).
 const FOLDER_FILES = ['.claude/settings.json', '.claude/settings.local.json', '.mcp.json'];
@@ -29,6 +29,7 @@ export function commandsOf(w: Workflow, resolveBlock: (name: string) => Workflow
   };
   for (const i of compileProgram(w, resolveBlock)) {
     if (i.op === 'RUN') out.push(i.cmd);
+    out.push(...(opOf(i.op)?.commands?.(i) ?? []));
     const { cond, repeatCond } = i as { cond?: Cond; repeatCond?: Cond };
     conds(cond);
     conds(repeatCond);

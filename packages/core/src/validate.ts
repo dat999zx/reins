@@ -2,7 +2,7 @@ import type { Workflow, Step, Diagnostic, Pos } from './model.js';
 import { isValidGlob } from './util.js';
 import { CARDS } from './cards/index.js';
 import { CONDS } from './conds/index.js';
-import { NODES, nodeAttrs, headingOwns, type ValidateCtx } from './nodes/index.js';
+import { NODES, opOf, nodeAttrs, headingOwns, type ValidateCtx } from './nodes/index.js';
 import { condAtoms } from './cond.js';
 import { compileProgram } from './compile.js';
 import { usdText } from './format/print.js';
@@ -271,6 +271,8 @@ export function validate(
       seen.add(i);
       if (ins.op === 'END') continue;
       if (ins.op === 'JUMP') { todo.push(ins.target); continue; }
+      const own = opOf(ins.op)?.next;
+      if (own) { todo.push(...own(ins, i).map((x) => x ?? -1)); continue; }
       todo.push(i + 1);
       if (ins.op === 'RUN') todo.push(ins.onFailJump ?? -1, ins.onPassJump ?? -1, ins.loopExit ?? -1);
       else if (ins.op === 'VERIFY') todo.push(ins.onFailJump ?? -1);

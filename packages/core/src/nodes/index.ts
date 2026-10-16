@@ -1,6 +1,6 @@
 import type { Diagnostic, Pos, Step, Workflow } from '../model.js';
 import type { Instr } from '../compile.js';
-import type { RunEventRecord } from '../run.js';
+import type { RunEventRecord, RunEventType } from '../run.js';
 import phase from './phase.js';
 import say from './say.js';
 import run from './run.js';
@@ -68,6 +68,8 @@ export interface NodeType {
     links?(step: Step, ctx: ValidateCtx): void;
   };
   compile(step: Step, ctx: CompileCtx): void;
+  /** The ops this kind compiles to (the instruction's `op` name is the key). Op names stay as they are, so compiled programs keep their bytes. */
+  ops?: Record<string, OpType<any>>;
   /** Runs this kind's NODE instruction (P12): 'next' moves on; 'stay' leaves the counter (the run paused or stopped). */
   exec?(step: Step, ctx: ExecCtx): Promise<'next' | 'stay'>;
   defaultPrompt?(step: Step): string | undefined;
@@ -76,9 +78,57 @@ export interface NodeType {
   tag?: { place: 'after' | 'wrap'; arg?: string; argRequired?: boolean; lines?: string[] };
 }
 
-export const NODES = new Map<string, NodeType>(
-  [phase, say, run, gate, repeat, ifNode, verify, use, recall, store, model, subagent, end].map((n) => [n.kind, n]),
-);
+/** What an op sees of the run. Members are getters and closures over the run's own fields; only `at` is a copy, taken when the op starts. */
+export interface VmCtx {
+  /** Live: `edit()` may replace the program during an await. */
+  readonly program: readonly Instr[];
+  /** The counter when the op started. */
+  readonly at: number;
+  /** Live: moves the run's own counter on one, not `at + 1`. */
+  next(): void;
+  /** Live. */
+  goto(i: number): void;
+  /** Live: the run is still `running`; check after every await. */
+  running(): boolean;
+  log(type: RunEventType, data: unknown): void;
+}
+
+/** A kind's own instruction: `exec` runs it again from the start after a pause or crash. */
+export interface OpType<I extends Instr> {
+  exec(instr: I, vm: VmCtx): Promise<void>;
+  /** Where the reach walk goes from here (undefined: no such place); replaces `[at + 1]`. */
+  next?(instr: I, at: number): Array<number | undefined>;
+  /** The commands the instruction runs on its own, for the trust hash. */
+  commands?(instr: I): string[];
+}
+
+/** The instructions the run itself executes: a kind cannot bring these. */
+const CORE_OPS = ['TURN', 'JUMP', 'END', 'NODE'];
+
+export const NODES = new Map<string, NodeType>();
+
+/** Adds a kind and the ops it brings. Throws on a known kind, a core op or a taken op, and then adds nothing. Returns a function that removes them again. */
+export function register(n: NodeType): () => void {
+  if (NODES.has(n.kind)) throw new Error(`kind "${n.kind}" is already registered`);
+  for (const op of Object.keys(n.ops ?? {})) {
+    if (CORE_OPS.includes(op)) throw new Error(`op "${op}" is a core op`);
+    const owner = [...NODES.values()].find((k) => k.ops && Object.hasOwn(k.ops, op));
+    if (owner) throw new Error(`op "${op}" is already brought by kind "${owner.kind}"`);
+  }
+  NODES.set(n.kind, n);
+  let live = true;
+  return () => {
+    if (!live) return;
+    live = false;
+    NODES.delete(n.kind);
+  };
+}
+for (const n of [phase, say, run, gate, repeat, ifNode, verify, use, recall, store, model, subagent, end]) register(n);
+
+export function opOf(op: string): OpType<any> | undefined {
+  for (const n of NODES.values()) if (n.ops && Object.hasOwn(n.ops, op)) return n.ops[op];
+  return undefined;
+}
 
 export function defaultId(step: { kind: string; title?: string }, counters: Record<string, number>): string {
   const own = NODES.get(step.kind)?.defaultId?.(step as Step);

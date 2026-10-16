@@ -1,7 +1,7 @@
 import type { Workflow, Step, Cond } from './model.js';
 import { compileProgram, compileTurn, type Instr, type Policy, type StepStart } from './compile.js';
 import type { Engine, EngineSession, TurnResult } from './fake-engine.js';
-import { NODES, type ExecCtx, type SwitchOutcome } from './nodes/index.js';
+import { NODES, opOf, type ExecCtx, type SwitchOutcome, type VmCtx } from './nodes/index.js';
 import { policyOf } from './nodes/turn.js';
 import { CARDS } from './cards/index.js';
 import { evalCond, evalCondSync, type EvalCtx } from './cond.js';
@@ -39,40 +39,45 @@ export interface PauseReason {
 /** steer: slipped in mid-turn. now: interrupt, then sent as the next turn. stop: interrupt and pause. */
 export type LiveCardKind = 'steer' | 'now' | 'stop';
 
+/** The event names a run logs; the payloads are not typed yet. A kind adds its own by merging into this interface. */
+export interface RunEvents {
+  run_started: unknown;
+  run_paused: unknown;
+  run_resumed: unknown;
+  run_stopped: unknown;
+  run_finished: unknown;
+  turn_started: unknown;
+  turn_ended: unknown;
+  step_started: unknown;
+  command_result: unknown;
+  tool_call: unknown;
+  refusal: unknown;
+  card_queued: unknown;
+  card_delivered: unknown;
+  gate_paused: unknown;
+  gate_approved: unknown;
+  loop_iteration: unknown;
+  loop_budget_exceeded: unknown;
+  link_jump: unknown;
+  link_budget_exceeded: unknown;
+  verify_result: unknown;
+  recall: unknown;
+  store: unknown;
+  budget_warning: unknown;
+  engine_cost: unknown;
+  model_switched: unknown;
+  budget_reached: unknown;
+  subagent_started: unknown;
+  subagent_result: unknown;
+  hook: unknown;
+  judge: unknown;
+}
+export type RunEventType = keyof RunEvents;
+
 export interface RunEventRecord {
   id: string;
   timestamp: number;
-  type:
-    | 'run_started'
-    | 'run_paused'
-    | 'run_resumed'
-    | 'run_stopped'
-    | 'run_finished'
-    | 'turn_started'
-    | 'turn_ended'
-    | 'step_started'
-    | 'command_result'
-    | 'tool_call'
-    | 'refusal'
-    | 'card_queued'
-    | 'card_delivered'
-    | 'gate_paused'
-    | 'gate_approved'
-    | 'loop_iteration'
-    | 'loop_budget_exceeded'
-    | 'link_jump'
-    | 'link_budget_exceeded'
-    | 'verify_result'
-    | 'recall'
-    | 'store'
-    | 'budget_warning'
-    | 'engine_cost'
-    | 'model_switched'
-    | 'budget_reached'
-    | 'subagent_started'
-    | 'subagent_result'
-    | 'hook'
-    | 'judge';
+  type: RunEventType;
   data: any;
 }
 
@@ -411,6 +416,19 @@ export class Run {
       pause: (text) => { if (this.status === 'running') this.pauseForStop(text, step); },
       stop: () => this.stop(),
       subagent: (s, usd) => this.subagentTurn(s, usd),
+    };
+  }
+
+  /** The run's hands for an op: live over the run's fields, except `at`, which is the counter as the op started. */
+  private vm(): VmCtx {
+    const program = () => this.program;
+    return {
+      get program() { return program(); },
+      at: this.programCounter,
+      next: () => { this.programCounter++; },
+      goto: (i) => { this.programCounter = i; },
+      running: () => this.status === 'running',
+      log: (type, data) => this.logEvent(type, data),
     };
   }
 
@@ -904,6 +922,12 @@ export class Run {
     // ponytail: a step re-run after a stop card or REINS: blocked reports its start again; a TURN that hits the run turn budget reports its start, then pauses
     for (const s of this.starts.get(this.programCounter) ?? []) this.logEvent('step_started', s);
 
+    const op = opOf(instr.op);
+    if (op) {
+      await op.exec(instr, this.vm());
+      return this.status;
+    }
+
     switch (instr.op) {
       case 'RECALL': {
         if (!this.recall) {
@@ -1190,5 +1214,7 @@ export class Run {
         return this.status;
       }
     }
+    // A merged-in instruction no kind runs: the counter stays, as the switch always did.
+    return this.status;
   }
 }
