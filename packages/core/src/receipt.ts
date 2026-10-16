@@ -1,4 +1,5 @@
 import type { RunEventRecord } from './run.js';
+import { NODES } from './nodes/index.js';
 
 export interface Receipt {
   workflow: string;
@@ -24,6 +25,8 @@ export interface Receipt {
   unsplitUsd?: number;
   /** Dollars and turns per subagent step, first started first; absent when no subagent ran. */
   subagents?: Array<{ step: string; title: string; usd: number; turns: number }>;
+  /** What the kinds count in their own events (name to number); absent when nothing was counted. */
+  counts?: Record<string, number>;
 }
 
 export function receipt(events: RunEventRecord[]): Receipt {
@@ -46,6 +49,7 @@ export function receipt(events: RunEventRecord[]): Receipt {
   const seen = (m: string) => byModel.get(m) ?? (byModel.set(m, { usd: 0, turns: 0 }), byModel.get(m)!);
 
   const subs = new Map<string, { title: string; usd: number; turns: number }>();
+  const counts: Record<string, number> = {};
 
   const firstTimestamp = events[0]?.timestamp ?? 0;
   let lastTimestamp = firstTimestamp;
@@ -120,6 +124,10 @@ export function receipt(events: RunEventRecord[]): Receipt {
         for (const [m, usd] of Object.entries((ev.data?.models ?? {}) as Record<string, number>)) seen(m).usd += Number(usd) || 0;
         break;
     }
+    for (const n of NODES.values()) {
+      const k = n.count?.[ev.type]?.(ev.data);
+      if (k) counts[k] = (counts[k] ?? 0) + 1;
+    }
   }
 
   const totalTimeMs = Math.max(0, lastTimestamp - firstTimestamp);
@@ -147,5 +155,6 @@ export function receipt(events: RunEventRecord[]): Receipt {
     ...(models.length ? { models } : {}),
     ...(models.length && unsplit > 0.00005 ? { unsplitUsd: r6(unsplit) } : {}),
     ...(subs.size ? { subagents: [...subs].map(([step, v]) => ({ step, title: v.title, usd: r6(v.usd), turns: v.turns })) } : {}),
+    ...(Object.keys(counts).length ? { counts } : {}),
   };
 }

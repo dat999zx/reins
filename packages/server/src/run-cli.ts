@@ -4,7 +4,7 @@ import readline from 'node:readline';
 import { randomBytes } from 'node:crypto';
 import type { Readable, Writable } from 'node:stream';
 import {
-  Run, parseWorkflow, validate, receipt,
+  Run, NODES, parseWorkflow, validate, receipt,
   type Decision, type Diagnostic, type Engine, type EngineEvent, type Receipt,
   type RunEventRecord, type RunStatus, type ToolRequest, type Workflow,
 } from '@reins/core';
@@ -172,6 +172,10 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
 
   function printEvent(ev: RunEventRecord) {
     const d = ev.data ?? {};
+    for (const n of NODES.values()) {
+      const line = n.print?.[ev.type]?.(d);
+      if (line !== undefined) { say(line); return; }
+    }
     if (ev.type === 'turn_started') say(`\n── ${d.step} ──`);
     else if (ev.type === 'card_queued') say(`▶ ${d.source === 'auto' ? 'auto ' : ''}${d.kind} card queued: ${d.card}`);
     else if (ev.type === 'card_delivered' && d.channel !== 'mid-turn') say(`▶ card delivered (${d.channel}): ${d.card}`);
@@ -195,6 +199,7 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
     }
     say(`gates held ${r.gatesHeld} · refusals ${r.totalRefusals} (guard ${r.guardRefusals}, read-only ${r.readOnlyRefusals}) · loop attempts ${r.loopAttempts}`);
     say(`cards: live delivered ${r.liveCardsDelivered}, auto fired ${r.autoCardsFired} · verify ${r.verifyResults.passed} pass / ${r.verifyResults.failed} fail · Knowl ${r.knowlRecalls} recalls, ${r.knowlStores} stores${r.knowlSkipped ? `, ${r.knowlSkipped} skipped` : ''}`);
+    if (r.counts) say(Object.entries(r.counts).map(([k, n]) => `${k} ${n}`).join(' · '));
     say(`run id ${runId}`);
   }
 

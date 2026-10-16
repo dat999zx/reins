@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { register, opOf, NODES, phaseNode, parseWorkflow, validate, compileProgram, Run } from '../src/index.js';
+import { register, opOf, NODES, phaseNode, parseWorkflow, validate, compileProgram, receipt, Run } from '../src/index.js';
 import type { NodeType } from '../src/index.js';
 import { harness } from './m1-harness.js';
 
@@ -97,6 +97,24 @@ describe('a kind brings its own op', () => {
     // New program: TURN new, PEEK, TURN a, END. The counter moved to 1 with the edit; next() made it 2.
     expect(seen).toEqual({ length: 4, at: 0, atAfterNext: 0, running: true });
     expect(run.snapshot().programCounter).toBe(2);
+  });
+});
+
+describe('a kind counts its events into the receipt', () => {
+  const counting: NodeType = { ...hop, count: { hopped: () => 'hops' }, print: { hopped: () => '· hopped' } };
+
+  it('receipt(events).counts has the kind\'s count, and no counts key at all without one', async () => {
+    disposers.push(register(counting));
+    const h = harness('hop-count', [{ text: 'ok\nREINS: done' }]);
+    const run = new Run({ workflow: wf('## hop\n\n## phase skipped\n> skip me\n\n## phase target\n> hit'), engine: h.engine, now: h.now });
+    await drive(run);
+    expect(run.status).toBe('done');
+    expect(receipt(run.getEvents()).counts).toEqual({ hops: 1 });
+
+    const plain = harness('plain-count', [{ text: 'ok\nREINS: done' }]);
+    const other = new Run({ workflow: wf('## phase one\n> go'), engine: plain.engine, now: plain.now });
+    await drive(other);
+    expect('counts' in receipt(other.getEvents())).toBe(false);
   });
 });
 

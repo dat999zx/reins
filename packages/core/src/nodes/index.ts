@@ -72,6 +72,10 @@ export interface NodeType {
   ops?: Record<string, OpType<any>>;
   /** Runs this kind's NODE instruction (P12): 'next' moves on; 'stay' leaves the counter (the run paused or stopped). */
   exec?(step: Step, ctx: ExecCtx): Promise<'next' | 'stay'>;
+  /** Events of this kind that the receipt counts: the name returned is the count's key (e.g. 'hops'). */
+  count?: Partial<Record<RunEventType, (data: any) => string | undefined>>;
+  /** Events of this kind that `reins run` prints: the line returned replaces the default print; undefined leaves it. */
+  print?: Partial<Record<RunEventType, (data: any) => string | undefined>>;
   defaultPrompt?(step: Step): string | undefined;
   statusLine?: string;
   /** How a chat tag of this kind builds a step (3b.5). `arg` names the attribute the tag's argument fills. */

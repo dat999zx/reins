@@ -19,7 +19,8 @@ export function receiptFields(r: Receipt): Array<[string, string]> {
   const models: Array<[string, string]> = split ? [['models', split + (r.unsplitUsd ? ` · not split by model ${money(r.unsplitUsd)}` : '')]] : [];
   const subs = (r.subagents ?? []).map((s) => `${s.title} ${money(s.usd)} (${s.turns} turn${s.turns === 1 ? '' : 's'})`).join(' · ');
   const subagents: Array<[string, string]> = subs ? [['subagents', subs]] : [];
-  return [...always, ...models, ...subagents, ...sometimes.filter(([, n]) => n !== 0).map(([k, n]): [string, string] => [k, String(n)])];
+  return [...always, ...models, ...subagents, ...sometimes.filter(([, n]) => n !== 0).map(([k, n]): [string, string] => [k, String(n)]),
+    ...Object.entries(r.counts ?? {}).map(([k, n]): [string, string] => [k, String(n)])];
 }
 
 export const render = (row: LogRow) => {

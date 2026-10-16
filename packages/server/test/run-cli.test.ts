@@ -10,7 +10,28 @@ import { openStore } from '../src/store.js';
 import { claudeEngine } from '../src/claude/engine.js';
 import { FAKE_CLAUDE, fakeSetup, alive, until } from './helpers.js';
 
-const EXAMPLE = path.resolve(__dirname, '../../../examples/upload-retry.reins.md');
+import { register, type NodeType } from '@reins/core';
+
+// The toy kind of core's op-registry.test.ts, declared again for this program (same types, so the merge holds).
+declare module '../../core/src/model.js' {
+  interface NodeKinds { hop: true; peek: true }
+}
+declare module '../../core/src/compile.js' {
+  interface Instrs { HOP: { step: string }; PEEK: { step: string } }
+}
+declare module '../../core/src/run.js' {
+  interface RunEvents { hopped: Record<string, never> }
+}
+const hop: NodeType = {
+  kind: 'hop',
+  attrs: [],
+  compile(step, ctx) { ctx.push({ op: 'HOP', step: step.id }); },
+  ops: { HOP: { async exec(_i, vm) { vm.log('hopped', {}); vm.goto(vm.at + 1); } } },
+  count: { hopped: () => 'hops' },
+  print: { hopped: () => '· hopped' },
+};
+
+const EXAMPLE =path.resolve(__dirname, '../../../examples/upload-retry.reins.md');
 
 function drive(o: Omit<RunCliOptions, 'input' | 'output' | 'makeEngine'>, react?: (chunk: string, type: (l: string) => void) => void) {
   const input = new PassThrough();
@@ -221,6 +242,39 @@ describe('reins run against fake-claude', () => {
     const warn = of(store.loadRun(res.runId)!.snapshot.events, 'budget_warning')[0]!;
     expect(warn).toBeDefined();
     expect(d.text()).toContain(`· ${String(warn.data.text)}`);
+    store.close();
+  }, 60_000);
+
+  it('a kind\'s event prints its own line, and its count is a tail line before the run id; a run without one has no tail line', async () => {
+    const head = '---\nreins: 1\nname: h\nbudget: { turns: 9, minutes: 9 }\nalways: []\n---\n\n';
+    const dispose = register(hop);
+    try {
+      const f = fakeSetup([]);
+      const file = path.join(f.dir, 'w.reins.md');
+      fs.writeFileSync(file, head + '## hop\n\n## phase one\n> a\n');
+      const store = openStore(':memory:');
+      const d = drive({ file, cwd: f.dir, store });
+      const res = await d.h.done;
+      expect(res.status).toBe('done');
+      expect(res.receipt!.counts).toEqual({ hops: 1 });
+      const lines = d.text().split('\n');
+      expect(lines).toContain('· hopped');
+      expect(lines[lines.findIndex((l) => l.startsWith('run id ')) - 1]).toBe('hops 1');
+      store.close();
+    } finally {
+      dispose();
+    }
+
+    const f = fakeSetup([]);
+    const file = path.join(f.dir, 'w.reins.md');
+    fs.writeFileSync(file, head + '## phase one\n> a\n');
+    const store = openStore(':memory:');
+    const d = drive({ file, cwd: f.dir, store });
+    const res = await d.h.done;
+    expect(res.status).toBe('done');
+    expect(res.receipt).not.toHaveProperty('counts');
+    const lines = d.text().split('\n');
+    expect(lines[lines.findIndex((l) => l.startsWith('run id ')) - 1]).toMatch(/^cards: /);
     store.close();
   }, 60_000);
 
