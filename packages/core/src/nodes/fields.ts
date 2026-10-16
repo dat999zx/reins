@@ -1,4 +1,5 @@
 import type { Step } from '../model.js';
+import type { RunEventType } from '../run.js';
 
 // The front side of a kind: types and the few field objects several kinds share. Browser-safe: `import type` lines only.
 // `error` is what the panel says when applyField refuses the value; `inherits`: an empty model is the session's model; `ph` overrides the
@@ -24,6 +25,8 @@ export type KindView = {
   card?: { label: string; section: 'Flow' | 'Memory' };
   sub?(step: Step, cond?: string): string;
   fresh?(): Partial<Step>;
+  // feed rows this kind brings, by event type; a row file of the same type wins
+  rows?: Partial<Record<RunEventType, (data: any) => { text: string; details?: string; className?: string }>>;
 };
 
 export const USD_ERROR = 'USD must be an amount above 0, like 2.50. Leave it empty for no USD limit.';
