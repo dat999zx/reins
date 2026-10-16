@@ -1,6 +1,6 @@
-import type { Diagnostic, Pos, Step, Workflow } from '../model.js';
+import type { Cond, Diagnostic, Pos, Step, Workflow } from '../model.js';
 import type { Instr } from '../compile.js';
-import type { RunEventRecord, RunEventType } from '../run.js';
+import type { PauseReason, RunEventRecord, RunEventType } from '../run.js';
 import phase from './phase.js';
 import say from './say.js';
 import run from './run.js';
@@ -95,6 +95,14 @@ export interface VmCtx {
   /** Live: the run is still `running`; check after every await. */
   running(): boolean;
   log(type: RunEventType, data: unknown): void;
+  /** Judges a condition; the eval context is built when this is called. */
+  judge(c: Cond): Promise<boolean>;
+  /** Sets the run `paused` with this reason; logs nothing, so the op decides what to log. */
+  pause(p: PauseReason): void;
+  /** Replaces the recall context the next turn carries. */
+  setRecall(ctx: string[]): void;
+  /** The host's functions, read live; a member is absent when the host gave none. */
+  readonly services: { recall?: (topics: string[]) => Promise<string[]> };
 }
 
 /** A kind's own instruction: `exec` runs it again from the start after a pause or crash. */

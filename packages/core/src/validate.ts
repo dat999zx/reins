@@ -276,7 +276,6 @@ export function validate(
       todo.push(i + 1);
       if (ins.op === 'RUN') todo.push(ins.onFailJump ?? -1, ins.onPassJump ?? -1, ins.loopExit ?? -1);
       else if (ins.op === 'VERIFY') todo.push(ins.onFailJump ?? -1);
-      else if (ins.op === 'IF') todo.push(ins.elseJump);
       else if (ins.op === 'LOOP_BK') todo.push(ins.target);
     }
     for (const step of allSteps) {

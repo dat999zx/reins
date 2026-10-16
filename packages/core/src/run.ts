@@ -422,13 +422,19 @@ export class Run {
   /** The run's hands for an op: live over the run's fields, except `at`, which is the counter as the op started. */
   private vm(): VmCtx {
     const program = () => this.program;
+    // The host's recall function is called with the Run as its receiver, as `this.recall(...)` always did.
+    const recall = () => (this.recall ? (topics: string[]) => this.recall!(topics) : undefined);
     return {
       get program() { return program(); },
+      get services() { return { recall: recall() }; },
       at: this.programCounter,
       next: () => { this.programCounter++; },
       goto: (i) => { this.programCounter = i; },
       running: () => this.status === 'running',
       log: (type, data) => this.logEvent(type, data),
+      judge: (c) => this.judgeCond(c),
+      pause: (p) => { this.status = 'paused'; this.pauseReason = p; },
+      setRecall: (ctx) => { this.lastRecallContext = ctx; },
     };
   }
 
@@ -929,44 +935,6 @@ export class Run {
     }
 
     switch (instr.op) {
-      case 'RECALL': {
-        if (!this.recall) {
-          this.lastRecallContext = [];
-          this.logEvent('recall', { topics: instr.topics, skipped: 'no recall function' });
-        } else {
-          this.lastRecallContext = await this.recall(instr.topics);
-          this.logEvent('recall', { topics: instr.topics, context: this.lastRecallContext });
-        }
-        this.programCounter++;
-        return this.status;
-      }
-
-      case 'GATE': {
-        if (instr.cond.t !== 'approve') {
-          const passed = await this.judgeCond(instr.cond);
-          if (this.status !== 'running') return this.status;
-          if (passed) {
-            this.programCounter++;
-            return this.status;
-          }
-        }
-        this.status = 'paused';
-        this.pauseReason = { type: 'gate', stepId: instr.step, cond: instr.cond };
-        this.logEvent('gate_paused', { step: instr.step, cond: instr.cond });
-        return this.status;
-      }
-
-      case 'IF': {
-        const passed = await this.judgeCond(instr.cond);
-        if (this.status !== 'running') return this.status;
-        if (passed) {
-          this.programCounter++;
-        } else {
-          this.programCounter = instr.elseJump;
-        }
-        return this.status;
-      }
-
       case 'TURN': {
         this.lastStepId = instr.step;
         // Check turn budget

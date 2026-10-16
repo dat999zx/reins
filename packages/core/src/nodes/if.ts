@@ -1,9 +1,23 @@
-import type { NodeType } from './index.js';
+import type { NodeType, OpType } from './index.js';
+import type { Instr } from '../compile.js';
 import { parseCond, printCond } from '../cond.js';
 
 declare module '../model.js' {
   interface NodeKinds { if: true }
 }
+
+const IF: OpType<Extract<Instr, { op: 'IF' }>> = {
+  async exec(i, vm) {
+    const passed = await vm.judge(i.cond);
+    if (!vm.running()) return;
+    if (passed) {
+      vm.next();
+    } else {
+      vm.goto(i.elseJump);
+    }
+  },
+  next: (i, at) => [at + 1, i.elseJump],
+};
 
 const ifNode: NodeType = {
   kind: 'if',
@@ -32,5 +46,6 @@ const ifNode: NodeType = {
       ifInstr.elseJump = ctx.at();
     }
   },
+  ops: { IF },
 };
 export default ifNode;
