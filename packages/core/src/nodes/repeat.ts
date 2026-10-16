@@ -1,8 +1,46 @@
-import type { NodeType } from './index.js';
+import type { NodeType, OpType } from './index.js';
+import type { Instr } from '../compile.js';
 
 declare module '../model.js' {
   interface NodeKinds { repeat: true }
 }
+
+const LOOP_IN: OpType<Extract<Instr, { op: 'LOOP_IN' }>> = {
+  async exec(_i, vm) {
+    vm.next();
+  },
+};
+
+const LOOP_BK: OpType<Extract<Instr, { op: 'LOOP_BK' }>> = {
+  async exec(i, vm) {
+    const passed = i.cond ? await vm.judge(i.cond) : false;
+    if (!vm.running()) return;
+    if (passed) {
+      vm.next();
+      return;
+    }
+
+    const attempts = vm.loops.bump(i.step);
+    vm.log('loop_iteration', { step: i.step, attempts });
+
+    // Find loop_in instruction for max
+    const loopIn = vm.program.find(
+      (p) => p.op === 'LOOP_IN' && p.step === i.step
+    ) as { op: 'LOOP_IN'; max: number } | undefined;
+    const baseMax = loopIn?.max || 5;
+    const max = baseMax + vm.loops.extra(i.step);
+
+    if (attempts >= max) {
+      vm.pause({ type: 'budget-used', stepId: i.step, limit: max });
+      vm.log('loop_budget_exceeded', { step: i.step, attempts, max });
+      return;
+    }
+
+    vm.goto(i.target);
+  },
+  next: (i, at) => [at + 1, i.target],
+  allowMore: (i) => i.target,
+};
 
 const repeat: NodeType = {
   kind: 'repeat',
@@ -59,5 +97,6 @@ const repeat: NodeType = {
       cond: hasRunInstr ? undefined : step.cond,
     });
   },
+  ops: { LOOP_IN, LOOP_BK },
 };
 export default repeat;

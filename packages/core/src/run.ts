@@ -447,6 +447,15 @@ export class Run {
         always: this.workflow.always,
         extras: handed,
       }),
+      loops: {
+        count: (step) => this.loopCounters.get(step) || 0,
+        bump: (step) => {
+          const attempts = (this.loopCounters.get(step) || 0) + 1;
+          this.loopCounters.set(step, attempts);
+          return attempts;
+        },
+        extra: (step) => this.loopLimitExtensions.get(step) || 0,
+      },
       at: this.programCounter,
       next: () => { this.programCounter++; },
       goto: (i) => { this.programCounter = i; },
@@ -689,7 +698,8 @@ export class Run {
       // The attempt that used up the budget is already counted: go straight back into the loop
       // body, or allowMore(1) would count it again and pause at once.
       const instr = this.program[this.programCounter];
-      if (instr?.op === 'LOOP_BK') this.programCounter = instr.target;
+      const to = instr ? opOf(instr.op)?.allowMore?.(instr) : undefined;
+      if (to !== undefined) this.programCounter = to;
       this.status = 'running';
       this.pauseReason = undefined;
       this.logEvent('run_resumed', { allowMore: n });
@@ -1023,46 +1033,6 @@ export class Run {
           return this.status;
         }
 
-        return this.status;
-      }
-
-      case 'LOOP_IN': {
-        this.programCounter++;
-        return this.status;
-      }
-
-      case 'LOOP_BK': {
-        const passed = instr.cond ? await this.judgeCond(instr.cond) : false;
-        if (this.status !== 'running') return this.status;
-        if (passed) {
-          this.programCounter++;
-          return this.status;
-        }
-
-        const attempts = (this.loopCounters.get(instr.step) || 0) + 1;
-        this.loopCounters.set(instr.step, attempts);
-        this.logEvent('loop_iteration', { step: instr.step, attempts });
-
-        // Find loop_in instruction for max
-        const loopIn = this.program.find(
-          (i) => i.op === 'LOOP_IN' && i.step === instr.step
-        ) as { op: 'LOOP_IN'; max: number } | undefined;
-        const baseMax = loopIn?.max || 5;
-        const extra = this.loopLimitExtensions.get(instr.step) || 0;
-        const max = baseMax + extra;
-
-        if (attempts >= max) {
-          this.status = 'paused';
-          this.pauseReason = {
-            type: 'budget-used',
-            stepId: instr.step,
-            limit: max,
-          };
-          this.logEvent('loop_budget_exceeded', { step: instr.step, attempts, max });
-          return this.status;
-        }
-
-        this.programCounter = instr.target;
         return this.status;
       }
 

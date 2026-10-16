@@ -116,6 +116,8 @@ export interface VmCtx {
   command(cmd: string): Promise<CommandOutcome>;
   /** The text of a turn for `step` at top-level index `top`, with the run's name, steps and `always` read live. Drains no cards and adds no recall context. */
   turnText(step: Step, handed: string[], top?: number): string;
+  /** The loop attempt counts and the extra attempts "Allow more" granted, by loop step id: live views over the run's own maps. */
+  readonly loops: { count(step: string): number; bump(step: string): number; extra(step: string): number };
 }
 
 /** A kind's own instruction: `exec` runs it again from the start after a pause or crash. */
@@ -125,6 +127,8 @@ export interface OpType<I extends Instr> {
   next?(instr: I, at: number): Array<number | undefined>;
   /** The commands the instruction runs on its own, for the trust hash. */
   commands?(instr: I): string[];
+  /** Where "Allow more" sends the run back to for an instruction that paused for its budget (undefined: nowhere). */
+  allowMore?(instr: I): number | undefined;
 }
 
 /** The instructions the run itself executes: a kind cannot bring these. */

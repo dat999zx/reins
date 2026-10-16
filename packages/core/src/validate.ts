@@ -274,7 +274,6 @@ export function validate(
       const own = opOf(ins.op)?.next;
       if (own) { todo.push(...own(ins, i).map((x) => x ?? -1)); continue; }
       todo.push(i + 1);
-      if (ins.op === 'LOOP_BK') todo.push(ins.target);
     }
     for (const step of allSteps) {
       const entry = program.findIndex((i) => 'step' in i && i.step === step.id);
