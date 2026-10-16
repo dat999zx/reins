@@ -31,7 +31,7 @@ const hop: NodeType = {
   print: { hopped: () => '· hopped' },
 };
 
-const EXAMPLE =path.resolve(__dirname, '../../../examples/upload-retry.reins.md');
+const EXAMPLE = path.resolve(__dirname, '../../../examples/upload-retry.reins.md');
 
 function drive(o: Omit<RunCliOptions, 'input' | 'output' | 'makeEngine'>, react?: (chunk: string, type: (l: string) => void) => void) {
   const input = new PassThrough();
