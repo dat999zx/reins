@@ -4,6 +4,7 @@ Format: [Keep a Changelog](https://keepachangelog.com). Versions: [SemVer](https
 
 ## Unreleased
 
+- Each block now lives in its own files (a node and a view); adding a block takes two files and one line. Files, runs, the receipt and the terminal output are unchanged.
 - The Chat renders the agent's markdown (headings, lists, tables, code, links), in its replies, its reasoning and a subagent's result.
 - A verify (and a knowl store) now gets the subagent results like a plain step, and a verify against a step that never ran says so.
 - A subagent starts with the results of the subagents before it (a thinker's answer reaches the writer). The parent still gets every result on its next turn.
