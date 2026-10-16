@@ -1,4 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject, type UIEvent } from 'react';
+import type { StepKind } from '@reins/core';
+import { KINDS } from './canvasKinds.js';
 import { isOpen, KNOT, knotName, knotParts, type Feed as FeedData, type Knot, type Piece } from './feed.js';
 import { renderRow, type Actions, type Ctx } from './rows.js';
 import { PHASE, thinkingWords, type RunView } from './runState.js';
@@ -47,7 +49,7 @@ const KnotView = memo(function KnotView({ k, newest, open, ctx, note, onToggle, 
   const named = k.step !== undefined && k.step !== p.title ? k.step : undefined;
   const title = named === undefined ? p.title : `${p.title} (${named})`;
   return (
-    <li className="sx-knot" data-knot={k.key} data-state={k.state} data-running={k.running || undefined} data-kind={k.kind} style={{ '--depth': k.depth } as CSSProperties}>
+    <li className="sx-knot" data-knot={k.key} data-state={k.state} data-running={k.running || undefined} data-kind={k.kind} data-colour={KINDS[k.kind as StepKind]?.colour} style={{ '--depth': k.depth } as CSSProperties}>
       <div className="sx-knotrow">
         <span className="sx-seg" aria-hidden="true" />
         <span className={`sx-dot sx-m-${KNOT[k.state].mark}`} aria-hidden="true" />

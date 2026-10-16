@@ -55,7 +55,7 @@ export function addStepAt(w: Workflow, kind: StepKind, to: Place): Workflow {
 }
 
 // The stack is the top-level steps before the first top-level `end`; what follows are free blocks.
-export const stackEnd = (w: Workflow): number => { const i = w.steps.findIndex((s) => s.kind === 'end'); return i === -1 ? w.steps.length : i; };
+export const stackEnd = (w: Workflow): number => { const i = w.steps.findIndex((s) => KINDS[s.kind]?.stops); return i === -1 ? w.steps.length : i; };
 
 // After a stack or nested step; anything else (no step, the end, a free block) lands before the end, never behind it.
 export function addPlace(w: Workflow, after?: string): Place {

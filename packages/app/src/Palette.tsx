@@ -18,7 +18,7 @@ export function Palette({ onAdd, onCond, press }: {
           <h4>{title}</h4>
           <div className="sx-pgrp">
             {kinds.filter((k) => KINDS[k].card!.section === section).map((k) => (
-              <button key={k} className="sx-card" data-kind={k} onClick={() => onAdd(k)} {...drag({ kind: k })}><i />{KINDS[k].card!.label}</button>
+              <button key={k} className="sx-card" data-kind={k} data-colour={KINDS[k]?.colour} data-icon={KINDS[k]?.icon} data-stops={KINDS[k]?.stops || undefined} onClick={() => onAdd(k)} {...drag({ kind: k })}><i />{KINDS[k].card!.label}</button>
             ))}
           </div>
         </div>

@@ -1,8 +1,12 @@
-import type { Receipt, Workflow } from '@reins/core';
+import type { Receipt, StepKind, Workflow } from '@reins/core';
+import { KINDS } from './canvasKinds.js';
 import { flatSteps } from './canvas.js';
 import type { LogRow } from '@reins/server/store.js';
 import { openQuestions, type Sess } from './state.js';
 import { runRows, stepStatus, type StepMap } from './stepStatus.js';
+
+// What the view of a step in the run says about its usage slice (see KindView.slice).
+const sliceOf = (v: RunView, id?: string) => KINDS[v.stepsAtStart?.find((s) => s.id === id)?.kind as StepKind]?.slice;
 
 export type RunPhase = 'none' | 'busy' | 'running' | 'waiting' | 'done' | 'stopped' | 'paused' | 'failed';
 export interface RunCard { text: string; kind: 'steer' | 'now'; state: 'queued' | 'delivered' | 'unsent' }
@@ -95,7 +99,7 @@ const FOLD: Record<string, Fold> = {
     begin(v, [...parents, x.step]);
     a.started.push(x.step);
     // a block outlives nothing: its model step closes or replaces the slice, so the item goes with it
-    if (v.stepsAtStart?.find((s) => s.id === x.step)?.kind === 'model') delete v.slice;
+    if (sliceOf(v, x.step) === 'opens') delete v.slice;
   },
   turn_started: (r, x, v, a) => { setStep(r, x, v, a); a.inTurn = true; },
   gate_paused: setStep,
@@ -241,7 +245,7 @@ export function meter(v: RunView, budget: Workflow['budget'], now: number): Mete
   return values.map(({ key, used, limit, text }) => {
     const level = used >= limit ? 'over' : used >= limit * 0.8 ? 'near' : 'ok';
     const enforced = key !== 'minutes';
-    return { key, text: text + (level === 'over' ? (key === 'block' && v.stepsAtStart?.find((s) => s.id === v.slice?.step)?.kind === 'subagent' && !v.open.some((r) => data(r).kind === 'usd') ? SUBAGENT_OVER : OVER[key]) : level === 'near' ? ' · near' : ''), level, enforced };
+    return { key, text: text + (level === 'over' ? (key === 'block' && sliceOf(v, v.slice?.step) === 'own' && !v.open.some((r) => data(r).kind === 'usd') ? SUBAGENT_OVER : OVER[key]) : level === 'near' ? ' · near' : ''), level, enforced };
   });
 }
 

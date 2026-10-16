@@ -58,6 +58,9 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, models, e
       className: cx('blk', shape, !loose && sel.has(stepKey(s.id)) && 'sx-sel', src?.has(s.id) && 'sx-dragsrc', !loose && linkOver === s.id && 'sx-linkover', info?.state && `sx-${info.state}`, mark && `mark-${mark}`),
       'data-id': loose ? undefined : s.id,
       'data-kind': s.kind,
+      'data-colour': KINDS[s.kind]?.colour,
+      'data-icon': KINDS[s.kind]?.icon,
+      'data-stops': KINDS[s.kind]?.stops || undefined,
       role: loose ? undefined : ('group' as const), // a loose block is named by its wrapper
       'aria-label': loose ? undefined : `${free ? 'free ' : ''}${name(s)}`,
       'aria-current': !loose && primary === s.id ? ('true' as const) : undefined,

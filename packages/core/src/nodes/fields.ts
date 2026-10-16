@@ -11,7 +11,9 @@ export type Field = {
 };
 export type Token = string | 'cond' | 'sub' | { field: string };
 export type KindView = {
-  kind?: string; order?: number; colour?: 'soft' | 'hard' | 'gate' | 'loop' | 'verify' | 'hand' | 'mem' | 'mine'; // required in Task 9
+  kind: string; order: number; colour: 'soft' | 'hard' | 'gate' | 'loop' | 'verify' | 'hand' | 'mem' | 'mine';
+  icon?: 'round'; // the palette card's mark is a circle
+  slice?: 'opens' | 'own'; // the run's usage slice: opens = a switch that starts a new one, own = the block is its own slice
   group?: 'kids' | 'kids+else';
   fails?: true;
   stops?: true; // ends the workflow: no links out, drawn as a cap

@@ -10,6 +10,9 @@ describe('KINDS', () => {
   it('has exactly the core node kinds', () => {
     expect(Object.keys(KINDS).sort()).toEqual([...NODES.keys()].sort());
   });
+  it('lists the kinds in the palette order', () => {
+    expect(Object.keys(KINDS)).toEqual(['phase', 'say', 'run', 'gate', 'repeat', 'if', 'verify', 'recall', 'store', 'model', 'subagent', 'end', 'use']);
+  });
   it('mirrors fails and container from core', () => {
     for (const k of NODES.keys()) {
       const view = KINDS[k as keyof typeof KINDS];

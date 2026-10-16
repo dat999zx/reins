@@ -1,5 +1,6 @@
 import type { Step, Workflow } from '@reins/core';
 import { addStepAt, capBackward, deleteSteps, dropSteps, insertSteps, stackEnd, takeSteps, withFreshIds, type Hit, type Place } from './blocks.js';
+import { capKind } from './canvasKinds.js';
 import { flatSteps } from './canvas.js';
 import { LOOSE_MAX, type Layout, type Loose, type Pt } from './editorState.js';
 
@@ -67,7 +68,7 @@ export const freedBy = (w: Workflow, ids: string[]): string[] => {
   return end && ids.includes(end.id) ? tail.map((s) => s.id) : [];
 };
 
-export const ensureEnd = (w: Workflow): Workflow => (stackEnd(w) < w.steps.length ? w : addStepAt(w, 'end', { branch: 'kids', index: w.steps.length }));
+export const ensureEnd = (w: Workflow): Workflow => (stackEnd(w) < w.steps.length ? w : addStepAt(w, capKind(), { branch: 'kids', index: w.steps.length }));
 
 // A stack step becomes a free block: behind the end (added when missing), reached only by links. Undefined for a nested, free or end step.
 export function detach(w: Workflow, id: string): { w: Workflow; capped: string[] } | undefined {

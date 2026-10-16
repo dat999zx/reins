@@ -400,7 +400,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, models, ef
       if ('surface' in t) return 'kind' in src ? !!KINDS[src.kind].fresh : 'id' in src && park(w, src.ids ?? [src.id]).w !== w;
       if ('id' in src) return 'hit' in t && dropSteps(w, src.ids ?? [src.id], t.hit) !== w;
       const place = 'hit' in t ? dropPlace(w, t.hit) : undefined;
-      return !!place && 'kind' in src && addStepAt(w, 'phase', place) !== w;
+      return !!place && 'kind' in src && addStepAt(w, src.kind, place) !== w;
     },
     drop: (src, t, pt) => {
       const place = 'hit' in t ? dropPlace(w, t.hit) : undefined;
