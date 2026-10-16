@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { parseWorkflow, type Workflow } from '@reins/core';
 import { FOLDER_PATH, commandsOf, folderHash, hashCommands } from '../src/trust.js';
+import { golden } from '../../core/test/golden-3a/stable.js';
 
 const dirs: string[] = [];
 const folder = (files: Record<string, string> = {}) => {
@@ -65,6 +66,16 @@ describe('workflow trust hash (3b.6)', () => {
     expect(commandsOf(wf('## phase a\n> x'), none)).toEqual(['npm test']);
     const autos = [{ id: 'a', cond: { t: 'cmd', cmd: 'auto.sh' }, card: { kind: 'nudge', text: 'x' } }] as unknown as Workflow['autos'];
     expect(commandsOf({ ...wf('## phase a\n> x'), autos }, none)).toEqual(['`auto.sh` passes', 'npm test']);
+  });
+
+  it('the command list is pinned in order, with its hash (a RUN command comes before the conds around it)', () => {
+    const w = wf(
+      '## run `make build`\n\n## gate\nuntil: `lint.sh` passes\n\n## gate\nuntil: you approve\n\n## repeat\nuntil: tests pass and `npm run typecheck` passes\nmax: 3\n\n### run `npm test`\n\n### phase fix\n> fix it',
+      'test: npm run unit\n',
+    );
+    const cmds = commandsOf(w, none);
+    expect(cmds).toEqual(['make build', '`lint.sh` passes', 'npm test', 'tests pass', '`npm run typecheck` passes', 'npm run unit']);
+    golden('trust.json', { cmds, hash: hashOf(w) }, 'REINS_RECORD_M1', path.join(__dirname, 'golden-m1'));
   });
 
   it('changes when a command changes, including one inside a used block, and not when a prompt changes', () => {

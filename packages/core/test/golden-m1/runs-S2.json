@@ -1,0 +1,292 @@
+{
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "plan",
+            "kind": "phase",
+            "title": "plan"
+          },
+          {
+            "id": "verify-1",
+            "kind": "verify"
+          },
+          {
+            "id": "verify-2",
+            "kind": "verify"
+          }
+        ],
+        "workflow": "t"
+      },
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "plan"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "plan"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "plan",
+        "text": "plan\nREINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "verify-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "verify-1"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "verify-1",
+        "text": "looks fine"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "pass": true
+      },
+      "type": "verify_result"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "verify-2"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "verify-2"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "verify-2",
+        "text": "REINS: fail"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "pass": false
+      },
+      "type": "verify_result"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "plan"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "plan"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "plan",
+        "text": "plan2\nREINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "verify-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "verify-1"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "verify-1",
+        "text": "looks fine"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "pass": true
+      },
+      "type": "verify_result"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "verify-2"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "verify-2"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "verify-2",
+        "text": "REINS: fail"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "pass": false
+      },
+      "type": "verify_result"
+    },
+    {
+      "data": {
+        "jumps": 2,
+        "linkKey": "verify-2->0",
+        "max": 1
+      },
+      "type": "link_budget_exceeded"
+    },
+    {
+      "data": {
+        "allowMore": 1
+      },
+      "type": "run_resumed"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "plan"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "plan"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "plan",
+        "text": "plan3\nREINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "verify-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "verify-1"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "verify-1",
+        "text": "looks fine"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "pass": true
+      },
+      "type": "verify_result"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "verify-2"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "verify-2"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "verify-2",
+        "text": "all good"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "pass": true
+      },
+      "type": "verify_result"
+    },
+    {
+      "data": {},
+      "type": "run_finished"
+    }
+  ],
+  "receipt": {
+    "autoCardsFired": 0,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "knowlRecalls": 0,
+    "knowlSkipped": 0,
+    "knowlStores": 0,
+    "liveCardsDelivered": 0,
+    "loopAttempts": 0,
+    "readOnlyRefusals": 0,
+    "status": "done",
+    "totalCostUsd": 0,
+    "totalRefusals": 0,
+    "totalTimeMs": 36000,
+    "totalTurns": 9,
+    "verifyResults": {
+      "failed": 2,
+      "passed": 4
+    },
+    "workflow": "t"
+  },
+  "receivedTexts": [
+    "[Reins · workflow \"t\" · step 1 of 3: plan]\n\nplan it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"t\" · step 2 of 3: verify]\n\nCompare what you built against step \"plan\":\nplan\nREINS: done\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · workflow \"t\" · step 3 of 3: verify]\n\nCompare what you built against step \"plan\":\nplan\nREINS: done\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · workflow \"t\" · step 1 of 3: plan]\n\nplan it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"t\" · step 2 of 3: verify]\n\nCompare what you built against step \"plan\":\nplan2\nREINS: done\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · workflow \"t\" · step 3 of 3: verify]\n\nCompare what you built against step \"plan\":\nplan2\nREINS: done\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · workflow \"t\" · step 1 of 3: plan]\n\nplan it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"t\" · step 2 of 3: verify]\n\nCompare what you built against step \"plan\":\nplan3\nREINS: done\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · workflow \"t\" · step 3 of 3: verify]\n\nCompare what you built against step \"plan\":\nplan3\nREINS: done\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n"
+  ],
+  "status": "done"
+}

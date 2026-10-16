@@ -1,0 +1,11 @@
+{
+  "cmds": [
+    "make build",
+    "`lint.sh` passes",
+    "npm test",
+    "tests pass",
+    "`npm run typecheck` passes",
+    "npm run unit"
+  ],
+  "hash": "64bf0a1185f96022d34b582bdaa5d5baf5b736c5c7370f5fa6572e569481f404"
+}

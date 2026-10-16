@@ -1,0 +1,363 @@
+{
+  "noHost": {
+    "events": [
+      {
+        "data": {
+          "steps": [
+            {
+              "id": "model-1",
+              "kind": "model"
+            },
+            {
+              "id": "a",
+              "kind": "phase",
+              "title": "a"
+            }
+          ],
+          "workflow": "t"
+        },
+        "type": "run_started"
+      },
+      {
+        "data": {
+          "parents": [],
+          "step": "model-1"
+        },
+        "type": "step_started"
+      },
+      {
+        "data": {
+          "how": "unsupported",
+          "model": "claude-x",
+          "step": "model-1"
+        },
+        "type": "model_switched"
+      },
+      {
+        "data": {
+          "parents": [],
+          "step": "a"
+        },
+        "type": "step_started"
+      },
+      {
+        "data": {
+          "step": "a"
+        },
+        "type": "turn_started"
+      },
+      {
+        "data": {
+          "step": "a",
+          "text": "REINS: done"
+        },
+        "type": "turn_ended"
+      },
+      {
+        "data": {},
+        "type": "run_finished"
+      }
+    ],
+    "receipt": {
+      "autoCardsFired": 0,
+      "gatesHeld": 0,
+      "guardRefusals": 0,
+      "knowlRecalls": 0,
+      "knowlSkipped": 0,
+      "knowlStores": 0,
+      "liveCardsDelivered": 0,
+      "loopAttempts": 0,
+      "readOnlyRefusals": 0,
+      "status": "done",
+      "totalCostUsd": 0,
+      "totalRefusals": 0,
+      "totalTimeMs": 6000,
+      "totalTurns": 1,
+      "verifyResults": {
+        "failed": 0,
+        "passed": 0
+      },
+      "workflow": "t"
+    },
+    "receivedTexts": [
+      "[Reins · workflow \"t\" · step 2 of 2: a]\n\na\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    ],
+    "status": "done"
+  },
+  "slice": {
+    "events": [
+      {
+        "data": {
+          "steps": [
+            {
+              "id": "model-1",
+              "kind": "model"
+            },
+            {
+              "id": "a",
+              "kind": "phase",
+              "title": "a"
+            },
+            {
+              "id": "b",
+              "kind": "phase",
+              "title": "b"
+            },
+            {
+              "id": "c",
+              "kind": "phase",
+              "title": "c"
+            }
+          ],
+          "workflow": "t"
+        },
+        "type": "run_started"
+      },
+      {
+        "data": {
+          "parents": [],
+          "step": "model-1"
+        },
+        "type": "step_started"
+      },
+      {
+        "data": {
+          "how": "switched",
+          "label": "claude-x",
+          "model": "claude-x",
+          "step": "model-1"
+        },
+        "type": "model_switched"
+      },
+      {
+        "data": {
+          "parents": [],
+          "step": "a"
+        },
+        "type": "step_started"
+      },
+      {
+        "data": {
+          "step": "a"
+        },
+        "type": "turn_started"
+      },
+      {
+        "data": {
+          "usd": 0.02
+        },
+        "type": "engine_cost"
+      },
+      {
+        "data": {
+          "cost": 0.02,
+          "slice": {
+            "spent": 0.02,
+            "step": "model-1",
+            "usd": 0.01
+          },
+          "step": "a",
+          "text": "a\nREINS: done"
+        },
+        "type": "turn_ended"
+      },
+      {
+        "data": {
+          "spent": 0.02,
+          "step": "model-1",
+          "usd": 0.01
+        },
+        "type": "budget_reached"
+      },
+      {
+        "data": {
+          "allowUsd": 1,
+          "step": "model-1",
+          "usd": 1.02
+        },
+        "type": "run_resumed"
+      },
+      {
+        "data": {
+          "parents": [],
+          "step": "b"
+        },
+        "type": "step_started"
+      },
+      {
+        "data": {
+          "step": "b"
+        },
+        "type": "turn_started"
+      },
+      {
+        "data": {
+          "usd": 0.02
+        },
+        "type": "engine_cost"
+      },
+      {
+        "data": {
+          "cost": 0.02,
+          "slice": {
+            "spent": 0.04,
+            "step": "model-1",
+            "usd": 1.02
+          },
+          "step": "b",
+          "text": "b\nREINS: done"
+        },
+        "type": "turn_ended"
+      },
+      {
+        "data": {
+          "parents": [],
+          "step": "c"
+        },
+        "type": "step_started"
+      },
+      {
+        "data": {
+          "step": "c"
+        },
+        "type": "turn_started"
+      },
+      {
+        "data": {
+          "usd": 0.02
+        },
+        "type": "engine_cost"
+      },
+      {
+        "data": {
+          "cost": 0.02,
+          "slice": {
+            "spent": 0.06,
+            "step": "model-1",
+            "usd": 1.02
+          },
+          "step": "c",
+          "text": "c\nREINS: done"
+        },
+        "type": "turn_ended"
+      },
+      {
+        "data": {},
+        "type": "run_finished"
+      }
+    ],
+    "receipt": {
+      "autoCardsFired": 0,
+      "gatesHeld": 0,
+      "guardRefusals": 0,
+      "knowlRecalls": 0,
+      "knowlSkipped": 0,
+      "knowlStores": 0,
+      "liveCardsDelivered": 0,
+      "loopAttempts": 0,
+      "readOnlyRefusals": 0,
+      "status": "done",
+      "totalCostUsd": 0.06,
+      "totalRefusals": 0,
+      "totalTimeMs": 17000,
+      "totalTurns": 3,
+      "verifyResults": {
+        "failed": 0,
+        "passed": 0
+      },
+      "workflow": "t"
+    },
+    "receivedTexts": [
+      "[Reins · workflow \"t\" · step 2 of 4: a]\n\na\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · workflow \"t\" · step 3 of 4: b]\n\nb\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · workflow \"t\" · step 4 of 4: c]\n\nc\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    ],
+    "status": "done"
+  },
+  "switched": {
+    "events": [
+      {
+        "data": {
+          "steps": [
+            {
+              "id": "model-1",
+              "kind": "model"
+            },
+            {
+              "id": "a",
+              "kind": "phase",
+              "title": "a"
+            }
+          ],
+          "workflow": "t"
+        },
+        "type": "run_started"
+      },
+      {
+        "data": {
+          "parents": [],
+          "step": "model-1"
+        },
+        "type": "step_started"
+      },
+      {
+        "data": {
+          "how": "switched",
+          "label": "claude-x",
+          "model": "claude-x",
+          "step": "model-1"
+        },
+        "type": "model_switched"
+      },
+      {
+        "data": {
+          "parents": [],
+          "step": "a"
+        },
+        "type": "step_started"
+      },
+      {
+        "data": {
+          "step": "a"
+        },
+        "type": "turn_started"
+      },
+      {
+        "data": {
+          "step": "a",
+          "text": "REINS: done"
+        },
+        "type": "turn_ended"
+      },
+      {
+        "data": {},
+        "type": "run_finished"
+      }
+    ],
+    "receipt": {
+      "autoCardsFired": 0,
+      "gatesHeld": 0,
+      "guardRefusals": 0,
+      "knowlRecalls": 0,
+      "knowlSkipped": 0,
+      "knowlStores": 0,
+      "liveCardsDelivered": 0,
+      "loopAttempts": 0,
+      "readOnlyRefusals": 0,
+      "status": "done",
+      "totalCostUsd": 0,
+      "totalRefusals": 0,
+      "totalTimeMs": 6000,
+      "totalTurns": 1,
+      "verifyResults": {
+        "failed": 0,
+        "passed": 0
+      },
+      "workflow": "t"
+    },
+    "receivedTexts": [
+      "[Reins · workflow \"t\" · step 2 of 2: a]\n\na\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    ],
+    "status": "done"
+  }
+}
