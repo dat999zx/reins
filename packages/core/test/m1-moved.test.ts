@@ -9,6 +9,7 @@ const moved: Array<[kind: string, op: string]> = [
   ['recall', 'RECALL'],
   ['if', 'IF'],
   ['gate', 'GATE'],
+  ['store', 'STORE'],
 ];
 
 describe('moved ops', () => {
@@ -28,5 +29,16 @@ describe('RECALL calls the host function with the Run as its receiver', () => {
     const run = new Run({ workflow: w, engine: h.engine, now: h.now, recall: async function (this: unknown) { seen = this; return ['ctx']; } });
     await run.step();
     expect(seen).toBe(run);
+  });
+});
+
+describe('a STORE turn does not take the queued cards', () => {
+  it('a steer card queued before a store step is still queued after it', async () => {
+    const w = parseWorkflow(['---', 'reins: 1', 'name: t', 'budget: { turns: 5, minutes: 5 }', 'always: []', '---', '', '## store', 'knowl: decisions', ''].join('\n')).workflow!;
+    const h = harness('cards', []);
+    const run = new Run({ workflow: w, engine: h.engine, now: h.now });
+    run.queueCard('keep me', 'steer');
+    await run.step();
+    expect(run.takeCards()).toEqual(['keep me']);
   });
 });

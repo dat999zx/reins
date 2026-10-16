@@ -424,9 +424,19 @@ export class Run {
     const program = () => this.program;
     // The host's recall function is called with the Run as its receiver, as `this.recall(...)` always did.
     const recall = () => (this.recall ? (topics: string[]) => this.recall!(topics) : undefined);
+    const store = () => (this.storeFn ? (what: string, summary: string) => this.storeFn!(what, summary) : undefined);
     return {
       get program() { return program(); },
-      get services() { return { recall: recall() }; },
+      get services() { return { recall: recall(), store: store() }; },
+      ensureSession: () => this.ensureSession(),
+      turn: (session, stepId, compile) => this.handedTurn(session, stepId, compile),
+      turnText: (step, handed, top) => compileTurn(step, {
+        workflowName: this.workflow.name,
+        stepIndex: top ?? 0,
+        totalSteps: this.workflow.steps.length,
+        always: this.workflow.always,
+        extras: handed,
+      }),
       at: this.programCounter,
       next: () => { this.programCounter++; },
       goto: (i) => { this.programCounter = i; },
@@ -1114,44 +1124,6 @@ export class Run {
           }
           this.programCounter = instr.onFailJump;
           return this.status;
-        }
-
-        this.programCounter++;
-        return this.status;
-      }
-
-      case 'STORE': {
-        const session = await this.ensureSession();
-        const storeStep: Step = {
-          id: instr.step,
-          kind: 'store',
-          title: 'store',
-          attrs: { what: instr.what },
-          cards: [],
-          links: [],
-          prompt: `Provide a one-paragraph decision summary for "${instr.what}".`,
-        };
-
-        const result = await this.handedTurn(session, instr.step, (handed) => compileTurn(storeStep, {
-          workflowName: this.workflow.name,
-          stepIndex: instr.top ?? 0,
-          totalSteps: this.workflow.steps.length,
-          always: this.workflow.always,
-          extras: handed,
-        }));
-        if (!result) return this.status;
-
-        const summary = result.text
-          .split(/\r?\n/)
-          .filter((line) => !/^\s*REINS:\s*/.test(line))
-          .join('\n')
-          .trim();
-
-        if (this.storeFn) {
-          await this.storeFn(instr.what, summary);
-          this.logEvent('store', { what: instr.what, summary });
-        } else {
-          this.logEvent('store', { what: instr.what, skipped: 'no store function' });
         }
 
         this.programCounter++;

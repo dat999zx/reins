@@ -1,5 +1,6 @@
 import type { Cond, Diagnostic, Pos, Step, Workflow } from '../model.js';
 import type { Instr } from '../compile.js';
+import type { EngineSession, TurnResult } from '../fake-engine.js';
 import type { PauseReason, RunEventRecord, RunEventType } from '../run.js';
 import phase from './phase.js';
 import say from './say.js';
@@ -102,7 +103,13 @@ export interface VmCtx {
   /** Replaces the recall context the next turn carries. */
   setRecall(ctx: string[]): void;
   /** The host's functions, read live; a member is absent when the host gave none. */
-  readonly services: { recall?: (topics: string[]) => Promise<string[]> };
+  readonly services: { recall?: (topics: string[]) => Promise<string[]>; store?: (what: string, summary: string) => Promise<void> };
+  /** The run's session, opened on the first call. */
+  ensureSession(): Promise<EngineSession>;
+  /** A turn of the parent: the handed-back results are copied for `compile` and taken off the queue only after the turn returns. Opens no session. */
+  turn(session: EngineSession, stepId: string, compile: (handed: string[]) => string): Promise<TurnResult | undefined>;
+  /** The text of a turn for `step` at top-level index `top`, with the run's name, steps and `always` read live. Drains no cards and adds no recall context. */
+  turnText(step: Step, handed: string[], top?: number): string;
 }
 
 /** A kind's own instruction: `exec` runs it again from the start after a pause or crash. */
