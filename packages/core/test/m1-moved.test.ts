@@ -10,6 +10,7 @@ const moved: Array<[kind: string, op: string]> = [
   ['if', 'IF'],
   ['gate', 'GATE'],
   ['store', 'STORE'],
+  ['verify', 'VERIFY'],
 ];
 
 describe('moved ops', () => {
@@ -25,16 +26,28 @@ describe('RECALL calls the host function with the Run as its receiver', () => {
   it('a function that reads `this` still gets the Run', async () => {
     const w = parseWorkflow(['---', 'reins: 1', 'name: t', 'budget: { turns: 5, minutes: 5 }', 'always: []', '---', '', '## recall', 'knowl: upload', ''].join('\n')).workflow!;
     const h = harness('recv', []);
-    let seen: unknown;
-    const run = new Run({ workflow: w, engine: h.engine, now: h.now, recall: async function (this: unknown) { seen = this; return ['ctx']; } });
+    const seen: unknown[] = [];
+    const run = new Run({ workflow: w, engine: h.engine, now: h.now, recall: async function (this: unknown) { seen.push(this); return ['ctx']; } });
     await run.step();
-    expect(seen).toBe(run);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBe(run);
   });
 });
 
 describe('a STORE turn does not take the queued cards', () => {
   it('a steer card queued before a store step is still queued after it', async () => {
     const w = parseWorkflow(['---', 'reins: 1', 'name: t', 'budget: { turns: 5, minutes: 5 }', 'always: []', '---', '', '## store', 'knowl: decisions', ''].join('\n')).workflow!;
+    const h = harness('cards', []);
+    const run = new Run({ workflow: w, engine: h.engine, now: h.now });
+    run.queueCard('keep me', 'steer');
+    await run.step();
+    expect(run.takeCards()).toEqual(['keep me']);
+  });
+});
+
+describe('a VERIFY turn does not take the queued cards', () => {
+  it('a steer card queued before a verify step is still queued after it', async () => {
+    const w = parseWorkflow(['---', 'reins: 1', 'name: t', 'budget: { turns: 5, minutes: 5 }', 'always: []', '---', '', '## verify', ''].join('\n')).workflow!;
     const h = harness('cards', []);
     const run = new Run({ workflow: w, engine: h.engine, now: h.now });
     run.queueCard('keep me', 'steer');

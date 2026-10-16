@@ -108,6 +108,10 @@ export interface VmCtx {
   ensureSession(): Promise<EngineSession>;
   /** A turn of the parent: the handed-back results are copied for `compile` and taken off the queue only after the turn returns. Opens no session. */
   turn(session: EngineSession, stepId: string, compile: (handed: string[]) => string): Promise<TurnResult | undefined>;
+  /** What each step answered, by step id: the run's own map, live; read it, do not change it. */
+  readonly outputs: Map<string, string>;
+  /** Spends one pass through the link `key` (from a step to `to`); false when its budget `max` is used up and the run paused. */
+  takeLink(key: string, to: number, max: number | undefined): boolean;
   /** The text of a turn for `step` at top-level index `top`, with the run's name, steps and `always` read live. Drains no cards and adds no recall context. */
   turnText(step: Step, handed: string[], top?: number): string;
 }

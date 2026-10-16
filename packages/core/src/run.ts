@@ -422,6 +422,7 @@ export class Run {
   /** The run's hands for an op: live over the run's fields, except `at`, which is the counter as the op started. */
   private vm(): VmCtx {
     const program = () => this.program;
+    const outputs = () => this.turnOutputs;
     // The host's recall function is called with the Run as its receiver, as `this.recall(...)` always did.
     const recall = () => (this.recall ? (topics: string[]) => this.recall!(topics) : undefined);
     const store = () => (this.storeFn ? (what: string, summary: string) => this.storeFn!(what, summary) : undefined);
@@ -430,6 +431,8 @@ export class Run {
       get services() { return { recall: recall(), store: store() }; },
       ensureSession: () => this.ensureSession(),
       turn: (session, stepId, compile) => this.handedTurn(session, stepId, compile),
+      get outputs() { return outputs(); },
+      takeLink: (key, to, max) => this.takeLink(key, to, max),
       turnText: (step, handed, top) => compileTurn(step, {
         workflowName: this.workflow.name,
         stepIndex: top ?? 0,
@@ -1085,48 +1088,6 @@ export class Run {
         }
 
         this.programCounter = instr.target;
-        return this.status;
-      }
-
-      case 'VERIFY': {
-        const session = await this.ensureSession();
-        const againstOutput = this.turnOutputs.get(instr.against);
-
-        const verifyStep: Step = {
-          id: instr.step,
-          kind: 'verify',
-          title: 'verify',
-          attrs: { against: instr.against },
-          cards: [],
-          links: [],
-          prompt: !instr.against
-            ? 'Compare what you built against the earlier steps.\nList anything missing or extra.'
-            : againstOutput === undefined
-            ? `Step "${instr.against}" has not run, so there is no output of it to compare against. Compare against what the earlier steps produced.`
-            : `Compare what you built against step "${instr.against}":\n${againstOutput}\nList anything missing or extra.`,
-        };
-
-        const result = await this.handedTurn(session, instr.step, (handed) => compileTurn(verifyStep, {
-          workflowName: this.workflow.name,
-          stepIndex: instr.top ?? 0,
-          totalSteps: this.workflow.steps.length,
-          always: this.workflow.always,
-          extras: handed,
-        }));
-        if (!result) return this.status;
-
-        const isFail = result.text.includes('REINS: fail');
-        this.logEvent('verify_result', { pass: !isFail });
-
-        if (isFail && instr.onFailJump !== undefined) {
-          if (!this.takeLink(`${instr.step}->${instr.onFailJump}`, instr.onFailJump, instr.linkMax)) {
-            return this.status;
-          }
-          this.programCounter = instr.onFailJump;
-          return this.status;
-        }
-
-        this.programCounter++;
         return this.status;
       }
 

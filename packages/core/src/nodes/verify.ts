@@ -1,9 +1,48 @@
-import type { NodeType } from './index.js';
+import type { NodeType, OpType } from './index.js';
 import type { Instr } from '../compile.js';
+import type { Step } from '../model.js';
 
 declare module '../model.js' {
   interface NodeKinds { verify: true }
 }
+
+const VERIFY: OpType<Extract<Instr, { op: 'VERIFY' }>> = {
+  async exec(i, vm) {
+    const session = await vm.ensureSession();
+    const againstOutput = vm.outputs.get(i.against);
+
+    const verifyStep: Step = {
+      id: i.step,
+      kind: 'verify',
+      title: 'verify',
+      attrs: { against: i.against },
+      cards: [],
+      links: [],
+      prompt: !i.against
+        ? 'Compare what you built against the earlier steps.\nList anything missing or extra.'
+        : againstOutput === undefined
+        ? `Step "${i.against}" has not run, so there is no output of it to compare against. Compare against what the earlier steps produced.`
+        : `Compare what you built against step "${i.against}":\n${againstOutput}\nList anything missing or extra.`,
+    };
+
+    const result = await vm.turn(session, i.step, (handed) => vm.turnText(verifyStep, handed, i.top));
+    if (!result) return;
+
+    const isFail = result.text.includes('REINS: fail');
+    vm.log('verify_result', { pass: !isFail });
+
+    if (isFail && i.onFailJump !== undefined) {
+      if (!vm.takeLink(`${i.step}->${i.onFailJump}`, i.onFailJump, i.linkMax)) {
+        return;
+      }
+      vm.goto(i.onFailJump);
+      return;
+    }
+
+    vm.next();
+  },
+  next: (i, at) => [at + 1, i.onFailJump],
+};
 
 const verify: NodeType = {
   kind: 'verify',
@@ -27,5 +66,6 @@ const verify: NodeType = {
     const v = ctx.push<Extract<Instr, { op: 'VERIFY' }>>({ op: 'VERIFY', step: step.id, against: step.attrs.against || '', linkMax: onFail?.max });
     if (onFail) ctx.linkLater(v, onFail.to);
   },
+  ops: { VERIFY },
 };
 export default verify;
