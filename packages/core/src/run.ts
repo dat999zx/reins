@@ -117,11 +117,13 @@ export interface SubagentRecord {
   done?: true;
 }
 
+export type CommandOutcome = { exitCode: number; stdout: string; stderr: string };
+
 export interface RunOptions {
   workflow: Workflow;
   engine: Engine;
   resolveBlock?: (name: string) => Workflow | undefined;
-  commandRunner?: (cmd: string) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
+  commandRunner?: (cmd: string) => Promise<CommandOutcome>;
   now?: () => number;
   judge?: (cond: Cond, evidence: { lastText: string }) => Promise<boolean>;
   recall?: (topics: string[]) => Promise<string[]>;
@@ -214,7 +216,7 @@ export class Run {
   private engineSession?: EngineSession;
   private borrowed?: EngineSession;
   private resolveBlock?: (name: string) => Workflow | undefined;
-  private commandRunner: (cmd: string) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
+  private commandRunner: (cmd: string) => Promise<CommandOutcome>;
   private now: () => number;
   private currentPolicy: Policy = { mode: 'write', guards: [], allowShell: true };
   private judge?: (cond: Cond, evidence: { lastText: string }) => Promise<boolean>;
@@ -433,6 +435,11 @@ export class Run {
       turn: (session, stepId, compile) => this.handedTurn(session, stepId, compile),
       get outputs() { return outputs(); },
       takeLink: (key, to, max) => this.takeLink(key, to, max),
+      command: async (cmd) => {
+        const res = await this.commandRunner(cmd);
+        this.recordCommandResult(cmd, res.exitCode, res.stdout || res.stderr);
+        return res;
+      },
       turnText: (step, handed, top) => compileTurn(step, {
         workflowName: this.workflow.name,
         stepIndex: top ?? 0,
@@ -1021,38 +1028,6 @@ export class Run {
 
       case 'LOOP_IN': {
         this.programCounter++;
-        return this.status;
-      }
-
-      case 'RUN': {
-        const cmdRes = await this.commandRunner(instr.cmd);
-        this.recordCommandResult(instr.cmd, cmdRes.exitCode, cmdRes.stdout || cmdRes.stderr);
-        this.logEvent('command_result', { step: instr.step, exitCode: cmdRes.exitCode });
-
-        if (cmdRes.exitCode === 0) {
-          if (instr.repeatCond && instr.loopExit !== undefined) {
-            const passed = await this.judgeCond(instr.repeatCond);
-            if (this.status !== 'running') return this.status;
-            if (passed) {
-              this.programCounter = instr.loopExit;
-              return this.status;
-            }
-          }
-          if (instr.onPassJump !== undefined) {
-            this.programCounter = instr.onPassJump;
-          } else {
-            this.programCounter++;
-          }
-        } else {
-          if (instr.onFailJump !== undefined) {
-            if (!this.takeLink(`${instr.step}->${instr.onFailJump}`, instr.onFailJump, instr.linkMax)) {
-              return this.status;
-            }
-            this.programCounter = instr.onFailJump;
-          } else {
-            this.programCounter++;
-          }
-        }
         return this.status;
       }
 

@@ -11,6 +11,7 @@ const moved: Array<[kind: string, op: string]> = [
   ['gate', 'GATE'],
   ['store', 'STORE'],
   ['verify', 'VERIFY'],
+  ['run', 'RUN'],
 ];
 
 describe('moved ops', () => {

@@ -1,7 +1,7 @@
 import type { Cond, Diagnostic, Pos, Step, Workflow } from '../model.js';
 import type { Instr } from '../compile.js';
 import type { EngineSession, TurnResult } from '../fake-engine.js';
-import type { PauseReason, RunEventRecord, RunEventType } from '../run.js';
+import type { CommandOutcome, PauseReason, RunEventRecord, RunEventType } from '../run.js';
 import phase from './phase.js';
 import say from './say.js';
 import run from './run.js';
@@ -112,6 +112,8 @@ export interface VmCtx {
   readonly outputs: Map<string, string>;
   /** Spends one pass through the link `key` (from a step to `to`); false when its budget `max` is used up and the run paused. */
   takeLink(key: string, to: number, max: number | undefined): boolean;
+  /** Runs a shell command with the host's runner and records its result for the conditions; logs nothing. */
+  command(cmd: string): Promise<CommandOutcome>;
   /** The text of a turn for `step` at top-level index `top`, with the run's name, steps and `always` read live. Drains no cards and adds no recall context. */
   turnText(step: Step, handed: string[], top?: number): string;
 }

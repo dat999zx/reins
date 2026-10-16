@@ -28,7 +28,6 @@ export function commandsOf(w: Workflow, resolveBlock: (name: string) => Workflow
     for (const a of condAtoms(c)) if (CONDS.get(a.t)?.judge === 'command') out.push(printCond(a));
   };
   for (const i of compileProgram(w, resolveBlock)) {
-    if (i.op === 'RUN') out.push(i.cmd);
     out.push(...(opOf(i.op)?.commands?.(i) ?? []));
     const { cond, repeatCond } = i as { cond?: Cond; repeatCond?: Cond };
     conds(cond);

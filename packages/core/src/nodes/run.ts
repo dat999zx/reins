@@ -1,9 +1,43 @@
-import type { NodeType } from './index.js';
+import type { NodeType, OpType } from './index.js';
 import type { Instr } from '../compile.js';
 
 declare module '../model.js' {
   interface NodeKinds { run: true }
 }
+
+const RUN: OpType<Extract<Instr, { op: 'RUN' }>> = {
+  async exec(i, vm) {
+    const cmdRes = await vm.command(i.cmd);
+    vm.log('command_result', { step: i.step, exitCode: cmdRes.exitCode });
+
+    if (cmdRes.exitCode === 0) {
+      if (i.repeatCond && i.loopExit !== undefined) {
+        const passed = await vm.judge(i.repeatCond);
+        if (!vm.running()) return;
+        if (passed) {
+          vm.goto(i.loopExit);
+          return;
+        }
+      }
+      if (i.onPassJump !== undefined) {
+        vm.goto(i.onPassJump);
+      } else {
+        vm.next();
+      }
+    } else {
+      if (i.onFailJump !== undefined) {
+        if (!vm.takeLink(`${i.step}->${i.onFailJump}`, i.onFailJump, i.linkMax)) {
+          return;
+        }
+        vm.goto(i.onFailJump);
+      } else {
+        vm.next();
+      }
+    }
+  },
+  next: (i, at) => [at + 1, i.onFailJump, i.onPassJump, i.loopExit],
+  commands: (i) => [i.cmd],
+};
 
 const run: NodeType = {
   kind: 'run',
@@ -32,5 +66,6 @@ const run: NodeType = {
     });
     if (onFail) ctx.linkLater(r, onFail.to);
   },
+  ops: { RUN },
 };
 export default run;
