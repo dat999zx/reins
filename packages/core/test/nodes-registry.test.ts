@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { readdirSync } from 'node:fs';
 import { NODES } from '../src/index.js';
 
-// turn.ts is a helper (turnInstr), not a node kind.
+// turn.ts is a helper (turnInstr), fields.ts and *.view.ts are the front side, not node kinds.
 const files = readdirSync(new URL('../src/nodes/', import.meta.url))
-  .filter((f) => f.endsWith('.ts') && !['index.ts', 'turn.ts'].includes(f));
+  .filter((f) => f.endsWith('.ts') && !['index.ts', 'turn.ts', 'fields.ts'].includes(f) && !f.endsWith('.view.ts'));
 
 describe('every nodes/*.ts file is in NODES', () => {
   it('finds the node files', () => {

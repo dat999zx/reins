@@ -1,35 +1,9 @@
-import type { CardKind, Step, StepKind } from '@reins/core';
+import type { CardKind, StepKind } from '@reins/core';
 
+import { max, mode, mustPrompt, prompt, reasoning, title, usd, type KindView } from '../../core/src/nodes/fields.js';
 import type { WireKind } from './canvas.js';
-import { BUDGET_ERRORS } from './panelEdit.js';
 
-export type FieldKey = 'title' | 'prompt' | 'mode' | 'cmd' | 'max' | 'against' | 'knowl' | 'model' | 'reasoning' | 'usd';
-// `error` is what the panel says when applyField refuses the value; `inherits`: an empty model is the session's model; `ph` overrides the
-// empty pill's placeholder; `required`: the validator warns while it is empty, so the face says so.
-export type Field = {
-  key: FieldKey; label: string; input: 'text' | 'mono' | 'textarea' | 'number' | 'mode' | 'step' | 'model' | 'effort';
-  error?: string; inherits?: true; ph?: string; required?: true;
-};
-export type Token = string | 'cond' | 'sub' | { field: FieldKey };
-export type KindView = {
-  group?: 'kids' | 'kids+else';
-  fails?: true;
-  stops?: true; // ends the workflow: no links out, drawn as a cap
-  against?: true; // has a third wire: the step whose work it compares
-  cards?: true;
-  fields: Field[];
-  line: Token[];
-  card?: { label: string; section: 'Flow' | 'Memory' };
-  sub?(step: Step, cond?: string): string;
-  fresh?(): Partial<Step>;
-};
-
-const title: Field = { key: 'title', label: 'Title', input: 'text' };
-const prompt: Field = { key: 'prompt', label: 'Prompt', input: 'textarea' };
-const mode: Field = { key: 'mode', label: 'Mode', input: 'mode' };
-const mustPrompt: Field = { ...prompt, required: true }; // phase and subagent: core warns "has no prompt"
-const reasoning: Field = { key: 'reasoning', label: 'Reasoning', input: 'effort', inherits: true };
-const usd: Field = { key: 'usd', label: 'Budget (USD)', input: 'text', error: BUDGET_ERRORS.usd, ph: 'optional' };
+export type { Field, KindView, Token } from '../../core/src/nodes/fields.js';
 
 export const KINDS: Record<StepKind, KindView> = {
   phase: { fields: [title, mustPrompt, mode], line: [{ field: 'title' }, { field: 'prompt' }], cards: true, card: { label: 'phase', section: 'Flow' }, fresh: () => ({}) },
@@ -38,7 +12,7 @@ export const KINDS: Record<StepKind, KindView> = {
   gate: { fields: [], line: ['wait until', 'cond'], card: { label: 'wait until', section: 'Flow' }, fresh: () => ({ cond: { t: 'approve' } }) },
   repeat: {
     group: 'kids',
-    fields: [{ key: 'max', label: 'Max', input: 'number' }],
+    fields: [max],
     line: ['repeat until', 'cond', 'max', { field: 'max' }],
     card: { label: 'repeat until', section: 'Flow' }, fresh: () => ({ attrs: { max: '3' }, cond: { t: 'approve' } }),
   },
@@ -67,6 +41,14 @@ export const KINDS: Record<StepKind, KindView> = {
   end: { stops: true, fields: [], line: ['end'], card: { label: 'end', section: 'Flow' }, fresh: () => ({}) },
   use: { fields: [], line: ['use', 'sub'], sub: (s) => s.title || s.attrs.use || s.id },
 };
+
+// Adds a view for tests and later kinds; the disposer takes it out again.
+export function registerView(v: KindView & { kind: string }): () => void {
+  if (v.kind in KINDS) throw new Error(`a view for ${v.kind} is already registered`);
+  const kinds: Record<string, KindView> = KINDS;
+  kinds[v.kind] = v;
+  return () => { delete kinds[v.kind]; };
+}
 
 // The handles on a block, top to bottom.
 export const wiresOf = (kind: StepKind): WireKind[] => {
