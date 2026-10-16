@@ -1,0 +1,128 @@
+{
+  "autoArmed": {},
+  "commandResults": [],
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "subagent-1",
+            "kind": "subagent",
+            "title": "research"
+          },
+          {
+            "id": "use",
+            "kind": "phase",
+            "title": "use"
+          }
+        ],
+        "workflow": "t"
+      },
+      "id": "ev-1",
+      "timestamp": 1000,
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "subagent-1"
+      },
+      "id": "ev-2",
+      "timestamp": 2000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "model": "m1",
+        "step": "subagent-1",
+        "title": "research"
+      },
+      "id": "ev-3",
+      "timestamp": 3000,
+      "type": "subagent_started"
+    },
+    {
+      "data": {
+        "step": "subagent-1"
+      },
+      "id": "ev-4",
+      "timestamp": 4000,
+      "type": "turn_started"
+    },
+    {
+      "data": {},
+      "id": "ev-5",
+      "timestamp": 5000,
+      "type": "run_stopped"
+    },
+    {
+      "data": {
+        "step": "subagent-1",
+        "text": "REINS: done"
+      },
+      "id": "ev-6",
+      "timestamp": 6000,
+      "type": "turn_ended"
+    }
+  ],
+  "lastRecallContext": [],
+  "lastTurnText": "REINS: done",
+  "linkCounters": {},
+  "linkLimitExtensions": {},
+  "loopCounters": {},
+  "loopLimitExtensions": {},
+  "pendingCards": [],
+  "programCounter": 0,
+  "runCost": 0,
+  "status": "stopped",
+  "subagents": {
+    "subagent-1": {
+      "cost": 0,
+      "sessionId": "P4t-sub-subagent-1"
+    }
+  },
+  "totalTurns": 1,
+  "turnOutputs": {},
+  "usdExtra": {},
+  "usdSpent": {},
+  "workflow": {
+    "always": [],
+    "autos": [],
+    "budget": {
+      "minutes": 60,
+      "turns": 40
+    },
+    "name": "t",
+    "steps": [
+      {
+        "attrs": {
+          "model": "m1"
+        },
+        "cards": [],
+        "id": "subagent-1",
+        "kind": "subagent",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 8
+        },
+        "prompt": "Look.",
+        "title": "research"
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "use",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 12
+        },
+        "prompt": "use it",
+        "title": "use"
+      }
+    ],
+    "version": 1
+  }
+}

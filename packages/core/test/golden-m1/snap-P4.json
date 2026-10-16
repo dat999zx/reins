@@ -1,0 +1,138 @@
+{
+  "autoArmed": {},
+  "commandResults": [],
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "a",
+            "kind": "phase",
+            "title": "a"
+          },
+          {
+            "id": "b",
+            "kind": "phase",
+            "title": "b"
+          }
+        ],
+        "workflow": "t"
+      },
+      "id": "ev-1",
+      "timestamp": 1000,
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "a"
+      },
+      "id": "ev-2",
+      "timestamp": 2000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "a"
+      },
+      "id": "ev-3",
+      "timestamp": 3000,
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "card": "halt",
+        "kind": "stop",
+        "source": "live"
+      },
+      "id": "ev-4",
+      "timestamp": 4000,
+      "type": "card_queued"
+    },
+    {
+      "data": {
+        "step": "a",
+        "text": "REINS: done"
+      },
+      "id": "ev-5",
+      "timestamp": 5000,
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "card": "halt",
+        "channel": "interrupt",
+        "kind": "stop"
+      },
+      "id": "ev-6",
+      "timestamp": 6000,
+      "type": "card_delivered"
+    },
+    {
+      "data": {
+        "reason": "stop",
+        "text": "halt"
+      },
+      "id": "ev-7",
+      "timestamp": 7000,
+      "type": "run_paused"
+    }
+  ],
+  "lastRecallContext": [],
+  "lastTurnText": "REINS: done",
+  "linkCounters": {},
+  "linkLimitExtensions": {},
+  "loopCounters": {},
+  "loopLimitExtensions": {},
+  "pauseReason": {
+    "text": "halt",
+    "type": "stop"
+  },
+  "pendingCards": [],
+  "programCounter": 0,
+  "runCost": 0,
+  "sessionId": "P4-main-1",
+  "status": "paused",
+  "totalTurns": 1,
+  "turnOutputs": {},
+  "usdExtra": {},
+  "usdSpent": {},
+  "workflow": {
+    "always": [],
+    "autos": [],
+    "budget": {
+      "minutes": 60,
+      "turns": 40
+    },
+    "name": "t",
+    "steps": [
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "a",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 8
+        },
+        "prompt": "a",
+        "title": "a"
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "b",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 11
+        },
+        "prompt": "b",
+        "title": "b"
+      }
+    ],
+    "version": 1
+  }
+}

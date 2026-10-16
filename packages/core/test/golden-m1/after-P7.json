@@ -1,0 +1,88 @@
+{
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "plan",
+            "kind": "phase",
+            "title": "plan"
+          },
+          {
+            "id": "gate-1",
+            "kind": "gate"
+          },
+          {
+            "id": "build",
+            "kind": "phase",
+            "title": "build"
+          }
+        ],
+        "workflow": "t"
+      },
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "plan"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "plan"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "plan",
+        "text": "REINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "gate-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "cond": {
+          "t": "approve"
+        },
+        "step": "gate-1"
+      },
+      "type": "gate_paused"
+    }
+  ],
+  "pauseReason": {
+    "type": "step-deleted"
+  },
+  "receipt": {
+    "autoCardsFired": 0,
+    "gatesHeld": 1,
+    "guardRefusals": 0,
+    "knowlRecalls": 0,
+    "knowlSkipped": 0,
+    "knowlStores": 0,
+    "liveCardsDelivered": 0,
+    "loopAttempts": 0,
+    "readOnlyRefusals": 0,
+    "status": "running",
+    "totalCostUsd": 0,
+    "totalRefusals": 0,
+    "totalTimeMs": 5000,
+    "totalTurns": 1,
+    "verifyResults": {
+      "failed": 0,
+      "passed": 0
+    },
+    "workflow": "t"
+  },
+  "receivedTexts": [],
+  "status": "paused"
+}

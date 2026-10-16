@@ -1,0 +1,142 @@
+{
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "repeat-1",
+            "kind": "repeat"
+          },
+          {
+            "id": "work",
+            "kind": "phase",
+            "title": "work"
+          }
+        ],
+        "workflow": "t"
+      },
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "repeat-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "parents": [
+          "repeat-1"
+        ],
+        "step": "work"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "work"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "work",
+        "text": "REINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "answer": false,
+        "cond": {
+          "q": "ok",
+          "t": "llm"
+        }
+      },
+      "type": "judge"
+    },
+    {
+      "data": {
+        "attempts": 1,
+        "step": "repeat-1"
+      },
+      "type": "loop_iteration"
+    },
+    {
+      "data": {
+        "attempts": 1,
+        "max": 1,
+        "step": "repeat-1"
+      },
+      "type": "loop_budget_exceeded"
+    },
+    {
+      "data": {
+        "allowMore": 1
+      },
+      "type": "run_resumed"
+    },
+    {
+      "data": {
+        "parents": [
+          "repeat-1"
+        ],
+        "step": "work"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "work"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "work",
+        "text": "REINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "answer": true,
+        "cond": {
+          "q": "ok",
+          "t": "llm"
+        }
+      },
+      "type": "judge"
+    },
+    {
+      "data": {},
+      "type": "run_finished"
+    }
+  ],
+  "receipt": {
+    "autoCardsFired": 0,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "knowlRecalls": 0,
+    "knowlSkipped": 0,
+    "knowlStores": 0,
+    "liveCardsDelivered": 0,
+    "loopAttempts": 1,
+    "readOnlyRefusals": 0,
+    "status": "done",
+    "totalCostUsd": 0,
+    "totalRefusals": 0,
+    "totalTimeMs": 7000,
+    "totalTurns": 2,
+    "verifyResults": {
+      "failed": 0,
+      "passed": 0
+    },
+    "workflow": "t"
+  },
+  "receivedTexts": [
+    "[Reins · workflow \"t\" · step 1 of 1: work]\n\nwork\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+  ],
+  "status": "done"
+}

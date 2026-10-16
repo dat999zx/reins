@@ -1,0 +1,200 @@
+{
+  "autoArmed": {},
+  "commandResults": [],
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "model-1",
+            "kind": "model"
+          },
+          {
+            "id": "a",
+            "kind": "phase",
+            "title": "a"
+          },
+          {
+            "id": "b",
+            "kind": "phase",
+            "title": "b"
+          },
+          {
+            "id": "c",
+            "kind": "phase",
+            "title": "c"
+          }
+        ],
+        "workflow": "t"
+      },
+      "id": "ev-1",
+      "timestamp": 1000,
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "model-1"
+      },
+      "id": "ev-2",
+      "timestamp": 2000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "how": "switched",
+        "label": "claude-x",
+        "model": "claude-x",
+        "step": "model-1"
+      },
+      "id": "ev-3",
+      "timestamp": 3000,
+      "type": "model_switched"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "a"
+      },
+      "id": "ev-4",
+      "timestamp": 4000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "a"
+      },
+      "id": "ev-5",
+      "timestamp": 5000,
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "usd": 0.02
+      },
+      "id": "ev-6",
+      "timestamp": 6000,
+      "type": "engine_cost"
+    },
+    {
+      "data": {
+        "cost": 0.02,
+        "slice": {
+          "spent": 0.02,
+          "step": "model-1",
+          "usd": 0.01
+        },
+        "step": "a",
+        "text": "a\nREINS: done"
+      },
+      "id": "ev-7",
+      "timestamp": 7000,
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "spent": 0.02,
+        "step": "model-1",
+        "usd": 0.01
+      },
+      "id": "ev-8",
+      "timestamp": 8000,
+      "type": "budget_reached"
+    }
+  ],
+  "lastRecallContext": [],
+  "lastTurnText": "a\nREINS: done",
+  "linkCounters": {},
+  "linkLimitExtensions": {},
+  "loopCounters": {},
+  "loopLimitExtensions": {},
+  "openSlice": {
+    "step": "model-1",
+    "usd": 0.01
+  },
+  "pauseReason": {
+    "limit": 0.01,
+    "spent": 0.02,
+    "stepId": "model-1",
+    "type": "usd-budget-used"
+  },
+  "pendingCards": [],
+  "programCounter": 2,
+  "runCost": 0.02,
+  "sessionId": "P8m-main-1",
+  "status": "paused",
+  "totalTurns": 1,
+  "turnOutputs": {
+    "a": "a\nREINS: done"
+  },
+  "usdExtra": {},
+  "usdSpent": {
+    "model-1": 0.02
+  },
+  "workflow": {
+    "always": [],
+    "autos": [],
+    "budget": {
+      "minutes": 60,
+      "turns": 40,
+      "usd": 2
+    },
+    "name": "t",
+    "steps": [
+      {
+        "attrs": {
+          "model": "claude-x",
+          "usd": "0.01"
+        },
+        "cards": [],
+        "id": "model-1",
+        "kind": "model",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 8
+        }
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "a",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 11
+        },
+        "prompt": "a",
+        "title": "a"
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "b",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 14
+        },
+        "prompt": "b",
+        "title": "b"
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "c",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 17
+        },
+        "prompt": "c",
+        "title": "c"
+      }
+    ],
+    "version": 1
+  }
+}

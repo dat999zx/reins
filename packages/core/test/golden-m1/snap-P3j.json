@@ -1,0 +1,338 @@
+{
+  "autoArmed": {},
+  "commandResults": [],
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "a",
+            "kind": "phase",
+            "title": "a"
+          },
+          {
+            "id": "b",
+            "kind": "phase",
+            "title": "b"
+          },
+          {
+            "id": "c",
+            "kind": "phase",
+            "title": "c"
+          },
+          {
+            "id": "d",
+            "kind": "phase",
+            "title": "d"
+          },
+          {
+            "id": "verify-1",
+            "kind": "verify"
+          }
+        ],
+        "workflow": "t"
+      },
+      "id": "ev-1",
+      "timestamp": 1000,
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "a"
+      },
+      "id": "ev-2",
+      "timestamp": 2000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "a"
+      },
+      "id": "ev-3",
+      "timestamp": 3000,
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "a",
+        "text": "a\nREINS: done"
+      },
+      "id": "ev-4",
+      "timestamp": 4000,
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "b"
+      },
+      "id": "ev-5",
+      "timestamp": 5000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "b"
+      },
+      "id": "ev-6",
+      "timestamp": 6000,
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "b",
+        "text": "b\nREINS: done"
+      },
+      "id": "ev-7",
+      "timestamp": 7000,
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "d"
+      },
+      "id": "ev-8",
+      "timestamp": 8000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "d"
+      },
+      "id": "ev-9",
+      "timestamp": 9000,
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "d",
+        "text": "d\nREINS: done"
+      },
+      "id": "ev-10",
+      "timestamp": 10000,
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "verify-1"
+      },
+      "id": "ev-11",
+      "timestamp": 11000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "verify-1"
+      },
+      "id": "ev-12",
+      "timestamp": 12000,
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "verify-1",
+        "text": "REINS: fail"
+      },
+      "id": "ev-13",
+      "timestamp": 13000,
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "pass": false
+      },
+      "id": "ev-14",
+      "timestamp": 14000,
+      "type": "verify_result"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "a"
+      },
+      "id": "ev-15",
+      "timestamp": 15000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "a"
+      },
+      "id": "ev-16",
+      "timestamp": 16000,
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "a",
+        "text": "a2\nREINS: done"
+      },
+      "id": "ev-17",
+      "timestamp": 17000,
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "b"
+      },
+      "id": "ev-18",
+      "timestamp": 18000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "b"
+      },
+      "id": "ev-19",
+      "timestamp": 19000,
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "b",
+        "text": "b2\nREINS: done"
+      },
+      "id": "ev-20",
+      "timestamp": 20000,
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "jumps": 2,
+        "linkKey": "b~next->4",
+        "max": 1
+      },
+      "id": "ev-21",
+      "timestamp": 21000,
+      "type": "link_budget_exceeded"
+    }
+  ],
+  "lastRecallContext": [],
+  "lastTurnText": "b2\nREINS: done",
+  "linkCounters": {
+    "b~next->4": 2,
+    "verify-1->0": 1
+  },
+  "linkLimitExtensions": {},
+  "loopCounters": {},
+  "loopLimitExtensions": {},
+  "pauseReason": {
+    "limit": 1,
+    "linkKey": "b~next->4",
+    "to": 4,
+    "type": "link-budget-used"
+  },
+  "pendingCards": [],
+  "programCounter": 2,
+  "runCost": 0,
+  "sessionId": "P3j-main-1",
+  "status": "paused",
+  "totalTurns": 6,
+  "turnOutputs": {
+    "a": "a2\nREINS: done",
+    "b": "b2\nREINS: done",
+    "d": "d\nREINS: done"
+  },
+  "usdExtra": {},
+  "usdSpent": {},
+  "workflow": {
+    "always": [],
+    "autos": [],
+    "budget": {
+      "minutes": 60,
+      "turns": 40
+    },
+    "name": "t",
+    "steps": [
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "a",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 8
+        },
+        "prompt": "a",
+        "title": "a"
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "b",
+        "kind": "phase",
+        "links": [
+          {
+            "kind": "next",
+            "max": 1,
+            "pos": {
+              "col": 6,
+              "line": 12
+            },
+            "to": "d"
+          }
+        ],
+        "pos": {
+          "col": 1,
+          "line": 11
+        },
+        "prompt": "b",
+        "title": "b"
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "c",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 15
+        },
+        "prompt": "c",
+        "title": "c"
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "d",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 18
+        },
+        "prompt": "d",
+        "title": "d"
+      },
+      {
+        "attrs": {
+          "against": "d"
+        },
+        "cards": [],
+        "id": "verify-1",
+        "kind": "verify",
+        "links": [
+          {
+            "kind": "on-fail",
+            "pos": {
+              "col": 9,
+              "line": 23
+            },
+            "to": "a"
+          }
+        ],
+        "pos": {
+          "col": 1,
+          "line": 21
+        }
+      }
+    ],
+    "version": 1
+  }
+}

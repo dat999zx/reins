@@ -1,0 +1,116 @@
+{
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "a",
+            "kind": "phase",
+            "title": "a"
+          },
+          {
+            "id": "b",
+            "kind": "phase",
+            "title": "b"
+          }
+        ],
+        "workflow": "t"
+      },
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "a"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "a"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "a",
+        "text": "REINS: blocked: need a key"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {},
+      "type": "run_resumed"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "a"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "a"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "a",
+        "text": "a\nREINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "b"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "b"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "b",
+        "text": "b\nREINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {},
+      "type": "run_finished"
+    }
+  ],
+  "receipt": {
+    "autoCardsFired": 0,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "knowlRecalls": 0,
+    "knowlSkipped": 0,
+    "knowlStores": 0,
+    "liveCardsDelivered": 0,
+    "loopAttempts": 0,
+    "readOnlyRefusals": 0,
+    "status": "done",
+    "totalCostUsd": 0,
+    "totalRefusals": 0,
+    "totalTimeMs": 8000,
+    "totalTurns": 3,
+    "verifyResults": {
+      "failed": 0,
+      "passed": 0
+    },
+    "workflow": "t"
+  },
+  "receivedTexts": [
+    "[Reins · workflow \"t\" · step 1 of 2: a]\n\na\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"t\" · step 2 of 2: b]\n\nb\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+  ],
+  "status": "done"
+}
