@@ -1,0 +1,204 @@
+{
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "fix",
+            "kind": "phase",
+            "title": "fix"
+          },
+          {
+            "id": "run-1",
+            "kind": "run"
+          }
+        ],
+        "workflow": "t"
+      },
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "fix"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "fix"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "fix",
+        "text": "REINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "run-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "exitCode": 1,
+        "step": "run-1"
+      },
+      "type": "command_result"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "fix"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "fix"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "fix",
+        "text": "REINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "run-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "exitCode": 1,
+        "step": "run-1"
+      },
+      "type": "command_result"
+    },
+    {
+      "data": {
+        "jumps": 2,
+        "linkKey": "run-1->0",
+        "max": 1
+      },
+      "type": "link_budget_exceeded"
+    },
+    {
+      "data": {
+        "allowMore": 1
+      },
+      "type": "run_resumed"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "fix"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "fix"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "fix",
+        "text": "REINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "run-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "exitCode": 1,
+        "step": "run-1"
+      },
+      "type": "command_result"
+    },
+    {
+      "data": {
+        "jumps": 3,
+        "linkKey": "run-1->0",
+        "max": 1
+      },
+      "type": "link_budget_exceeded"
+    },
+    {
+      "data": {
+        "allowMore": 1
+      },
+      "type": "run_resumed"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "fix"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "fix"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "fix",
+        "text": "REINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "run-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "exitCode": 1,
+        "step": "run-1"
+      },
+      "type": "command_result"
+    },
+    {
+      "data": {
+        "jumps": 4,
+        "linkKey": "run-1->0",
+        "max": 1
+      },
+      "type": "link_budget_exceeded"
+    }
+  ],
+  "pauseReason": {
+    "limit": 3,
+    "linkKey": "run-1->0",
+    "to": 0,
+    "type": "link-budget-used"
+  },
+  "programCounter": 1,
+  "receivedTexts": [
+    "[Reins · workflow \"t\" · step 1 of 2: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+  ],
+  "status": "paused"
+}
