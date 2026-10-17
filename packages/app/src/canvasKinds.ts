@@ -21,7 +21,12 @@ fill(views);
 export function registerView(v: Omit<KindView, 'order' | 'colour'> & Partial<KindView>): () => void {
   if (v.kind in kinds) throw new Error(`a view for ${v.kind} is already registered`);
   fill([...Object.values(kinds), v]);
-  return () => { delete kinds[v.kind]; };
+  let live = true;
+  return () => {
+    if (!live) return;
+    live = false;
+    delete kinds[v.kind];
+  };
 }
 
 // The one kind that ends the workflow.

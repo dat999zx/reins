@@ -11,7 +11,7 @@ import { initial, reduce } from '../src/state.js';
 import type { LogRow } from '@reins/server/store.js';
 
 const step = (): Step => ({ id: 'x', kind: 'toy', attrs: {}, cards: [], links: [] }) as unknown as Step;
-const toy = { kind: 'toy', fields: [{ key: 'times', label: 'Times', input: 'number' as const, check: 'count' as const }], line: ['toy'] };
+const toy = { kind: 'toy', fields: [{ key: 'toytimes', label: 'Times', input: 'number' as const, check: 'count' as const }], line: ['toy'] };
 
 describe('fields.ts', () => {
   it('has only `import type` lines (the front side stays browser-safe)', () => {
@@ -29,17 +29,17 @@ const css = () => readFileSync(new URL('../src/app.css', import.meta.url), 'utf8
 describe('view files', () => {
   it('(a) every node kind has <kind>.view.ts and the folder holds exactly those', () => {
     for (const k of NODES.keys()) expect(existsSync(new URL(`${k}.view.ts`, nodesDir)), k).toBe(true);
-    expect(viewFiles()).toHaveLength(13);
+    expect(viewFiles()).toHaveLength(NODES.size);
   });
   it('(b) each default export names the kind of its file', async () => {
-    expect(viewFiles()).toHaveLength(13);
+    expect(viewFiles()).toHaveLength(NODES.size);
     for (const f of viewFiles()) {
       const mod = (await import(/* @vite-ignore */ new URL(f, nodesDir).href)) as { default: { kind: string } };
       expect(mod.default.kind, f).toBe(f.replace('.view.ts', ''));
     }
   });
   it('(c) imports are `import type` or from ./fields.js', () => {
-    expect(viewFiles()).toHaveLength(13);
+    expect(viewFiles()).toHaveLength(NODES.size);
     for (const f of viewFiles()) {
       const imports = readFileSync(new URL(f, nodesDir), 'utf8').split(/\r?\n/).filter((l) => /^\s*import\b/.test(l));
       for (const l of imports) expect(l, f).toMatch(/^import type |from '\.\/fields\.js';$/);
@@ -56,7 +56,10 @@ describe('colour', () => {
   const fromCss = () => Object.fromEntries([...css().matchAll(/^((?:\[data-kind='\w+'\](?:, )?)+) \{ --c: var\(--(\w+)\); \}$/gm)]
     .flatMap((m) => [...m[1]!.matchAll(/data-kind='(\w+)'/g)].map((k) => [k[1]!, m[2]!])));
   const table = () => (css().includes('[data-kind=') ? fromCss() : Object.fromEntries(Object.entries(KINDS).map(([k, v]) => [k, v.colour])));
-  it('every kind keeps its colour', () => { expect(table()).toEqual(COLOUR); });
+  // the 13 built-ins keep their colour; a kind added later is only checked to have one
+  const builtIn = <T,>(o: Record<string, T>) => Object.fromEntries(Object.entries(o).filter(([k]) => k in COLOUR));
+  it('every kind keeps its colour', () => { expect(builtIn(table())).toEqual(COLOUR); });
+  it('every node kind has some colour', () => { for (const k of NODES.keys()) expect(table()[k], k).toBeTruthy(); });
   it('app.css maps each colour, the round icon and the cap', () => {
     const text = css();
     if (!text.includes('[data-kind=')) {
@@ -71,8 +74,9 @@ describe('colour', () => {
   });
   it('(d) app.css has no [data-kind= rule', () => { expect(css()).not.toContain('[data-kind='); });
   it('the views carry the icon and slice flags', () => {
-    expect(Object.entries(KINDS).filter(([, v]) => v.icon).map(([k]) => k)).toEqual(['recall', 'store']);
-    expect(Object.entries(KINDS).filter(([, v]) => v.slice).map(([k, v]) => [k, v.slice])).toEqual([['model', 'opens'], ['subagent', 'own']]);
+    const own = Object.entries(KINDS).filter(([k]) => k in COLOUR);
+    expect(own.filter(([, v]) => v.icon).map(([k]) => k)).toEqual(['recall', 'store']);
+    expect(own.filter(([, v]) => v.slice).map(([k, v]) => [k, v.slice])).toEqual([['model', 'opens'], ['subagent', 'own']]);
   });
 });
 
@@ -95,12 +99,21 @@ describe('registerView', () => {
   it('a field with a check on a registered view is judged by it, until the disposer runs', () => {
     const off = registerView(toy);
     const s = step();
-    expect(applyField(s, 'times', 'x')).toBe(false);
-    expect(applyField(s, 'times', '3')).toBe(true);
-    expect(s.attrs.times).toBe('3');
+    expect(applyField(s, 'toytimes', 'x')).toBe(false);
+    expect(applyField(s, 'toytimes', '3')).toBe(true);
+    expect(s.attrs.toytimes).toBe('3');
     off();
     expect('toy' in KINDS).toBe(false);
-    expect(applyField(s, 'times', 'x')).toBe(true);
+    expect(applyField(s, 'toytimes', 'x')).toBe(true);
+  });
+  it('the disposer is one-shot: a second call does not remove a later registration of the same kind', () => {
+    const off = registerView(toy);
+    off();
+    const off2 = registerView(toy);
+    off();
+    expect('toy' in KINDS).toBe(true);
+    off2();
+    expect('toy' in KINDS).toBe(false);
   });
   it('throws on a kind that is already there', () => {
     expect(() => registerView({ ...toy, kind: 'phase' })).toThrow();

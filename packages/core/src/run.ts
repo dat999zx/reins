@@ -442,13 +442,12 @@ export class Run {
       },
       turnText: (step, handed, top) => compileTurn(step, {
         workflowName: this.workflow.name,
-        stepIndex: top ?? 0,
+        stepIndex: top,
         totalSteps: this.workflow.steps.length,
         always: this.workflow.always,
         extras: handed,
       }),
       loops: {
-        count: (step) => this.loopCounters.get(step) || 0,
         bump: (step) => {
           const attempts = (this.loopCounters.get(step) || 0) + 1;
           this.loopCounters.set(step, attempts);
@@ -1053,7 +1052,7 @@ export class Run {
         return this.status;
       }
     }
-    // A merged-in instruction no kind runs: the counter stays, as the switch always did.
+    // An instruction no kind owns leaves the counter where it is, so the run keeps stepping on the same instruction (a hot loop); M3 adds a guard.
     return this.status;
   }
 }

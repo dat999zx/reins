@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { NODES, Run, parseWorkflow } from '../src/index.js';
+import { NODES, Run, parseWorkflow, receipt, register, type RunEventRecord } from '../src/index.js';
 import { harness } from './m1-harness.js';
 
 // Each moved op lives on its kind's node and has no `case` left in run.ts. Tasks 12 to 15 add rows.
@@ -57,6 +57,18 @@ describe('RECALL calls the host function with the Run as its receiver', () => {
     await run.step();
     expect(seen).toHaveLength(1);
     expect(seen[0]).toBe(run);
+  });
+});
+
+describe('the receipt counts by own keys only', () => {
+  it('an event named constructor or toString counts nothing', () => {
+    const ev = (type: string) => ({ type, data: {}, timestamp: 1 }) as unknown as RunEventRecord;
+    // no built-in kind has a `count` table, so a toy one stands in
+    const off = register({ kind: 'cnt-toy', attrs: [], compile() {}, count: { run_started: () => 'starts' } });
+    try {
+      expect(receipt([ev('constructor'), ev('toString')])).not.toHaveProperty('counts');
+      expect(receipt([ev('run_started')]).counts).toEqual({ starts: 1 });
+    } finally { off(); }
   });
 });
 

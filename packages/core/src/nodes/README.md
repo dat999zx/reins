@@ -1,13 +1,13 @@
 # Adding a block
 
-A block is a kind of step in a workflow, like `run` or `gate`. Adding one takes two files and one line.
+A block is a kind of step in a workflow, like `run` or `gate`. Adding one takes two files and one line in `index.ts` (one import and one entry in the list).
 
 ## The two files
 
 - `<kind>.ts` is the core half: how the block is read, checked, compiled and run.
 - `<kind>.view.ts` is the app half: how the block looks and edits on the canvas and in the panel.
 
-Then add one line in `index.ts`: put the import at the top and the node in the list that `register(...)` loops over (the line that starts `for (const n of [phase, say, ...`). Nothing else changes. The view file needs no line: the app finds every `*.view.ts` in this folder by itself.
+Then change `index.ts` in two places: put one import at the top and one entry in the list that `register(...)` loops over (the line that starts `for (const n of [phase, say, ...`). Nothing else changes. The view file needs no line: the app finds every `*.view.ts` in this folder by itself.
 
 ## A minimal example
 
@@ -79,7 +79,13 @@ const passed = await vm.judge(i.cond);
 if (!vm.running()) return;
 ```
 
-`vm.pause(reason)` pauses the run and logs nothing. If the pause should show in the log, the op logs its own event before it pauses.
+The built-in recall, store, verify and run ops deliberately skip the check after some awaits (the session open, the store write, the recall, a run command with no repeat). Tests pin them as they were before M1. A new op should check after every await, and must not copy those.
+
+`vm.pause(reason)` pauses the run and logs nothing. If the pause should show in the log, the op sets the pause first and then logs its own event. The CLI saves a snapshot inside the event handler, and that snapshot must already say `paused`.
+
+## Blocks with their own session
+
+A kind can also define `exec(step, ctx)` instead of ops. Its `compile` pushes a `NODE` instruction, and the run calls `exec` with an `ExecCtx` (switch model, slice, pause, stop, subagent). It returns `'next'` to move on or `'stay'` when the run paused or stopped. `model` and `subagent` do this; `model.ts` is the small example.
 
 An op that can jump can say where, with `next: (i, at) => [at + 1, i.target]`, so the checker knows what is reachable. An op that runs a shell command lists it with `commands: (i) => [i.cmd]`, so the user is asked to trust it.
 
@@ -99,7 +105,7 @@ A field is one editable line on the block. Its `key` is the attribute name (`tim
 
 The same key must carry the same `check` and `unset` in every view. A test checks that.
 
-`line` is what the block face shows: a word prints as it is, `{ field: 'times' }` prints the value. `rows` draws the block's events in the feed. `order` puts the block in the palette; built-in blocks use 10 to 130.
+`line` is what the block face shows: a word prints as it is, `{ field: 'times' }` prints the value. `rows` draws the block's events in the feed. `order` puts the block in the palette; built-in blocks use 10 to 130, so a first-party block's `order` goes after 130.
 
 ## The import rule
 
@@ -114,10 +120,10 @@ Some instructions belong to the run itself, not to any block:
 - The gate answers, approve and request changes.
 - The budget questions ("Allow more").
 
-Several blocks share these, so no block owns them. See spec section 4.1.
+Several blocks share these, so no block owns them.
 
 ## Checklist
 
 - files you add: 2
-- lines you change elsewhere: 1
+- places you change elsewhere: 1 file, `index.ts` (an import and a list entry)
 - tests: copy `packages/core/test/fixtures/beep.ts`

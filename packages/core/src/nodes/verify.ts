@@ -25,7 +25,7 @@ const VERIFY: OpType<Extract<Instr, { op: 'VERIFY' }>> = {
         : `Compare what you built against step "${i.against}":\n${againstOutput}\nList anything missing or extra.`,
     };
 
-    const result = await vm.turn(session, i.step, (handed) => vm.turnText(verifyStep, handed, i.top));
+    const result = await vm.turn(session, i.step, (handed) => vm.turnText(verifyStep, handed, i.top ?? 0));
     if (!result) return;
 
     const isFail = result.text.includes('REINS: fail');

@@ -173,7 +173,7 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
   function printEvent(ev: RunEventRecord) {
     const d = ev.data ?? {};
     for (const n of NODES.values()) {
-      const line = n.print?.[ev.type]?.(d);
+      const line = n.print && Object.hasOwn(n.print, ev.type) ? n.print[ev.type]?.(d) : undefined;
       if (line !== undefined) { say(line); return; }
     }
     if (ev.type === 'turn_started') say(`\n── ${d.step} ──`);

@@ -125,7 +125,7 @@ export function receipt(events: RunEventRecord[]): Receipt {
         break;
     }
     for (const n of NODES.values()) {
-      const k = n.count?.[ev.type]?.(ev.data);
+      const k = n.count && Object.hasOwn(n.count, ev.type) ? n.count[ev.type]?.(ev.data) : undefined;
       if (k) counts[k] = (counts[k] ?? 0) + 1;
     }
   }

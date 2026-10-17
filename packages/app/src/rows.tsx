@@ -25,6 +25,7 @@ export const renderRow = (row: LogRow, ctx: Ctx): ReactNode => {
   if (!drawable(row)) return null;
   const def = defs.get(row.type);
   if (def) return def.render(row, ctx);
-  const view = (viewRows() as Record<string, (data: unknown) => Parameters<typeof BlockRow>[0]>)[row.type];
+  const rows = viewRows() as Record<string, (data: unknown) => Parameters<typeof BlockRow>[0]>;
+  const view = Object.hasOwn(rows, row.type) ? rows[row.type] : undefined;
   return view ? <BlockRow {...view(row.data)} /> : generic(row.type, row.data);
 };

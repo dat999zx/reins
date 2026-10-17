@@ -19,7 +19,7 @@ const STORE: OpType<Extract<Instr, { op: 'STORE' }>> = {
       prompt: `Provide a one-paragraph decision summary for "${i.what}".`,
     };
 
-    const result = await vm.turn(session, i.step, (handed) => vm.turnText(storeStep, handed, i.top));
+    const result = await vm.turn(session, i.step, (handed) => vm.turnText(storeStep, handed, i.top ?? 0));
     if (!result) return;
 
     const summary = result.text

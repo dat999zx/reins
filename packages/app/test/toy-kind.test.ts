@@ -28,7 +28,8 @@ describe('a toy block view: one registerView call', () => {
 
   it('KINDS lists it after the built-ins', () => {
     const keys = Object.keys(KINDS);
-    expect(keys.at(-1)).toBe('beep');
+    // a real kind added later may sit after the toy (order 150 vs 140), so look at the kinds up to the toy's order
+    expect(keys.filter((k) => KINDS[k as keyof typeof KINDS].order! <= beepView.order).at(-1)).toBe('beep');
     expect(KINDS.beep!.order).toBe(beepView.order);
     expect(keys.indexOf('beep')).toBeGreaterThan(keys.indexOf('use'));
   });

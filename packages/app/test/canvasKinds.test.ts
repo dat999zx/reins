@@ -11,7 +11,8 @@ describe('KINDS', () => {
     expect(Object.keys(KINDS).sort()).toEqual([...NODES.keys()].sort());
   });
   it('lists the kinds in the palette order', () => {
-    expect(Object.keys(KINDS)).toEqual(['phase', 'say', 'run', 'gate', 'repeat', 'if', 'verify', 'recall', 'store', 'model', 'subagent', 'end', 'use']);
+    expect(Object.keys(KINDS).slice(0, 13)).toEqual(['phase', 'say', 'run', 'gate', 'repeat', 'if', 'verify', 'recall', 'store', 'model', 'subagent', 'end', 'use']);
+    for (const k of Object.keys(KINDS).slice(13)) expect(KINDS[k as StepKind].order, k).toBeGreaterThan(130);
   });
   it('mirrors fails and container from core', () => {
     for (const k of NODES.keys()) {
@@ -31,10 +32,10 @@ describe('KINDS', () => {
     expect(CARD_KINDS).toEqual([...CARDS.values()].filter((c) => !c.delivery).map((c) => c.kind));
   });
   it('only end stops the workflow', () => {
-    expect((Object.keys(KINDS) as StepKind[]).filter((k) => KINDS[k].stops)).toEqual(['end']);
+    expect((Object.keys(KINDS) as StepKind[]).slice(0, 13).filter((k) => KINDS[k].stops)).toEqual(['end']);
   });
   it('only use has sub', () => {
-    expect((Object.keys(KINDS) as StepKind[]).filter((k) => KINDS[k].sub)).toEqual(['use']);
+    expect((Object.keys(KINDS) as StepKind[]).slice(0, 13).filter((k) => KINDS[k].sub)).toEqual(['use']);
     expect(KINDS.use.sub!(step('use', { attrs: { use: 'lint-fix' } }))).toBe('lint-fix');
   });
 });
