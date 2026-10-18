@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { RunEventRecord, RunSnapshot } from '@reins/core';
+import type { Redactor } from './secrets.js';
 
 export const defaultStorePath = () => path.join(os.homedir(), '.reins', 'reins.db');
 
@@ -31,6 +32,73 @@ const toLog = (r: any): LogRow => ({
 });
 
 const sessionColumns = { autoApprove: 'auto_approve', title: 'title', engineSessionId: 'engine_session_id', model: 'model', effort: 'effort' } as const;
+
+export const KEY_IN_IDENTITY = 'That value contains a saved key, so it was not saved.';
+
+/**
+ * The same store with a known secret kept out of everything it writes and everything it returns (spec 8.3).
+ * Two kinds of field:
+ * - Content (log text, event payloads, snapshots, titles, model and effort, setting values, editor text, the log and event `type`):
+ *   redacted on the way in and on the way out.
+ * - Identity (ids, run ids, engine session ids, cwd, workflow paths, trust paths and hashes, setting names, editor-state cwd, the
+ *   keys of the per-model totals): never rewritten, because two different values would become the same placeholder and the store
+ *   looks rows up by them. A write whose identity field holds a known secret is REFUSED (throws); a lookup argument is passed
+ *   through unchanged, so it finds exactly what it names (nothing, for a secret-bearing value). A row that was written before
+ *   the key was known and has a secret in an identity field is hidden from reads, not returned with a placeholder.
+ * `appendLog` returns the row built from the redacted data, so the live stream carries what the database holds. Reads are
+ * redacted with the secrets known NOW, so a key registered after a row was written does not leave through the REST log or the
+ * SSE replay.
+ * Known limit: the bytes already on disk (the database, its write-ahead log, free pages) from before a key was registered are not
+ * scrubbed; only what is read back and what is written from now on is clean.
+ */
+export function redactingStore(store: Store, redactor: Pick<Redactor, 'redactJson' | 'has'>): Store {
+  const { redactJson: r, has } = redactor;
+  const holds = (...v: unknown[]) => v.some((x) => typeof x === 'string' && has(x));
+  const refuse = (...v: unknown[]) => { if (holds(...v)) throw new Error(KEY_IN_IDENTITY); };
+  const session = (row: SessionRow | undefined) => (row && !holds(row.id, row.cwd, row.engine, row.engineSessionId) ? r(row) : undefined);
+  return {
+    ...store,
+    createRun: (run) => { refuse(run.id, run.workflowPath, run.cwd); store.createRun(run); },
+    appendEvent: (runId, ev) => { refuse(runId, ev.id); store.appendEvent(runId, { ...ev, type: r(ev.type), data: r(ev.data) }); },
+    saveSnapshot: (runId, snap) => { refuse(runId); store.saveSnapshot(runId, r({ ...snap, events: [] })); },
+    loadRun: (runId) => {
+      const run = store.loadRun(runId);
+      return run && !holds(run.workflowPath, run.cwd) ? r(run) : undefined;
+    },
+    createSession: (s) => {
+      refuse(s.id, s.cwd, s.engine);
+      return r(store.createSession({
+        ...s,
+        ...(s.model !== undefined ? { model: r(s.model) } : {}),
+        ...(s.effort !== undefined ? { effort: r(s.effort) } : {}),
+        ...(s.title !== undefined ? { title: r(s.title) } : {}),
+      }));
+    },
+    getSession: (id) => session(store.getSession(id)),
+    listSessions: () => store.listSessions().flatMap((row) => { const s = session(row); return s ? [s] : []; }),
+    updateSession: (id, patch) => {
+      refuse(patch.engineSessionId);
+      store.updateSession(id, {
+        ...patch,
+        ...(patch.title !== undefined ? { title: r(patch.title) } : {}),
+        ...(typeof patch.model === 'string' ? { model: r(patch.model) } : {}),
+        ...(typeof patch.effort === 'string' ? { effort: r(patch.effort) } : {}),
+      });
+    },
+    appendLog: (sessionId, row) => { refuse(sessionId, row.runId); return store.appendLog(sessionId, { ...row, type: r(row.type), ...(row.data !== undefined ? { data: r(row.data) } : {}) }); },
+    readLog: (sessionId, after) => r(store.readLog(sessionId, after)),
+    sessionOfRun: (runId) => r(store.sessionOfRun(runId)),
+    isTrusted: (cwd, p, hash) => store.isTrusted(cwd, p, hash),
+    trust: (cwd, p, hash) => { refuse(cwd, p, hash); store.trust(cwd, p, hash); },
+    getEditorState: (cwd) => r(store.getEditorState(cwd)),
+    putEditorState: (cwd, json) => { refuse(cwd); store.putEditorState(cwd, r(json)); },
+    getSetting: (key) => r(store.getSetting(key)),
+    putSetting: (key, value) => { refuse(key); store.putSetting(key, r(value)); },
+    getEngineTotal: (id) => store.getEngineTotal(id),
+    putEngineTotal: (id, total, byModel) => { refuse(id, ...Object.keys(byModel ?? {})); store.putEngineTotal(id, total, byModel); },
+    getEngineModels: (id) => r(store.getEngineModels(id)),
+  };
+}
 
 /**
  * Runs and their event log, chat sessions and their timeline, and folder trust (plan 6.7, 15b 2.5, 15d 3b.3).

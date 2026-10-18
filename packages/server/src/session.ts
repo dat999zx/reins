@@ -9,6 +9,7 @@ import {
 import { askTool, driveRun, questionId, runOptions, type DriveIo, type Question } from './drive.js';
 import { contextSize, contextWindow, detachedRuns, readSetting, stillOverAfterCompaction, switchCheck, type SwitchCheck } from './settings.js';
 import type { LogRow, SessionRow, Store } from './store.js';
+import { KEY_IN_WORKFLOW, StreamRedactor, type Redactor } from './secrets.js';
 import { taggedWorkflow, type Tag, type Tagged } from './tags.js';
 import { loadWorkflow } from './run-cli.js';
 import type { FolderTrust } from './mods/types.js';
@@ -28,6 +29,10 @@ export type DescribeModel = (engine: string, model: string, used: number | undef
 export type DescribeEffort = (engine: string, id: string) => { listed: boolean; label: string };
 export interface SessionDeps {
   store: Store; makeEngine: MakeEngine; dir: string; onRow?: (row: LogRow) => void; describeModel?: DescribeModel; describeEffort?: DescribeEffort;
+  /** What workflow commands run with: `childEnv(...)`, no key and no REINS_* var. None = this process's (tests). */
+  env?: NodeJS.ProcessEnv;
+  /** Hides secrets in streamed command output and refuses to save a workflow that holds one. None = nothing is hidden (tests). */
+  redactor?: Redactor;
   /** The folder question of a provider's protocol, if it has one (spec S4: asked for the engine being opened). */
   folderTrust?: (provider: string, cwd: string) => FolderTrust | undefined;
   /** The provider a subagent runs on; none = the session's own. ponytail: plan Task 18 replaces this with the step's `provider:model` name. */
@@ -128,10 +133,15 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       refresh();
     });
   };
+  // A command's output arrives in chunks that can cut a key in two; each row must be clean by itself, so the end of a chunk that could
+  // be the start of a key is held until the next one (or until the command ends).
+  const cmdOut = deps.redactor ? new StreamRedactor(deps.redactor) : undefined;
+  const outputRow = (chunk: string) => { if (chunk) log('command_output', { chunk }, runId); };
   const io: DriveIo = {
     ask,
     say: (text) => log('say', { text }, runId),
-    write: (chunk) => log('command_output', { chunk }, runId),
+    write: (chunk) => outputRow(cmdOut ? cmdOut.push(chunk) : chunk),
+    endOutput: () => { if (cmdOut) outputRow(cmdOut.end()); },
   };
 
   const getEngine = () => {
@@ -512,6 +522,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     runId = rid;
     const opts = runOptions(io, {
       workflow: wf, engine: getEngine(), cwd, resolveBlock, session: lent, switchModel: runSwitch, setReasoning: runReasoning, openSubagent,
+      ...(deps.env ? { env: deps.env } : {}),
       onEvent: (ev) => {
         store.appendEvent(rid, ev);
         if (run) store.saveSnapshot(rid, run.snapshot());
@@ -523,7 +534,12 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     for (const c of queue.splice(0)) r.queueCard(c, 'steer');
     const save = () => store.saveSnapshot(rid, r.snapshot());
     save();
-    const out = await driveRun(r, io, save);
+    let out: Awaited<ReturnType<typeof driveRun>>;
+    try {
+      out = await driveRun(r, io, save);
+    } finally {
+      io.endOutput?.();                    // whatever a command left held back is written under this run, not the next one
+    }
     if (out.error) markDead(out.error);
     closeQuestions('the run ended');
     const cards = out.result === 'detached' ? [] : r.takeCards();
@@ -680,6 +696,8 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       if (!t.ok) {
         return { ok: false, code: 400, error: t.error, ...(t.text ? { text: t.text } : {}), ...(t.diagnostics ? { diagnostics: t.diagnostics } : {}) };
       }
+      // The generated workflow file would hold the key in plain text.
+      if (deps.redactor?.has(t.text)) return bad(KEY_IN_WORKFLOW);
       begin();
       log('message', { role: 'user', text, tags });
       start(async () => {

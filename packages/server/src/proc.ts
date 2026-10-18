@@ -5,10 +5,10 @@ import { spawnSync } from 'node:child_process';
  * running (Phase 0 P0.5b), so use taskkill /T. Elsewhere the child was spawned detached,
  * so its pid is also its process group.
  */
-export function killTree(pid: number | undefined): void {
+export function killTree(pid: number | undefined, env?: NodeJS.ProcessEnv): void {
   if (!pid) return;
   if (process.platform === 'win32') {
-    spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
+    spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true, ...(env ? { env } : {}) });
     return;
   }
   try {

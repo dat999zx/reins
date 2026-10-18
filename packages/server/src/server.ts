@@ -7,7 +7,8 @@ import { printWorkflow, type EngineProbe, type Workflow } from '@reins/core';
 import { sameToken } from './token.js';
 import { releaseLock, runningLock, takeLock } from './lock.js';
 import type { Catalog, CatalogModel } from './catalog.js';
-import { defaultProviderOf, folderTrustFrom, providerViews, startMods, type ProviderView } from './engines.js';
+import { defaultProviderOf, folderTrustFrom, keyEnvNames, providerViews, startMods, type ProviderView } from './engines.js';
+import { childEnv, type Redactor } from './secrets.js';
 import { listModels } from './models.js';
 import type { Mods } from './mods/types.js';
 import { recover } from './recover.js';
@@ -32,6 +33,10 @@ export interface ServerOptions {
   catalog?: Catalog;
   /** The loaded mods. None: the bundled ones are loaded here (tests that build a server by hand). */
   mods?: Mods;
+  /** The env workflow commands start from; the server removes the installed key names and REINS_* from it, whatever it is given. None: this process's. */
+  env?: NodeJS.ProcessEnv;
+  /** Hides secrets in what the API shows (the probe answers) and in streamed command output, and refuses workflow text that holds one. None: nothing is hidden. */
+  redactor?: Redactor;
 }
 export interface Server { port: number; token: string; url: string; close(): Promise<void> }
 
@@ -177,17 +182,19 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     const found = providers.find((p) => p.id === engine)?.efforts.find((e) => e.id === id);
     return { listed: !!found, label: found?.label ?? id };
   };
-  const deps: SessionDeps = { store: o.store, makeEngine: o.makeEngine, dir: o.dir, describeModel, describeEffort, folderTrust: folderTrustFrom(mods), onRow: (row) => { for (const f of subs) f(row); } };
+  const deps: SessionDeps = { store: o.store, makeEngine: o.makeEngine, dir: o.dir, env: childEnv(o.env ?? process.env, keyEnvNames(mods)), ...(o.redactor ? { redactor: o.redactor } : {}), describeModel, describeEffort, folderTrust: folderTrustFrom(mods), onRow: (row) => { for (const f of subs) f(row); } };
   let engines: Array<{ id: string } & EngineProbe> = [];
   let host = '';
   let origin = '';
 
   // One probe per installed provider; a probe that throws is that provider's problem line, not the server's failure.
+  // Everything a probe says (version, problems, ...) is provider text and may carry a key.
+  const hide = <T>(v: T): T => (o.redactor ? o.redactor.redactJson(v) : v);
   const probeNow = (): Promise<Array<{ id: string } & EngineProbe>> => Promise.all(providers.map(async (p) => {
     try {
-      return { id: p.id, ...(await o.probe(p.id)) };
+      return hide({ id: p.id, ...(await o.probe(p.id)) });
     } catch (e) {
-      return { id: p.id, installed: false, loggedIn: false, capabilities: { midTurnSteer: 'none' as const, preToolDeny: false, resume: false }, problems: [e instanceof Error ? e.message : String(e)] };
+      return hide({ id: p.id, installed: false, loggedIn: false, capabilities: { midTurnSteer: 'none' as const, preToolDeny: false, resume: false }, problems: [e instanceof Error ? e.message : String(e)] });
     }
   }));
 
@@ -249,7 +256,8 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     const p = url.pathname;
     if (req.method === 'GET' && p === '/api/state') {
       void catalog?.refresh(); // never rejects; a no-op inside 4 hours
-      return ok({ sessions: [...sessions.values()].map(view), engines, providers: providers.map((pr) => ({ id: pr.id, label: pr.label, defaultModel: pr.defaultModel, defaultEffort: pr.defaultEffort, efforts: pr.efforts, models: list(pr) })) });
+      // Provider and model names come from manifests and the catalog: text a mod or a provider wrote.
+      return ok(hide({ sessions: [...sessions.values()].map(view), engines, providers: providers.map((pr) => ({ id: pr.id, label: pr.label, defaultModel: pr.defaultModel, defaultEffort: pr.defaultEffort, efforts: pr.efforts, models: list(pr) })) }));
     }
     if (req.method === 'POST' && p === '/api/state/probe') { engines = await probeNow(); return ok({ engines }); }
     if (req.method === 'GET' && p === '/api/tags') return ok({ tags: tagCatalogue() });
@@ -298,7 +306,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
         const { path: p, text, create } = r.b;
         if (!str(p) || !p || !str(text)) return fail(400, 'path and text must be strings.');
         if (create !== undefined && typeof create !== 'boolean') return fail(400, 'create must be a boolean.');
-        return writeWorkflow(cwd, o.dir, p, text, create === true);
+        return writeWorkflow(cwd, o.dir, p, text, create === true, o.redactor?.has);
       }
       if (req.method === 'POST' && m[2] === 'preview') {
         const r = await parse(req);

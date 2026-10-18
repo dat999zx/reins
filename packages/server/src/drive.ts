@@ -10,7 +10,11 @@ import { runCommand } from './commands.js';
 export interface Question { id: string; kind: 'gate' | 'budget' | 'resume' | 'tool' | 'judge' | 'trust' | 'switch' | 'usd'; prompt: string; detail?: string;
   /** Who asks, when not the run's own agent (a subagent, D); the card shows it. */
   title?: string }
-export interface DriveIo { ask(q: Question): Promise<string | null>; say(line: string): void; write(chunk: string): void }
+export interface DriveIo {
+  ask(q: Question): Promise<string | null>; say(line: string): void; write(chunk: string): void;
+  /** A command's output is over: whatever `write` was holding back (the start of a possible key) can go out. */
+  endOutput?(): void;
+}
 
 export type Answer =
   | { t: 'approve' }
@@ -166,9 +170,11 @@ export function runOptions(io: DriveIo, o: {
   switchModel?: RunOptions['switchModel'];
   setReasoning?: RunOptions['setReasoning'];
   openSubagent?: RunOptions['openSubagent'];
+  /** What workflow commands run with: the callers pass `childEnv(...)`, so no key and no REINS_* var reaches them. */
+  env?: NodeJS.ProcessEnv;
 }): RunOptions {
   const { cwd } = o;
-  const startCommit = git(cwd, ['rev-parse', 'HEAD']).trim();
+  const startCommit = git(cwd, ['rev-parse', 'HEAD'], o.env).trim();
   return {
     workflow: o.workflow,
     engine: o.engine,
@@ -180,25 +186,30 @@ export function runOptions(io: DriveIo, o: {
     ...(o.openSubagent ? { openSubagent: o.openSubagent } : {}),
     commandRunner: async (cmd) => {
       io.say(`$ ${cmd}`);
-      const r = await runCommand(cmd, { cwd, onOutput: (s) => io.write(s) });
+      let r: Awaited<ReturnType<typeof runCommand>>;
+      try {
+        r = await runCommand(cmd, { cwd, ...(o.env ? { env: o.env } : {}), onOutput: (s) => io.write(s) });
+      } finally {
+        io.endOutput?.();                  // even when the command fails: what was held back is written under this run
+      }
       io.say(r.exitCode === 0 ? '✓ passed' : `✗ failed (exit ${r.exitCode})`);
       return r;
     },
     judge: (c, ev) => askJudge(io, c, ev),
-    diffLines: async () => (startCommit ? diffLines(cwd, startCommit) : 0),
+    diffLines: async () => (startCommit ? diffLines(cwd, startCommit, o.env) : 0),
     onEvent: o.onEvent,
   };
 }
 
-function git(cwd: string, args: string[]): string {
-  const r = spawnSync('git', args, { cwd, encoding: 'utf8', windowsHide: true });
+function git(cwd: string, args: string[], env?: NodeJS.ProcessEnv): string {
+  const r = spawnSync('git', args, { cwd, encoding: 'utf8', windowsHide: true, ...(env ? { env } : {}) });
   return r.status === 0 ? r.stdout : '';
 }
 
 /** `git diff --numstat` against the run's start commit: added plus removed lines. */
-function diffLines(cwd: string, base: string): number {
+function diffLines(cwd: string, base: string, env?: NodeJS.ProcessEnv): number {
   // ponytail: untracked new files are not counted; add `git add -N` if that matters.
-  return git(cwd, ['diff', '--numstat', base]).split('\n').reduce((n, l) => {
+  return git(cwd, ['diff', '--numstat', base], env).split('\n').reduce((n, l) => {
     const [a, r] = l.split('\t');
     return n + (Number(a) || 0) + (Number(r) || 0);
   }, 0);

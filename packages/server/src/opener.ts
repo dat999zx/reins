@@ -4,10 +4,10 @@ import path from 'node:path';
 export const URL_PATTERN = /^http:\/\/127\.0\.0\.1:\d+\/#token=[0-9a-f]{64}$/;
 
 export interface Spawned { on(event: 'error', listener: (e: Error) => void): unknown; unref(): void }
-export type Spawn = (command: string, args: string[], options: { shell: false; detached: true; stdio: 'ignore'; windowsHide: true }) => Spawned;
+export type Spawn = (command: string, args: string[], options: { shell: false; detached: true; stdio: 'ignore'; windowsHide: true; env?: NodeJS.ProcessEnv }) => Spawned;
 
 /** Never puts the URL on a command line on darwin/linux: a browser's argv is readable by other local users. */
-export function openUrl(url: string, o: { platform: string; dir: string; spawn: Spawn; err: (line: string) => void }): void {
+export function openUrl(url: string, o: { platform: string; dir: string; spawn: Spawn; err: (line: string) => void; /** What the opener runs with (`childEnv(...)`); none = this process's. */ env?: NodeJS.ProcessEnv }): void {
   const paste = () => o.err(`Open this address in your browser: ${url}`);
   if (!URL_PATTERN.test(url)) return paste();
   let command: string;
@@ -26,7 +26,7 @@ export function openUrl(url: string, o: { platform: string; dir: string; spawn: 
   } else {
     return;
   }
-  const child = o.spawn(command, args, { shell: false, detached: true, stdio: 'ignore', windowsHide: true });
+  const child = o.spawn(command, args, { shell: false, detached: true, stdio: 'ignore', windowsHide: true, ...(o.env ? { env: o.env } : {}) });
   child.on('error', paste);
   child.unref();
 }

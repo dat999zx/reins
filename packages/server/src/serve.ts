@@ -5,7 +5,9 @@ import type { LockInfo } from './lock.js';
 import type { Mods } from './mods/types.js';
 import { startServer } from './server.js';
 import type { MakeEngine } from './session.js';
-import { openStore } from './store.js';
+import { Redactor } from './secrets.js';
+import { redactEnvNames } from './engines.js';
+import { openStore, redactingStore } from './store.js';
 
 export interface ServeOptions {
   home: string;
@@ -22,15 +24,19 @@ export interface ServeOptions {
   open?: (url: string) => void;
   /** The network fetch for the model catalog; none = the cached copy only, no network call. */
   fetch?: typeof fetch;
+  /** The injected env (cli.ts `io.env`): the source of env keys to hide, and of what workflow commands get. None: this process's. */
+  env?: NodeJS.ProcessEnv;
 }
 
 /** `reins serve`: one server per machine (serve.lock), until `stop`. Returns the exit code. */
 export async function runServe(o: ServeOptions): Promise<number> {
   const dir = path.join(o.home, '.reins');
-  const store = openStore(path.join(dir, 'reins.db'));
+  const env = o.env ?? process.env;
+  const redactor = new Redactor({ home: dir, env, keyEnvNames: () => redactEnvNames(o.mods) });
+  const store = redactingStore(openStore(path.join(dir, 'reins.db')), redactor);
   try {
     const server = await startServer({
-      store, dir, mods: o.mods, makeEngine: o.makeEngine, probe: o.probe, lockFile: path.join(dir, 'serve.lock'),
+      store, dir, mods: o.mods, env, redactor, makeEngine: o.makeEngine, probe: o.probe, lockFile: path.join(dir, 'serve.lock'),
       catalog: createCatalog({ file: path.join(dir, 'models-dev-cache.json'), ...(o.fetch ? { fetch: o.fetch } : {}) }),
       ...(o.port !== undefined ? { port: o.port } : {}),
       ...(o.appDir ? { appDir: o.appDir } : {}), ...(o.pickFolder ? { pickFolder: o.pickFolder } : {}),

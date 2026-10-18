@@ -7,13 +7,15 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Readable, Writable } from 'node:stream';
 import { printWorkflow } from '@reins/core';
 import { doctor, doctorMods } from './doctor.js';
-import { defaultProviderOf, makeEngineFrom, probeFrom, providerViews, startMods } from './engines.js';
+import { defaultProviderOf, keyEnvNames, makeEngineFrom, probeFrom, providerViews, redactEnvNames, startMods } from './engines.js';
+import type { Mods } from './mods/types.js';
+import { childEnv, KEY_IN_WORKFLOW, Redactor } from './secrets.js';
 import { openUrl } from './opener.js';
 import { pickFolder } from './picker.js';
 import { runServe } from './serve.js';
 import { formatDiagnostic, loadWorkflow, startRunCli } from './run-cli.js';
 import { readSetting } from './settings.js';
-import { defaultStorePath, openStore } from './store.js';
+import { defaultStorePath, openStore, redactingStore } from './store.js';
 
 const USAGE = `usage:
   reins                  (opens the app: starts the server and your browser)
@@ -50,19 +52,37 @@ function parseArgs(argv: string[], booleans: string[]) {
 }
 
 export async function main(argv: string[], io: Io): Promise<number> {
-  const out = (s: string) => io.stdout.write(s + '\n');
-  const err = (s: string) => io.stderr.write(s + '\n');
-  const [cmd, ...rest] = argv;
-  const { pos, flags } = parseArgs(rest, ['yes', 'write', 'no-probe']);
   // The Reins folder: mods, the code cache, the store and the lock live here.
   const home = io.env.REINS_HOME ?? os.homedir();
   const dir = path.join(home, '.reins');
 
-  if (cmd === '--version' || cmd === '-v') {
+  if (argv[0] === '--version' || argv[0] === '-v') {
     // src/ and dist/ both sit one level under the package root
-    out(JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
+    io.stdout.write(JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version + '\n');
     return 0;
   }
+
+  // The mods are loaded first for every command: the redactor needs the key names of all of them (a rejected mod included), because
+  // everything the CLI prints, an error message too, passes through it.
+  const mods = await startMods({ dir, env: io.env });
+  const redactor = new Redactor({ home: dir, env: io.env, keyEnvNames: () => redactEnvNames(mods) });
+  try {
+    return await dispatch(argv, io, { home, dir, mods, redactor });
+  } catch (e) {
+    // The entry point prints a rejection's message; it must not carry a key.
+    throw new Error(redactor.redact(e instanceof Error ? e.message : String(e)));
+  } finally {
+    mods.dispose();
+  }
+}
+
+async function dispatch(argv: string[], io: Io, c: { home: string; dir: string; mods: Mods; redactor: Redactor }): Promise<number> {
+  const { home, dir, mods, redactor } = c;
+  const out = (s: string) => io.stdout.write(redactor.redact(s) + '\n');
+  const err = (s: string) => io.stderr.write(redactor.redact(s) + '\n');
+  const [cmd, ...rest] = argv;
+  const { pos, flags } = parseArgs(rest, ['yes', 'write', 'no-probe']);
+  const children = () => childEnv(io.env, keyEnvNames(mods));
 
   if (cmd === 'check' && pos[0]) {
     const file = path.resolve(pos[0]);
@@ -80,28 +100,20 @@ export async function main(argv: string[], io: Io): Promise<number> {
       return 1;
     }
     const text = printWorkflow(workflow);
-    if (flags.write) fs.writeFileSync(file, text);
-    else io.stdout.write(text);
+    if (flags.write) {
+      if (redactor.has(text)) {
+        err(KEY_IN_WORKFLOW);
+        return 1;
+      }
+      fs.writeFileSync(file, text);
+    }
+    else io.stdout.write(redactor.redact(text));
     return 0;
   }
 
-  if (cmd === 'doctor' && flags['no-probe']) {
-    const mods = await startMods({ dir, env: io.env });
-    try {
-      return doctorMods(out, mods) ? 0 : 1;
-    } finally {
-      mods.dispose();
-    }
-  }
+  if (cmd === 'doctor' && flags['no-probe']) return doctorMods(out, mods) ? 0 : 1;
 
-  if (cmd === 'doctor') {
-    const mods = await startMods({ dir, env: io.env });
-    try {
-      return (await doctor(out, mods, { env: io.env, home: dir })) ? 0 : 1;
-    } finally {
-      mods.dispose();
-    }
-  }
+  if (cmd === 'doctor') return (await doctor(out, mods, { env: io.env, home: dir })) ? 0 : 1;
 
   if (cmd === 'serve' || cmd === undefined) {
     const raw = flags.port === undefined ? undefined : String(flags.port);
@@ -116,49 +128,42 @@ export async function main(argv: string[], io: Io): Promise<number> {
     const bare = cmd === undefined;
     const open = io.open ?? ((url: string) => {
       try {
-        openUrl(url, { platform: process.platform, dir: path.join(home, '.reins'), spawn, err });
+        openUrl(url, { platform: process.platform, dir: path.join(home, '.reins'), spawn, err, env: children() });
       } catch {
         err(`Open this address in your browser: ${url}`);
       }
     });
-    const mods = await startMods({ dir, env: io.env });
     const host = { env: io.env, home: dir };
-    try {
-      return await runServe({
-        home, mods,
-        ...(raw !== undefined ? { port: Number(raw) } : {}),
-        ...(appDir ? { appDir } : {}),
-        pickFolder: (signal) => pickFolder(signal),
-        ...(io.fetch ? { fetch: io.fetch } : {}),
-        ...(bare ? { open } : {}),
-        makeEngine: makeEngineFrom(mods, host),
-        probe: (provider) => probeFrom(mods, provider, host),
-        out, err,
-        stop: io.stop ?? new Promise<void>((resolve) => {
-          process.once('SIGINT', () => resolve());
-          process.once('SIGTERM', () => resolve());
-        }),
-      });
-    } finally {
-      mods.dispose();
-    }
+    return await runServe({
+      home, mods,
+      ...(raw !== undefined ? { port: Number(raw) } : {}),
+      ...(appDir ? { appDir } : {}),
+      pickFolder: (signal) => pickFolder(signal, { env: children() }),
+      ...(io.fetch ? { fetch: io.fetch } : {}),
+      env: io.env,
+      ...(bare ? { open } : {}),
+      makeEngine: makeEngineFrom(mods, host),
+      probe: (provider) => probeFrom(mods, provider, host),
+      out, err,
+      stop: io.stop ?? new Promise<void>((resolve) => {
+        process.once('SIGINT', () => resolve());
+        process.once('SIGTERM', () => resolve());
+      }),
+    });
   }
 
   if (cmd === 'run' && (pos[0] || typeof flags.resume === 'string')) {
-    const mods = await startMods({ dir, env: io.env });
     const installed = providerViews(mods);
     const named = typeof flags.provider === 'string' ? flags.provider : undefined;
     if (named !== undefined && !installed.some((p) => p.id === named)) {
       err(`No provider \`${named}\` is installed.`);
-      mods.dispose();
       return 1;
     }
-    const store = openStore(defaultStorePath());
+    const store = redactingStore(openStore(defaultStorePath()), redactor);
     const provider = named ?? defaultProviderOf(installed, readSetting(store, 'defaultProvider'))?.id;
     if (!provider) {
       err('No provider is installed.');
       store.close();
-      mods.dispose();
       return 1;
     }
     const engineOf = makeEngineFrom(mods, { env: io.env, home: dir });
@@ -169,6 +174,8 @@ export async function main(argv: string[], io: Io): Promise<number> {
       input: io.stdin,
       output: io.stdout,
       store,
+      redactor,
+      env: children(),
       yes: flags.yes === true,
       makeEngine: (cb) => {
         const model = typeof flags.model === 'string' ? flags.model : undefined;
@@ -187,7 +194,6 @@ export async function main(argv: string[], io: Io): Promise<number> {
     } finally {
       process.off('SIGINT', onSigint);
       store.close();
-      mods.dispose();
     }
   }
 

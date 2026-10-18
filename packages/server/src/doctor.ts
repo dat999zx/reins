@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
-import { probeFrom, providerViews } from './engines.js';
+import { keyEnvNames, probeFrom, providerViews } from './engines.js';
+import { childEnv } from './secrets.js';
 import type { EngineHost, Mods } from './mods/types.js';
 
 /** `reins doctor` (plan 15b 2.7). Prints one line per check; returns false if Reins cannot run. */
@@ -36,7 +37,7 @@ export async function doctor(say: (s: string) => void, mods: Mods, host: Pick<En
     }
   }
 
-  const knowl = run('knowl', ['--version']);
+  const knowl = run('knowl', ['--version'], childEnv(host.env, keyEnvNames(mods)));
   say(`knowl      ${knowl ?? 'not found: recall and store steps do nothing'}`);
   return ok;
 }
@@ -54,8 +55,8 @@ export function doctorMods(say: (s: string) => void, loaded: Mods): boolean {
   return ok;
 }
 
-function run(cmd: string, args: string[]): string | undefined {
+function run(cmd: string, args: string[], env: NodeJS.ProcessEnv): string | undefined {
   // Through the shell so Windows finds knowl.cmd; the words are fixed, never user input.
-  const r = spawnSync([cmd, ...args].join(' '), { encoding: 'utf8', shell: true, windowsHide: true, timeout: 15_000 });
+  const r = spawnSync([cmd, ...args].join(' '), { encoding: 'utf8', shell: true, windowsHide: true, timeout: 15_000, env });
   return r.status === 0 ? `${r.stdout}${r.stderr}`.trim().split('\n')[0] : undefined;
 }

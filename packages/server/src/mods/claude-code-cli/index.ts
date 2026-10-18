@@ -17,10 +17,11 @@ export default function activate(api: ModApi): void {
     capabilities: { ...CAPABILITIES },
     engine: (_p, host) => claudeEngine({
       bin: findClaude(host.env)?.path ?? '',
+      ...(host.helperEnv ? { helperEnv: host.helperEnv } : {}),
       ...(host.model ? { model: host.model } : {}), ...(host.effort ? { effort: host.effort } : {}),
       onApprove: host.onApprove, onLive: host.onLive,
     }),
-    probe: (_p, host) => probeClaude(findClaude(host.env)?.path ?? ''),
+    probe: (_p, host) => probeClaude(findClaude(host.env)?.path ?? '', host.helperEnv),
     folderTrust: (cwd): FolderTrust | undefined => {
       const f = folderHash(cwd);
       return f && { ...f, ...WORDS, key: FOLDER_PATH };

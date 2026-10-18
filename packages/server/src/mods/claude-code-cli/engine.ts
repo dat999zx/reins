@@ -16,6 +16,8 @@ import { createStreamParser } from './stream.js';
 export interface ClaudeConfig {
   /** The real claude binary (findClaude), or '' when none was found. */
   bin: string;
+  /** The env the kill helpers (taskkill) run with: the host's `helperEnv`. The claude process itself keeps the inherited env. */
+  helperEnv?: NodeJS.ProcessEnv;
   model?: string;
   effort?: string;
   /** Asks the user about a tool call Claude Code would prompt for (plan 8.2 approvals). */
@@ -213,7 +215,7 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
       events.push({ type: 'error', message: dead });
       // ponytail: a turn with no provider total (an interrupt kill, a crash) logs no cost; its spend lands, once, in the next counted turn.
       endTurn({ text: '', events });
-      killTree(child.pid);
+      killTree(child.pid, cfg.helperEnv);
     },
 
     events: {
@@ -224,7 +226,7 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
     async close() {
       dead ??= 'closed';
       child.stdin.end();
-      const t = setTimeout(() => killTree(child.pid), 5_000);
+      const t = setTimeout(() => killTree(child.pid, cfg.helperEnv), 5_000);
       if (!exited) await exit;
       clearTimeout(t);
       await hooks.close();
@@ -235,16 +237,16 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
 }
 
 /** `claude --version`, then a one-turn call; login state comes only from the CLI's own output (plan D4). */
-export async function probeClaude(bin: string): Promise<EngineProbe> {
+export async function probeClaude(bin: string, helperEnv?: NodeJS.ProcessEnv): Promise<EngineProbe> {
   const base = { capabilities: { ...CAPABILITIES } };
   if (!bin) {
     return { ...base, installed: false, loggedIn: false, problems: ['claude not found. Install Claude Code (npm i -g @anthropic-ai/claude-code), or set REINS_CLAUDE to the claude binary.'] };
   }
-  const v = await capture(bin, ['--version'], 30_000);
+  const v = await capture(bin, ['--version'], 30_000, helperEnv);
   if (v.code !== 0) return { ...base, installed: false, loggedIn: false, problems: [`${bin} --version failed: ${v.err.trim() || v.out.trim()}`] };
   const version = /\d+\.\d+\.\d+/.exec(v.out)?.[0];
 
-  const r = await capture(bin, ['-p', 'Reply with the word OK.', '--max-turns', '1', '--output-format', 'stream-json', '--verbose', '--model', 'haiku'], 120_000);
+  const r = await capture(bin, ['-p', 'Reply with the word OK.', '--max-turns', '1', '--output-format', 'stream-json', '--verbose', '--model', 'haiku'], 120_000, helperEnv);
   const lines = r.out.split('\n').flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } });
   const init = lines.find((m) => m.type === 'system' && m.subtype === 'init');
   const result = lines.find((m) => m.type === 'result');
@@ -259,7 +261,7 @@ export async function probeClaude(bin: string): Promise<EngineProbe> {
   return { ...base, installed: true, ...(version ? { version } : {}), loggedIn, problems };
 }
 
-function capture(bin: string, args: string[], timeoutMs: number): Promise<{ code: number; out: string; err: string }> {
+function capture(bin: string, args: string[], timeoutMs: number, helperEnv?: NodeJS.ProcessEnv): Promise<{ code: number; out: string; err: string }> {
   return new Promise((resolve) => {
     const [cmd, a] = claudeCommand(bin, args);
     const c = spawn(cmd, a, { shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -267,7 +269,7 @@ function capture(bin: string, args: string[], timeoutMs: number): Promise<{ code
     let err = '';
     c.stdout.on('data', (d) => (out += d));
     c.stderr.on('data', (d) => (err += d));
-    const t = setTimeout(() => killTree(c.pid), timeoutMs);
+    const t = setTimeout(() => killTree(c.pid, helperEnv), timeoutMs);
     c.on('error', (e) => { clearTimeout(t); resolve({ code: 127, out, err: e.message }); });
     c.on('close', (code) => { clearTimeout(t); resolve({ code: code ?? 1, out, err }); });
   });

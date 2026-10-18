@@ -14,6 +14,8 @@ export interface EngineHost {
   onLive(e: EngineEvent): void;
   /** The injected env (cli.ts `io.env`), never `process.env` directly (spec S2). */
   env: NodeJS.ProcessEnv;
+  /** `env` without the installed key names and REINS_* (childEnv): what helper processes (taskkill) run with. The provider's own process keeps `env`. */
+  helperEnv?: NodeJS.ProcessEnv;
   /** The Reins home (`<REINS_HOME>/.reins`). */
   home: string;
 }
@@ -39,7 +41,7 @@ export interface Protocol {
   capabilities: EngineProbe['capabilities'];
   engine(p: ProviderManifest, h: EngineHost): Engine;
   /** A probe opens no conversation, so it needs only the environment. */
-  probe?(p: ProviderManifest, h: Pick<EngineHost, 'env' | 'home'>): Promise<EngineProbe>;
+  probe?(p: ProviderManifest, h: Pick<EngineHost, 'env' | 'helperEnv' | 'home'>): Promise<EngineProbe>;
   folderTrust?(cwd: string): FolderTrust | undefined;
 }
 

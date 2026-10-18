@@ -9,6 +9,7 @@ import {
   type RunEventRecord, type RunStatus, type ToolRequest, type Workflow,
 } from '@reins/core';
 import { askTool, driveRun, indent, runOptions, type DriveIo } from './drive.js';
+import { StreamRedactor, type Redactor } from './secrets.js';
 import type { Store } from './store.js';
 
 export interface RunCliOptions {
@@ -22,7 +23,14 @@ export interface RunCliOptions {
   makeEngine: (io: { onApprove: (r: ToolRequest) => Promise<Decision>; onLive: (e: EngineEvent) => void }) => Engine;
   /** Approve gates and terminal judge questions without asking. Never touches guards or tool approvals. */
   yes?: boolean;
+  /** Everything written to `output` passes through this (the secrets redactor). None = written as given. */
+  redactor?: Pick<Redactor, 'redact' | 'safeLength'>;
+  /** What workflow commands run with (`childEnv(...)`); none = this process's. */
+  env?: NodeJS.ProcessEnv;
 }
+
+// A partial line that has not seen its newline is written once it is this long. It is already redacted by then, so the cut is safe.
+const LINE_MAX = 64 * 1024;
 
 export interface RunCliResult {
   runId: string;
@@ -33,7 +41,38 @@ export interface RunCliResult {
 
 /** `reins run` in the terminal (plan 15b 2.6). */
 export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; sigint: () => void } {
-  const say = (s: string) => o.output.write(s + '\n');
+  // The one place output leaves `reins run`: `say` and command output both end here, so both are redacted.
+  const sink = (s: string) => { o.output.write(o.redactor ? o.redactor.redact(s) : s); };
+  // Command output comes in chunks that can cut a key in two. The stream redactor holds back only the end of a chunk that could be the
+  // start of a key; what it lets through is redacted BEFORE `indent` (which would put spaces inside a multi-line key) and is
+  // written in whole lines.
+  const stream = o.redactor ? new StreamRedactor(o.redactor) : undefined;
+  let line = '';
+  const flushLine = () => {
+    if (!line) return;
+    sink(indent(line));
+    line = '';
+  };
+  // ponytail: a held key start is written after a `say` that came in between, and a physical line over 64 KB gets a second indent for its
+  // continuation (cosmetic); the sink redacts already-redacted output again (a key whose value looks like a `[key NAME]` marker would be wrapped twice).
+  const say = (s: string) => {
+    flushLine();               // a partial line only; what the stream redactor holds (a possible key start) stays held
+    sink(s + '\n');
+  };
+  const writeOutput = (s: string) => {
+    line += stream ? stream.push(s) : s;
+    const nl = line.lastIndexOf('\n');
+    if (nl >= 0) {
+      sink(indent(line.slice(0, nl + 1)));
+      line = line.slice(nl + 1);
+    }
+    if (line.length > LINE_MAX) flushLine();
+  };
+  /** The output is over (a command ended, or the run did): everything held goes out. */
+  const endOutput = () => {
+    if (stream) line += stream.end();
+    flushLine();
+  };
 
   // One reader for the terminal: a line answers the oldest open question, else it is a card.
   const asks: Array<(line: string | null) => void> = [];
@@ -67,7 +106,8 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
       return ask(q.prompt);
     },
     say,
-    write: (s) => o.output.write(indent(s)),
+    write: writeOutput,
+    endOutput,
   };
 
   let sigints = 0;
@@ -90,6 +130,7 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
     try {
       return await main();
     } finally {
+      endOutput();
       rl.close();
     }
   })();
@@ -128,6 +169,7 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
     const engine = o.makeEngine({ onApprove: (r) => askTool(io, r), onLive: printLive });
     const runOpts = runOptions(io, {
       workflow, engine, cwd, resolveBlock: loaded.resolveBlock,
+      ...(o.env ? { env: o.env } : {}),
       onEvent: (ev) => {
         o.store.appendEvent(runId, ev);
         if (run) o.store.saveSnapshot(runId, run.snapshot());

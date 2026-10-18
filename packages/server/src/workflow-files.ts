@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { compileProgram, compileTurn, NODES, parseWorkflow, printCond, printWorkflow, type Step } from '@reins/core';
 import { loadWorkflowText } from './run-cli.js';
+import { KEY_IN_WORKFLOW } from './secrets.js';
 import { under } from './session.js';
 
 export type Scope = 'project' | 'user';
@@ -61,9 +62,11 @@ export function readWorkflow(cwd: string, dir: string, p: string): Reply {
   return { status: 200, body: { path: r.abs, text, diagnostics: loadWorkflowText(text, r.abs).diagnostics } };
 }
 
-export function writeWorkflow(cwd: string, dir: string, p: string, text: string, create: boolean): Reply {
+/** `hasKey`: true when the text holds a known key (the redactor's `has`); such text is refused, not written. */
+export function writeWorkflow(cwd: string, dir: string, p: string, text: string, create: boolean, hasKey?: (text: string) => boolean): Reply {
   const r = resolveWorkflowPath(cwd, dir, p, { forWrite: true });
   if ('error' in r) return reply(r);
+  if (hasKey?.(text)) return reply(denied(400, KEY_IN_WORKFLOW));
   // ponytail: a link swapped in between the check and this write is followed; local attackers only. O_NOFOLLOW if it matters.
   try {
     fs.writeFileSync(r.abs, text, create ? { flag: 'wx' } : {});

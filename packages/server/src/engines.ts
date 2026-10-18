@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { EngineProbe } from '@reins/core';
 import { loadMods } from './mods/loader.js';
+import { childEnv } from './secrets.js';
 import type { EngineHost, LoadedMod, Mods, Protocol, ProviderManifest } from './mods/types.js';
 import type { MakeEngine, SessionDeps } from './session.js';
 
@@ -22,19 +23,37 @@ function resolve(mods: Mods, provider: string): { manifest: ProviderManifest; pr
   return manifest && protocol ? { manifest, protocol } : undefined;
 }
 
+/** Every env var name any installed provider asks for its key (`auth.keyEnv`): the names `childEnv` drops and the redactor reads. */
+export const keyEnvNames = (mods: Mods): string[] =>
+  [...new Set(mods.registry.ids('provider').flatMap((id) => manifestOf(mods, id)?.auth?.keyEnv ?? []))];
+
+/**
+ * Every env var name that ANY scanned manifest lists in `auth.keyEnv`, including a mod that was rejected (its problem line can echo
+ * the value) and a name that fails the key-name pattern. Only the redactor uses this: a rejected mod must not take a variable
+ * away from workflow commands, so `childEnv` takes `keyEnvNames` above.
+ */
+export const redactEnvNames = (mods: Mods): string[] => {
+  const names = new Set<string>(keyEnvNames(mods));
+  for (const m of mods.mods) {
+    const list = (m.manifest as { auth?: { keyEnv?: unknown } } | undefined)?.auth?.keyEnv;
+    if (Array.isArray(list)) for (const n of list) if (typeof n === 'string' && n !== '' && n.length <= 200) names.add(n);
+  }
+  return [...names];
+};
+
 /** The engine factory sessions use. Synchronous: a session's microtask order depends on it. */
 export function makeEngineFrom(mods: Mods, base: Pick<EngineHost, 'env' | 'home'>): MakeEngine {
   return ({ provider, ...rest }) => {
     const found = resolve(mods, provider);
     if (!found) throw new Error(`The provider "${provider}" is not installed.`);
-    return found.protocol.engine(found.manifest, { ...base, ...rest });
+    return found.protocol.engine(found.manifest, { ...base, helperEnv: childEnv(base.env, keyEnvNames(mods)), ...rest });
   };
 }
 
 export async function probeFrom(mods: Mods, provider: string, base: Pick<EngineHost, 'env' | 'home'>): Promise<EngineProbe> {
   const found = resolve(mods, provider);
   if (!found?.protocol.probe) throw new Error(`The provider "${provider}" cannot be probed.`);
-  return found.protocol.probe(found.manifest, base);
+  return found.protocol.probe(found.manifest, { ...base, helperEnv: childEnv(base.env, keyEnvNames(mods)) });
 }
 
 export const folderTrustFrom = (mods: Mods): NonNullable<SessionDeps['folderTrust']> =>
