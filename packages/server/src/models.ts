@@ -3,7 +3,7 @@ import type { CatalogModel } from './catalog.js';
 export interface PickerModel { id: string; label: string; window?: number }
 
 /**
- * The picker's list, after Hermes's `_anthropic_catalog`: the provider's models first, in file order (its label wins),
+ * The picker's list, after Hermes's model catalog: the provider's models first, in file order (its label wins),
  * then catalog extras: tool-call models, no dated ids (`-YYYYMMDD`), newest first, the whole list at most `limit` long
  * (the provider's own models are never cut). `window` is the catalog's context size.
  * ponytail: the picker can list an id the CLI rejects; a switch whose first reply fails is undone (session.ts).

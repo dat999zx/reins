@@ -220,7 +220,7 @@ describe.skipIf(skip)('live run e2e', () => {
 
     // L1b: correctness on a scrollable replay; the 500-row measurements run manually in spike/verify/live/perf.mjs.
     expect(await log.locator('.sx-nowbar [role="status"]').count()).toBe(1);
-    const c = await fetch(new URL('/api/sessions', srv.url), { method: 'POST', headers: { Authorization: `Bearer ${srv.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd: folderB, engine: 'claude' }) }).then(async (r) => { expect(r.ok).toBe(true); return r.json(); }) as { id: string };
+    const c = await fetch(new URL('/api/sessions', srv.url), { method: 'POST', headers: { Authorization: `Bearer ${srv.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd: folderB, engine: 'claude-code' }) }).then(async (r) => { expect(r.ok).toBe(true); return r.json(); }) as { id: string };
     const initialSeq = store!.readLog(c.id).at(-1)?.seq ?? 0;
     const add = (type: string, data: unknown, runId?: string) => store!.appendLog(c.id, { type, data, ...(runId ? { runId } : {}) });
     for (let turn = 0; turn < 6; turn++) {

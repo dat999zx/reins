@@ -61,7 +61,7 @@ export function testEngine(script: TestTurn[] = []) {
   state.release = () => freeze?.();
 
   state.makeEngine = ({ onApprove, onLive }) => ({
-    id: 'claude',
+    id: 'test',
     probe: async () => ({ installed: true, loggedIn: true, capabilities: { midTurnSteer: 'hook', preToolDeny: true, resume: true }, problems: [] }),
     open: async (opts) => {
       state.opens.push(opts);

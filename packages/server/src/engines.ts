@@ -50,10 +50,16 @@ export interface ProviderView {
   /** The curated models, in picker order. */
   models: Array<{ id: string; label: string }>;
   catalog?: string;
+  /** The manifest asks to be the default provider. */
+  default?: boolean;
   /** USD per million tokens, as the provider bills them. */
   prices: Record<string, { input: number; cacheWrite?: number }>;
   cacheWritePerInput?: number;
 }
+
+/** The provider new sessions use: the one the user chose (`defaultProvider` setting) if installed, else the one whose manifest says `default`, else the first installed. */
+export const defaultProviderOf = (views: ProviderView[], chosen: string): ProviderView | undefined =>
+  views.find((p) => p.id === chosen) ?? views.find((p) => p.default) ?? views[0];
 
 /** Every installed provider, by id. */
 export const providerViews = (mods: Mods): ProviderView[] =>
@@ -65,6 +71,7 @@ export const providerViews = (mods: Mods): ProviderView[] =>
       efforts: (m.efforts ?? []).map((e) => ({ id: e.id, label: e.label })),
       models: m.models.map((x) => ({ id: x.id, label: x.label ?? x.id })),
       ...(m.catalog ? { catalog: m.catalog } : {}),
+      ...(m.default ? { default: true } : {}),
       prices: Object.fromEntries(m.models.flatMap((x) => (x.price ? [[x.id, { input: x.price.input, ...(x.price.cacheWrite !== undefined ? { cacheWrite: x.price.cacheWrite } : {}) }]] : []))),
       ...(m.cacheWritePerInput !== undefined ? { cacheWritePerInput: m.cacheWritePerInput } : {}),
     }];

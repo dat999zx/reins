@@ -13,7 +13,7 @@ export interface ServeOptions {
   mods: Mods;
   port?: number;
   makeEngine: MakeEngine;
-  probe: () => Promise<EngineProbe>;
+  probe: (provider: string) => Promise<EngineProbe>;
   out: (line: string) => void;
   err: (line: string) => void;
   stop: Promise<void>;

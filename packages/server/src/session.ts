@@ -156,7 +156,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     const s = live;
     if (!s) return;
     live = undefined;
-    log('note', { text: `Claude's session was dropped (${why}); the next message starts it again.` });
+    log('note', { text: `The provider's session was dropped (${why}); the next message starts it again.` });
     retire(s);
   }
 

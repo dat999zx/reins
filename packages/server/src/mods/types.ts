@@ -82,6 +82,8 @@ export interface ProviderManifest extends Manifest {
   kind: 'provider';
   protocol: string;
   baseUrl: string;
+  /** The provider new sessions use when the user has not chosen one (`defaultProvider` setting). */
+  default?: boolean;
   modelsUrl?: string;
   auth?: { style: string; keyEnv: string[] };
   headers?: Record<string, string>;

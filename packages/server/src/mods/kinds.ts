@@ -96,6 +96,7 @@ registerKind({
 
     const base = typeof raw.baseUrl === 'string' ? origin(raw.baseUrl) : undefined;
     if (base === undefined) bad(`\`baseUrl\` must be an http or https address (got ${show(raw.baseUrl ?? null)}).`);
+    if (raw.default !== undefined && typeof raw.default !== 'boolean') bad('`default` must be true or false.');
     if (raw.modelsUrl !== undefined) {
       const m = typeof raw.modelsUrl === 'string' ? origin(raw.modelsUrl) : undefined;
       if (m === undefined) bad(`\`modelsUrl\` must be an http or https address (got ${show(raw.modelsUrl)}).`);

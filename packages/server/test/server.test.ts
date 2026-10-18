@@ -10,6 +10,7 @@ import { openStore } from '../src/store.js';
 import { takeLock } from '../src/lock.js';
 import { tagCatalogue } from '../src/tags.js';
 import { fakeSetup, until } from './helpers.js';
+import { tempHome } from './mods-harness.js';
 import { askedQuestion, boot, cleanup, openStream, PROBE, request, tmpDir } from './http-helpers.js';
 
 afterEach(cleanup);
@@ -22,7 +23,7 @@ describe('auth, Host and Origin (3b.6 1514-1521, 1552)', () => {
   it('every /api request needs the bearer token; without it nothing is created', async () => {
     const w = await boot();
     const post = (headers: Record<string, string>) =>
-      request(w.srv, 'POST', '/api/sessions', { body: { cwd: w.cwd, engine: 'claude' }, auth: false, headers });
+      request(w.srv, 'POST', '/api/sessions', { body: { cwd: w.cwd, engine: 'claude-code' }, auth: false, headers });
     expect((await post({})).status).toBe(401);
     expect((await post({ authorization: `Bearer ${'0'.repeat(64)}` })).status).toBe(401);
     expect((await post({ authorization: w.srv.token })).status).toBe(401);
@@ -134,12 +135,12 @@ describe('body cap, errors and headers (3b.6 1520-1521, 1552)', () => {
     const file = path.join(w.cwd, '.fake-script.json');
     const create = (body: unknown) => w.api('POST', '/api/sessions', { body });
     const cases: Array<[string, number, Promise<{ status: number }>]> = [
-      ['no cwd', 400, create({ engine: 'claude' })],
-      ['relative cwd', 400, create({ cwd: 'rel', engine: 'claude' })],
-      ['missing folder', 400, create({ cwd: path.join(w.cwd, 'nope'), engine: 'claude' })],
-      ['cwd is a file', 400, create({ cwd: file, engine: 'claude' })],
+      ['no cwd', 400, create({ engine: 'claude-code' })],
+      ['relative cwd', 400, create({ cwd: 'rel', engine: 'claude-code' })],
+      ['missing folder', 400, create({ cwd: path.join(w.cwd, 'nope'), engine: 'claude-code' })],
+      ['cwd is a file', 400, create({ cwd: file, engine: 'claude-code' })],
       ['engine codex', 400, create({ cwd: w.cwd, engine: 'codex' })],
-      ['model not a string', 400, create({ cwd: w.cwd, engine: 'claude', model: 5 })],
+      ['model not a string', 400, create({ cwd: w.cwd, engine: 'claude-code', model: 5 })],
       ['array body', 400, w.api('POST', '/api/sessions', { raw: '[]' })],
       ['message without text', 400, w.post(id, 'message', {})],
       ['message with blank text', 400, w.post(id, 'message', { text: '  ' })],
@@ -153,7 +154,7 @@ describe('body cap, errors and headers (3b.6 1520-1521, 1552)', () => {
       ['settings autoApprove', 400, w.post(id, 'settings', { autoApprove: 'yes' })],
       ['run without a path', 400, w.post(id, 'run', {})],
       ['run with a missing relative path', 400, w.post(id, 'run', { path: 'missing.reins.md' })],
-      ['cwd with a NUL byte', 400, create({ cwd: `${w.cwd}\0x`, engine: 'claude' })],
+      ['cwd with a NUL byte', 400, create({ cwd: `${w.cwd}\0x`, engine: 'claude-code' })],
       ['a body that is not JSON', 400, w.api('POST', `/api/sessions/${id}/message`, { raw: '{"text": "x' })],
       ['resume without a runId', 400, w.post(id, 'resume', {})],
       ['resume an unknown run', 409, w.post(id, 'resume', { runId: 'nope' })],
@@ -182,22 +183,22 @@ describe('state, probing and sessions (3b.6 1526-1528, 1543)', () => {
     await until(() => w.rows(id, 'turn_ended').length === 1);
     expect(w.store.getSession(id)!.engineSessionId).toEqual(expect.any(String));
     const s = await w.api('GET', '/api/state');
-    expect(s.json.engines).toEqual([{ id: 'claude', ...PROBE }]);
-    expect(s.json.sessions).toEqual([expect.objectContaining({ id, cwd: w.cwd, engine: 'claude', model: 'sonnet', title: 't', autoApprove: false, status: 'idle' })]);
+    expect(s.json.engines).toEqual([{ id: 'claude-code', ...PROBE }]);
+    expect(s.json.sessions).toEqual([expect.objectContaining({ id, cwd: w.cwd, engine: 'claude-code', model: 'sonnet', title: 't', autoApprove: false, status: 'idle' })]);
     expect(s.text).not.toContain('engineSessionId');
     await w.api('GET', '/api/state');
     await w.api('GET', '/api/state');
     expect(w.probes()).toBe(1);
     const p = await w.api('POST', '/api/state/probe');
     expect(w.probes()).toBe(2);
-    expect(p.json).toEqual({ engines: [{ id: 'claude', ...PROBE }] });
+    expect(p.json).toEqual({ engines: [{ id: 'claude-code', ...PROBE }] });
   });
 
   it('/api/state lists the providers with their models and nothing else of them', async () => {
     const w = await boot();
     const s = await w.api('GET', '/api/state');
     expect(s.json.providers).toEqual([{
-      id: 'claude', label: 'Claude', defaultModel: 'claude-sonnet-5-5', defaultEffort: 'medium',
+      id: 'claude-code', label: 'Claude', defaultModel: 'claude-sonnet-5-5', defaultEffort: 'medium',
       efforts: [
         { id: 'low', label: 'Low' }, { id: 'medium', label: 'Medium' }, { id: 'high', label: 'High' },
         { id: 'xhigh', label: 'Extra high' }, { id: 'max', label: 'Max' },
@@ -366,7 +367,7 @@ describe('state, probing and sessions (3b.6 1526-1528, 1543)', () => {
   it('a probe that throws becomes an installed:false entry instead of stopping the server', async () => {
     const w = await boot([], { probe: async () => { throw new Error('no claude here'); } });
     const s = await w.api('GET', '/api/state');
-    expect(s.json.engines).toEqual([expect.objectContaining({ id: 'claude', installed: false, problems: [expect.stringContaining('no claude here')] })]);
+    expect(s.json.engines).toEqual([expect.objectContaining({ id: 'claude-code', installed: false, problems: [expect.stringContaining('no claude here')] })]);
   });
 
   it('a second answer to the same question is 409, and the first one still decides', async () => {
@@ -495,7 +496,7 @@ describe('workflows, tags and the lock (3b.5 1485, 3b.6 1498, 3b.3 1554)', () =>
   it('start runs recover on the log it finds: the open question is closed and the session is idle again', async () => {
     const dir = tmpDir();
     const store = openStore(':memory:');
-    store.createSession({ id: 's1', cwd: dir, engine: 'claude' });
+    store.createSession({ id: 's1', cwd: dir, engine: 'claude-code' });
     store.appendLog('s1', { type: 'question', data: { id: 'q', kind: 'tool', prompt: 'p' } });
     store.appendLog('s1', { type: 'status', data: { status: 'waiting' } });
     const srv = await startServer({ store, dir, probe: async () => PROBE, makeEngine: () => { throw new Error('never opened'); } });
@@ -508,7 +509,7 @@ describe('workflows, tags and the lock (3b.5 1485, 3b.6 1498, 3b.3 1554)', () =>
   it('a second instance is refused before recover writes anything, and it does not release the first one\'s lock', async () => {
     const dir = tmpDir();
     const store = openStore(':memory:');
-    store.createSession({ id: 's1', cwd: dir, engine: 'claude' });
+    store.createSession({ id: 's1', cwd: dir, engine: 'claude-code' });
     store.appendLog('s1', { type: 'question', data: { id: 'q', kind: 'tool', prompt: 'p' } });
     const lockFile = path.join(dir, 'serve.lock');
     expect(takeLock(lockFile, { pid: process.pid, port: 4242, token: 'tok' })).toEqual({ ok: true });
@@ -521,5 +522,59 @@ describe('workflows, tags and the lock (3b.5 1485, 3b.6 1498, 3b.3 1554)', () =>
     expect(store.readLog('s1').map((r) => r.type)).toEqual(['question']);
     expect(fs.existsSync(lockFile)).toBe(true);
     store.close();
+  });
+});
+
+describe('the server names no provider: the default, an unknown one, one probe each', () => {
+  // A second provider, `loopy`, on the bundled protocol, in the Reins folder's mods.
+  const withLoopy = async (setting?: string) => {
+    const home = tempHome();
+    home.writeMod('loopy', { reins: 1, id: 'loopy', kind: 'provider', version: '1.0.0', label: 'Loopy', protocol: 'claude-code-cli', baseUrl: 'http://127.0.0.1:1', defaultModel: 'lm', models: [{ id: 'lm' }], defaultEffort: 'e1', efforts: [{ id: 'e1', label: 'E1' }] });
+    const store = openStore(':memory:');
+    if (setting !== undefined) store.putSetting('defaultProvider', setting);
+    const probed: string[] = [];
+    const srv = await startServer({ store, dir: home.home, probe: async (id) => { probed.push(id); return PROBE; }, makeEngine: () => { throw new Error('never opened'); } });
+    const create = (body: Record<string, unknown>) => request(srv, 'POST', '/api/sessions', { body: { cwd: home.home, ...body } });
+    return { srv, store, probed, create, done: async () => { await srv.close(); store.close(); home.cleanup(); } };
+  };
+
+  it('a request with no engine uses the provider whose manifest says default', async () => {
+    const x = await withLoopy();
+    const r = await x.create({});
+    expect(r.status).toBe(200);
+    expect(r.json.engine).toBe('claude-code');
+    await x.done();
+  });
+
+  it('a request with no engine uses the defaultProvider setting when that provider is installed', async () => {
+    const x = await withLoopy('loopy');
+    const r = await x.create({});
+    expect(r.json).toMatchObject({ engine: 'loopy', model: 'lm', effort: 'e1' });
+    await x.done();
+  });
+
+  it('a defaultProvider setting that names nothing installed falls back to the manifest default', async () => {
+    const x = await withLoopy('gone');
+    expect((await x.create({})).json.engine).toBe('claude-code');
+    await x.done();
+  });
+
+  it('an engine that is not installed is a 400 with the words, and no session is made', async () => {
+    const x = await withLoopy();
+    const r = await x.create({ engine: 'x' });
+    expect(r.status).toBe(400);
+    expect(r.json).toEqual({ error: 'No provider `x` is installed.' });
+    expect((await x.create({ engine: 5 })).status).toBe(400);
+    expect(x.store.listSessions()).toEqual([]);
+    await x.done();
+  });
+
+  it('start probes each installed provider exactly once, and /api/state lists a result for each', async () => {
+    const x = await withLoopy();
+    expect([...x.probed].sort()).toEqual(['claude-code', 'loopy']);
+    const s = await request(x.srv, 'GET', '/api/state');
+    expect(s.json.engines.map((e: { id: string }) => e.id).sort()).toEqual(['claude-code', 'loopy']);
+    expect(x.probed).toHaveLength(2);
+    await x.done();
   });
 });

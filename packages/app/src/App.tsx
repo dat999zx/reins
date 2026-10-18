@@ -1,15 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import type { EngineProbe } from '@reins/core';
 import type { LogRow } from '@reins/server/store.js';
 import type { TagEntry } from '@reins/server/tags.js';
 import { ApiError, get, initToken, post, stream } from './api.js';
 import { Chat, type Provider } from './Chat.js';
 import { loadEditorState, makeSaver, type EditorState, type Tab } from './editorState.js';
+import { ProviderBanner, type Engines } from './ProviderBanner.js';
 import { Rail } from './Rail.js';
 import { afterOf, finishReplay, initial, loadSessions, pageTitle, reduceAll, takeRefill, type SessionView, type State } from './state.js';
 
 const loadedAt = Date.now();
-type Engines = Array<{ id: string } & EngineProbe>;
 
 const fromHash = () => new URLSearchParams(location.hash.slice(1)).get('s');
 const toHash = (id: string) => {
@@ -141,7 +140,7 @@ export function App() {
 
   const start = async (cwd: string) => {
     try {
-      const v = await post<SessionView>('/api/sessions', { cwd, engine: 'claude' });
+      const v = await post<SessionView>('/api/sessions', { cwd });
       commit(loadSessions(stRef.current, [v]));
       select(v.id);
     } catch (e) {
@@ -176,13 +175,12 @@ export function App() {
   if (!token) return <div className="center"><h1>Reins</h1><p>Open the address <code>reins</code> printed.</p></div>;
   if (!ready) return <div className="center"><p>{reconnecting ? 'Reconnecting…' : 'Loading…'}</p></div>;
 
-  const problem = engines[0] && (!engines[0].installed || !engines[0].loggedIn) ? engines[0] : undefined;
   const sess = selected ? st.sessions[selected] : undefined;
 
   return (
     <div className="app">
       {reconnecting && <div className="banner warn" role="status">Reconnecting to the server…</div>}
-      {problem && <div className="banner bad" role="alert">{problem.problems.join(' ') || 'The engine is not ready.'}</div>}
+      <ProviderBanner engines={engines} engine={sess?.engine} />
       {notice && <div className="banner bad" role="alert">{notice}</div>}
       <div className="cols">
         <Rail

@@ -29,7 +29,7 @@ function setup(script: TestTurn[] = [], o: { cwd?: string; dir?: string; autoApp
   const seen: LogRow[] = [];
   const dir = o.dir ?? tmp();
   const cwd = o.cwd ?? tmp();
-  const row = store.createSession({ id: 's1', cwd, engine: 'claude', ...(o.model ? { model: o.model } : {}), ...(o.effort ? { effort: o.effort } : {}) });
+  const row = store.createSession({ id: 's1', cwd, engine: 'claude-code', ...(o.model ? { model: o.model } : {}), ...(o.effort ? { effort: o.effort } : {}) });
   const s = openSession({ store, makeEngine, folderTrust: t.folderTrust, dir, onRow: (r) => seen.push(r), ...(o.describe ? { describeModel: o.describe } : {}), ...(o.levelLabel ? { describeEffort: (_e: string, id: string) => ({ listed: true, label: o.levelLabel!(id) }) } : {}) }, row, true);
   const reopen = () => openSession({ store, makeEngine, folderTrust: t.folderTrust, dir, onRow: (r) => seen.push(r), ...(o.describe ? { describeModel: o.describe } : {}), ...(o.levelLabel ? { describeEffort: (_e: string, id: string) => ({ listed: true, label: o.levelLabel!(id) }) } : {}) }, store.getSession('s1')!);
   if (o.autoApprove) s.settings({ autoApprove: true });
@@ -696,7 +696,7 @@ describe('/resume (3b.6, 3b.7)', () => {
   it('is 409 for an unknown run, another session\'s run, and a run that has ended', async () => {
     const x = setup([{ text: 'REINS: done' }]);
     expect(x.s.resume('nope')).toMatchObject({ ok: false, code: 409 });
-    x.store.createSession({ id: 's2', cwd: x.cwd, engine: 'claude' });
+    x.store.createSession({ id: 's2', cwd: x.cwd, engine: 'claude-code' });
     x.store.appendLog('s2', { type: 'run_started', runId: 'r9' });
     x.store.createRun({ id: 'r9', workflowPath: '', cwd: x.cwd });
     x.store.saveSnapshot('r9', { events: [] } as any);
@@ -1570,7 +1570,7 @@ describe('compress (B)', () => {
       const eng = t.makeEngine(e);
       return { ...eng, open: async (o) => { const s = await eng.open(o); delete s.compact; return s; } };
     };
-    const row = store.createSession({ id: 's1', cwd: tmp(), engine: 'claude' });
+    const row = store.createSession({ id: 's1', cwd: tmp(), engine: 'claude-code' });
     const s = openSession({ store, makeEngine, dir: tmp() }, row, true);
     s.message('one');
     await s.idle();
@@ -2095,7 +2095,7 @@ describe('subagent (D)', () => {
     await go(x);
     const q = await x.question('resume');
     expect(says(x)).toContain('⏸ subagent-1: the subagent stopped before it answered (boom); Resume runs it on');
-    expect(x.data('note').map((d) => d.text as string).filter((t) => t.includes("Claude's session was dropped"))).toEqual([]);
+    expect(x.data('note').map((d) => d.text as string).filter((t) => t.includes("The provider's session was dropped"))).toEqual([]);
     x.s.answer(q.id, 'stop');
     await x.s.idle();
     expect(x.rows('run_stopped')).toHaveLength(1);

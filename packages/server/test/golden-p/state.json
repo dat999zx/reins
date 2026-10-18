@@ -128,7 +128,7 @@
           "label": "Max"
         }
       ],
-      "id": "claude",
+      "id": "claude-code",
       "label": "Claude",
       "models": [
         {

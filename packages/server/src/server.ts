@@ -7,7 +7,7 @@ import { printWorkflow, type EngineProbe, type Workflow } from '@reins/core';
 import { sameToken } from './token.js';
 import { releaseLock, runningLock, takeLock } from './lock.js';
 import type { Catalog, CatalogModel } from './catalog.js';
-import { folderTrustFrom, providerViews, startMods, type ProviderView } from './engines.js';
+import { defaultProviderOf, folderTrustFrom, providerViews, startMods, type ProviderView } from './engines.js';
 import { listModels } from './models.js';
 import type { Mods } from './mods/types.js';
 import { recover } from './recover.js';
@@ -22,7 +22,8 @@ export interface ServerOptions {
   store: Store;
   makeEngine: MakeEngine;
   dir: string;
-  probe: () => Promise<EngineProbe>;
+  /** Probes one installed provider, by id. */
+  probe: (provider: string) => Promise<EngineProbe>;
   port?: number;
   lockFile?: string;
   heartbeatMs?: number;
@@ -181,13 +182,16 @@ export async function startServer(o: ServerOptions): Promise<Server> {
   let host = '';
   let origin = '';
 
-  const probeNow = async (): Promise<Array<{ id: string } & EngineProbe>> => {
+  // One probe per installed provider; a probe that throws is that provider's problem line, not the server's failure.
+  const probeNow = (): Promise<Array<{ id: string } & EngineProbe>> => Promise.all(providers.map(async (p) => {
     try {
-      return [{ id: 'claude', ...(await o.probe()) }];
+      return { id: p.id, ...(await o.probe(p.id)) };
     } catch (e) {
-      return [{ id: 'claude', installed: false, loggedIn: false, capabilities: { midTurnSteer: 'none', preToolDeny: false, resume: false }, problems: [e instanceof Error ? e.message : String(e)] }];
+      return { id: p.id, installed: false, loggedIn: false, capabilities: { midTurnSteer: 'none' as const, preToolDeny: false, resume: false }, problems: [e instanceof Error ? e.message : String(e)] };
     }
-  };
+  }));
+
+  const defaultProvider = () => defaultProviderOf(providers, readSetting(o.store, 'defaultProvider'));
 
   const view = (s: Session) => {
     const r = s.info();
@@ -200,12 +204,14 @@ export async function startServer(o: ServerOptions): Promise<Server> {
   function create(b: Body): Reply {
     if (!str(b.cwd) || !path.isAbsolute(b.cwd)) return fail(400, 'cwd must be an absolute path.');
     if (b.cwd.includes('\0') || !fs.statSync(b.cwd, { throwIfNoEntry: false })?.isDirectory()) return fail(400, 'cwd is not a folder.');
-    if (b.engine !== 'claude') return fail(400, "engine must be 'claude'.");
+    if (b.engine !== undefined && !str(b.engine)) return fail(400, 'engine must be a string.');
+    const provider = b.engine === undefined ? defaultProvider() : providers.find((p) => p.id === b.engine);
+    if (!provider) return fail(400, b.engine === undefined ? 'No provider is installed.' : `No provider \`${b.engine}\` is installed.`);
     for (const k of ['model', 'effort', 'title'] as const) if (b[k] !== undefined && !str(b[k])) return fail(400, `${k} must be a string.`);
     const row = o.store.createSession({
-      id: randomBytes(6).toString('hex'), cwd: b.cwd, engine: 'claude',
-      model: str(b.model) ? b.model : providers.find((p) => p.id === 'claude')!.defaultModel,
-      effort: str(b.effort) ? b.effort : providers.find((p) => p.id === 'claude')!.defaultEffort, ...(str(b.title) ? { title: b.title } : {}),
+      id: randomBytes(6).toString('hex'), cwd: b.cwd, engine: provider.id,
+      model: str(b.model) ? b.model : provider.defaultModel,
+      effort: str(b.effort) ? b.effort : provider.defaultEffort, ...(str(b.title) ? { title: b.title } : {}),
     });
     const s = openSession(deps, row, true);
     sessions.set(row.id, s);

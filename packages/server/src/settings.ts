@@ -15,6 +15,8 @@ export const SETTINGS = {
   // The fraction of the window at which a reply is preceded by a compression. 1 is off: at 100 % the window is already full.
   autoCompressAt: { default: 0.9, valid: (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 1 },
   // A subagent's tool request: a card on the parent run (ask), or refused with a note and a hook row (deny, Hermes's default).
+  // The provider a new session uses when the request names none. '' = the provider whose manifest says `default`, else the first installed.
+  defaultProvider: { default: '', valid: (v: unknown) => typeof v === 'string' },
   subagentApprovals: { default: 'ask' as 'ask' | 'deny', valid: (v: unknown) => v === 'ask' || v === 'deny' },
 };
 

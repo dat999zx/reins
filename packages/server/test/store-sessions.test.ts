@@ -12,9 +12,9 @@ const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'reins-store-'));
 describe('sessions and the session log (3b.3)', () => {
   it('sessions round trip: create, get, list oldest first, update', () => {
     const s = openStore(':memory:');
-    const a = s.createSession({ id: 'a', cwd: 'C:\\p', engine: 'claude', model: 'm', effort: 'high', title: 'first' });
-    expect(a).toEqual({ id: 'a', cwd: 'C:\\p', engine: 'claude', model: 'm', effort: 'high', title: 'first', autoApprove: false, createdAt: expect.any(Number), updatedAt: expect.any(Number) });
-    s.createSession({ id: 'b', cwd: 'C:\\q', engine: 'claude' });
+    const a = s.createSession({ id: 'a', cwd: 'C:\\p', engine: 'claude-code', model: 'm', effort: 'high', title: 'first' });
+    expect(a).toEqual({ id: 'a', cwd: 'C:\\p', engine: 'claude-code', model: 'm', effort: 'high', title: 'first', autoApprove: false, createdAt: expect.any(Number), updatedAt: expect.any(Number) });
+    s.createSession({ id: 'b', cwd: 'C:\\q', engine: 'claude-code' });
     expect(s.getSession('b')).toEqual(expect.objectContaining({ id: 'b', autoApprove: false }));
     expect(s.getSession('b')).not.toHaveProperty('model');
     expect(s.getSession('zzz')).toBeUndefined();
@@ -28,7 +28,7 @@ describe('sessions and the session log (3b.3)', () => {
 
   it('the model can be set and cleared', () => {
     const s = openStore(':memory:');
-    s.createSession({ id: 'a', cwd: '.', engine: 'claude' });
+    s.createSession({ id: 'a', cwd: '.', engine: 'claude-code' });
     s.updateSession('a', { model: 'x' });
     expect(s.getSession('a')!.model).toBe('x');
     s.updateSession('a', { model: null });
@@ -103,8 +103,8 @@ describe('sessions and the session log (3b.3)', () => {
 
   it('the log: seq counts per session from 1, data round trips, readLog(after) is exclusive', () => {
     const s = openStore(':memory:');
-    s.createSession({ id: 'a', cwd: '.', engine: 'claude' });
-    s.createSession({ id: 'b', cwd: '.', engine: 'claude' });
+    s.createSession({ id: 'a', cwd: '.', engine: 'claude-code' });
+    s.createSession({ id: 'b', cwd: '.', engine: 'claude-code' });
     expect(s.appendLog('a', { type: 'message', data: { role: 'user', text: 'hi' } })).toEqual({ sessionId: 'a', seq: 1, ts: expect.any(Number), type: 'message', data: { role: 'user', text: 'hi' } });
     s.appendLog('a', { type: 'run_started', runId: 'r1', data: { x: 1 } });
     s.appendLog('a', { type: 'status', data: { status: 'idle' } });
@@ -121,7 +121,7 @@ describe('sessions and the session log (3b.3)', () => {
     const dir = tmp();
     const file = path.join(dir, 'x.db');
     const s = openStore(file);
-    s.createSession({ id: 'a', cwd: '.', engine: 'claude' });
+    s.createSession({ id: 'a', cwd: '.', engine: 'claude-code' });
     s.appendLog('a', { type: 'note' });
     s.appendLog('a', { type: 'note' });
     s.close();
@@ -150,7 +150,7 @@ describe('sessions and the session log (3b.3)', () => {
 
   it('sessionOfRun finds the session that owns a run id', () => {
     const s = openStore(':memory:');
-    s.createSession({ id: 'a', cwd: '.', engine: 'claude' });
+    s.createSession({ id: 'a', cwd: '.', engine: 'claude-code' });
     s.appendLog('a', { type: 'run_started', runId: 'r9' });
     expect(s.sessionOfRun('r9')).toBe('a');
     expect(s.sessionOfRun('nope')).toBeUndefined();
@@ -159,7 +159,7 @@ describe('sessions and the session log (3b.3)', () => {
 
   it('reins run --resume refuses a run that belongs to a chat session (3b.3)', async () => {
     const s = openStore(':memory:');
-    s.createSession({ id: 'sess1', cwd: '.', engine: 'claude' });
+    s.createSession({ id: 'sess1', cwd: '.', engine: 'claude-code' });
     s.appendLog('sess1', { type: 'run_started', runId: 'r9' });
     s.createRun({ id: 'r9', workflowPath: 'x', cwd: '.' });
     const output = new PassThrough();

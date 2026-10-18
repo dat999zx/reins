@@ -41,21 +41,21 @@ describe('the claude mods', () => {
     expect(mods.problems).toEqual([]);
     expect(mods.mods.map((m) => [m.id, m.kind, m.source, m.problems])).toEqual([
       ['claude-code-cli', 'protocol', 'bundled', []],
-      ['claude', 'provider', 'bundled', []],
+      ['claude-code', 'provider', 'bundled', []],
     ]);
     expect(mods.registry.has('protocol-impl', 'claude-code-cli')).toBe(true);
-    expect(mods.registry.has('provider', 'claude')).toBe(true);
+    expect(mods.registry.has('provider', 'claude-code')).toBe(true);
   });
 
   it('finds the claude provider with its models, and every provider has a default model and a default level that it lists', async () => {
     const views = providerViews(await start());
-    expect(views.find((p) => p.id === 'claude')?.models.map((m) => m.id)).toEqual(['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1']);
+    expect(views.find((p) => p.id === 'claude-code')?.models.map((m) => m.id)).toEqual(['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1']);
     expect(views.length).toBeGreaterThan(0);
     for (const p of views) {
       expect(p.models.map((m) => m.id), p.id).toContain(p.defaultModel);
       expect(p.efforts.map((e) => e.id), p.id).toContain(p.defaultEffort);
     }
-    expect(views.find((p) => p.id === 'claude')!.efforts.map((e) => e.id)).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
+    expect(views.find((p) => p.id === 'claude-code')!.efforts.map((e) => e.id)).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
   });
 
   it('the probe and the engine find the CLI through the INJECTED env, never the real one (PATH is empty here)', async () => {
@@ -63,14 +63,14 @@ describe('the claude mods', () => {
     const env = { REINS_CLAUDE: FAKE_CLAUDE, PATH: '' };
     const mods = await start(env);
     const host = { env, home: tmp() };
-    expect(await probeFrom(mods, 'claude', host)).toMatchObject({ installed: true, version: '2.1.281', loggedIn: true });
-    const engine = makeEngineFrom(mods, host)({ provider: 'claude', onApprove: async () => ({ behavior: 'allow' }), onLive: () => {} });
+    expect(await probeFrom(mods, 'claude-code', host)).toMatchObject({ installed: true, version: '2.1.281', loggedIn: true });
+    const engine = makeEngineFrom(mods, host)({ provider: 'claude-code', onApprove: async () => ({ behavior: 'allow' }), onLive: () => {} });
     expect(await engine.probe()).toMatchObject({ installed: true, version: '2.1.281' });
   }, 60_000);
 
   it('makeEngine is synchronous: it returns the engine itself, not a promise', async () => {
     const mods = await start({ REINS_CLAUDE: FAKE_CLAUDE, PATH: '' });
-    const made = makeEngineFrom(mods, { env: { REINS_CLAUDE: FAKE_CLAUDE, PATH: '' }, home: tmp() })({ provider: 'claude', onApprove: async () => ({ behavior: 'allow' }), onLive: () => {} });
+    const made = makeEngineFrom(mods, { env: { REINS_CLAUDE: FAKE_CLAUDE, PATH: '' }, home: tmp() })({ provider: 'claude-code', onApprove: async () => ({ behavior: 'allow' }), onLive: () => {} });
     expect(made).not.toBeInstanceOf(Promise);
     expect(made.id).toBe('claude');
     expect(typeof made.open).toBe('function');
@@ -111,7 +111,7 @@ describe('folder trust follows the protocol of the engine being opened', () => {
   });
 
   it('the claude provider in the same folder does ask (the control for the test above)', async () => {
-    const x = sessionOn(await start(), 'claude', claudeFolder());
+    const x = sessionOn(await start(), 'claude-code', claudeFolder());
     x.s.message('hi');
     await until(() => x.asked().some((q) => q.kind === 'trust'), 5000);
     expect(x.t.opens).toHaveLength(0);
@@ -121,7 +121,7 @@ describe('folder trust follows the protocol of the engine being opened', () => {
   });
 
   it('S4: a CLI subagent opened from a session whose main engine is a loopy provider STILL asks the folder question', async () => {
-    const x = sessionOn(await withLoopy(), 'loopy', claudeFolder(), { subagentProvider: () => 'claude', describeModel: (_e: string, m: string) => ({ listed: true, label: m }) });
+    const x = sessionOn(await withLoopy(), 'loopy', claudeFolder(), { subagentProvider: () => 'claude-code', describeModel: (_e: string, m: string) => ({ listed: true, label: m }) });
     const wf = '---\nreins: 1\nname: sub\nbudget: { turns: 10, minutes: 10, usd: 2.00 }\nalways: []\n---\n\n## subagent research\nmodel: model-h\n> Look.\n';
     const file = path.join(x.store.getSession('s1')!.cwd, 'w.reins.md');
     fs.writeFileSync(file, wf);

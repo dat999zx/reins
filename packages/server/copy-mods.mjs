@@ -11,6 +11,8 @@ const manifests = (dir) =>
   !fs.existsSync(dir) ? [] : fs.readdirSync(dir, { recursive: true }).filter((f) => path.basename(f) === 'mod.json').map(String).sort();
 
 const src = manifests(from);
+// A renamed or deleted mod must not linger in dist/mods from an earlier build.
+for (const f of manifests(to)) if (!src.includes(f)) fs.rmSync(path.dirname(path.join(to, f)), { recursive: true, force: true });
 for (const f of src) {
   fs.mkdirSync(path.dirname(path.join(to, f)), { recursive: true });
   fs.copyFileSync(path.join(from, f), path.join(to, f));

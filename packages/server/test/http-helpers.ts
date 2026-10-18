@@ -139,7 +139,7 @@ export async function boot(turns: FakeTurn[] = [], o: BootOptions = {}) {
   return {
     srv, store, dir, cwd, fake, api, probes: () => probes,
     async session(extra: Record<string, unknown> = {}): Promise<string> {
-      const r = await api('POST', '/api/sessions', { body: { cwd, engine: 'claude', ...extra } });
+      const r = await api('POST', '/api/sessions', { body: { cwd, engine: 'claude-code', ...extra } });
       if (r.status !== 200) throw new Error(`POST /api/sessions: ${r.status} ${r.text}`);
       return r.json.id as string;
     },

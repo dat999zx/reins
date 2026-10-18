@@ -160,7 +160,7 @@ describe('P pins: the provider surfaces', () => {
       describeEffort.push({ effort, status: r.status, ...(r.status === 200 ? { note: (w.rows(id, 'note').at(-1)!.data as { text: string }).text } : { error: r.json.error }) });
     }
 
-    const provider = providerViews(await startMods({ dir: tmpDir(), env: {} })).find((p) => p.id === 'claude')!;
+    const provider = providerViews(await startMods({ dir: tmpDir(), env: {} })).find((p) => p.id === 'claude-code')!;
     const catalog = createCatalog({ file }).models('anthropic');
     const prices = Object.fromEntries([...provider.models.map((x) => x.id), 'claude-extra-9', 'claude-extra-8'].map((m) => [m, priceFor(provider, catalog, m, 10_000) ?? null]));
     golden('state', { providers, describeModel, describeEffort, prices });
@@ -169,15 +169,15 @@ describe('P pins: the provider surfaces', () => {
   it('session: the defaults POST /api/sessions answers, and the 400 for another engine', async () => {
     const w = await boot();
     const scrub = (j: Record<string, unknown>) => ({ ...j, id: typeof j.id, cwd: j.cwd === w.cwd ? '<CWD>' : j.cwd, createdAt: typeof j.createdAt, updatedAt: typeof j.updatedAt });
-    const plain = await w.api('POST', '/api/sessions', { body: { cwd: w.cwd, engine: 'claude' } });
-    const named = await w.api('POST', '/api/sessions', { body: { cwd: w.cwd, engine: 'claude', model: 'claude-opus-5-5', effort: 'max', title: 'T' } });
+    const plain = await w.api('POST', '/api/sessions', { body: { cwd: w.cwd, engine: 'claude-code' } });
+    const named = await w.api('POST', '/api/sessions', { body: { cwd: w.cwd, engine: 'claude-code', model: 'claude-opus-5-5', effort: 'max', title: 'T' } });
     const other = await w.api('POST', '/api/sessions', { body: { cwd: w.cwd, engine: 'openai' } });
     const none = await w.api('POST', '/api/sessions', { body: { cwd: w.cwd } });
     golden('session', {
       plain: { status: plain.status, body: scrub(plain.json) },
       named: { status: named.status, body: scrub(named.json) },
       otherEngine: { status: other.status, body: other.json },
-      noEngine: { status: none.status, body: none.json },
+      noEngine: { status: none.status, body: none.status === 200 ? scrub(none.json) : none.json },
     });
   });
 });
@@ -204,7 +204,7 @@ describe('P pins: folder trust', () => {
     const cwd = folder({ '.claude/settings.json': SETTINGS });
     const store = openStore(':memory:');
     const t = testEngine([{ text: 'ok' }]);
-    const row = store.createSession({ id: 's1', cwd, engine: 'claude' });
+    const row = store.createSession({ id: 's1', cwd, engine: 'claude-code' });
     const s = openSession({ store, makeEngine: t.makeEngine, folderTrust: t.folderTrust, dir: tmp(), onRow: () => {} }, row, true);
     s.message('hi');
     const q = await askedQuestion(store, 's1', 'trust');

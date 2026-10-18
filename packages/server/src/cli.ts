@@ -7,24 +7,23 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Readable, Writable } from 'node:stream';
 import { printWorkflow } from '@reins/core';
 import { doctor, doctorMods } from './doctor.js';
-import { makeEngineFrom, probeFrom, startMods } from './engines.js';
-import { serveMcp } from './mods/claude-code-cli/mcp.js';
+import { defaultProviderOf, makeEngineFrom, probeFrom, providerViews, startMods } from './engines.js';
 import { openUrl } from './opener.js';
 import { pickFolder } from './picker.js';
 import { runServe } from './serve.js';
 import { formatDiagnostic, loadWorkflow, startRunCli } from './run-cli.js';
+import { readSetting } from './settings.js';
 import { defaultStorePath, openStore } from './store.js';
 
 const USAGE = `usage:
   reins                  (opens the app: starts the server and your browser)
-  reins run <file> [--engine claude] [--model <m>] [--effort <e>] [--yes]
+  reins run <file> [--provider <id>] [--model <m>] [--effort <e>] [--yes]
   reins run --resume <runId>
   reins check <file>
   reins print <file> [--write]
   reins doctor [--no-probe]   (--no-probe: load the mods and list them; no model call)
   reins --version
-  reins serve [--port <n>]   (the local server the UI talks to; prints its address)
-  reins mcp            (internal: the approval MCP server Claude starts)`;
+  reins serve [--port <n>]   (the local server the UI talks to; prints its address)`;
 
 interface Io {
   stdout: Writable;
@@ -96,13 +95,12 @@ export async function main(argv: string[], io: Io): Promise<number> {
   }
 
   if (cmd === 'doctor') {
-    return (await doctor(out, io.env, home)) ? 0 : 1;
-  }
-
-  if (cmd === 'mcp') {
-    serveMcp(io.stdin, io.stdout, io.env.REINS_APPROVE_URL ?? '');
-    await new Promise((r) => io.stdin.on('end', r));
-    return 0;
+    const mods = await startMods({ dir, env: io.env });
+    try {
+      return (await doctor(out, mods, { env: io.env, home: dir })) ? 0 : 1;
+    } finally {
+      mods.dispose();
+    }
   }
 
   if (cmd === 'serve' || cmd === undefined) {
@@ -134,7 +132,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
         ...(io.fetch ? { fetch: io.fetch } : {}),
         ...(bare ? { open } : {}),
         makeEngine: makeEngineFrom(mods, host),
-        probe: () => probeFrom(mods, 'claude', host),
+        probe: (provider) => probeFrom(mods, provider, host),
         out, err,
         stop: io.stop ?? new Promise<void>((resolve) => {
           process.once('SIGINT', () => resolve());
@@ -147,13 +145,23 @@ export async function main(argv: string[], io: Io): Promise<number> {
   }
 
   if (cmd === 'run' && (pos[0] || typeof flags.resume === 'string')) {
-    if (flags.engine && flags.engine !== 'claude') {
-      err(`The ${flags.engine} engine is not in Phase 2; only claude is (the Codex adapter is Phase 5).`);
+    const mods = await startMods({ dir, env: io.env });
+    const installed = providerViews(mods);
+    const named = typeof flags.provider === 'string' ? flags.provider : undefined;
+    if (named !== undefined && !installed.some((p) => p.id === named)) {
+      err(`No provider \`${named}\` is installed.`);
+      mods.dispose();
       return 1;
     }
-    const mods = await startMods({ dir, env: io.env });
-    const engineOf = makeEngineFrom(mods, { env: io.env, home: dir });
     const store = openStore(defaultStorePath());
+    const provider = named ?? defaultProviderOf(installed, readSetting(store, 'defaultProvider'))?.id;
+    if (!provider) {
+      err('No provider is installed.');
+      store.close();
+      mods.dispose();
+      return 1;
+    }
+    const engineOf = makeEngineFrom(mods, { env: io.env, home: dir });
     const h = startRunCli({
       ...(pos[0] ? { file: pos[0] } : {}),
       ...(typeof flags.resume === 'string' ? { resumeId: flags.resume } : {}),
@@ -165,7 +173,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
       makeEngine: (cb) => {
         const model = typeof flags.model === 'string' ? flags.model : undefined;
         return engineOf({
-          provider: 'claude',
+          provider,
           ...(model ? { model } : {}),
           ...(typeof flags.effort === 'string' ? { effort: flags.effort } : {}),
           ...cb,

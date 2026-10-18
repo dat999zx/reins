@@ -1,11 +1,12 @@
 {
   "reins": 1,
-  "id": "claude",
+  "id": "claude-code",
   "kind": "provider",
   "version": "1.0.0",
   "label": "Claude",
   "description": "Claude through the Claude Code CLI and its own login",
   "protocol": "claude-code-cli",
+  "default": true,
   "baseUrl": "https://api.anthropic.com",
   "catalog": "anthropic",
   "defaultModel": "claude-sonnet-5-5",
