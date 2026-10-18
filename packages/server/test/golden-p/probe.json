@@ -1,0 +1,30 @@
+{
+  "fake": {
+    "capabilities": {
+      "midTurnSteer": "hook",
+      "preToolDeny": true,
+      "resume": true
+    },
+    "installed": true,
+    "loggedIn": true,
+    "problems": [],
+    "version": "2.1.281"
+  },
+  "findNothing": null,
+  "findWithEnv": {
+    "path": "<FAKE_CLAUDE>",
+    "source": "REINS_CLAUDE"
+  },
+  "missing": {
+    "capabilities": {
+      "midTurnSteer": "hook",
+      "preToolDeny": true,
+      "resume": true
+    },
+    "installed": false,
+    "loggedIn": false,
+    "problems": [
+      "claude not found. Install Claude Code (npm i -g @anthropic-ai/claude-code), or set REINS_CLAUDE to the claude binary."
+    ]
+  }
+}

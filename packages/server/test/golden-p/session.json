@@ -1,0 +1,43 @@
+{
+  "named": {
+    "body": {
+      "autoApprove": false,
+      "createdAt": "number",
+      "cwd": "<CWD>",
+      "effort": "max",
+      "engine": "claude",
+      "id": "string",
+      "model": "claude-opus-5-5",
+      "status": "idle",
+      "title": "T",
+      "updatedAt": "number"
+    },
+    "status": 200
+  },
+  "noEngine": {
+    "body": {
+      "error": "engine must be 'claude'."
+    },
+    "status": 400
+  },
+  "otherEngine": {
+    "body": {
+      "error": "engine must be 'claude'."
+    },
+    "status": 400
+  },
+  "plain": {
+    "body": {
+      "autoApprove": false,
+      "createdAt": "number",
+      "cwd": "<CWD>",
+      "effort": "medium",
+      "engine": "claude",
+      "id": "string",
+      "model": "claude-sonnet-5-5",
+      "status": "idle",
+      "updatedAt": "number"
+    },
+    "status": 200
+  }
+}

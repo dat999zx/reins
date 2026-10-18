@@ -1,0 +1,64 @@
+{
+  "apiKey": {
+    "capabilities": {
+      "midTurnSteer": "hook",
+      "preToolDeny": true,
+      "resume": true
+    },
+    "installed": true,
+    "loggedIn": true,
+    "problems": [
+      "claude is using an API key (ANTHROPIC_API_KEY), not the subscription login."
+    ],
+    "version": "9.8.7"
+  },
+  "loggedIn": {
+    "capabilities": {
+      "midTurnSteer": "hook",
+      "preToolDeny": true,
+      "resume": true
+    },
+    "installed": true,
+    "loggedIn": true,
+    "problems": [],
+    "version": "9.8.7"
+  },
+  "loggedOut": {
+    "capabilities": {
+      "midTurnSteer": "hook",
+      "preToolDeny": true,
+      "resume": true
+    },
+    "installed": true,
+    "loggedIn": false,
+    "problems": [
+      "Not logged in. Open a terminal and run `claude`, then log in. Reins uses Claude Code's own login."
+    ],
+    "version": "9.8.7"
+  },
+  "unknown": {
+    "capabilities": {
+      "midTurnSteer": "hook",
+      "preToolDeny": true,
+      "resume": true
+    },
+    "installed": true,
+    "loggedIn": "unknown",
+    "problems": [
+      "Could not tell whether claude is logged in: something else broke"
+    ],
+    "version": "9.8.7"
+  },
+  "versionFails": {
+    "capabilities": {
+      "midTurnSteer": "hook",
+      "preToolDeny": true,
+      "resume": true
+    },
+    "installed": false,
+    "loggedIn": false,
+    "problems": [
+      "<CLI> --version failed: boom"
+    ]
+  }
+}

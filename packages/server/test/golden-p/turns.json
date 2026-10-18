@@ -1,0 +1,66 @@
+[
+  {
+    "cost": 0.0640898,
+    "events": [
+      "text",
+      "usage"
+    ],
+    "isError": false,
+    "models": {
+      "a": 0.0640898
+    },
+    "text": "ONE",
+    "total": 0.0640898,
+    "totals": {
+      "a": 0.0640898
+    }
+  },
+  {
+    "cost": 0.0161466,
+    "events": [
+      "text",
+      "usage"
+    ],
+    "isError": false,
+    "models": {
+      "a": 0.0161466
+    },
+    "text": "TWO",
+    "total": 0.0802364,
+    "totals": {
+      "a": 0.0802364
+    }
+  },
+  {
+    "cost": 0.0069258,
+    "events": [
+      "text",
+      "usage"
+    ],
+    "isError": false,
+    "models": {
+      "a": 0.0069258
+    },
+    "text": "THREE",
+    "total": 0.0871622,
+    "totals": {
+      "a": 0.0871622
+    }
+  },
+  {
+    "cost": 0.0640898,
+    "events": [
+      "text",
+      "usage"
+    ],
+    "isError": false,
+    "models": {
+      "a": 0.0640898
+    },
+    "text": "ONE",
+    "total": 0.151252,
+    "totals": {
+      "a": 0.151252
+    }
+  }
+]

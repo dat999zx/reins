@@ -1,0 +1,42 @@
+{
+  "counts": {
+    ".claude.json": false,
+    ".claude/CLAUDE.md": false,
+    ".claude/agents/a.md": false,
+    ".claude/commands/c.md": false,
+    ".claude/hooks.json": false,
+    ".claude/settings.json": true,
+    ".claude/settings.local.json": true,
+    ".mcp.json": true,
+    "CLAUDE.md": false
+  },
+  "one": {
+    "detail": ".claude/settings.json\n{\"hooks\":{}}",
+    "hash": "10176634d74e46c209041d83aaaabf79b4c161d7d03057e78e4e85f06aee3815"
+  },
+  "question": {
+    "detail": ".claude/settings.json\n{\"hooks\":{}}",
+    "kind": "trust",
+    "prompt": "This folder has Claude settings that run without asking (hooks, MCP servers, allowed tools). Trust them? [y / n]"
+  },
+  "refusal": {
+    "note": [
+      {
+        "text": "The folder's Claude settings are not trusted, so claude was not started."
+      }
+    ],
+    "turnFailed": [
+      {
+        "error": "The folder's Claude settings are not trusted, so claude was not started."
+      }
+    ]
+  },
+  "three": {
+    "detail": ".claude/settings.json\n{\"hooks\":{}}\n\n.claude/settings.local.json\n{}\n\n.mcp.json\n{\"mcpServers\":{}}",
+    "hash": "3ee2129356a7f00fd3a6f52c358b51d9619c2bae305398a81990f92459dbaa73"
+  },
+  "two": {
+    "detail": ".claude/settings.json\n{\"hooks\":{}}\n\n.claude/settings.local.json\n{}",
+    "hash": "c0fb9581ca79b1f7868b6616279bb3b547981fa18cd6f140391d03f40b65afbb"
+  }
+}

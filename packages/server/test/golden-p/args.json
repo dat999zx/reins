@@ -1,0 +1,308 @@
+{
+  "configModelAndEffort": {
+    "args": [
+      "-p",
+      "--input-format",
+      "stream-json",
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      "--session-id",
+      "<UUID>",
+      "--permission-mode",
+      "acceptEdits",
+      "--permission-prompt-tool",
+      "mcp__reins__approve",
+      "--mcp-config",
+      "<TMP>/mcp.json",
+      "--settings",
+      "<TMP>/settings.json",
+      "--append-system-prompt-file",
+      "<TMP>/reins-card-note.md",
+      "--model",
+      "claude-haiku-5-5",
+      "--effort",
+      "low",
+      "--thinking-display",
+      "summarized"
+    ],
+    "hooks": {
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "timeout": 30,
+              "type": "http",
+              "url": "<HOOK_URL>"
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "timeout": 30,
+              "type": "http",
+              "url": "<HOOK_URL>"
+            }
+          ],
+          "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell"
+        }
+      ]
+    }
+  },
+  "maxUsd": {
+    "args": [
+      "-p",
+      "--input-format",
+      "stream-json",
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      "--session-id",
+      "<UUID>",
+      "--permission-mode",
+      "acceptEdits",
+      "--permission-prompt-tool",
+      "mcp__reins__approve",
+      "--mcp-config",
+      "<TMP>/mcp.json",
+      "--settings",
+      "<TMP>/settings.json",
+      "--append-system-prompt-file",
+      "<TMP>/reins-card-note.md",
+      "--max-budget-usd",
+      "0.25",
+      "--thinking-display",
+      "summarized"
+    ],
+    "hooks": {
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "timeout": 30,
+              "type": "http",
+              "url": "<HOOK_URL>"
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "timeout": 30,
+              "type": "http",
+              "url": "<HOOK_URL>"
+            }
+          ],
+          "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell"
+        }
+      ]
+    }
+  },
+  "maxUsdZero": {
+    "args": [
+      "-p",
+      "--input-format",
+      "stream-json",
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      "--session-id",
+      "<UUID>",
+      "--permission-mode",
+      "acceptEdits",
+      "--permission-prompt-tool",
+      "mcp__reins__approve",
+      "--mcp-config",
+      "<TMP>/mcp.json",
+      "--settings",
+      "<TMP>/settings.json",
+      "--append-system-prompt-file",
+      "<TMP>/reins-card-note.md",
+      "--max-budget-usd",
+      "0",
+      "--thinking-display",
+      "summarized"
+    ],
+    "hooks": {
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "timeout": 30,
+              "type": "http",
+              "url": "<HOOK_URL>"
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "timeout": 30,
+              "type": "http",
+              "url": "<HOOK_URL>"
+            }
+          ],
+          "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell"
+        }
+      ]
+    }
+  },
+  "modelAndEffort": {
+    "args": [
+      "-p",
+      "--input-format",
+      "stream-json",
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      "--session-id",
+      "<UUID>",
+      "--permission-mode",
+      "acceptEdits",
+      "--permission-prompt-tool",
+      "mcp__reins__approve",
+      "--mcp-config",
+      "<TMP>/mcp.json",
+      "--settings",
+      "<TMP>/settings.json",
+      "--append-system-prompt-file",
+      "<TMP>/reins-card-note.md",
+      "--model",
+      "claude-opus-5-5",
+      "--effort",
+      "high",
+      "--thinking-display",
+      "summarized"
+    ],
+    "hooks": {
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "timeout": 30,
+              "type": "http",
+              "url": "<HOOK_URL>"
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "timeout": 30,
+              "type": "http",
+              "url": "<HOOK_URL>"
+            }
+          ],
+          "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell"
+        }
+      ]
+    }
+  },
+  "new": {
+    "args": [
+      "-p",
+      "--input-format",
+      "stream-json",
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      "--session-id",
+      "<UUID>",
+      "--permission-mode",
+      "acceptEdits",
+      "--permission-prompt-tool",
+      "mcp__reins__approve",
+      "--mcp-config",
+      "<TMP>/mcp.json",
+      "--settings",
+      "<TMP>/settings.json",
+      "--append-system-prompt-file",
+      "<TMP>/reins-card-note.md",
+      "--thinking-display",
+      "summarized"
+    ],
+    "hooks": {
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "timeout": 30,
+              "type": "http",
+              "url": "<HOOK_URL>"
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "timeout": 30,
+              "type": "http",
+              "url": "<HOOK_URL>"
+            }
+          ],
+          "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell"
+        }
+      ]
+    }
+  },
+  "resume": {
+    "args": [
+      "-p",
+      "--input-format",
+      "stream-json",
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      "--resume",
+      "<UUID>",
+      "--permission-mode",
+      "acceptEdits",
+      "--permission-prompt-tool",
+      "mcp__reins__approve",
+      "--mcp-config",
+      "<TMP>/mcp.json",
+      "--settings",
+      "<TMP>/settings.json",
+      "--append-system-prompt-file",
+      "<TMP>/reins-card-note.md",
+      "--thinking-display",
+      "summarized"
+    ],
+    "hooks": {
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "timeout": 30,
+              "type": "http",
+              "url": "<HOOK_URL>"
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "timeout": 30,
+              "type": "http",
+              "url": "<HOOK_URL>"
+            }
+          ],
+          "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell"
+        }
+      ]
+    }
+  }
+}
