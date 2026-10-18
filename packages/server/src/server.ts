@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { printWorkflow, type EngineProbe, type Workflow } from '@reins/core';
-import { sameToken } from './hooks.js';
+import { sameToken } from './token.js';
 import { releaseLock, runningLock, takeLock } from './lock.js';
 import type { Catalog, CatalogModel } from './catalog.js';
 import { listModels, loadProviders, type Provider } from './providers.js';

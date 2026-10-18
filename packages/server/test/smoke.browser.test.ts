@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, type Browser, type Page } from 'playwright';
-import { claudeEngine } from '../src/claude/engine.js';
+import { claudeEngine } from '../src/mods/claude-code-cli/engine.js';
 import { startServer, type Server } from '../src/server.js';
 import { openStore, type Store } from '../src/store.js';
 import { FAKE_CLAUDE, fakeSetup } from './helpers.js';

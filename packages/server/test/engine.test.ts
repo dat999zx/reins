@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import type { EngineEvent, Policy } from '@reins/core';
-import { claudeEngine, modelCosts, turnCost } from '../src/claude/engine.js';
+import { claudeEngine, modelCosts, turnCost } from '../src/mods/claude-code-cli/engine.js';
 import { FAKE_CLAUDE, fakeSetup, alive, until } from './helpers.js';
 
 const write: Policy = { mode: 'write', guards: ['migrations/**'], allowShell: true };

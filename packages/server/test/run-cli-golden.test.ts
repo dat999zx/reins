@@ -5,7 +5,7 @@ import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import { startRunCli } from '../src/run-cli.js';
 import { openStore } from '../src/store.js';
-import { claudeEngine } from '../src/claude/engine.js';
+import { claudeEngine } from '../src/mods/claude-code-cli/engine.js';
 import { FAKE_CLAUDE, fakeSetup, type FakeTurn } from './helpers.js';
 
 const GOLDEN = path.join(__dirname, 'golden-3b');

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { EngineProbe } from '@reins/core';
 import type { Catalog } from '../src/catalog.js';
-import { claudeEngine } from '../src/claude/engine.js';
+import { claudeEngine } from '../src/mods/claude-code-cli/engine.js';
 import type { Question } from '../src/drive.js';
 import { startServer, type Server } from '../src/server.js';
 import { openStore, type LogRow, type Store } from '../src/store.js';

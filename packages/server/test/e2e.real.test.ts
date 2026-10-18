@@ -9,8 +9,8 @@ import { PassThrough } from 'node:stream';
 import { receipt, type RunEventRecord } from '@reins/core';
 import { startRunCli } from '../src/run-cli.js';
 import { openStore } from '../src/store.js';
-import { claudeEngine } from '../src/claude/engine.js';
-import { findClaude } from '../src/claude/find.js';
+import { claudeEngine } from '../src/mods/claude-code-cli/engine.js';
+import { findClaude } from '../src/mods/claude-code-cli/find.js';
 
 const REPO = process.env.REINS_E2E_REPO ?? 'D:/coding/reins-scratch';
 const EXAMPLE = path.resolve(__dirname, '../../../examples/upload-retry.reins.md');

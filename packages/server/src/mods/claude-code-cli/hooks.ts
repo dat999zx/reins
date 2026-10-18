@@ -1,7 +1,8 @@
 import http from 'node:http';
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { checkTool, type Decision, type EngineEvent, type Policy, type ToolRequest } from '@reins/core';
-import { wrapCard } from './claude/cards.js';
+import { wrapCard } from '../../cards.js';
+import { sameToken } from '../../token.js';
 
 export interface HookServerOptions {
   cwd: string;
@@ -14,13 +15,6 @@ export interface HookServerOptions {
 
 // Claude's documented limit for a hook's additionalContext.
 const CONTEXT_LIMIT = 10_000;
-
-// Byte lengths, not string lengths: timingSafeEqual throws on buffers of different sizes, and a non-ASCII string can match a token's character count (plan 15d 3b.7).
-export function sameToken(a: string, b: string): boolean {
-  const x = Buffer.from(a);
-  const y = Buffer.from(b);
-  return x.length === y.length && timingSafeEqual(x, y);
-}
 
 /**
  * The endpoint Claude's HTTP hooks and the approval MCP call (plan 15b 2.3). Localhost only,

@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { findClaude } from '../src/claude/find.js';
+import { findClaude } from '../src/mods/claude-code-cli/find.js';
 
 function tree(files: string[]) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'reins-find-'));

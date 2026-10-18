@@ -7,7 +7,7 @@ import { PassThrough } from 'node:stream';
 import { receipt, type RunEventRecord } from '@reins/core';
 import { startRunCli, type RunCliOptions } from '../src/run-cli.js';
 import { openStore } from '../src/store.js';
-import { claudeEngine } from '../src/claude/engine.js';
+import { claudeEngine } from '../src/mods/claude-code-cli/engine.js';
 import { FAKE_CLAUDE, fakeSetup, alive, until } from './helpers.js';
 
 import { register, type NodeType } from '@reins/core';

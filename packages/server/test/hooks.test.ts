@@ -2,8 +2,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import http from 'node:http';
 import type { EngineEvent, Policy } from '@reins/core';
-import { startHookServer } from '../src/hooks.js';
-import { newNonce, wrapCard, trustNote } from '../src/claude/cards.js';
+import { startHookServer } from '../src/mods/claude-code-cli/hooks.js';
+import { newNonce, wrapCard, trustNote } from '../src/cards.js';
 
 type Srv = Awaited<ReturnType<typeof startHookServer>>;
 let srv: Srv | undefined;

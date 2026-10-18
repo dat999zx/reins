@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { findClaude } from './claude/find.js';
-import { probeClaude } from './claude/engine.js';
+import { findClaude } from './mods/claude-code-cli/find.js';
+import { probeClaude } from './mods/claude-code-cli/engine.js';
 
 // The claude version Phase 0 and the Phase 2 e2e ran against.
 const TESTED_CLAUDE = '2.1.281';

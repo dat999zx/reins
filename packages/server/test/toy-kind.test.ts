@@ -9,7 +9,7 @@ import { beep } from '../../core/test/fixtures/beep.js';
 import { startRunCli } from '../src/run-cli.js';
 import { openStore } from '../src/store.js';
 import { commandsOf } from '../src/trust.js';
-import { claudeEngine } from '../src/claude/engine.js';
+import { claudeEngine } from '../src/mods/claude-code-cli/engine.js';
 import { FAKE_CLAUDE, fakeSetup } from './helpers.js';
 
 const disposers: Array<() => void> = [];
