@@ -145,7 +145,7 @@ async function onPause(run: Run, io: DriveIo): Promise<boolean> {
 export async function askTool(io: DriveIo, req: ToolRequest, title?: string): Promise<Decision> {
   const i = req.input ?? {};
   const what = String(i.command ?? i.file_path ?? i.path ?? JSON.stringify(i)).slice(0, 200);
-  const a = await io.ask({ id: questionId(), kind: 'tool', prompt: `? Allow ${req.tool}: ${what}  [y / n <reason>]`, detail: JSON.stringify(req.input ?? {}), ...(title ? { title } : {}) });
+  const a = await io.ask({ id: questionId(), kind: 'tool', prompt: `? Allow ${req.tool}${req.reason ? ` (${req.reason})` : ''}: ${what}  [y / n <reason>]`, detail: JSON.stringify(req.input ?? {}), ...(title ? { title } : {}) });
   if (a !== null && /^(y|yes)$/i.test(a)) return { behavior: 'allow' };
   const reason = a?.replace(/^(n|no)\b\s*/i, '').trim();
   return { behavior: 'deny', message: reason ? `The user said no: ${reason}` : 'The user said no.' };

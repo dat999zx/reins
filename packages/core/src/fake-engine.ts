@@ -20,6 +20,8 @@ export interface ToolRequest {
   id?: string;
   /** The title of the provider's own task (a child of the model's task tool) this call came from; absent for the model's own calls. */
   via?: string;
+  /** Why Reins asks, shown on the card ("outside the project"). Absent: the plain card. */
+  reason?: string;
 }
 
 export interface Decision {
@@ -87,7 +89,8 @@ export interface EngineSession {
 }
 
 export interface Engine {
-  readonly id: 'claude' | 'codex';
+  /** A provider id; any string (the engines are registered by the server, not listed here). */
+  readonly id: string;
   probe(): Promise<EngineProbe>;
   open(opts: OpenOptions): Promise<EngineSession>;
 }
@@ -122,7 +125,7 @@ export interface ScriptedTurn {
 let sessions = 0;
 
 export class FakeEngine implements Engine {
-  readonly id = 'claude' as const;
+  readonly id = 'fake';
   receivedTexts: string[] = [];
   recordedPolicyChecks: Array<{ tool: string; input: any; policy: Policy }> = [];
   interrupted = false;

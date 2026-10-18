@@ -233,6 +233,15 @@ describe('askTool and askJudge', () => {
     expect(await askTool(testIo(() => null).io, { tool: 'Edit', input: {} })).toEqual({ behavior: 'deny', message: 'The user said no.' });
   });
 
+  it('askTool with a reason names it in the prompt; without one the words are today\'s', async () => {
+    const t = testIo(() => 'y');
+    await askTool(t.io, { tool: 'Read', input: { file_path: '/x' }, reason: 'outside the project' });
+    expect(t.questions[0]!.prompt).toBe('? Allow Read (outside the project): /x  [y / n <reason>]');
+    const plain = testIo(() => 'y');
+    await askTool(plain.io, { tool: 'Read', input: { file_path: '/x' } });
+    expect(plain.questions[0]!.prompt).toBe('? Allow Read: /x  [y / n <reason>]');
+  });
+
   it('askTool with a title puts it on the question; without one there is no title key (not even undefined)', async () => {
     const t = testIo(() => 'y');
     await askTool(t.io, { tool: 'Bash', input: { command: 'ls' } }, 'Subagent research (`subagent-1`)');

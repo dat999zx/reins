@@ -94,7 +94,7 @@ export interface SubagentOpen {
   /** The step's own reasoning level; absent, the session's. */
   reasoning?: string;
   cwd?: string;
-  /** Present when an unfinished subagent resumes: its own claude session and what was counted on it. */
+  /** Present when an unfinished subagent resumes: its own engine session and what was counted on it. */
   sessionId?: string;
   costBase?: number;
   costBaseByModel?: Record<string, number>;
@@ -171,7 +171,7 @@ export interface RunSnapshot {
   /** The engine's last raw running total and per-model totals, so a fresh engine process opens with what was already counted. */
   lastTotal?: number;
   lastTotals?: Record<string, number>;
-  /** Each subagent step's own claude session and what was counted on it. */
+  /** Each subagent step's own engine session and what was counted on it. */
   subagents?: Record<string, SubagentRecord>;
   /** Subagent results not yet taken by a parent turn. */
   handback?: string[];
@@ -493,7 +493,7 @@ export class Run {
       ...(step.attrs.model ? { model: step.attrs.model } : {}),
       ...(step.attrs.reasoning ? { reasoning: step.attrs.reasoning } : {}),
       ...(this.cwd !== undefined ? { cwd: this.cwd } : {}),
-      // Reins made this claude session, so its running total starts at 0: a resumed subagent never has an unknown base.
+      // Reins made this engine session, so its running total starts at 0: a resumed subagent never has an unknown base.
       ...(resumed ? { sessionId: resumed.sessionId, costBase: resumed.total ?? 0,
         ...(resumed.total === undefined ? { costBaseByModel: {} } : resumed.totals ? { costBaseByModel: resumed.totals } : {}) } : {}),
       // Rounded up: a cap a hair under Reins' limit would end the reply as an error that usdOver (1e-9) does not see as reached.
@@ -915,7 +915,7 @@ export class Run {
     await (this.turnSession ?? this.engineSession)?.interrupt();
   }
 
-  /** End the engine session (the claude process). */
+  /** End the engine session. */
   async close(): Promise<void> {
     const s = this.engineSession;
     this.engineSession = undefined;
