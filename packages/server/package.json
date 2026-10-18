@@ -14,7 +14,7 @@
     "reins": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node copy-mods.mjs && node dist/cli.js doctor --no-probe",
     "prepack": "node pack.mjs pre",
     "postpack": "node pack.mjs post"
   },

@@ -1,5 +1,14 @@
 import type { Decision, EngineEvent, EngineSession, OpenOptions, TurnResult } from '@reins/core';
-import type { MakeEngine } from '../src/session.js';
+import activateCli from '../src/mods/claude-code-cli/index.js';
+import type { FolderTrust, Protocol } from '../src/mods/types.js';
+import type { MakeEngine, SessionDeps } from '../src/session.js';
+
+/** The folder question of the claude-code-cli protocol, taken from the protocol itself: the test engine's provider carries it. */
+export const claudeFolderTrust: NonNullable<Protocol['folderTrust']> = (() => {
+  let protocol: Protocol | undefined;
+  activateCli({ env: {}, registerProtocol: (p) => { protocol = p; return () => {}; } });
+  return (cwd: string): FolderTrust | undefined => protocol!.folderTrust!(cwd);
+})();
 
 export interface TestTurn {
   text?: string;                                                          // the result text (default 'ok')
@@ -38,6 +47,8 @@ export function testEngine(script: TestTurn[] = []) {
     holdClose: () => {},
     releaseClose: () => {},
     makeEngine: undefined as unknown as MakeEngine,
+    /** For `SessionDeps.folderTrust`: every provider of a session test is the claude one. */
+    folderTrust: ((_provider, cwd) => claudeFolderTrust(cwd)) as NonNullable<SessionDeps['folderTrust']>,
   };
   let closeGate: Promise<void> | undefined;
   let openCloseGate: (() => void) | undefined;

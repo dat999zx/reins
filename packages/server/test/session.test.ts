@@ -7,7 +7,8 @@ import type { Question } from '../src/drive.js';
 import { openSession, type MakeEngine } from '../src/session.js';
 import { contextSize } from '../src/settings.js';
 import { openStore, type LogRow } from '../src/store.js';
-import { folderHash, hashCommands } from '../src/trust.js';
+import { folderHash } from '../src/mods/claude-code-cli/folder.js';
+import { hashCommands } from '../src/trust.js';
 import { testEngine, type TestTurn } from './test-engine.js';
 
 const tmps: string[] = [];
@@ -29,8 +30,8 @@ function setup(script: TestTurn[] = [], o: { cwd?: string; dir?: string; autoApp
   const dir = o.dir ?? tmp();
   const cwd = o.cwd ?? tmp();
   const row = store.createSession({ id: 's1', cwd, engine: 'claude', ...(o.model ? { model: o.model } : {}), ...(o.effort ? { effort: o.effort } : {}) });
-  const s = openSession({ store, makeEngine, dir, onRow: (r) => seen.push(r), ...(o.describe ? { describeModel: o.describe } : {}), ...(o.levelLabel ? { describeEffort: (_e: string, id: string) => ({ listed: true, label: o.levelLabel!(id) }) } : {}) }, row, true);
-  const reopen = () => openSession({ store, makeEngine, dir, onRow: (r) => seen.push(r), ...(o.describe ? { describeModel: o.describe } : {}), ...(o.levelLabel ? { describeEffort: (_e: string, id: string) => ({ listed: true, label: o.levelLabel!(id) }) } : {}) }, store.getSession('s1')!);
+  const s = openSession({ store, makeEngine, folderTrust: t.folderTrust, dir, onRow: (r) => seen.push(r), ...(o.describe ? { describeModel: o.describe } : {}), ...(o.levelLabel ? { describeEffort: (_e: string, id: string) => ({ listed: true, label: o.levelLabel!(id) }) } : {}) }, row, true);
+  const reopen = () => openSession({ store, makeEngine, folderTrust: t.folderTrust, dir, onRow: (r) => seen.push(r), ...(o.describe ? { describeModel: o.describe } : {}), ...(o.levelLabel ? { describeEffort: (_e: string, id: string) => ({ listed: true, label: o.levelLabel!(id) }) } : {}) }, store.getSession('s1')!);
   if (o.autoApprove) s.settings({ autoApprove: true });
   const log = () => store.readLog('s1');
   const rows = (type: string) => log().filter((r) => r.type === type);

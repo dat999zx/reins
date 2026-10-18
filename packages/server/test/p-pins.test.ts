@@ -9,11 +9,11 @@ import { golden as compare } from '../../core/test/golden-3a/stable.js';
 import { createCatalog } from '../src/catalog.js';
 import { claudeEngine, probeClaude } from '../src/mods/claude-code-cli/engine.js';
 import { findClaude } from '../src/mods/claude-code-cli/find.js';
-import { loadProviders } from '../src/providers.js';
+import { providerViews, startMods } from '../src/engines.js';
+import { folderHash } from '../src/mods/claude-code-cli/folder.js';
 import { openSession } from '../src/session.js';
 import { priceFor } from '../src/settings.js';
 import { openStore } from '../src/store.js';
-import { folderHash } from '../src/trust.js';
 import { FAKE_CLAUDE, fakeSetup } from './helpers.js';
 import { askedQuestion, boot, cleanup, tmpDir } from './http-helpers.js';
 import { testEngine } from './test-engine.js';
@@ -160,7 +160,7 @@ describe('P pins: the provider surfaces', () => {
       describeEffort.push({ effort, status: r.status, ...(r.status === 200 ? { note: (w.rows(id, 'note').at(-1)!.data as { text: string }).text } : { error: r.json.error }) });
     }
 
-    const provider = (await loadProviders()).find((p) => p.id === 'claude')!;
+    const provider = providerViews(await startMods({ dir: tmpDir(), env: {} })).find((p) => p.id === 'claude')!;
     const catalog = createCatalog({ file }).models('anthropic');
     const prices = Object.fromEntries([...provider.models.map((x) => x.id), 'claude-extra-9', 'claude-extra-8'].map((m) => [m, priceFor(provider, catalog, m, 10_000) ?? null]));
     golden('state', { providers, describeModel, describeEffort, prices });
@@ -205,7 +205,7 @@ describe('P pins: folder trust', () => {
     const store = openStore(':memory:');
     const t = testEngine([{ text: 'ok' }]);
     const row = store.createSession({ id: 's1', cwd, engine: 'claude' });
-    const s = openSession({ store, makeEngine: t.makeEngine, dir: tmp(), onRow: () => {} }, row, true);
+    const s = openSession({ store, makeEngine: t.makeEngine, folderTrust: t.folderTrust, dir: tmp(), onRow: () => {} }, row, true);
     s.message('hi');
     const q = await askedQuestion(store, 's1', 'trust');
     s.answer(q.id, 'n');

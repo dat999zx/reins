@@ -11,7 +11,6 @@ import { startHookServer } from './hooks.js';
 import { killTree } from '../../proc.js';
 import { newNonce, trustNote } from '../../cards.js';
 import { claudeCommand } from './find.js';
-import { provider } from '../../claude/provider.js';
 import { createStreamParser } from './stream.js';
 
 export interface ClaudeConfig {
@@ -27,7 +26,12 @@ export interface ClaudeConfig {
   interruptTimeoutMs?: number;
 }
 
-const CAPABILITIES = { midTurnSteer: 'hook', preToolDeny: true, resume: true } as const;
+// Facts about this CLI that are not provider data (spec S3).
+export const CAPABILITIES = { midTurnSteer: 'hook', preToolDeny: true, resume: true } as const;
+// F7: total_cost_usd is cumulative across --resume processes in stream-json input mode.
+const COST_ACROSS_RESUME: 'cumulative' | 'per-process' = 'cumulative';
+// Every Claude model reports modelUsage.contextWindow, so no model needs a window from here.
+const WINDOWS: Record<string, number> = {};
 // PreToolUse only needs the tools that write; Windows names its shell tool PowerShell.
 const GUARDED_TOOLS = [...WRITE_TOOLS, ...SHELL_TOOLS].join('|');
 // Run mcp.ts from source under tests and mcp.js from dist; Node runs either directly.
@@ -61,7 +65,7 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
     cfg.onLive?.(ev);
   };
   // Made before the hook server: an approval names the tool call that asked, and the parser knows which task ran it.
-  const parse = createStreamParser({ windows: provider.windows });
+  const parse = createStreamParser({ windows: WINDOWS });
   const hooks = await startHookServer({
     cwd,
     policy: opts.policy,
@@ -118,9 +122,9 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
   child.stderr.on('data', (d: string) => (stderr = (stderr + d).slice(-4000)));
   let dead: string | undefined;
   // The raw running total Reins last counted; undefined = unknown (a resumed session from before Reins kept it).
-  let base: number | undefined = provider.costAcrossResume === 'cumulative' && opts.sessionId ? opts.costBase : 0;
+  let base: number | undefined = COST_ACROSS_RESUME === 'cumulative' && opts.sessionId ? opts.costBase : 0;
   // The same, per model; a reply with no per-model figures leaves it unknown, so the next reply has no split rather than a wrong one.
-  let baseBy: Record<string, number> | undefined = provider.costAcrossResume === 'cumulative' && opts.sessionId ? opts.costBaseByModel : {};
+  let baseBy: Record<string, number> | undefined = COST_ACROSS_RESUME === 'cumulative' && opts.sessionId ? opts.costBaseByModel : {};
   // Set by interrupt(), cleared when the next turn starts: an error result that asked for is not a failed turn.
   let interrupted = false;
   let current: { resolve: (r: TurnResult) => void; reject: (e: Error) => void } | undefined;

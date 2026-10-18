@@ -1,0 +1,71 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { EngineProbe } from '@reins/core';
+import { loadMods } from './mods/loader.js';
+import type { EngineHost, LoadedMod, Mods, Protocol, ProviderManifest } from './mods/types.js';
+import type { MakeEngine, SessionDeps } from './session.js';
+
+/** The bundled mods: the folder this code sits in, `src/mods` under tests and `dist/mods` in the build. */
+export const BUNDLED_MODS = fileURLToPath(new URL('./mods/', import.meta.url));
+
+/** Loads the bundled mods and the user's (`<dir>/mods`). `dir` is the Reins folder (`~/.reins`). */
+export const startMods = (o: { dir: string; env: NodeJS.ProcessEnv }): Promise<Mods> =>
+  // ponytail: nothing is switched off and no code is trusted yet; settings and the trust store come with the settings tasks.
+  loadMods({ bundledDir: BUNDLED_MODS, userDir: path.join(o.dir, 'mods'), home: o.dir, disabled: new Set(), trusted: () => false, env: o.env });
+
+const manifestOf = (mods: Mods, provider: string) => mods.registry.get<LoadedMod>('provider', provider)?.manifest as ProviderManifest | undefined;
+
+/** The provider's manifest and its protocol, or undefined when either is not installed. */
+function resolve(mods: Mods, provider: string): { manifest: ProviderManifest; protocol: Protocol } | undefined {
+  const manifest = manifestOf(mods, provider);
+  const protocol = manifest && mods.registry.get<Protocol>('protocol-impl', manifest.protocol);
+  return manifest && protocol ? { manifest, protocol } : undefined;
+}
+
+/** The engine factory sessions use. Synchronous: a session's microtask order depends on it. */
+export function makeEngineFrom(mods: Mods, base: Pick<EngineHost, 'env' | 'home'>): MakeEngine {
+  return ({ provider, ...rest }) => {
+    const found = resolve(mods, provider);
+    if (!found) throw new Error(`The provider "${provider}" is not installed.`);
+    return found.protocol.engine(found.manifest, { ...base, ...rest });
+  };
+}
+
+export async function probeFrom(mods: Mods, provider: string, base: Pick<EngineHost, 'env' | 'home'>): Promise<EngineProbe> {
+  const found = resolve(mods, provider);
+  if (!found?.protocol.probe) throw new Error(`The provider "${provider}" cannot be probed.`);
+  return found.protocol.probe(found.manifest, base);
+}
+
+export const folderTrustFrom = (mods: Mods): NonNullable<SessionDeps['folderTrust']> =>
+  (provider, cwd) => resolve(mods, provider)?.protocol.folderTrust?.(cwd);
+
+/** A provider as the picker, the header and the price lookups read it. */
+export interface ProviderView {
+  id: string;
+  label: string;
+  defaultModel: string;
+  defaultEffort: string;
+  efforts: Array<{ id: string; label: string }>;
+  /** The curated models, in picker order. */
+  models: Array<{ id: string; label: string }>;
+  catalog?: string;
+  /** USD per million tokens, as the provider bills them. */
+  prices: Record<string, { input: number; cacheWrite?: number }>;
+  cacheWritePerInput?: number;
+}
+
+/** Every installed provider, by id. */
+export const providerViews = (mods: Mods): ProviderView[] =>
+  mods.registry.ids('provider').flatMap((id) => {
+    const m = manifestOf(mods, id);
+    if (!m) return [];
+    return [{
+      id: m.id, label: m.label, defaultModel: m.defaultModel, defaultEffort: m.defaultEffort ?? '',
+      efforts: (m.efforts ?? []).map((e) => ({ id: e.id, label: e.label })),
+      models: m.models.map((x) => ({ id: x.id, label: x.label ?? x.id })),
+      ...(m.catalog ? { catalog: m.catalog } : {}),
+      prices: Object.fromEntries(m.models.flatMap((x) => (x.price ? [[x.id, { input: x.price.input, ...(x.price.cacheWrite !== undefined ? { cacheWrite: x.price.cacheWrite } : {}) }]] : []))),
+      ...(m.cacheWritePerInput !== undefined ? { cacheWritePerInput: m.cacheWritePerInput } : {}),
+    }];
+  });

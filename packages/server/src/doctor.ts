@@ -3,6 +3,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { findClaude } from './mods/claude-code-cli/find.js';
 import { probeClaude } from './mods/claude-code-cli/engine.js';
+import type { Mods } from './mods/types.js';
 
 // The claude version Phase 0 and the Phase 2 e2e ran against.
 const TESTED_CLAUDE = '2.1.281';
@@ -51,6 +52,19 @@ export async function doctor(say: (s: string) => void, env: NodeJS.ProcessEnv, h
   } catch {
     say(`global hooks: none (${settingsFile} not readable)`);
   }
+  return ok;
+}
+
+/** `reins doctor --no-probe`: the mods that loaded and the problems of the rest. No model call, no claude process. False when a bundled mod has a problem or none loaded. */
+export function doctorMods(say: (s: string) => void, loaded: Mods): boolean {
+  let ok = loaded.mods.some((m) => m.source === 'bundled');
+  if (!ok) say('mods       ✗ no bundled mods were found');
+  for (const m of loaded.mods) {
+    say(`mod        ${m.id}  ${m.kind || '?'}  ${m.source}${m.enabled ? '' : '  (off)'}${m.problems.length ? '' : '  ok'}`);
+    for (const p of m.problems) say(`  ✗ ${p}`);
+    if (m.source === 'bundled' && m.problems.length) ok = false;
+  }
+  for (const p of loaded.problems) say(`mods       ✗ ${p}`);
   return ok;
 }
 

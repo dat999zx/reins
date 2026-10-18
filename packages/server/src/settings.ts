@@ -1,6 +1,11 @@
 import type { CatalogModel } from './catalog.js';
-import type { Provider } from './providers.js';
 import type { LogRow, Store } from './store.js';
+
+/** What a price lookup needs of a provider: its measured table (USD per million tokens) and its cache-write multiple. */
+export interface PriceTable {
+  prices: Record<string, { input: number; cacheWrite?: number }>;
+  cacheWritePerInput?: number;
+}
 
 // ponytail: the estimate uses the provider file's measured price table, else catalog prices; both can go stale; a model with no price is refused.
 export const SETTINGS = {
@@ -81,7 +86,7 @@ export interface Price { input: number; cacheWrite: number; source: 'table' | 'c
  * ponytail: tiers are chosen by the tokens of the switch, not of a later turn, and only on the catalog path: the provider's own table is flat
  * (Haiku's catalog tier above 100k tokens, 5x the input price, is not in it; the estimate stays far under the USD limit).
  */
-export function priceFor(provider: Pick<Provider, 'prices' | 'cacheWritePerInput'>, catalog: CatalogModel[], model: string, tokens: number): Price | undefined {
+export function priceFor(provider: PriceTable, catalog: CatalogModel[], model: string, tokens: number): Price | undefined {
   const t = provider.prices[model];
   if (t) return { input: t.input, cacheWrite: t.cacheWrite ?? t.input, source: 'table' };
   const price = catalog.find((m) => m.id === model)?.price;

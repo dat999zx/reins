@@ -6,9 +6,8 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Readable, Writable } from 'node:stream';
 import { printWorkflow } from '@reins/core';
-import { claudeEngine, probeClaude } from './mods/claude-code-cli/engine.js';
-import { findClaude } from './mods/claude-code-cli/find.js';
-import { doctor } from './doctor.js';
+import { doctor, doctorMods } from './doctor.js';
+import { makeEngineFrom, probeFrom, startMods } from './engines.js';
 import { serveMcp } from './mods/claude-code-cli/mcp.js';
 import { openUrl } from './opener.js';
 import { pickFolder } from './picker.js';
@@ -22,7 +21,7 @@ const USAGE = `usage:
   reins run --resume <runId>
   reins check <file>
   reins print <file> [--write]
-  reins doctor
+  reins doctor [--no-probe]   (--no-probe: load the mods and list them; no model call)
   reins --version
   reins serve [--port <n>]   (the local server the UI talks to; prints its address)
   reins mcp            (internal: the approval MCP server Claude starts)`;
@@ -55,7 +54,10 @@ export async function main(argv: string[], io: Io): Promise<number> {
   const out = (s: string) => io.stdout.write(s + '\n');
   const err = (s: string) => io.stderr.write(s + '\n');
   const [cmd, ...rest] = argv;
-  const { pos, flags } = parseArgs(rest, ['yes', 'write']);
+  const { pos, flags } = parseArgs(rest, ['yes', 'write', 'no-probe']);
+  // The Reins folder: mods, the code cache, the store and the lock live here.
+  const home = io.env.REINS_HOME ?? os.homedir();
+  const dir = path.join(home, '.reins');
 
   if (cmd === '--version' || cmd === '-v') {
     // src/ and dist/ both sit one level under the package root
@@ -84,8 +86,17 @@ export async function main(argv: string[], io: Io): Promise<number> {
     return 0;
   }
 
+  if (cmd === 'doctor' && flags['no-probe']) {
+    const mods = await startMods({ dir, env: io.env });
+    try {
+      return doctorMods(out, mods) ? 0 : 1;
+    } finally {
+      mods.dispose();
+    }
+  }
+
   if (cmd === 'doctor') {
-    return (await doctor(out, io.env, io.env.REINS_HOME ?? os.homedir())) ? 0 : 1;
+    return (await doctor(out, io.env, home)) ? 0 : 1;
   }
 
   if (cmd === 'mcp') {
@@ -100,8 +111,6 @@ export async function main(argv: string[], io: Io): Promise<number> {
       err(`--port must be a whole number from 0 to 65535, not "${raw}".`);
       return 1;
     }
-    const bin = findClaude(io.env)?.path ?? '';
-    const home = io.env.REINS_HOME ?? os.homedir();
     // the published package carries the UI in app/; the repo builds it into packages/app/dist
     const appDir = ['../app/', '../../app/dist/'].map((u) => fileURLToPath(new URL(u, import.meta.url)))
       .find((d) => fs.existsSync(path.join(d, 'index.html')));
@@ -114,22 +123,27 @@ export async function main(argv: string[], io: Io): Promise<number> {
         err(`Open this address in your browser: ${url}`);
       }
     });
-    return runServe({
-      home,
-      ...(raw !== undefined ? { port: Number(raw) } : {}),
-      ...(appDir ? { appDir } : {}),
-      pickFolder: (signal) => pickFolder(signal),
-      ...(io.fetch ? { fetch: io.fetch } : {}),
-      ...(bare ? { open } : {}),
-      makeEngine: ({ model, effort, onApprove, onLive }) =>
-        claudeEngine({ bin, ...(model ? { model } : {}), ...(effort ? { effort } : {}), onApprove, onLive }),
-      probe: () => probeClaude(bin),
-      out, err,
-      stop: io.stop ?? new Promise<void>((resolve) => {
-        process.once('SIGINT', () => resolve());
-        process.once('SIGTERM', () => resolve());
-      }),
-    });
+    const mods = await startMods({ dir, env: io.env });
+    const host = { env: io.env, home: dir };
+    try {
+      return await runServe({
+        home, mods,
+        ...(raw !== undefined ? { port: Number(raw) } : {}),
+        ...(appDir ? { appDir } : {}),
+        pickFolder: (signal) => pickFolder(signal),
+        ...(io.fetch ? { fetch: io.fetch } : {}),
+        ...(bare ? { open } : {}),
+        makeEngine: makeEngineFrom(mods, host),
+        probe: () => probeFrom(mods, 'claude', host),
+        out, err,
+        stop: io.stop ?? new Promise<void>((resolve) => {
+          process.once('SIGINT', () => resolve());
+          process.once('SIGTERM', () => resolve());
+        }),
+      });
+    } finally {
+      mods.dispose();
+    }
   }
 
   if (cmd === 'run' && (pos[0] || typeof flags.resume === 'string')) {
@@ -137,7 +151,8 @@ export async function main(argv: string[], io: Io): Promise<number> {
       err(`The ${flags.engine} engine is not in Phase 2; only claude is (the Codex adapter is Phase 5).`);
       return 1;
     }
-    const found = findClaude(io.env);
+    const mods = await startMods({ dir, env: io.env });
+    const engineOf = makeEngineFrom(mods, { env: io.env, home: dir });
     const store = openStore(defaultStorePath());
     const h = startRunCli({
       ...(pos[0] ? { file: pos[0] } : {}),
@@ -149,8 +164,8 @@ export async function main(argv: string[], io: Io): Promise<number> {
       yes: flags.yes === true,
       makeEngine: (cb) => {
         const model = typeof flags.model === 'string' ? flags.model : undefined;
-        return claudeEngine({
-          bin: found?.path ?? '',
+        return engineOf({
+          provider: 'claude',
           ...(model ? { model } : {}),
           ...(typeof flags.effort === 'string' ? { effort: flags.effort } : {}),
           ...cb,
@@ -164,6 +179,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
     } finally {
       process.off('SIGINT', onSigint);
       store.close();
+      mods.dispose();
     }
   }
 

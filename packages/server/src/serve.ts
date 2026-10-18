@@ -2,12 +2,15 @@ import path from 'node:path';
 import type { EngineProbe } from '@reins/core';
 import { createCatalog } from './catalog.js';
 import type { LockInfo } from './lock.js';
+import type { Mods } from './mods/types.js';
 import { startServer } from './server.js';
 import type { MakeEngine } from './session.js';
 import { openStore } from './store.js';
 
 export interface ServeOptions {
   home: string;
+  /** The loaded mods (cli.ts loads them first: its `makeEngine` and `probe` go through them). */
+  mods: Mods;
   port?: number;
   makeEngine: MakeEngine;
   probe: () => Promise<EngineProbe>;
@@ -27,7 +30,7 @@ export async function runServe(o: ServeOptions): Promise<number> {
   const store = openStore(path.join(dir, 'reins.db'));
   try {
     const server = await startServer({
-      store, dir, makeEngine: o.makeEngine, probe: o.probe, lockFile: path.join(dir, 'serve.lock'),
+      store, dir, mods: o.mods, makeEngine: o.makeEngine, probe: o.probe, lockFile: path.join(dir, 'serve.lock'),
       catalog: createCatalog({ file: path.join(dir, 'models-dev-cache.json'), ...(o.fetch ? { fetch: o.fetch } : {}) }),
       ...(o.port !== undefined ? { port: o.port } : {}),
       ...(o.appDir ? { appDir: o.appDir } : {}), ...(o.pickFolder ? { pickFolder: o.pickFolder } : {}),

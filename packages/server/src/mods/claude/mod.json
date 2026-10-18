@@ -1,0 +1,28 @@
+{
+  "reins": 1,
+  "id": "claude",
+  "kind": "provider",
+  "version": "1.0.0",
+  "label": "Claude",
+  "description": "Claude through the Claude Code CLI and its own login",
+  "protocol": "claude-code-cli",
+  "baseUrl": "https://api.anthropic.com",
+  "catalog": "anthropic",
+  "defaultModel": "claude-sonnet-5-5",
+  "models": [
+    { "id": "claude-opus-5-5", "label": "Opus 5.5", "price": { "input": 4, "cacheWrite": 8 } },
+    { "id": "claude-sonnet-5-5", "label": "Sonnet 5.5", "price": { "input": 2, "cacheWrite": 4 } },
+    { "id": "claude-haiku-5-5", "label": "Haiku 5.5", "price": { "input": 0.1, "cacheWrite": 0.2 } },
+    { "id": "claude-fable-5-1", "label": "Fable 5.1", "price": { "input": 10, "cacheWrite": 20 } }
+  ],
+  "efforts": [
+    { "id": "low", "label": "Low" },
+    { "id": "medium", "label": "Medium" },
+    { "id": "high", "label": "High" },
+    { "id": "xhigh", "label": "Extra high" },
+    { "id": "max", "label": "Max" }
+  ],
+  "defaultEffort": "medium",
+  "switchPrice": "cacheWrite",
+  "cacheWritePerInput": 2
+}

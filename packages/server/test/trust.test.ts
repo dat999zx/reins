@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { parseWorkflow, register, type NodeType, type Workflow } from '@reins/core';
-import { FOLDER_PATH, commandsOf, folderHash, hashCommands } from '../src/trust.js';
+import { FOLDER_PATH, folderHash } from '../src/mods/claude-code-cli/folder.js';
+import { commandsOf, hashCommands } from '../src/trust.js';
 import { golden } from '../../core/test/golden-3a/stable.js';
 
 const dirs: string[] = [];

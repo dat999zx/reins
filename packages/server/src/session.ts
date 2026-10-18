@@ -11,9 +11,12 @@ import { contextSize, contextWindow, detachedRuns, readSetting, stillOverAfterCo
 import type { LogRow, SessionRow, Store } from './store.js';
 import { taggedWorkflow, type Tag, type Tagged } from './tags.js';
 import { loadWorkflow } from './run-cli.js';
-import { FOLDER_PATH, commandsOf, folderHash, hashCommands, modelsOf } from './trust.js';
+import type { FolderTrust } from './mods/types.js';
+import { commandsOf, hashCommands, modelsOf } from './trust.js';
 
 export type MakeEngine = (o: {
+  /** The id of the provider whose engine this is. */
+  provider: string;
   model?: string; effort?: string;
   onApprove: (r: ToolRequest) => Promise<Decision>;
   onLive: (e: EngineEvent) => void;
@@ -23,7 +26,13 @@ export type DescribeModel = (engine: string, model: string, used: number | undef
   { listed: boolean; label: string; estimate?: number | undefined; source?: 'table' | 'catalog' };
 /** The provider's view of a reasoning level: whether its list has it, and its label. */
 export type DescribeEffort = (engine: string, id: string) => { listed: boolean; label: string };
-export interface SessionDeps { store: Store; makeEngine: MakeEngine; dir: string; onRow?: (row: LogRow) => void; describeModel?: DescribeModel; describeEffort?: DescribeEffort }
+export interface SessionDeps {
+  store: Store; makeEngine: MakeEngine; dir: string; onRow?: (row: LogRow) => void; describeModel?: DescribeModel; describeEffort?: DescribeEffort;
+  /** The folder question of a provider's protocol, if it has one (spec S4: asked for the engine being opened). */
+  folderTrust?: (provider: string, cwd: string) => FolderTrust | undefined;
+  /** The provider a subagent runs on; none = the session's own. ponytail: plan Task 18 replaces this with the step's `provider:model` name. */
+  subagentProvider?: (o: SubagentOpen) => string;
+}
 export type Ack = { ok: true } | { ok: false; code: 400 | 409; error: string; text?: string; diagnostics?: Diagnostic[] };
 export type SessionStatus = 'idle' | 'running' | 'waiting' | 'closed';
 export type Session = ReturnType<typeof openSession>;
@@ -129,6 +138,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     if (engine) return engine;
     const cur = store.getSession(id)!; // the model can change after the session was opened
     return (engine = deps.makeEngine({
+      provider: cur.engine,
       ...(cur.model ? { model: cur.model } : {}),
       ...(cur.effort ? { effort: cur.effort } : {}),
       // A request from the CLI's own task child is a card titled with the task, under the subagent approvals setting.
@@ -240,26 +250,23 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     return { ...r, models: r.models.map((m) => ({ ...m, label: describe(engine, m.model, undefined).label })) };
   }
 
-  /** The folder's own Claude settings run without asking: trusted once per hash, before any claude process starts here. */
-  async function trustFolder() {
-    const f = folderHash(cwd);
-    if (f && !store.isTrusted(cwd, FOLDER_PATH, f.hash)) {
-      const a = await ask({
-        id: questionId(), kind: 'trust', detail: f.detail,
-        prompt: 'This folder has Claude settings that run without asking (hooks, MCP servers, allowed tools). Trust them? [y / n]',
-      });
+  /** What the folder holds that the provider's own process runs without asking: trusted once per hash, before a process of `provider` starts here. */
+  async function trustFolder(provider: string) {
+    const f = deps.folderTrust?.(provider, cwd);
+    if (f && !store.isTrusted(cwd, f.key, f.hash)) {
+      const a = await ask({ id: questionId(), kind: 'trust', detail: f.detail, prompt: f.prompt });
       if (a === null || !/^(y|yes)$/i.test(a)) {
-        const error = stopping ? 'The session was stopped before claude started.' : "The folder's Claude settings are not trusted, so claude was not started.";
+        const error = stopping ? f.stopped : f.refused;
         log('note', { text: error });
         throw new Error(error);
       }
-      store.trust(cwd, FOLDER_PATH, f.hash);
+      store.trust(cwd, f.key, f.hash);
     }
   }
 
   async function openEngine(): Promise<EngineSession | undefined> {
     cancelOpen = false;
-    await trustFolder();
+    await trustFolder(store.getSession(id)!.engine);
     await retiring;
     if (cancelOpen || stopping) return undefined;
     const sid = store.getSession(id)!.engineSessionId;
@@ -293,12 +300,14 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   // ponytail: the subagent runs on its block's model, else the session's; its guard refusals count in the receipt but not on its chip (run `refusal` rows are not in the session log, :43).
   /** A subagent's own engine (D): its model, its own hook server, and its text, reasoning and tools kept as engine rows with its `step` (never usage or cost: they measure the parent's context). */
   async function openSubagent(o: SubagentOpen): Promise<SubagentOpened> {
-    await trustFolder();
+    const provider = deps.subagentProvider?.(o) ?? store.getSession(id)!.engine;
+    await trustFolder(provider);
     if (stopping) throw new Error('The session was stopped before the subagent started.');
     const cur = store.getSession(id)!;
     const model = o.model ?? cur.model;
     const title = `Subagent ${o.title} (\`${o.step}\`)`;
     const e = deps.makeEngine({
+      provider,
       ...(model ? { model } : {}), ...(o.reasoning ?? cur.effort ? { effort: (o.reasoning ?? cur.effort)! } : {}),
       onApprove: (r) => subagentApprove(title, r),
       // usage, cost, compacted and hook measure or note the parent's context, so they stay out; the rest is kept under the step

@@ -7,7 +7,9 @@ import { printWorkflow, type EngineProbe, type Workflow } from '@reins/core';
 import { sameToken } from './token.js';
 import { releaseLock, runningLock, takeLock } from './lock.js';
 import type { Catalog, CatalogModel } from './catalog.js';
-import { listModels, loadProviders, type Provider } from './providers.js';
+import { folderTrustFrom, providerViews, startMods, type ProviderView } from './engines.js';
+import { listModels } from './models.js';
+import type { Mods } from './mods/types.js';
 import { recover } from './recover.js';
 import { loadWorkflow } from './run-cli.js';
 import { openSession, under, type Ack, type DescribeEffort, type DescribeModel, type MakeEngine, type Session, type SessionDeps } from './session.js';
@@ -27,6 +29,8 @@ export interface ServerOptions {
   appDir?: string;
   pickFolder?: (signal: AbortSignal) => Promise<string | null>;
   catalog?: Catalog;
+  /** The loaded mods. None: the bundled ones are loaded here (tests that build a server by hand). */
+  mods?: Mods;
 }
 export interface Server { port: number; token: string; url: string; close(): Promise<void> }
 
@@ -152,10 +156,12 @@ function send(res: http.ServerResponse, r: Reply) {
 }
 
 export async function startServer(o: ServerOptions): Promise<Server> {
-  const providers = await loadProviders();
+  const ownMods = o.mods ? undefined : await startMods({ dir: o.dir, env: {} });
+  const mods = (o.mods ?? ownMods)!;
+  const providers = providerViews(mods);
   const catalog = o.catalog;
-  const catalogOf = (p: Provider): CatalogModel[] => (p.catalog ? catalog?.models(p.catalog) ?? [] : []);
-  const list = (p: Provider) => listModels(p, catalogOf(p), readSetting(o.store, 'pickerLimit'));
+  const catalogOf = (p: ProviderView): CatalogModel[] => (p.catalog ? catalog?.models(p.catalog) ?? [] : []);
+  const list = (p: ProviderView) => listModels(p, catalogOf(p), readSetting(o.store, 'pickerLimit'));
   const token = randomBytes(32).toString('hex');
   const sessions = new Map<string, Session>();
   const subs = new Set<(row: LogRow) => void>();
@@ -170,7 +176,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     const found = providers.find((p) => p.id === engine)?.efforts.find((e) => e.id === id);
     return { listed: !!found, label: found?.label ?? id };
   };
-  const deps: SessionDeps = { store: o.store, makeEngine: o.makeEngine, dir: o.dir, describeModel, describeEffort, onRow: (row) => { for (const f of subs) f(row); } };
+  const deps: SessionDeps = { store: o.store, makeEngine: o.makeEngine, dir: o.dir, describeModel, describeEffort, folderTrust: folderTrustFrom(mods), onRow: (row) => { for (const f of subs) f(row); } };
   let engines: Array<{ id: string } & EngineProbe> = [];
   let host = '';
   let origin = '';
@@ -378,6 +384,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     server.closeAllConnections();
     await stopped;
     await Promise.all([...sessions.values()].map((s) => s.shutdown()));
+    ownMods?.dispose();
     if (locked && o.lockFile) releaseLock(o.lockFile, process.pid);
   })());
 
