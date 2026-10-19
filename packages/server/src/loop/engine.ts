@@ -1,20 +1,24 @@
-// The API agent loop, parts 1 to 4 (spec 4.1 to 4.5, 4.11): one model call per step, cost, retries, errors, interrupt, the per-reply call cap, the file
+// The API agent loop, parts 1 to 5 (spec 4.1 to 4.6, 4.11, 4.12): one model call per step, cost, retries, errors, interrupt, the per-reply call cap, the file
 // tools behind path confinement and `checkTool`, the shell tool (shell.ts), the user's approval for the shell and for paths outside the project, the
-// cards that arrive during a turn, and the system prompt.
-// No conversation file, no compaction, no USD guard: history lives in memory for the life of the session.
+// cards that arrive during a turn, the system prompt, and the conversation file (store.ts) that a session opened with its id reads back.
+// No compaction, no USD guard.
 import { randomUUID } from 'node:crypto';
 import { checkTool, type Decision, type Engine, type EngineEvent, type EngineProbe, type EngineSession, type OpenOptions, type ToolRequest, type TurnResult } from '@reins/core';
 import { CARD_CONTEXT_LIMIT, newNonce, noLoneSurrogate, wrapCard } from '../cards.js';
 import type { EngineHost, ProviderManifest, Wire } from '../mods/types.js';
 import { SETTINGS } from '../settings.js';
 import { callCost, priceOf } from './cost.js';
+import { callsOf, flattenRounds, INTERRUPTED, pairUp, resultBlock, type Call } from './pairs.js';
 import { confine, type FsLike } from './paths.js';
-import { classify, retryDelay, sleep as realSleep, STALL_MS, TRIES, WORDS, type ErrorClass } from './retry.js';
+import { bodyOf, classify, retryDelay, sleep as realSleep, STALL_MS, TRIES, WORDS, type ErrorClass } from './retry.js';
+import { openConversation, type StoreFs } from './store.js';
 import { readAgents, systemPrompt } from './system.js';
 import { checkInput, cutText, noTool, offered, toolSpecs, type Target, type ToolCtx, type ToolOut } from './tools.js';
 import type { Block, Extra, ModelRequest, Msg, Usage, WireEvent } from './types.js';
 
-const INTERRUPTED = 'Interrupted; the tool did not finish.';
+// The pairing rules moved to pairs.ts; callers and tests still import `pairUp` from here.
+export { pairUp };
+
 const DENIED = 'Denied by the user in Reins.';
 const CARD_CUT = ' […cut]';
 const PATH_CHANGED = 'Blocked by Reins: the path changed while the question was open.';
@@ -25,6 +29,8 @@ export interface LoopDeps {
   random?: () => number;
   platform?: NodeJS.Platform;
   fs?: FsLike;
+  /** The fs the conversation file is written and read with. */
+  convFs?: StoreFs;
 }
 
 /** A tool input larger than this (in characters, strings and keys together) is shown in the public event as a preview. */
@@ -79,42 +85,9 @@ function preview(v: unknown, red: (t: string, max?: number) => string, redAll: (
 type Prep = { text: string; isError: true; denied: boolean } | { run: () => Promise<ToolOut>; parallel: boolean; ask?: ToolRequest; same?: string };
 const plain = (text: string, denied = false): Prep => ({ text, isError: true, denied });
 
-type Call = Extract<Block, { type: 'tool_call' }>;
 type Reply = { blocks: Block[]; usage: Usage; extra?: Extra };
 
 const textOf = (blocks: Block[]) => blocks.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('');
-const callsOf = (blocks: Block[]): Call[] => blocks.filter((b): b is Call => b.type === 'tool_call');
-const resultBlock = (id: string, content: string, isError = false): Block => ({ type: 'tool_result', id, content, ...(isError ? { isError } : {}) });
-
-/**
- * Spec 4.12b, the part that exists so far: drops tool results whose call is not in the history and gives every call that has no result
- * the stub. Returns a new list (messages it changes are copies); `stubbed` names the calls it answered.
- */
-export function pairUp(msgs: Msg[]): { msgs: Msg[]; stubbed: Call[] } {
-  const calls = new Set(msgs.flatMap((m) => (m.role === 'assistant' ? callsOf(m.blocks).map((c) => c.id) : [])));
-  const kept: Msg[] = [];
-  for (const m of msgs) {
-    const blocks = m.blocks.filter((b) => b.type !== 'tool_result' || calls.has(b.id));
-    if (blocks.length) kept.push(blocks.length === m.blocks.length ? m : { ...m, blocks });
-  }
-  const answered = new Set(kept.flatMap((m) => m.blocks.flatMap((b) => (b.type === 'tool_result' ? [b.id] : []))));
-  const out: Msg[] = [];
-  const stubbed: Call[] = [];
-  for (let i = 0; i < kept.length; i++) {
-    const m = kept[i]!;
-    out.push(m);
-    const missing = m.role === 'assistant' ? callsOf(m.blocks).filter((c) => !answered.has(c.id)) : [];
-    if (!missing.length) continue;
-    stubbed.push(...missing);
-    const stubs = missing.map((c) => resultBlock(c.id, INTERRUPTED, true));
-    const next = kept[i + 1];
-    if (next?.role === 'user') {
-      out.push({ ...next, blocks: [...stubs, ...next.blocks] });
-      i++;
-    } else out.push({ role: 'user', blocks: stubs });
-  }
-  return { msgs: out, stubbed };
-}
 
 export function loopEngine(p: ProviderManifest, wire: Wire, h: EngineHost, deps: LoopDeps = {}): Engine {
   const keyState = () => h.key?.(p).state;
@@ -160,10 +133,24 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
     }
   };
 
-  let history: Msg[] = [];
+  // A session id that is not one Reins made throws here, before the disk is touched. A fresh session writes no file until its first reply.
+  const convo = openConversation(h.home, sessionId, { fs: deps.convFs, redactAll: redAll, holdsSecret: h.holdsSecret });
+  let loaded: ReturnType<typeof convo.load> | undefined;
+  if (opts.sessionId) {
+    // One session owns a conversation at a time: the lock is taken before the file is read and kept until `close`.
+    convo.lock();
+    try {
+      loaded = convo.load(p.protocol);
+    } catch (e) {
+      convo.release();
+      throw e;
+    }
+  }
+  let history: Msg[] = loaded?.msgs ?? [];
   // The running total of USD; undefined = unknown (an unpriced call, or a resumed session whose total was not kept), and it stays so.
-  let total: number | undefined = opts.costBase ?? (opts.sessionId ? undefined : 0);
-  const totals: Record<string, number> = { ...opts.costBaseByModel };
+  // What Reins counted (the store's number) wins over the file's sum: they agree unless something outside the loop moved one of them.
+  let total: number | undefined = opts.costBase ?? (loaded ? loaded.total : 0);
+  const totals: Record<string, number> = { ...(opts.costBaseByModel ?? loaded?.totals) };
   // What Reins counted before the turn now running; moves only when a turn resolves, so a turn that rejects leaves its spend for the next one.
   let base = total;
   let baseBy = { ...totals };
@@ -176,6 +163,23 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
 
   let turnAbort: AbortController | undefined;
   let closed = false;
+
+  /**
+   * Writes to the conversation file (a fresh session takes its lock with the first write). A write that fails (disk, permissions, a key the
+   * redaction missed) never fails the turn: one `hook` event tells the host, and nothing more is written this session. History in memory carries
+   * on. It is not an `error` event: the session treats that as a dead engine and drops it.
+   */
+  let lost = false;
+  const save = (write: () => void) => {
+    if (lost || closed || convo.failed) return;
+    try {
+      convo.lock();
+      write();
+    } catch (e) {
+      lost = true;
+      emit({ type: 'hook', event: 'conversation-save', decision: 'failed', reason: red(e instanceof Error ? e.message : String(e), 300) });
+    }
+  };
 
   /** Answers every tool call that has no result with the interrupted stub, in the history and in the events. */
   const stubUnanswered = () => {
@@ -192,7 +196,7 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
     if (cls === 'network') what = `Cannot reach ${new URL(p.baseUrl).host}: ${red(err.message, 500).replace(/\.$/, '')}.`;
     else if (cls === 'auth') what = keyEnv;
     else if (cls === 'notFound') what = model;
-    else if (cls === 'bad') what = red(err.message.replace(/^[\s\S]*?answered \d{3}(?:: )?/, ''), 500);
+    else if (cls === 'bad' || cls === 'unpaired') what = red(bodyOf(err.message), 500);
     return new Error(WORDS[cls].say(p.label, status, what));
   };
 
@@ -245,9 +249,11 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
   }
 
   /** Spec 4.9: tries again what is worth it, with the waits of the table; the final error is the table's words. */
-  async function callWithRetry(req: ModelRequest, signal: AbortSignal): Promise<Reply | 'cancelled'> {
+  async function callWithRetry(first: ModelRequest, signal: AbortSignal): Promise<Reply | 'cancelled'> {
+    let req = first;
     let tries = 0;
     let stalls = 0;
+    let repaired = false;
     for (;;) {
       let out: Reply | 'stalled' | 'cancelled';
       try {
@@ -255,6 +261,15 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
       } catch (e) {
         const cls = classify(e);
         if (cls === 'consent') throw e; // the session asks the user; not rewritten
+        if (cls === 'unpaired') {
+          // A 400 about a tool id, and the history was already sanitized: the same request would be refused again. So once, at once, every tool
+          // round goes as plain text (the file is not touched; the session keeps the flat history). The same answer twice is the final error.
+          if (repaired) throw finalError(cls, e);
+          repaired = true;
+          history = flattenRounds(pairUp(history).msgs);
+          req = { ...req, messages: history };
+          continue;
+        }
         if (!WORDS[cls].retry || ++tries >= TRIES) throw finalError(cls, e);
         await sleep(retryDelay(tries, (e as { retryAfter?: string }).retryAfter, random), signal);
         if (signal.aborted) return 'cancelled';
@@ -321,7 +336,10 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
     const max = h.settings?.maxCallsPerTurn ?? SETTINGS.maxCallsPerTurn.default;
     const mark = history.length;
     turnEvents = [];
-    history.push({ role: 'user', blocks: [{ type: 'text', text }] });
+    // Written to the file with the first reply, not before: a turn that got no reply at all leaves no trace there either.
+    const userMsg: Msg = { role: 'user', blocks: [{ type: 'text', text }] };
+    let userSaved = false;
+    history.push(userMsg);
     let calls = 0;
     let finished = 0;
     let lastUsage: Usage | undefined;
@@ -383,13 +401,13 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
         // The call finished: it is paid for and counted, whatever happens next.
         finished++;
         lastUsage = reply.usage;
+        const price = priceOf(p, h, model);
+        const spent = price ? callCost(price, reply.usage) : undefined;
         if (total !== undefined) {
-          const price = priceOf(p, h, model);
-          if (!price) total = undefined;
+          if (spent === undefined) total = undefined;
           else {
-            const c = callCost(price, reply.usage);
-            total += c;
-            totals[model] = (totals[model] ?? 0) + c;
+            total += spent;
+            totals[model] = (totals[model] ?? 0) + spent;
           }
         }
 
@@ -408,7 +426,16 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
             return b;
           }
         });
-        history.push({ role: 'assistant', blocks, ...(reply.extra ? { extra: reply.extra } : {}) });
+        const assistant: Msg = { role: 'assistant', blocks, ...(reply.extra ? { extra: reply.extra } : {}) };
+        history.push(assistant);
+        save(() => {
+          if (!userSaved) {
+            userSaved = true;
+            convo.appendMsg(userMsg, p.protocol);
+          }
+          // The reply and its spend are one line.
+          convo.appendMsg(assistant, p.protocol, { model, ...reply.usage, ...(spent !== undefined ? { cost: spent } : {}) });
+        });
 
         // The loop has already joined the stream's deltas into whole messages, so a key split across deltas is whole here and one redaction finds it.
         // History keeps the raw text: the next request goes to the provider that wrote it.
@@ -510,6 +537,8 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
         const message: Msg = { role: 'user', blocks: results };
         if (results.length) history.push(message);
         if (signal.aborted) {
+          // What did finish happened for real: it is kept. The calls it does not answer are stubbed again when the file is read.
+          if (results.length) save(() => convo.appendMsg(message, p.protocol));
           stubUnanswered();
           return finish('');
         }
@@ -535,6 +564,7 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
           results.push(...wrapped);
           if (!placed) history.push(message);
         }
+        if (message.blocks.length) save(() => convo.appendMsg(message, p.protocol));
       }
     } catch (e) {
       stubUnanswered();
@@ -567,6 +597,7 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
     async close() {
       closed = true;
       turnAbort?.abort();
+      convo.release();
     },
   };
 }

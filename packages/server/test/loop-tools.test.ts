@@ -552,7 +552,8 @@ describe('confinement through the engine', () => {
     );
     const res = await (await open(r)).turn('go');
     expect(asked(r).map((x) => x.content)).toEqual([HOME_WORDS, HOME_WORDS, HOME_WORDS]);
-    expect(fs.existsSync(path.join(inner, 'conversations'))).toBe(false);
+    // The engine keeps its own conversation folder there now; what the model tried to write must not exist.
+    expect(fs.existsSync(path.join(inner, 'conversations', 'x.jsonl'))).toBe(false);
     expect(JSON.stringify(res.events)).not.toContain('"providers":{}');
   });
 

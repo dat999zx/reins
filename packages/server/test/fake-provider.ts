@@ -60,27 +60,68 @@ function messagesBody(r: FakeReply): string {
 
 /** The unpaired id of a request history, as the error message a strict API would give; undefined when every call has a result. */
 function unpaired(wire: 'chat' | 'messages', body: any): string | undefined {
-  const calls = new Set<string>();
-  const results = new Set<string>();
-  for (const m of Array.isArray(body?.messages) ? body.messages : []) {
+  const msgs: any[] = Array.isArray(body?.messages) ? body.messages : [];
+  const noResult = (id: string) => (wire === 'chat' ? `tool_call_id ${id} has no matching tool result` : `tool_use ids were found without tool_result blocks immediately after: ${id}`);
+  const noCall = (id: string) => (wire === 'chat' ? `tool_call_id ${id} has no matching tool call` : `unexpected tool_use_id ${id} found in tool_result blocks: no matching tool_use`);
+  const callsOf = (m: any): string[] =>
+    wire === 'chat' ? (m.role === 'assistant' ? (m.tool_calls ?? []).map((c: any) => c.id) : []) : m.role === 'assistant' ? (Array.isArray(m.content) ? m.content : []).filter((b: any) => b.type === 'tool_use').map((b: any) => b.id) : [];
+  // Which results (ids, in order) sit right after message i, before any text or the next assistant message; and the index where they end.
+  const resultsAfter = (i: number): { ids: string[]; end: number } => {
+    const ids: string[] = [];
     if (wire === 'chat') {
-      for (const c of m.tool_calls ?? []) calls.add(c.id);
-      if (m.role === 'tool') results.add(m.tool_call_id);
-    } else {
-      for (const b of Array.isArray(m.content) ? m.content : []) {
-        if (b.type === 'tool_use') calls.add(b.id);
-        if (b.type === 'tool_result') results.add(b.tool_use_id);
+      let j = i + 1;
+      for (; j < msgs.length && msgs[j].role === 'tool'; j++) ids.push(msgs[j].tool_call_id);
+      return { ids, end: j };
+    }
+    const next = msgs[i + 1];
+    if (next?.role !== 'user' || !Array.isArray(next.content)) return { ids, end: i + 1 };
+    // The results come first in the one user message.
+    for (const b of next.content) {
+      if (b.type !== 'tool_result') break;
+      ids.push(b.tool_use_id);
+    }
+    return { ids, end: i + 2 };
+  };
+  const accounted = new Set<number>();
+  for (let i = 0; i < msgs.length; i++) {
+    const calls = callsOf(msgs[i]);
+    if (!calls.length) continue;
+    const { ids, end } = resultsAfter(i);
+    for (let k = i + 1; k < end; k++) accounted.add(k);
+    const missing = calls.find((id) => !ids.includes(id));
+    if (missing) return noResult(missing);
+    const stray = ids.find((id, k) => !calls.includes(id) || ids.indexOf(id) !== k);
+    if (stray) return noCall(stray);
+  }
+  // A result anywhere else (not right after its own call message) has no call.
+  const resultIds = (m: any): string[] =>
+    wire === 'chat' ? (m.role === 'tool' ? [m.tool_call_id] : []) : m.role === 'user' && Array.isArray(m.content) ? m.content.filter((b: any) => b.type === 'tool_result').map((b: any) => b.tool_use_id) : [];
+  for (let i = 0; i < msgs.length; i++) {
+    const ids = resultIds(msgs[i]);
+    if (ids.length && !accounted.has(i)) return noCall(ids[0]!);
+  }
+  // A result block after text in the same user message (messages wire): not first, so not a result of the round.
+  if (wire === 'messages') {
+    for (const m of msgs) {
+      if (m.role !== 'user' || !Array.isArray(m.content)) continue;
+      let text = false;
+      for (const b of m.content) {
+        if (b.type !== 'tool_result') text = true;
+        else if (text) return noCall(b.tool_use_id);
       }
     }
   }
-  const noResult = [...calls].find((id) => !results.has(id));
-  if (noResult) return wire === 'chat' ? `tool_call_id ${noResult} has no matching tool result` : `tool_use ids were found without tool_result blocks immediately after: ${noResult}`;
-  const noCall = [...results].find((id) => !calls.has(id));
-  if (noCall) return wire === 'chat' ? `tool_call_id ${noCall} has no matching tool call` : `unexpected tool_use_id ${noCall} found in tool_result blocks: no matching tool_use`;
   return undefined;
 }
 
-export async function startFakeProvider(o: { strictPairs?: boolean } = {}) {
+/** Whether a request carries any tool call or tool result. */
+function hasToolBlocks(wire: 'chat' | 'messages', body: any): boolean {
+  return (Array.isArray(body?.messages) ? body.messages : []).some((m: any) =>
+    wire === 'chat' ? m.role === 'tool' || (m.tool_calls ?? []).length > 0 : (Array.isArray(m.content) ? m.content : []).some((b: any) => b.type === 'tool_use' || b.type === 'tool_result'));
+}
+
+/** `toolBlocksFail`: every request that carries a tool call or result is answered with a pairing 400 (a provider that cannot take the round at all). */
+export async function startFakeProvider(o: { strictPairs?: boolean; toolBlocksFail?: boolean } = {}) {
   const queue: FakeReply[] = [];
   const requests: FakeRequest[] = [];
 
@@ -110,7 +151,9 @@ export async function startFakeProvider(o: { strictPairs?: boolean } = {}) {
       res.end(`fake provider: no route for ${method} ${path}`);
       return;
     }
-    const bad = o.strictPairs ? unpaired(wire, body) : undefined;
+    const bad = o.strictPairs ? unpaired(wire, body) : o.toolBlocksFail && hasToolBlocks(wire, body)
+      ? (wire === 'chat' ? "An assistant message with 'tool_calls' must be followed by tool messages responding to each 'tool_call_id'." : 'unexpected tool_use_id toolu_x found in tool_result blocks')
+      : undefined;
     if (bad) {
       res.writeHead(400, { 'content-type': 'application/json' });
       res.end(JSON.stringify(wire === 'chat' ? { error: { message: bad } } : { type: 'error', error: { type: 'invalid_request_error', message: bad } }));

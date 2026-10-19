@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { callCost, priceOf } from '../src/loop/cost.js';
 import { COST_120, PRICE, USAGE_120, rig, toolReply, type Rig } from './loop-harness.js';
@@ -39,8 +42,15 @@ describe('per-turn cost is the total minus the base (6.1)', () => {
 
   it('a resumed session whose total was not kept has no cost', async () => {
     const r = await make('openai-chat');
+    // A file with a reply and no usage line: what the money was is not known.
+    const id = randomUUID();
+    fs.mkdirSync(path.join(r.host.home, 'conversations'));
+    fs.writeFileSync(path.join(r.host.home, 'conversations', `${id}.jsonl`), [
+      { t: 'msg', role: 'user', blocks: [{ type: 'text', text: 'q' }] },
+      { t: 'msg', role: 'assistant', protocol: 'openai-chat', blocks: [{ type: 'text', text: 'a' }] },
+    ].map((l) => `${JSON.stringify(l)}\n`).join(''));
     r.push({ text: 'ok', ...call });
-    const res = await (await r.open({ sessionId: 'old' })).turn('hi');
+    const res = await (await r.open({ sessionId: id })).turn('hi');
     expect(res.cost).toBeUndefined();
     expect(res.total).toBeUndefined();
   });

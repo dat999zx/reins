@@ -36,11 +36,11 @@ export interface Rig {
 }
 
 export async function rig(wireId: WireId, o: {
-  strictPairs?: boolean; manifest?: Partial<ProviderManifest>; noKey?: boolean; keyless?: boolean; max?: number; wire?: Wire;
+  strictPairs?: boolean; toolBlocksFail?: boolean; manifest?: Partial<ProviderManifest>; noKey?: boolean; keyless?: boolean; max?: number; wire?: Wire;
   deps?: LoopDeps; host?: Partial<EngineHost>;
 } = {}): Promise<Rig> {
   const home = tempHome();
-  const fake = await startFakeProvider(o.strictPairs ? { strictPairs: true } : {});
+  const fake = await startFakeProvider({ ...(o.strictPairs ? { strictPairs: true } : {}), ...(o.toolBlocksFail ? { toolBlocksFail: true } : {}) });
   if (!o.noKey) setKey(home.home, 'p', KEY);
   const mods = await startMods({ dir: home.home, env: {} });
   const wire = o.wire ?? (mods.registry.get<Protocol>('protocol-impl', wireId) as Extract<Protocol, { conversation: 'reins' }>).wire;

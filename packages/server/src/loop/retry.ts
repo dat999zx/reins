@@ -1,7 +1,7 @@
 // Spec 4.9: which failures are tried again, how long to wait, and the words of the final error.
 import { ConsentNeeded, ProviderError } from '../send.js';
 
-export type ErrorClass = 'rate' | 'server' | 'network' | 'stall' | 'auth' | 'notFound' | 'bad' | 'redirect' | 'consent';
+export type ErrorClass = 'rate' | 'server' | 'network' | 'stall' | 'auth' | 'notFound' | 'bad' | 'unpaired' | 'redirect' | 'consent';
 
 /** Calls made in all for a rate limit, a server error or a network failure. */
 export const TRIES = 4;
@@ -19,6 +19,8 @@ export const WORDS: Record<ErrorClass, { retry: boolean; say(who: string, code: 
   auth: { retry: false, say: (who, code, keyEnv) => `${who} refused the key (${code}). Check ${keyEnv} or Settings > Providers.` },
   notFound: { retry: false, say: (who, _code, model) => `${who} has no model ${model} (404).` },
   bad: { retry: false, say: (who, code, body) => `${who} refused the request (${code}): ${body}` },
+  // Tried once more by the loop after it sanitizes the history again (not by the table's tries); the words are the body.
+  unpaired: { retry: false, say: (_who, _code, body) => body },
   redirect: { retry: false, say: (who) => `${who} answered with a redirect to another address; Reins does not follow it with your key.` },
   consent: { retry: false, say: (_who, _code, what) => what },
 };
@@ -29,14 +31,33 @@ export function classifyStatus(status: number): ErrorClass {
   if (status >= 500) return 'server';
   if (status === 401 || status === 403) return 'auth';
   if (status === 404) return 'notFound';
-  // ponytail: a 400 "context too long" (compact, retry once, Task 16) and a 400 naming an unpaired tool id (sanitize, retry once, Task 14) are plain bad requests until then.
+  // ponytail: a 400 "context too long" (compact, retry once, Task 16) is a plain bad request until then.
   return 'bad';
 }
+
+/** What a ProviderError's message says after the status: the (redacted) body. */
+export const bodyOf = (message: string): string => message.replace(/^[\s\S]*?answered \d{3}(?:: )?/, '');
+
+// A 400 is about a tool call that does not pair when its body says how two things are related (spec 4.9 row `unpaired`): a call that must be
+// followed by results, a result with no call, ids found without results. Each pattern names the RELATION, so a schema error that merely
+// mentions `tool_calls` or says "unexpected" does not match. Matched on the body in lower case with quotes and backticks taken out.
+const UNPAIRED: RegExp[] = [
+  /tool_calls.{0,30}must be followed by tool messages/,
+  /role tool must be a response to a prece+d\w+ message with tool_calls/,
+  /tool_use ids? (were|was) found without tool_result blocks/,
+  /unexpected tool_use_id\b.{0,80}\btool_result/,
+  /tool_result.{0,60}\b(corresponding|matching) tool_use/,
+  /tool_call_id\b.{0,80}\b(no|without) (corresponding|matching) tool (call|result|message)/,
+];
+export const isUnpaired = (body: string): boolean => {
+  const t = body.toLowerCase().replace(/['"`]/g, '');
+  return UNPAIRED.some((re) => re.test(t));
+};
 
 /** The class of a thrown error: a ProviderError by its status; the redirect and consent refusals by what send.ts makes of them; anything else is a network failure. */
 export function classify(err: unknown): ErrorClass {
   if (err instanceof ConsentNeeded) return 'consent';
-  if (err instanceof ProviderError) return classifyStatus(err.status);
+  if (err instanceof ProviderError) return err.status === 400 && isUnpaired(bodyOf(err.message)) ? 'unpaired' : classifyStatus(err.status);
   // send.ts rewrites a refused redirect to this one sentence.
   if (err instanceof Error && /answered with a redirect/.test(err.message)) return 'redirect';
   // ponytail: every other error (a refused address, a wire's own failure) counts as the network and is tried again; split them when a wire marks its errors.
