@@ -1,13 +1,13 @@
 // The API agent loop, parts 1 to 5 (spec 4.1 to 4.6, 4.11, 4.12): one model call per step, cost, retries, errors, interrupt, the per-reply call cap, the file
 // tools behind path confinement and `checkTool`, the shell tool (shell.ts), the user's approval for the shell and for paths outside the project, the
-// cards that arrive during a turn, the system prompt, and the conversation file (store.ts) that a session opened with its id reads back.
-// No compaction, no USD guard.
+// cards that arrive during a turn, the system prompt, and the conversation file (store.ts) that a session opened with its id reads back,
+// and the USD limits (`usdRoom`, `maxUsd`), held before every model call. No compaction.
 import { randomUUID } from 'node:crypto';
 import { checkTool, type Decision, type Engine, type EngineEvent, type EngineProbe, type EngineSession, type OpenOptions, type ToolRequest, type TurnResult } from '@reins/core';
 import { CARD_CONTEXT_LIMIT, newNonce, noLoneSurrogate, wrapCard } from '../cards.js';
 import type { EngineHost, ProviderManifest, Wire } from '../mods/types.js';
 import { SETTINGS } from '../settings.js';
-import { callCost, priceOf } from './cost.js';
+import { callCost, priceOf, USD_EPSILON } from './cost.js';
 import { callsOf, flattenRounds, INTERRUPTED, pairUp, resultBlock, type Call } from './pairs.js';
 import { confine, type FsLike } from './paths.js';
 import { bodyOf, classify, retryDelay, sleep as realSleep, STALL_MS, TRIES, WORDS, type ErrorClass } from './retry.js';
@@ -22,6 +22,7 @@ export { pairUp };
 const DENIED = 'Denied by the user in Reins.';
 const CARD_CUT = ' […cut]';
 const PATH_CHANGED = 'Blocked by Reins: the path changed while the question was open.';
+const USD_USED_UP = 'The USD budget is used up.';
 
 /** The clock and the dice of the retry back-off, and the platform and fs the tools see, for tests. */
 export interface LoopDeps {
@@ -148,12 +149,28 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
   }
   let history: Msg[] = loaded?.msgs ?? [];
   // The running total of USD; undefined = unknown (an unpriced call, or a resumed session whose total was not kept), and it stays so.
-  // What Reins counted (the store's number) wins over the file's sum: they agree unless something outside the loop moved one of them.
-  let total: number | undefined = opts.costBase ?? (loaded ? loaded.total : 0);
-  const totals: Record<string, number> = { ...(opts.costBaseByModel ?? loaded?.totals) };
+  // What Reins counted (`costBase`) is the baseline a turn's cost is measured from. What was paid is the file's sum: when it is larger, a call
+  // was paid that the Run never counted (a turn that threw), and the next turn is charged for it. The larger of the two is the running total.
+  // A file whose total is unknown (a lost line) cannot say what was paid after the base: the base is kept, and `unknownTail` makes a USD limit refuse.
+  const fileTotal: number | undefined = loaded ? loaded.total : 0;
+  const counted = opts.costBase;
+  let unknownTail = false;
+  let total: number | undefined;
+  if (counted === undefined) total = fileTotal;
+  else if (fileTotal === undefined) {
+    total = counted;
+    unknownTail = true;
+  } else total = Math.max(counted, fileTotal);
+  const fileTotals = loaded?.totals ?? {};
+  const countedBy = opts.costBaseByModel;
+  const totals: Record<string, number> = countedBy ? { ...countedBy } : { ...fileTotals };
+  // Per model the larger too. A model the Run has no figure for starts at the file's, so its past spend is in the total but not in this turn's split.
+  let baseBy: Record<string, number> = countedBy ? { ...countedBy } : { ...totals };
+  if (countedBy) for (const [m, t] of Object.entries(fileTotals)) { totals[m] = Math.max(totals[m] ?? 0, t); baseBy[m] ??= t; }
   // What Reins counted before the turn now running; moves only when a turn resolves, so a turn that rejects leaves its spend for the next one.
-  let base = total;
-  let baseBy = { ...totals };
+  let base = counted ?? total;
+  // What `maxUsd` counts from: the total when this session opened, so it holds across turns (it is not reset by a new turn).
+  const openTotal = total;
 
   let turnEvents: EngineEvent[] = [];
   const emit = (e: EngineEvent) => {
@@ -249,12 +266,19 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
   }
 
   /** Spec 4.9: tries again what is worth it, with the waits of the table; the final error is the table's words. */
-  async function callWithRetry(first: ModelRequest, signal: AbortSignal): Promise<Reply | 'cancelled'> {
+  async function callWithRetry(first: ModelRequest, signal: AbortSignal, beforeSend: () => string | undefined): Promise<Reply | 'cancelled' | { stop: string }> {
     let req = first;
     let tries = 0;
     let stalls = 0;
     let repaired = false;
+    let sent = false;
     for (;;) {
+      // Every request that goes out is judged against the live budget: the room may have gone while this one backed off, stalled or was repaired.
+      if (sent) {
+        const stop = beforeSend();
+        if (stop) return { stop };
+      }
+      sent = true;
       let out: Reply | 'stalled' | 'cancelled';
       try {
         out = await callOnce(req, signal);
@@ -331,6 +355,25 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
     }
   }
 
+  /**
+   * Spec 4.1 and 6.3, asked before each model call: why this call must not be sent, or undefined. The room is the run's now (`usdRoom`) less
+   * what this turn has spent; `maxUsd` is what this session may spend since it opened. A limit with a model that has no price, or a total
+   * that is unknown (an unpriced call, a lost reply), cannot be held, so the call is not sent: unknown is never counted as zero.
+   */
+  function usdStop(): string | undefined {
+    const room = opts.usdRoom?.();
+    const cap = opts.maxUsd;
+    if (room === undefined && cap === undefined) return undefined;
+    // A figure that is not a number (a NaN room from the host, an infinite cap) cannot be held either: every comparison with it would be false.
+    if ([room, cap, total, base, openTotal].some((x) => x !== undefined && !Number.isFinite(x))) return USD_USED_UP;
+    const limit = Math.round(Math.min(room ?? Infinity, cap ?? Infinity) * 1e6) / 1e6;
+    if (!priceOf(p, h, model)) return `${model} has no price, so Reins cannot hold the $${limit} budget. Add a price in Settings > Providers, or remove the budget.`;
+    if (total === undefined || base === undefined || openTotal === undefined || unknownTail) return USD_USED_UP;
+    if (room !== undefined && room - (total - base) <= USD_EPSILON) return USD_USED_UP;
+    if (cap !== undefined && total - openTotal >= cap - USD_EPSILON) return USD_USED_UP;
+    return undefined;
+  }
+
   async function runTurn(text: string, ac: AbortController): Promise<TurnResult> {
     const signal = ac.signal;
     const max = h.settings?.maxCallsPerTurn ?? SETTINGS.maxCallsPerTurn.default;
@@ -352,8 +395,13 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
       agents: readAgents({ cwd, home: h.home, platform, fs: deps.fs, redact: red, redactAll: redAll }),
     });
 
-    const finish = (text: string, error?: string): TurnResult => {
+    /**
+     * `error`: the turn failed (an `error` event, which the session reads as a dead engine). `budget`: the turn stopped because a USD limit cannot
+     * be held; that is a normal stop, so it is one `hook` event and no `error`, and the engine and its conversation stay (spec 6.3).
+     */
+    const finish = (text: string, error?: string, budget = false): TurnResult => {
       if (error) emit({ type: 'error', message: error });
+      if (budget) emit({ type: 'hook', event: 'usd-stop', decision: 'stopped', reason: text });
       if (lastUsage) {
         const used = lastUsage.input + lastUsage.cacheRead + lastUsage.cacheWrite + lastUsage.output;
         emit({ type: 'usage', model, used, ...(info?.context !== undefined ? { window: info.context } : {}) });
@@ -363,12 +411,20 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
       const result: TurnResult = {
         text,
         ...(known ? { cost: total! - base!, total, totals: { ...totals }, models: split } : {}),
-        ...(error ? { isError: true } : {}),
+        ...(error || budget ? { isError: true } : {}),
+        ...(budget ? { budgetStop: true } : {}),
         events: turnEvents,
       };
       base = total;
       baseBy = { ...totals };
       return result;
+    };
+
+    /** The turn ends here because no call may be sent: answered tool calls stay, a turn with no reply at all leaves no trace (its text is sent again). */
+    const stopForBudget = (words: string): TurnResult => {
+      stubUnanswered();
+      if (finished === 0) history = history.slice(0, mark);
+      return finish(words, undefined, true);
     };
 
     try {
@@ -377,6 +433,9 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
           stubUnanswered();
           return finish('');
         }
+        // Before the call, not after it: a call that would start with no room is not sent.
+        const stop = usdStop();
+        if (stop) return stopForBudget(stop);
         if (++calls > max) {
           const words = `Reins stopped this reply after ${max} model calls (the per-reply limit in Settings).`;
           stubUnanswered();
@@ -392,17 +451,20 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
           ...(effort ? { effort } : {}),
           ...(info?.maxOutput !== undefined ? { maxOutput: info.maxOutput } : {}),
         };
-        const reply = await callWithRetry(req, signal);
+        const reply = await callWithRetry(req, signal, usdStop);
         if (reply === 'cancelled') {
           stubUnanswered();
           return finish('');
         }
+        if ('stop' in reply) return stopForBudget(reply.stop);
 
         // The call finished: it is paid for and counted, whatever happens next.
         finished++;
         lastUsage = reply.usage;
         const price = priceOf(p, h, model);
-        const spent = price ? callCost(price, reply.usage) : undefined;
+        const cost = price ? callCost(price, reply.usage) : undefined;
+        // A cost that is not a number (a usage with a NaN in it) is no cost: the total becomes unknown, never a NaN that no comparison catches.
+        const spent = cost !== undefined && Number.isFinite(cost) ? cost : undefined;
         if (total !== undefined) {
           if (spent === undefined) total = undefined;
           else {

@@ -5,6 +5,8 @@ import type { LogRow, Store } from './store.js';
 export interface PriceTable {
   prices: Record<string, { input: number; cacheWrite?: number }>;
   cacheWritePerInput?: number;
+  /** The provider's default price for a model with no row of its own (local servers declare 0/0). */
+  price?: { input: number; output?: number };
 }
 
 // ponytail: the estimate uses the provider file's measured price table, else catalog prices; both can go stale; a model with no price is refused.
@@ -94,11 +96,14 @@ export function priceFor(provider: PriceTable, catalog: CatalogModel[], model: s
   const t = provider.prices[model];
   if (t) return { input: t.input, cacheWrite: t.cacheWrite ?? t.input, source: 'table' };
   const price = catalog.find((m) => m.id === model)?.price;
-  if (!price || provider.cacheWritePerInput === undefined) return undefined;
-  const tier = (price.tiers ?? []).filter((x) => x.size <= tokens).sort((a, b) => b.size - a.size)[0];
-  const input = tier ? tier.input : price.input;
-  if (input === undefined) return undefined;
-  return { input, cacheWrite: input * provider.cacheWritePerInput, source: 'catalog' };
+  if (price && provider.cacheWritePerInput !== undefined) {
+    const tier = (price.tiers ?? []).filter((x) => x.size <= tokens).sort((a, b) => b.size - a.size)[0];
+    const input = tier ? tier.input : price.input;
+    if (input !== undefined) return { input, cacheWrite: input * provider.cacheWritePerInput, source: 'catalog' };
+  }
+  // Last, the provider's own default (a local server's 0/0): a cache write is billed as input, as the loop counts it (spec 6.1).
+  if (provider.price) return { input: provider.price.input, cacheWrite: provider.price.input, source: 'table' };
+  return undefined;
 }
 
 export type SwitchCheck = { refuse: string } | { ask: { prompt: string; detail: string } } | undefined;

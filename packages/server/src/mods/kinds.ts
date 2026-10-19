@@ -127,6 +127,20 @@ registerKind({
       }
     }
 
+    // A price is USD per million tokens: a number that is not negative and not NaN or infinite, or the money guard would compare against NaN.
+    const money = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+    const checkPrice = (where: string, price: unknown, needOutput: boolean) => {
+      if (!isObj(price)) return bad(`\`${where}\` must be { "input": ..., "output": ... }, numbers of USD per million tokens.`);
+      for (const k of ['input', 'output', 'cacheRead', 'cacheWrite']) {
+        const v = price[k];
+        if (v === undefined ? k === 'input' || (k === 'output' && needOutput) : !money(v)) {
+          bad(v === undefined ? `\`${where}.${k}\` is missing; a price needs ${needOutput ? 'both input and output' : 'input'}.` : `\`${where}.${k}\` must be a number of 0 or more (got ${show(v)}).`);
+        }
+      }
+    };
+    if (raw.price !== undefined) checkPrice('price', raw.price, true);
+    if (raw.cacheWritePerInput !== undefined && !money(raw.cacheWritePerInput)) bad(`\`cacheWritePerInput\` must be a number of 0 or more (got ${show(raw.cacheWritePerInput)}).`);
+
     const ids = new Set<string>();
     if (!Array.isArray(raw.models)) bad('`models` must be a list.');
     else {
@@ -134,7 +148,10 @@ registerKind({
         if (full()) break;
         if (!isObj(m) || !isStr(m.id)) bad('every entry of `models` needs an `id`.');
         else if (ids.has(m.id)) bad(`\`models\` lists \`${cap(m.id)}\` twice.`);
-        else ids.add(m.id);
+        else {
+          ids.add(m.id);
+          if (m.price !== undefined) checkPrice(`models.${cap(m.id)}.price`, m.price, false);
+        }
       }
       if (isStr(raw.defaultModel) && !ids.has(raw.defaultModel)) bad(`\`defaultModel\` \`${cap(raw.defaultModel)}\` is not in \`models\`.`);
     }

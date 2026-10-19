@@ -118,12 +118,14 @@ async function onPause(run: Run, io: DriveIo): Promise<boolean> {
     const detail = p.stepId
       ? `Block \`${p.stepId}\` has used $${spent} of its $${limit}.${left === undefined ? '' : ` The workflow's USD budget has $${r4(Math.max(left, 0))} left.`}`
       : `The run has used $${spent} of its $${limit} USD budget.`;
-    const a = await io.ask({ id: questionId(), kind: 'usd', prompt: 'allow $<amount> more / stop', detail });
+    // The engine's own words when it stopped for a budget it cannot hold (an unknown spend, a missing price): the figures alone would not say why.
+    const why = p.text ? ` ${p.text}` : '';
+    const a = await io.ask({ id: questionId(), kind: 'usd', prompt: 'allow $<amount> more / stop', detail: detail + why });
     if (a === null) return false;
     const ans = parseAnswer('usd', a);
     if (ans.t === 'allowUsd') {
-      const why = run.allowUsd(ans.usd);
-      if (why) io.say(why);
+      const refused = run.allowUsd(ans.usd);
+      if (refused) io.say(refused);
     } else if (ans.t === 'stop') await run.stop();
     else if (ans.t === 'invalid') io.say(ans.hint);
     return true;

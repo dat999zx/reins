@@ -132,6 +132,8 @@ export interface ProviderView {
   /** USD per million tokens, as the provider bills them. */
   prices: Record<string, { input: number; cacheWrite?: number }>;
   cacheWritePerInput?: number;
+  /** The provider's default price for a model with no row of its own. */
+  price?: { input: number; output?: number };
 }
 
 /** The provider new sessions use: the one the user chose (`defaultProvider` setting) if installed, else the one whose manifest says `default`, else the first installed. */
@@ -151,5 +153,6 @@ export const providerViews = (mods: Mods): ProviderView[] =>
       ...(m.default ? { default: true } : {}),
       prices: Object.fromEntries(m.models.flatMap((x) => (x.price ? [[x.id, { input: x.price.input, ...(x.price.cacheWrite !== undefined ? { cacheWrite: x.price.cacheWrite } : {}) }]] : []))),
       ...(m.cacheWritePerInput !== undefined ? { cacheWritePerInput: m.cacheWritePerInput } : {}),
+      ...(m.price ? { price: { input: m.price.input, output: m.price.output } } : {}),
     }];
   });

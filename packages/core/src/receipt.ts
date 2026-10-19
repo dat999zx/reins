@@ -3,6 +3,8 @@ import { NODES } from './nodes/index.js';
 
 export interface Receipt {
   workflow: string;
+  /** Replies that had no cost (an unpriced model, or a total that was lost); totalCostUsd leaves them out. Absent when none. */
+  unpricedTurns?: number;
   status: 'done' | 'stopped' | 'failed' | 'paused' | 'running';
   totalTurns: number;
   totalTimeMs: number;
@@ -34,6 +36,7 @@ export function receipt(events: RunEventRecord[]): Receipt {
   let status: Receipt['status'] = 'running';
   let totalTurns = 0;
   let totalCostUsd = 0;
+  let unpricedTurns = 0;
   let gatesHeld = 0;
   let guardRefusals = 0;
   let readOnlyRefusals = 0;
@@ -74,6 +77,10 @@ export function receipt(events: RunEventRecord[]): Receipt {
         break;
       case 'turn_ended':
         totalTurns++;
+        // A reply that ran on a model and still has no cost (the loop always names its model). Known limit: a turn that names no model is not
+        // counted, so a CLI turn killed before its usage row (real spend, unknown cost) shows no "unpriced" mark; counting it would also count
+        // the scripted turns of the golden fixtures, which carry neither a model nor a cost.
+        if (typeof ev.data?.model === 'string' && (ev.data.cost === undefined || ev.data.cost === null)) unpricedTurns++;
         if (typeof ev.data?.model === 'string') seen(ev.data.model).turns++;
         {
           const sub = subs.get(ev.data?.step);
@@ -156,5 +163,6 @@ export function receipt(events: RunEventRecord[]): Receipt {
     ...(models.length && unsplit > 0.00005 ? { unsplitUsd: r6(unsplit) } : {}),
     ...(subs.size ? { subagents: [...subs].map(([step, v]) => ({ step, title: v.title, usd: r6(v.usd), turns: v.turns })) } : {}),
     ...(Object.keys(counts).length ? { counts } : {}),
+    ...(unpricedTurns ? { unpricedTurns } : {}),
   };
 }

@@ -175,6 +175,8 @@ export interface RunSnapshot {
   subagents?: Record<string, SubagentRecord>;
   /** Subagent results not yet taken by a parent turn. */
   handback?: string[];
+  /** A change request that a USD pause cut off, with the gate it came from. */
+  changeRequest?: { note: string; gate: PauseReason };
 }
 
 /** Money sums carry float noise (0.1 + 0.07): six decimals keep every logged figure exact to the cent and below. */
@@ -228,6 +230,10 @@ export class Run {
   private resumeSessionId?: string;
   private turnInFlight = false;
   private interruptCard?: { text: string; kind: 'now' | 'stop' };
+  /** The last runTurn ended on the USD guard (a capped turn): the step runs again after Allow, so it keeps the subagent results it was handed. */
+  private capped = false;
+  /** A change request at a gate that a USD pause cut off: sent again by the next `step`, then the gate asks again. */
+  private changeRequest?: { note: string; gate: PauseReason };
   private switchModel?: (model: string, step: string) => Promise<SwitchOutcome>;
   private setReasoning?: (level: string, step: string) => void;
   private runCost = 0;
@@ -309,9 +315,22 @@ export class Run {
         ...(this.lastTotals ? { costBaseByModel: this.lastTotals } : {}),
         policy: () => this.policy(),
         pendingCards: () => this.takeCards(),
+        usdRoom: () => this.usdRoom(),
       });
     }
     return this.engineSession;
+  }
+
+  /**
+   * The USD the run still allows right now: the smaller of the workflow's room and the open slice's, unrounded (as the subagent cap below
+   * takes them); undefined when neither limit exists.
+   */
+  usdRoom(): number | undefined {
+    const wf = this.workflow.budget.usd;
+    const s = this.openSlice;
+    const rooms = [wf === undefined ? undefined : wf + (this.usdExtra[''] ?? 0) - this.runCost, s && s.usd + (this.usdExtra[s.step] ?? 0) - (this.usdSpent[s.step] ?? 0)]
+      .filter((x): x is number => x !== undefined);
+    return rooms.length ? Math.min(...rooms) : undefined;
   }
 
   private handleTurnResult(result: TurnResult) {
@@ -548,18 +567,34 @@ export class Run {
     return true;
   }
 
+  /** The USD pause: the card that asks "allow $n more / stop". `text` is the engine's own words, when it ended the reply itself. */
+  private pauseUsd(stepId: string | undefined, limit: number, spent: number, text?: string): true {
+    this.status = 'paused';
+    this.pauseReason = { type: 'usd-budget-used', ...(stepId ? { stepId } : {}), limit: r6(limit), spent: r6(spent), ...(text ? { text } : {}) };
+    this.logEvent('budget_reached', { ...(stepId ? { step: stepId } : {}), usd: r6(limit), spent: r6(spent), ...(text ? { text } : {}) });
+    return true;
+  }
+
+  /** A capped turn: the limit is reached by Reins' own count (pauses there), or the engine said it stopped for the budget (pauses here). */
+  private guardUsd(result: TurnResult): boolean {
+    const over = this.usdOver();
+    if (over || !result.budgetStop) return over;
+    // The workflow's limit when it has one, else the open slice's; the figures are only what the card prints.
+    const wf = this.workflow.budget.usd;
+    const s = this.openSlice;
+    if (wf !== undefined) this.pauseUsd(undefined, wf + (this.usdExtra[''] ?? 0), this.runCost, result.text);
+    else if (s) this.pauseUsd(s.step, s.usd + (this.usdExtra[s.step] ?? 0), this.usdSpent[s.step] ?? 0, result.text);
+    else this.pauseUsd(undefined, 0, this.runCost, result.text);
+    return true;
+  }
+
   /**
    * USD is checked between steps, after the fact, so a reply can run past a limit. The workflow's
    * budget comes first: a slice pause then always has workflow money left, so its Allow is never a dead end.
    */
   // ponytail: a reply with an unknown cost counts 0; an auto-compaction whose reply failed is logged outside the run and not counted; a `now` card's follow-up reply is part of its step and is not checked between replies; a subagent's follow-ups share its process's provider cap
   private usdOver(s: { step: string; usd: number } | undefined = this.openSlice): boolean {
-    const hit = (stepId: string | undefined, limit: number, spent: number) => {
-      this.status = 'paused';
-      this.pauseReason = { type: 'usd-budget-used', ...(stepId ? { stepId } : {}), limit: r6(limit), spent: r6(spent) };
-      this.logEvent('budget_reached', { ...(stepId ? { step: stepId } : {}), usd: r6(limit), spent: r6(spent) });
-      return true;
-    };
+    const hit = (stepId: string | undefined, limit: number, spent: number) => this.pauseUsd(stepId, limit, spent);
     const usd = this.workflow.budget.usd;
     if (usd !== undefined) {
       const limit = usd + (this.usdExtra[''] ?? 0);
@@ -579,10 +614,19 @@ export class Run {
    */
   async requestChanges(note: string) {
     if (this.status !== 'paused' || this.pauseReason?.type !== 'gate') return;
-    const gate = this.pauseReason;
+    this.logEvent('card_delivered', { card: note, channel: 'next-turn', source: 'gate-changes' });
+    await this.sendChanges(note, this.pauseReason);
+  }
+
+  /**
+   * The change request's turn. A capped one (the USD card paused the run) is kept with its gate, and `step` sends it again after Allow before
+   * the gate asks: the user cannot approve a plan whose changes never finished. A stop card, or Stop, drops it.
+   */
+  private async sendChanges(note: string, gate: PauseReason) {
+    this.changeRequest = undefined;
     const session = await this.ensureSession();
     this.currentPolicy = { ...this.currentPolicy, pendingGate: gate.stepId ?? 'gate' };
-    this.logEvent('card_delivered', { card: note, channel: 'next-turn', source: 'gate-changes' });
+    this.capped = false;
     const result = await this.runTurn(
       session,
       gate.stepId ?? 'gate',
@@ -595,7 +639,7 @@ export class Run {
       if (this.lastStepId) this.turnOutputs.set(this.lastStepId, result.text);
       this.status = 'paused';
       this.pauseReason = gate;
-    }
+    } else if (this.capped) this.changeRequest = { note, gate };
   }
 
   /** Go on after a stop card or an agent's `REINS: blocked`: the paused step runs again. */
@@ -614,8 +658,10 @@ export class Run {
   /** A turn of the parent that carries the subagent results. A copy, spliced only after the turn returns: a turn that throws leaves them for the re-run; one that returns, with a result or not, has taken them. */
   private async handedTurn(session: EngineSession, stepId: string, compile: (handed: string[]) => string): Promise<TurnResult | undefined> {
     const handed = [...this.handback];
+    this.capped = false;
     const result = await this.runTurn(session, stepId, compile(handed));
-    this.handback.splice(0, handed.length);
+    // A capped turn is run again with its full text, so the results stay for that re-run (a stop card still takes them).
+    if (!this.capped) this.handback.splice(0, handed.length);
     return result;
   }
 
@@ -662,6 +708,17 @@ export class Run {
         const held = this.interruptCard;
         this.interruptCard = undefined;
         if (held?.kind === 'now') this.pendingCards.push(held.text);
+        return undefined;
+      }
+      // A reply the engine ended as an error while the USD limit is reached is a capped turn: the run pauses on the USD card, the reply is no
+      // step output, and the step runs again after Allow. A stop card typed meanwhile wins (below); a now card waits for the re-run.
+      // The engine can also say so itself (`budgetStop`: a limit it cannot hold because the spend is unknown, or a price is missing): the run
+      // pauses on the same card with the engine's words, though no dollar figure says the limit is reached.
+      if (!sub && result.isError && this.interruptCard?.kind !== 'stop' && this.guardUsd(result)) {
+        const held = this.interruptCard;
+        this.interruptCard = undefined;
+        if (held) this.pendingCards.push(held.text);
+        this.capped = true;
         return undefined;
       }
       const card = this.interruptCard;
@@ -849,6 +906,7 @@ export class Run {
       ...(this.lastTotals ? { lastTotals: { ...this.lastTotals } } : {}),
       ...(Object.keys(this.subagents).length ? { subagents: structuredClone(this.subagents) } : {}),
       ...(this.handback.length ? { handback: [...this.handback] } : {}),
+      ...(this.changeRequest ? { changeRequest: structuredClone(this.changeRequest) } : {}),
     };
   }
 
@@ -903,6 +961,7 @@ export class Run {
     if (snapshot.lastTotals) run.lastTotals = { ...snapshot.lastTotals };
     if (snapshot.subagents) run.subagents = structuredClone(snapshot.subagents);
     if (snapshot.handback) run.handback = [...snapshot.handback];
+    if (snapshot.changeRequest) run.changeRequest = structuredClone(snapshot.changeRequest);
 
     return run;
   }
@@ -911,6 +970,7 @@ export class Run {
     if (this.status === 'stopped') return;
     // Stopped before the interrupt is awaited, so a second stop() meanwhile is a no-op.
     this.status = 'stopped';
+    this.changeRequest = undefined;
     this.logEvent('run_stopped', {});
     await (this.turnSession ?? this.engineSession)?.interrupt();
   }
@@ -941,6 +1001,12 @@ export class Run {
 
   async step(): Promise<RunStatus> {
     if (this.status !== 'running') {
+      return this.status;
+    }
+
+    // After Allow on a capped change request: it is sent again first, and the gate asks again after it.
+    if (this.changeRequest) {
+      await this.sendChanges(this.changeRequest.note, this.changeRequest.gate);
       return this.status;
     }
 

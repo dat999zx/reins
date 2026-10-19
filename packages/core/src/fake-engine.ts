@@ -45,6 +45,8 @@ export interface OpenOptions {
   pendingCards?: () => string[];
   /** The provider's own cap on this process's spend (a subagent's room); undefined = none. */
   maxUsd?: number;
+  /** Live: the USD the run still allows now (the workflow's and the open slice's, the smaller), or undefined for no limit. */
+  usdRoom?: () => number | undefined;
 }
 
 export type EngineEvent =
@@ -75,6 +77,8 @@ export interface TurnResult {
   totals?: Record<string, number>;
   /** The provider reported an error that no interrupt asked for. */
   isError?: boolean;
+  /** The engine ended the reply because a USD limit cannot be held (reached, or its spend or price is unknown): the Run pauses on the USD card. */
+  budgetStop?: boolean;
   events?: EngineEvent[];
 }
 
@@ -115,6 +119,7 @@ export interface ScriptedTurn {
   totals?: Record<string, number>;
   models?: Record<string, number>;
   isError?: boolean;
+  budgetStop?: boolean;
   /** turn() rejects with this message. */
   reject?: string;
   /** Awaited before the turn resolves: a turn in flight. */
@@ -215,6 +220,7 @@ export class FakeEngine implements Engine {
           ...(scripted.totals ? { totals: scripted.totals } : {}),
           ...(scripted.models ? { models: scripted.models } : {}),
           ...(scripted.isError ? { isError: true } : {}),
+          ...(scripted.budgetStop ? { budgetStop: true } : {}),
           events: turnEvents,
         };
       },

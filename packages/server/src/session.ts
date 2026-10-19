@@ -293,6 +293,8 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       ...(models ? { costBaseByModel: models } : {}),
       policy: () => run?.policy() ?? PLAIN,
       pendingCards: () => (run ? run.takeCards() : queue.splice(0)),
+      // The run borrows this session, so its USD room is read here live; with no run (plain chat) there is no limit.
+      usdRoom: () => run?.usdRoom(),
     });
     live = s;
     return cancelOpen || stopping ? undefined : s;

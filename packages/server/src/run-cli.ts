@@ -234,7 +234,8 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
 
   function printReceipt(r: Receipt, runId: string) {
     say('\n── Receipt ──');
-    say(`workflow ${r.workflow} · ${r.status} · ${r.totalTurns} turns · ${Math.round(r.totalTimeMs / 1000)} s · $${r.totalCostUsd.toFixed(4)}`);
+    say(`workflow ${r.workflow} · ${r.status} · ${r.totalTurns} turns · ${Math.round(r.totalTimeMs / 1000)} s · $${r.totalCostUsd.toFixed(4)}${r.unpricedTurns ? ' + ?' : ''}`);
+    if (r.unpricedTurns) say(r.unpricedTurns === 1 ? '1 reply had no price; the total leaves it out' : `${r.unpricedTurns} replies had no price; the total leaves them out`);
     if (r.models) {
       const split = r.models.map((m) => `${m.model} $${m.usd.toFixed(4)} (${m.turns} turn${m.turns === 1 ? '' : 's'})`).join(' · ');
       say(`models ${split}${r.unsplitUsd ? ` · not split by model $${r.unsplitUsd.toFixed(4)}` : ''}`);
