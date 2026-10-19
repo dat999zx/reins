@@ -1,7 +1,7 @@
 // Spec 4.9: which failures are tried again, how long to wait, and the words of the final error.
 import { ConsentNeeded, ProviderError } from '../send.js';
 
-export type ErrorClass = 'rate' | 'server' | 'network' | 'stall' | 'auth' | 'notFound' | 'bad' | 'unpaired' | 'redirect' | 'consent';
+export type ErrorClass = 'rate' | 'server' | 'network' | 'stall' | 'auth' | 'notFound' | 'bad' | 'unpaired' | 'context' | 'redirect' | 'consent';
 
 /** Calls made in all for a rate limit, a server error or a network failure. */
 export const TRIES = 4;
@@ -21,6 +21,8 @@ export const WORDS: Record<ErrorClass, { retry: boolean; say(who: string, code: 
   bad: { retry: false, say: (who, code, body) => `${who} refused the request (${code}): ${body}` },
   // Tried once more by the loop after it sanitizes the history again (not by the table's tries); the words are the body.
   unpaired: { retry: false, say: (_who, _code, body) => body },
+  // The loop compacts once and sends once more (Task 16); `what` is the model id. The same answer again is this final error.
+  context: { retry: false, say: (_who, _code, model) => `The conversation is too long for ${model} even after compressing.` },
   redirect: { retry: false, say: (who) => `${who} answered with a redirect to another address; Reins does not follow it with your key.` },
   consent: { retry: false, say: (_who, _code, what) => what },
 };
@@ -31,7 +33,6 @@ export function classifyStatus(status: number): ErrorClass {
   if (status >= 500) return 'server';
   if (status === 401 || status === 403) return 'auth';
   if (status === 404) return 'notFound';
-  // ponytail: a 400 "context too long" (compact, retry once, Task 16) is a plain bad request until then.
   return 'bad';
 }
 
@@ -54,10 +55,33 @@ export const isUnpaired = (body: string): boolean => {
   return UNPAIRED.some((re) => re.test(t));
 };
 
+// A 400 is about the size of the conversation when its body says the input is over what the model takes (spec 4.9 row `context`). Words of the
+// chat wire, of the messages wire, and a generic one. Each names the INPUT: `max_tokens must be less than ...` (the output limit) and
+// `too many tools` do not match. Matched on the body in lower case.
+const CONTEXT: RegExp[] = [
+  /context_length_exceeded/,
+  /maximum context length/,
+  /exceeds? the context window/,
+  /prompt is too long/,
+  /input is too long/,
+  /too many tokens/,
+];
+export const isContextTooLong = (body: string): boolean => {
+  const t = body.toLowerCase();
+  return CONTEXT.some((re) => re.test(t));
+};
+
 /** The class of a thrown error: a ProviderError by its status; the redirect and consent refusals by what send.ts makes of them; anything else is a network failure. */
 export function classify(err: unknown): ErrorClass {
   if (err instanceof ConsentNeeded) return 'consent';
-  if (err instanceof ProviderError) return err.status === 400 && isUnpaired(bodyOf(err.message)) ? 'unpaired' : classifyStatus(err.status);
+  if (err instanceof ProviderError) {
+    if (err.status === 400) {
+      const body = bodyOf(err.message);
+      if (isUnpaired(body)) return 'unpaired';
+      if (isContextTooLong(body)) return 'context';
+    }
+    return classifyStatus(err.status);
+  }
   // send.ts rewrites a refused redirect to this one sentence.
   if (err instanceof Error && /answered with a redirect/.test(err.message)) return 'redirect';
   // ponytail: every other error (a refused address, a wire's own failure) counts as the network and is tried again; split them when a wire marks its errors.

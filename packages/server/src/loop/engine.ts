@@ -1,12 +1,14 @@
 // The API agent loop, parts 1 to 5 (spec 4.1 to 4.6, 4.11, 4.12): one model call per step, cost, retries, errors, interrupt, the per-reply call cap, the file
 // tools behind path confinement and `checkTool`, the shell tool (shell.ts), the user's approval for the shell and for paths outside the project, the
 // cards that arrive during a turn, the system prompt, and the conversation file (store.ts) that a session opened with its id reads back,
-// and the USD limits (`usdRoom`, `maxUsd`), held before every model call. No compaction.
+// and the USD limits (`usdRoom`, `maxUsd`), held before every model call; and part 6 (compact.ts): compaction by hand, and once when an answer
+// says the conversation is too long.
 import { randomUUID } from 'node:crypto';
 import { checkTool, type Decision, type Engine, type EngineEvent, type EngineProbe, type EngineSession, type OpenOptions, type ToolRequest, type TurnResult } from '@reins/core';
 import { CARD_CONTEXT_LIMIT, newNonce, noLoneSurrogate, wrapCard } from '../cards.js';
 import type { EngineHost, ProviderManifest, Wire } from '../mods/types.js';
 import { SETTINGS } from '../settings.js';
+import { chooseCut, stubOldResults, SUMMARY_SYSTEM, tokensOf, transcript, withSummary } from './compact.js';
 import { callCost, priceOf, USD_EPSILON } from './cost.js';
 import { callsOf, flattenRounds, INTERRUPTED, pairUp, resultBlock, type Call } from './pairs.js';
 import { confine, type FsLike } from './paths.js';
@@ -213,6 +215,7 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
     if (cls === 'network') what = `Cannot reach ${new URL(p.baseUrl).host}: ${red(err.message, 500).replace(/\.$/, '')}.`;
     else if (cls === 'auth') what = keyEnv;
     else if (cls === 'notFound') what = model;
+    else if (cls === 'context') return new Error(`${WORDS.context.say(p.label, status, model)} The provider said: ${red(bodyOf(err.message), 500)}`);
     else if (cls === 'bad' || cls === 'unpaired') what = red(bodyOf(err.message), 500);
     return new Error(WORDS[cls].say(p.label, status, what));
   };
@@ -265,8 +268,45 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
     }
   }
 
-  /** Spec 4.9: tries again what is worth it, with the waits of the table; the final error is the table's words. */
-  async function callWithRetry(first: ModelRequest, signal: AbortSignal, beforeSend: () => string | undefined): Promise<Reply | 'cancelled' | { stop: string }> {
+  /**
+   * A finished call is paid for and counted, whatever happens next. Returns what it cost; undefined when that is not known, and the total is then
+   * unknown for good.
+   */
+  function charge(usage: Usage): number | undefined {
+    const price = priceOf(p, h, model);
+    const cost = price ? callCost(price, usage) : undefined;
+    // A cost that is not a number (a usage with a NaN in it) is no cost: the total becomes unknown, never a NaN that no comparison catches.
+    const spent = cost !== undefined && Number.isFinite(cost) ? cost : undefined;
+    if (total !== undefined) {
+      if (spent === undefined) total = undefined;
+      else {
+        total += spent;
+        totals[model] = (totals[model] ?? 0) + spent;
+      }
+    }
+    return spent;
+  }
+
+  /** The money fields of a result: what was spent since the last one, the totals, the split by model. Moves the baseline up to now. */
+  function costFields(): Pick<TurnResult, 'cost' | 'total' | 'totals' | 'models'> {
+    const split = Object.fromEntries(Object.entries(totals).map(([m, t]) => [m, t - (baseBy[m] ?? 0)] as const).filter(([, c]) => c > 0));
+    const fields = total !== undefined ? { cost: total - base!, total, totals: { ...totals }, models: split } : {};
+    base = total;
+    baseBy = { ...totals };
+    return fields;
+  }
+
+  /**
+   * Spec 4.9: tries again what is worth it, with the waits of the table; the final error is the table's words.
+   * `repair`: an `unpaired` 400 flattens the tool rounds once and goes again. `again`: a `context` 400 calls it (it compacts, at most once for the
+   * whole turn); 'ok' = the history is smaller, go again; undefined = it will not, so the final error. Without either the class is a final error.
+   */
+  async function callWithRetry(
+    first: ModelRequest,
+    signal: AbortSignal,
+    beforeSend: () => string | undefined,
+    how: { repair?: boolean; again?: () => Promise<'ok' | 'cancelled' | { stop: string } | undefined> } = {},
+  ): Promise<Reply | 'cancelled' | { stop: string }> {
     let req = first;
     let tries = 0;
     let stalls = 0;
@@ -288,9 +328,16 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
         if (cls === 'unpaired') {
           // A 400 about a tool id, and the history was already sanitized: the same request would be refused again. So once, at once, every tool
           // round goes as plain text (the file is not touched; the session keeps the flat history). The same answer twice is the final error.
-          if (repaired) throw finalError(cls, e);
+          if (repaired || !how.repair) throw finalError(cls, e);
           repaired = true;
           history = flattenRounds(pairUp(history).msgs);
+          req = { ...req, messages: history };
+          continue;
+        }
+        if (cls === 'context') {
+          const again = how.again ? await how.again() : undefined;
+          if (again === undefined) throw finalError(cls, e);
+          if (again !== 'ok') return again;
           req = { ...req, messages: history };
           continue;
         }
@@ -374,14 +421,56 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
     return undefined;
   }
 
+  /**
+   * Spec 4.8: one call on the same model summarises the head of the history (old long tool results cut); the tail stays as it is; the history
+   * becomes the summary and the tail. Honours the budget first, like any call. The boundary goes into the file only after the summary call
+   * returned (a call that fails, stops or is cancelled leaves the file and the history as they were). The boundary line is the first message of the
+   * new history with the summary as its `summary` block, and the rest of the tail follows as lines of their own, so the file loads from the boundary
+   * to exactly the history in memory. A copied reply carries a usage of nothing (cost 0): its spend is in the line it was first written in, and
+   * a reply with no usage would make the total of the file unknown.
+   */
+  async function compactNow(signal: AbortSignal, trigger: 'manual' | 'overflow'): Promise<{ before: number; after: number } | 'none' | 'cancelled' | { stop: string }> {
+    const stop = usdStop();
+    if (stop) return { stop };
+    const paired = pairUp(history).msgs;
+    const cut = chooseCut(paired, info?.context);
+    if (cut === undefined) return 'none';
+    const head = stubOldResults(paired, cut).slice(0, cut);
+    // ponytail: a head larger than the window makes the summary call itself too long (its own final error); the user starts a new session.
+    const req: ModelRequest = {
+      model,
+      system: SUMMARY_SYSTEM,
+      messages: [{ role: 'user', blocks: [{ type: 'text', text: transcript(head) }] }],
+      ...(info?.maxOutput !== undefined ? { maxOutput: info.maxOutput } : {}),
+    };
+    const reply = await callWithRetry(req, signal, usdStop);
+    if (reply === 'cancelled' || 'stop' in reply) return reply;
+    // The call finished: it is paid for and counted, whatever happens next.
+    const spent = charge(reply.usage);
+    const said = textOf(reply.blocks).trim();
+    if (said === '') throw new Error(`${p.label} sent an empty summary, so the conversation was not compressed.`);
+    const next = withSummary(said, paired.slice(cut));
+    const before = tokensOf(history);
+    const after = tokensOf(next);
+    save(() => {
+      convo.appendSummary(next[0]!, p.protocol, { model, ...reply.usage, ...(spent !== undefined ? { cost: spent } : {}) });
+      for (const m of next.slice(1)) convo.appendMsg(m, p.protocol, m.role === 'assistant' ? { model, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 } : undefined);
+    });
+    history = next;
+    emit({ type: 'compacted', trigger, before, after });
+    return { before, after };
+  }
+
   async function runTurn(text: string, ac: AbortController): Promise<TurnResult> {
     const signal = ac.signal;
     const max = h.settings?.maxCallsPerTurn ?? SETTINGS.maxCallsPerTurn.default;
-    const mark = history.length;
+    // Where this turn began in the history; a compaction in the turn makes the index mean nothing, and then nothing is cut back (Infinity).
+    let mark = history.length;
     turnEvents = [];
     // Written to the file with the first reply, not before: a turn that got no reply at all leaves no trace there either.
     const userMsg: Msg = { role: 'user', blocks: [{ type: 'text', text }] };
     let userSaved = false;
+    let shrunk = false;
     history.push(userMsg);
     let calls = 0;
     let finished = 0;
@@ -406,18 +495,13 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
         const used = lastUsage.input + lastUsage.cacheRead + lastUsage.cacheWrite + lastUsage.output;
         emit({ type: 'usage', model, used, ...(info?.context !== undefined ? { window: info.context } : {}) });
       }
-      const known = total !== undefined;
-      const split = Object.fromEntries(Object.entries(totals).map(([m, t]) => [m, t - (baseBy[m] ?? 0)] as const).filter(([, c]) => c > 0));
-      const result: TurnResult = {
+      return {
         text,
-        ...(known ? { cost: total! - base!, total, totals: { ...totals }, models: split } : {}),
+        ...costFields(),
         ...(error || budget ? { isError: true } : {}),
         ...(budget ? { budgetStop: true } : {}),
         events: turnEvents,
       };
-      base = total;
-      baseBy = { ...totals };
-      return result;
     };
 
     /** The turn ends here because no call may be sent: answered tool calls stay, a turn with no reply at all leaves no trace (its text is sent again). */
@@ -451,7 +535,20 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
           ...(effort ? { effort } : {}),
           ...(info?.maxOutput !== undefined ? { maxOutput: info.maxOutput } : {}),
         };
-        const reply = await callWithRetry(req, signal, usdStop);
+        const reply = await callWithRetry(req, signal, usdStop, {
+          repair: true,
+          // A "too long" answer compacts once in the whole turn, however many calls the turn makes; a second one is the final error.
+          again: async () => {
+            if (shrunk) return undefined;
+            shrunk = true;
+            const done = await compactNow(signal, 'overflow');
+            if (done === 'cancelled' || done === 'none' || 'stop' in done) return done === 'none' ? undefined : done;
+            // The tail, which holds this turn's user message, was written to the file with the boundary.
+            userSaved = true;
+            mark = Infinity;
+            return 'ok';
+          },
+        });
         if (reply === 'cancelled') {
           stubUnanswered();
           return finish('');
@@ -461,17 +558,7 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
         // The call finished: it is paid for and counted, whatever happens next.
         finished++;
         lastUsage = reply.usage;
-        const price = priceOf(p, h, model);
-        const cost = price ? callCost(price, reply.usage) : undefined;
-        // A cost that is not a number (a usage with a NaN in it) is no cost: the total becomes unknown, never a NaN that no comparison catches.
-        const spent = cost !== undefined && Number.isFinite(cost) ? cost : undefined;
-        if (total !== undefined) {
-          if (spent === undefined) total = undefined;
-          else {
-            total += spent;
-            totals[model] = (totals[model] ?? 0) + spent;
-          }
-        }
+        const spent = charge(reply.usage);
 
         // Tool-call arguments arrive as JSON text; a block keeps them parsed when they are, as the text when they are not.
         // Keyed by the block itself: two calls with the same id (a broken provider) never share an input.
@@ -636,15 +723,35 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
     }
   }
 
+  /** The start of a turn or a compaction: refuses when closed, busy or without a key; the abort of the work that follows. */
+  function begin(): AbortController {
+    if (closed) throw new Error('the session is closed');
+    if (turnAbort) throw new Error('a turn is already running');
+    if (h.key?.(p).state === 'missing') throw new Error(`${p.label} has no key. Set ${keyEnv}, or add a key in Settings > Providers.`);
+    return (turnAbort = new AbortController());
+  }
+
   return {
     sessionId,
     async turn(text) {
-      if (closed) throw new Error('the session is closed');
-      if (turnAbort) throw new Error('a turn is already running');
-      if (h.key?.(p).state === 'missing') throw new Error(`${p.label} has no key. Set ${keyEnv}, or add a key in Settings > Providers.`);
-      const ac = (turnAbort = new AbortController());
+      const ac = begin();
       try {
         return await runTurn(text, ac);
+      } finally {
+        turnAbort = undefined;
+      }
+    },
+    // Runs as a turn does: one at a time (a second call while one runs is refused), and `interrupt` cancels it.
+    async compact() {
+      const ac = begin();
+      turnEvents = [];
+      try {
+        const done = await compactNow(ac.signal, 'manual');
+        if (typeof done === 'object' && 'stop' in done) {
+          emit({ type: 'hook', event: 'usd-stop', decision: 'stopped', reason: done.stop });
+          return { text: done.stop, ...costFields(), isError: true, budgetStop: true, events: turnEvents };
+        }
+        return { text: done === 'none' ? 'Nothing to compress yet: the conversation is short.' : '', ...costFields(), events: turnEvents };
       } finally {
         turnAbort = undefined;
       }

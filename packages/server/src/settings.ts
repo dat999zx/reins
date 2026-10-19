@@ -56,6 +56,18 @@ export function contextWindow(rows: LogRow[]): number | undefined {
   return undefined;
 }
 
+/** The model of the newest usage row when that row has no window; undefined when it has one, there is none, or the model was changed after it. */
+export function modelWithoutWindow(rows: LogRow[]): string | undefined {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i]!;
+    if (r.type === 'settings' && r.data && 'model' in (r.data as object)) return undefined;
+    if (r.type !== 'engine' || type(r) !== 'usage' || typeof (r.data as { step?: unknown } | null)?.step === 'string') continue;
+    const d = r.data as { window?: unknown; model?: unknown };
+    return typeof d.window !== 'number' && typeof d.model === 'string' ? d.model : undefined;
+  }
+  return undefined;
+}
+
 /** A compaction happened and every usage row after the newest one is at or over `limit` (and one exists): compressing again would not help. */
 export function stillOverAfterCompaction(rows: LogRow[], limit: number): boolean {
   let seen = false;

@@ -68,6 +68,11 @@ export interface Conversation {
   load(protocol: string): Loaded;
   /** Appends one line (a reply carries its usage). Throws once on the first failure; after that it does nothing (`failed`). */
   appendMsg(msg: Msg, protocol: string, usage?: UsageLine): void;
+  /**
+   * Appends the boundary of a compaction: a user line whose FIRST block (a text) is written as the `summary` block, then the rest of the message.
+   * A file loads from its last boundary. `usage` is the summary call's spend, on the same line, so a crash cannot leave a paid summary unrecorded.
+   */
+  appendSummary(msg: Msg, protocol: string, usage?: UsageLine): void;
   readonly failed: boolean;
 }
 
@@ -160,6 +165,11 @@ function usageFrom(v: unknown): UsageLine | undefined {
   if (v.cost !== undefined && !(isNum(v.cost) && v.cost >= 0 && v.cost <= COST_MAX)) return undefined;
   return { model: v.model, input: v.input as number, output: v.output as number, cacheRead: v.cacheRead as number, cacheWrite: v.cacheWrite as number, ...(v.reasoning !== undefined ? { reasoning: v.reasoning as number } : {}), ...(v.cost !== undefined ? { cost: v.cost as number } : {}) };
 }
+
+const usageOut = (u: UsageLine): UsageLine => ({
+  model: u.model, input: u.input, output: u.output, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite,
+  ...(u.reasoning !== undefined ? { reasoning: u.reasoning } : {}), ...(u.cost !== undefined ? { cost: u.cost } : {}),
+});
 
 export function openConversation(home: string, id: string, o: Opts = {}): Conversation {
   const { dir, file, lockFile } = locate(home, id);
@@ -404,12 +414,11 @@ export function openConversation(home: string, id: string, o: Opts = {}): Conver
           continue;
         }
         const role = line.role;
-        if (role === 'assistant') {
-          replies++;
-          if (usage) {
-            inline++;
-            account(usage);
-          }
+        if (role === 'assistant') replies++;
+        // A user line may carry usage too: the summary call of a compaction, on its boundary line.
+        if (usage) {
+          if (role === 'assistant') inline++;
+          account(usage);
         }
         const mapped: Block[] = [];
         let boundary = false;
@@ -419,7 +428,7 @@ export function openConversation(home: string, id: string, o: Opts = {}): Conver
             mapped.push({ type: 'text', text: b.text });
           } else mapped.push(b);
         }
-        // The last summary is where the conversation starts again (Task 16 writes it).
+        // The last summary is where the conversation starts again (a compaction writes it).
         if (boundary) msgs = [];
         const lineProtocol = isStr(line.protocol) ? line.protocol : undefined;
         if (role === 'assistant') last = lineProtocol;
@@ -440,7 +449,16 @@ export function openConversation(home: string, id: string, o: Opts = {}): Conver
         t: 'msg', role: msg.role, blocks: msg.blocks.map(toFile),
         ...(msg.role === 'assistant' ? { protocol } : {}),
         ...(msg.extra ? { extra: msg.extra } : {}),
-        ...(usage ? { usage: { model: usage.model, input: usage.input, output: usage.output, cacheRead: usage.cacheRead, cacheWrite: usage.cacheWrite, ...(usage.reasoning !== undefined ? { reasoning: usage.reasoning } : {}), ...(usage.cost !== undefined ? { cost: usage.cost } : {}) } } : {}),
+        ...(usage ? { usage: usageOut(usage) } : {}),
+      });
+    },
+    appendSummary(msg, protocol, usage) {
+      const [first, ...rest] = msg.blocks;
+      if (msg.role !== 'user' || first?.type !== 'text') throw new Error('a summary boundary is a user message that starts with text');
+      write({
+        t: 'msg', role: 'user', blocks: [{ type: 'summary', text: first.text }, ...rest.map(toFile)],
+        ...(msg.extra ? { extra: msg.extra } : {}),
+        ...(usage ? { usage: usageOut(usage) } : {}),
       });
     },
   };

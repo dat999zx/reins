@@ -7,7 +7,7 @@ import {
   type Receipt, type RunEventRecord, type RunOptions, type SubagentOpen, type SubagentOpened, type SwitchOutcome, type ToolRequest, type TurnResult, type Workflow,
 } from '@reins/core';
 import { askTool, driveRun, questionId, runOptions, type DriveIo, type Question } from './drive.js';
-import { contextSize, contextWindow, detachedRuns, readSetting, stillOverAfterCompaction, switchCheck, type SwitchCheck } from './settings.js';
+import { contextSize, contextWindow, detachedRuns, modelWithoutWindow, readSetting, stillOverAfterCompaction, switchCheck, type SwitchCheck } from './settings.js';
 import type { LogRow, SessionRow, Store } from './store.js';
 import { KEY_IN_WORKFLOW, StreamRedactor, type Redactor } from './secrets.js';
 import { taggedWorkflow, type Tag, type Tagged } from './tags.js';
@@ -400,6 +400,11 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
             return { text: '', events: [], ...(pre.cost !== undefined ? { cost: pre.cost } : {}), ...(pre.total !== undefined ? { total: pre.total } : {}), ...(pre.models ? { models: pre.models } : {}) };
           }
         }
+      } else if (at < 1 && w === undefined) {
+        // The newest usage has no window: it can never be at the threshold. Said once (the log is the memory, so a restart does not say it twice).
+        const unknown = modelWithoutWindow(rows);
+        const text = `The window of ${unknown} is not known, so Reins will not compress on its own. Set it in Settings > Providers.`;
+        if (unknown !== undefined && !rows.some((r) => r.type === 'note' && (r.data as { text?: unknown } | null)?.text === text)) log('note', { text }, runId);
       }
     }
     // The compaction's cost reaches the log even when the reply does not: its own row has no runId, so it is no turn of a run.
