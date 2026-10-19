@@ -1,5 +1,6 @@
 import type { Decision, Engine, EngineEvent, EngineProbe, ToolRequest } from '@reins/core';
 import type { ModelRequest, WireEvent } from '../loop/types.js';
+import type { KeyStatus } from '../secrets.js';
 import type { Registry } from './registry.js';
 
 export type ModSource = 'bundled' | 'user';
@@ -32,6 +33,14 @@ export interface EngineHost {
    * then cut to that length without leaving the start of a known secret (`redactCut`). Without one a wire leaves provider text out of its errors.
    */
   redact?: (text: string, max?: number) => string;
+  /** The API agent loop's settings, read on every turn (a getter works). None: the defaults. */
+  settings?: { maxCallsPerTurn: number };
+  /** Whether the provider's key is set, missing, or not needed. Never the key. None: the loop does not check before a request. */
+  key?(p: ProviderManifest): KeyStatus;
+  /** USD per million tokens for a model the manifest does not price (the catalog arrives in a later task). */
+  catalogPrice?(modelId: string): { input: number; output: number; cacheRead?: number; cacheWrite?: number } | undefined;
+  /** The wire calls this for every chunk it receives (`parseSse`'s third argument): the loop's stall timer. The loop sets it per call. */
+  heartbeat?: () => void;
 }
 
 /** The question a protocol wants answered before it starts a process in a folder, and what to say when it is not. */

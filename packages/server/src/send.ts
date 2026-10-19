@@ -12,7 +12,8 @@ export class ConsentNeeded extends Error {
 
 /** The provider answered with an error status. `message` holds the status and the redacted body. */
 export class ProviderError extends Error {
-  constructor(message: string, public status: number) {
+  /** `retryAfter`: the reply's Retry-After header as sent (seconds or a date), for the loop's back-off; never shown. */
+  constructor(message: string, public status: number, public retryAfter?: string) {
     super(message);
     this.name = 'ProviderError';
   }
@@ -29,7 +30,7 @@ const hasControl = (s: string) => [...s].some((c) => c.charCodeAt(0) < 0x20 || c
 type Refusal =
   | { kind: 'plain'; message: string }
   | { kind: 'consent'; modId: string; origin: string }
-  | { kind: 'provider'; status: number; message: string; cap: number };
+  | { kind: 'provider'; status: number; message: string; cap: number; retryAfter?: string };
 
 /** Carries a Refusal out of `run`. Never leaves this file; the boundary reads it only when its token is the one of this very call. */
 class Local extends Error {
@@ -87,7 +88,7 @@ export function makeSend(o: {
           const origin = sanitize(r.origin);
           return new ConsentNeeded(modId, origin, sanitize(new ConsentNeeded(r.modId, r.origin).message));
         }
-        if (r.kind === 'provider') return new ProviderError(sanitize(r.message, r.cap), r.status);
+        if (r.kind === 'provider') return new ProviderError(sanitize(r.message, r.cap), r.status, r.retryAfter);
         return new Error(sanitize(r.message));
       }
       return clean(e);
@@ -203,7 +204,11 @@ export function makeSend(o: {
       const head = `${label} answered ${status}`;
       const message = detail ? `${head}: ${detail}` : `${head}.`;
       // The whole message is sanitized as one string at the boundary; the cap leaves room for the head, however it reads redacted.
-      throw new Local(token, { kind: 'provider', status, message, cap: sanitize(head).length + 2 + MAX_ERROR_TEXT });
+      let retryAfter: string | undefined;
+      try {
+        retryAfter = res.headers.get('retry-after')?.slice(0, 100); // a fetch that hands over odd headers has no Retry-After
+      } catch { /* none */ }
+      throw new Local(token, { kind: 'provider', status, message, cap: sanitize(head).length + 2 + MAX_ERROR_TEXT, ...(retryAfter ? { retryAfter } : {}) });
     }
     return res;
   };

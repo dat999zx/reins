@@ -137,7 +137,7 @@ async function* call(req: ModelRequest, p: ProviderManifest, h: EngineHost, sign
   };
 
   try {
-    read: for await (const ev of parseSse(res.body, signal)) {
+    read: for await (const ev of parseSse(res.body, signal, h.heartbeat)) {
       let j: unknown;
       try {
         j = JSON.parse(ev.data);

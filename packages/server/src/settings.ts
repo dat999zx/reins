@@ -17,6 +17,8 @@ export const SETTINGS = {
   // A subagent's tool request: a card on the parent run (ask), or refused with a note and a hook row (deny, Hermes's default).
   // The provider a new session uses when the request names none. '' = the provider whose manifest says `default`, else the first installed.
   defaultProvider: { default: '', valid: (v: unknown) => typeof v === 'string' },
+  // Most model calls one reply of the API agent loop may make (after Hermes's iteration budget). Whole number, 1 or more.
+  maxCallsPerTurn: { default: 200, valid: (v: unknown) => Number.isInteger(v) && (v as number) >= 1 },
   subagentApprovals: { default: 'ask' as 'ask' | 'deny', valid: (v: unknown) => v === 'ask' || v === 'deny' },
 };
 

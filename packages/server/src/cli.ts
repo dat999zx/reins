@@ -183,6 +183,7 @@ async function dispatch(argv: string[], io: Io, c: { home: string; dir: string; 
           provider,
           ...(model ? { model } : {}),
           ...(typeof flags.effort === 'string' ? { effort: flags.effort } : {}),
+          settings: { get maxCallsPerTurn() { return readSetting(store, 'maxCallsPerTurn'); } },
           ...cb,
         });
       },

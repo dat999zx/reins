@@ -182,7 +182,9 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     const found = providers.find((p) => p.id === engine)?.efforts.find((e) => e.id === id);
     return { listed: !!found, label: found?.label ?? id };
   };
-  const deps: SessionDeps = { store: o.store, makeEngine: o.makeEngine, dir: o.dir, env: childEnv(o.env ?? process.env, keyEnvNames(mods)), ...(o.redactor ? { redactor: o.redactor } : {}), describeModel, describeEffort, folderTrust: folderTrustFrom(mods), onRow: (row) => { for (const f of subs) f(row); } };
+  // The settings are read when a turn starts, so a change in Settings counts from the next reply.
+  const settings = { get maxCallsPerTurn() { return readSetting(o.store, 'maxCallsPerTurn'); } };
+  const deps: SessionDeps = { store: o.store, makeEngine: (a) => o.makeEngine({ ...a, settings }), dir: o.dir, env: childEnv(o.env ?? process.env, keyEnvNames(mods)), ...(o.redactor ? { redactor: o.redactor } : {}), describeModel, describeEffort, folderTrust: folderTrustFrom(mods), onRow: (row) => { for (const f of subs) f(row); } };
   let engines: Array<{ id: string } & EngineProbe> = [];
   let host = '';
   let origin = '';

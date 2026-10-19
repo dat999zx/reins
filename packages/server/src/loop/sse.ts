@@ -45,7 +45,7 @@ function open(body: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>) {
  * and a last event with no blank line after it. An abort ends the iteration quietly, even while a read is waiting; any other
  * read error is thrown. A line over MAX_LINE or an event over MAX_EVENT is an error.
  */
-export async function* parseSse(body: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>, signal: AbortSignal): AsyncGenerator<SseEvent> {
+export async function* parseSse(body: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>, signal: AbortSignal, onChunk?: () => void): AsyncGenerator<SseEvent> {
   if (signal.aborted) {
     // The body was handed over: cancel it, but do not wait (a cancel that never settles must not hold the caller).
     try {
@@ -99,6 +99,7 @@ export async function* parseSse(body: ReadableStream<Uint8Array> | AsyncIterable
       const r = await Promise.race([pending, stopped]);
       if (r === 'abort' || signal.aborted) return;
       if (r.done) break;
+      onChunk?.(); // a comment or a ping is a byte too
       buf += decoder.decode(r.value, { stream: true });
       let at = 0;
       const eol = /\r\n|\n|\r/g;

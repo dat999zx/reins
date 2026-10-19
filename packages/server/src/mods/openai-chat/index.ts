@@ -94,7 +94,7 @@ async function* call(req: ModelRequest, p: ProviderManifest, h: EngineHost, sign
   let last = -1; // the call the latest delta without an index belongs to
 
   try {
-    for await (const ev of parseSse(res.body, signal)) {
+    for await (const ev of parseSse(res.body, signal, h.heartbeat)) {
       if (ev.data.trim() === '[DONE]') break;
       let j: unknown;
       try {

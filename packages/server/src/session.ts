@@ -21,6 +21,8 @@ export type MakeEngine = (o: {
   model?: string; effort?: string;
   onApprove: (r: ToolRequest) => Promise<Decision>;
   onLive: (e: EngineEvent) => void;
+  /** The API agent loop's settings, read live (a getter); none = the defaults. */
+  settings?: { maxCallsPerTurn: number };
 }) => Engine;
 /** The provider's view of a model, for a switch: whether its list has it, its label, and the cost estimate of switching to it at `used` tokens. */
 export type DescribeModel = (engine: string, model: string, used: number | undefined) =>
