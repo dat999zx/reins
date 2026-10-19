@@ -7,6 +7,7 @@ import picomatch from 'picomatch';
 import type { Policy } from '@reins/core';
 import { HOME_UNKNOWN_WORDS, homeGuard, readBounded, readBoundedSync, replaceFile, type Bounded } from './fileio.js';
 import { confine, HOME_WORDS, toRel, walkFiles, type FsLike } from './paths.js';
+import { HOME_NAMED_WORDS, namesHome, runShell } from './shell.js';
 import type { ToolSpec } from './types.js';
 
 export type ToolClass = 'read' | 'write' | 'shell';
@@ -21,6 +22,10 @@ export interface ToolCtx {
   /** Redacts a whole text: no trim of an ending that could be the start of a key. */
   redactAll: (text: string) => string;
   platform: NodeJS.Platform;
+  /** Works out the key-free env a shell command gets, once per command (the host's `shellEnv`). Undefined: the shell refuses to run. */
+  env?: (() => NodeJS.ProcessEnv) | undefined;
+  /** A new redactor for one output stream (the host's `redactStream`). Undefined: the shell refuses to run. */
+  redactStream?: (() => { push(text: string): string; end(): string }) | undefined;
   fs?: FsLike;
   /** Entries a Glob or Grep looks at before it stops (tests lower it). */
   maxEntries?: number;
@@ -47,9 +52,9 @@ export interface Tool {
   schema: { type: 'object'; properties: Record<string, Prop>; required: string[]; additionalProperties: false };
   /** The input field that names the path the tool touches. `optional`: the cwd when it is missing. */
   path?: { arg: string; optional?: boolean };
-  /** A refusal that needs only the input. */
-  refuse?(input: Record<string, unknown>): string | undefined;
-  /** Absent for a tool this build does not run yet (the shell). */
+  /** A refusal that needs only the input (and where the Reins home, the cwd and the platform are). */
+  refuse?(input: Record<string, unknown>, ctx: { home: string; cwd: string; platform: NodeJS.Platform }): string | undefined;
+  /** Absent for a tool that cannot run. */
   run?(input: Record<string, unknown>, ctx: ToolCtx, t: Target): ToolOut | Promise<ToolOut>;
 }
 
@@ -493,7 +498,7 @@ const grep: Tool = {
   },
 };
 
-// ---- the shell (Task 12 runs it) --------------------------------------------------------------------------------------------------
+// ---- the shell --------------------------------------------------------------------------------------------------------------------
 
 const shellSchema: Tool['schema'] = {
   type: 'object',
@@ -504,10 +509,18 @@ const shellSchema: Tool['schema'] = {
   required: ['command'],
   additionalProperties: false,
 };
-const shell = (name: string, what: string): Tool => ({ name, class: 'shell', description: `Runs a ${what} command in the project folder and returns its output.`, schema: shellSchema });
-
 /** The one shell tool the model is offered on this platform. */
 export const shellToolName = (platform: NodeJS.Platform) => (platform === 'win32' ? 'PowerShell' : 'Bash');
+
+const shell = (name: string, what: string): Tool => ({
+  name,
+  class: 'shell',
+  description: `Runs a ${what} command in the project folder and returns its output. At most 30000 characters come back (the first 10000 and the last 20000).`,
+  schema: shellSchema,
+  refuse: (input, c) => (namesHome(input.command as string, c) ? HOME_NAMED_WORDS : undefined),
+  // Belt and braces: the engine only finds the tool this platform offers; a call that gets here for the other one is an unknown tool.
+  run: (input, ctx) => (name === shellToolName(ctx.platform) ? runShell(input as { command: string; timeout?: number }, ctx) : fail(noTool(name, ctx.platform, true))),
+});
 
 export const TOOLS: readonly Tool[] = [read, write, edit, glob, grep, shell('Bash', 'bash'), shell('PowerShell', 'PowerShell')];
 

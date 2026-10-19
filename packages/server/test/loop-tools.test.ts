@@ -272,10 +272,11 @@ describe('Glob', () => {
   });
 
   it('a pattern with .. segments is refused before anything is walked', () => {
-    for (const pattern of ['../../**', '../*', 'a/../b', 'a\\..\\b', '..']) expect(findTool('Glob')!.refuse!({ pattern })).toContain('may not have .. segments');
-    expect(findTool('Glob')!.refuse!({ pattern: 'a/..b/*' })).toBeUndefined();
-    expect(findTool('Grep')!.refuse!({ pattern: 'x', glob: '../*.ts' })).toContain('may not have .. segments');
-    expect(findTool('Grep')!.refuse!({ pattern: '..' })).toBeUndefined();
+    const rc = { home: path.join(tmp, 'home'), cwd, platform: process.platform };
+    for (const pattern of ['../../**', '../*', 'a/../b', 'a\\..\\b', '..']) expect(findTool('Glob')!.refuse!({ pattern }, rc)).toContain('may not have .. segments');
+    expect(findTool('Glob')!.refuse!({ pattern: 'a/..b/*' }, rc)).toBeUndefined();
+    expect(findTool('Grep')!.refuse!({ pattern: 'x', glob: '../*.ts' }, rc)).toContain('may not have .. segments');
+    expect(findTool('Grep')!.refuse!({ pattern: '..' }, rc)).toBeUndefined();
   });
 });
 
@@ -470,10 +471,10 @@ describe('bad arguments are plain results, never a crash', () => {
 
   it('other tools name their field too', async () => {
     const r = await make('openai-chat', { strictPairs: true });
-    r.push(calls(call('a', 'Write', { file_path: 'x.txt' }), call('b', 'Edit', { file_path: 'x.txt', old_string: 'a', new_string: 'b', replace_all: 'yes' }), call('c', 'Grep', { pattern: 'a', output_mode: 'tree' }), call('d', 'Bash', {})), { text: 'ok' });
+    r.push(calls(call('a', 'Write', { file_path: 'x.txt' }), call('b', 'Edit', { file_path: 'x.txt', old_string: 'a', new_string: 'b', replace_all: 'yes' }), call('c', 'Grep', { pattern: 'a', output_mode: 'tree' }), call('d', SHELL, {})), { text: 'ok' });
     await (await open(r)).turn('go');
     expect(asked(r).map((x) => x.content)).toEqual([
-      'Write: "content" is required.', 'Edit: "replace_all" must be true or false.', 'Grep: "output_mode" must be one of: content, files_with_matches, count.', 'Bash: "command" is required.',
+      'Write: "content" is required.', 'Edit: "replace_all" must be true or false.', 'Grep: "output_mode" must be one of: content, files_with_matches, count.', `${SHELL}: "command" is required.`,
     ]);
     expect(fs.existsSync(path.join(cwd, 'x.txt'))).toBe(false);
   });
@@ -486,7 +487,7 @@ describe('outside the folder, the shell: refused, nothing can ask yet', () => {
     r.push(
       calls(
         call('a', 'Read', { file_path: '../outside/secret.txt' }), call('b', 'Write', { file_path: path.join(outside, 'new.txt'), content: 'x' }),
-        call('c', 'Bash', { command: 'echo hi' }), call('d', 'Grep', { pattern: 'SECRET', path: '../outside' }), call('e', 'Glob', { pattern: '*', path: outside }),
+        call('c', SHELL, { command: 'echo hi' }), call('d', 'Grep', { pattern: 'SECRET', path: '../outside' }), call('e', 'Glob', { pattern: '*', path: outside }),
       ),
       { text: 'ok' },
     );
@@ -495,7 +496,7 @@ describe('outside the folder, the shell: refused, nothing can ask yet', () => {
     expect(fs.existsSync(path.join(outside, 'new.txt'))).toBe(false);
     expect(JSON.stringify(res.events)).not.toContain('TOP SECRET');
     expect(ofType(res.events!, 'refusal')).toHaveLength(5);
-    for (const tool of ['Read', 'Write', 'Bash', 'Grep', 'Glob']) expect(res.events).toContainEqual({ type: 'hook', event: 'pre-tool', tool, decision: 'deny', reason: CANNOT_ASK });
+    for (const tool of ['Read', 'Write', SHELL, 'Grep', 'Glob']) expect(res.events).toContainEqual({ type: 'hook', event: 'pre-tool', tool, decision: 'deny', reason: CANNOT_ASK });
   });
 
   it('a read inside the project next to one outside is not run in a batch with it (the batch is refused call by call)', async () => {
@@ -508,7 +509,7 @@ describe('outside the folder, the shell: refused, nothing can ask yet', () => {
 
   it('the policy answers first: a shell call in a read-only step says read-only, not "cannot ask"', async () => {
     const r = await make('openai-chat', { strictPairs: true });
-    r.push(calls(call('a', 'Bash', { command: 'ls' })), { text: 'ok' });
+    r.push(calls(call('a', SHELL, { command: 'ls' })), { text: 'ok' });
     await (await open(r, { mode: 'read-only', guards: [], allowShell: false })).turn('go');
     expect(asked(r)[0]!.content).toContain('this step is read-only, so shell commands are blocked');
   });
@@ -607,7 +608,7 @@ describe('checkTool and the receipt (6)', () => {
     r.push(
       calls(
         call('a', 'Read', { file_path: '../outside/x' }), call('b', 'Read', { file_path: 'con' }), call('c', 'Patch', {}), call('d', 'Glob', { pattern: '../../**' }),
-        call('e', 'Bash', { command: 'ls' }), call('f', 'Read', { file_path: '' }), call('g', 'Read', { file_path: path.join(r.host.home, 'secrets.json') }),
+        call('e', SHELL, { command: 'ls' }), call('f', 'Read', { file_path: '' }), call('g', 'Read', { file_path: path.join(r.host.home, 'secrets.json') }),
       ),
       { text: 'ok' },
     );

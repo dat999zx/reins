@@ -24,6 +24,11 @@ export interface EngineHost {
   env: NodeJS.ProcessEnv;
   /** `env` without the installed key names and REINS_* (childEnv): what helper processes (taskkill) run with. The provider's own process keeps `env`. */
   helperEnv?: NodeJS.ProcessEnv;
+  /**
+   * The env a shell command gets, worked out on EVERY call: `env` without the key names of the providers installed now, every REINS_* var,
+   * and every var whose value holds a known secret. None: the loop's shell tool refuses to run.
+   */
+  shellEnv?: () => NodeJS.ProcessEnv;
   /** The Reins home (`<REINS_HOME>/.reins`). */
   home: string;
   /** The only way a key leaves Reins (spec 7.8). Optional on the type because the CLI protocol never sends; a wire throws a clear error without it. */
@@ -38,6 +43,13 @@ export interface EngineHost {
    * nothing is cut). For a message that is complete: the loop's text, thinking, tool inputs and tool results. None: `redact` is used.
    */
   redactAll?: (text: string) => string;
+  /** Whether a text holds a known secret value (raw or JSON-escaped). The shell env drops every variable whose value does. */
+  holdsSecret?: (text: string) => boolean;
+  /**
+   * A new redactor for one stream that arrives in pieces (a `StreamRedactor`): `push` gives the text that is safe to show now (an ending that
+   * could be the start of a key is held back), `end` gives what is left. For command output. None: the shell tool refuses to run.
+   */
+  redactStream?: () => { push(text: string): string; end(): string };
   /** The API agent loop's settings, read on every turn (a getter works). None: the defaults. */
   settings?: { maxCallsPerTurn: number };
   /** Whether the provider's key is set, missing, or not needed. Never the key. None: the loop does not check before a request. */

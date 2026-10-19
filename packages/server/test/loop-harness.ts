@@ -3,7 +3,7 @@ import type { Engine, EngineEvent, EngineSession, OpenOptions } from '@reins/cor
 import { startMods } from '../src/engines.js';
 import { loopEngine, type LoopDeps } from '../src/loop/engine.js';
 import type { EngineHost, Mods, Protocol, ProviderManifest, Wire } from '../src/mods/types.js';
-import { Redactor, readSecrets, redactCut, keyStatus, setKey } from '../src/secrets.js';
+import { Redactor, StreamRedactor, readSecrets, redactCut, keyStatus, setKey } from '../src/secrets.js';
 import { makeSend } from '../src/send.js';
 import { startFakeProvider, type FakeReply } from './fake-provider.js';
 import { tempHome } from './mods-harness.js';
@@ -60,6 +60,8 @@ export async function rig(wireId: WireId, o: {
     env: {}, home: home.home, onApprove: async () => ({ behavior: 'allow' }), onLive: (e) => live.push(e), send,
     redact: (t, max) => redactCut(redactor, t, max),
     redactAll: (t) => redactor.redact(t),
+    redactStream: () => new StreamRedactor(redactor),
+    holdsSecret: (t) => redactor.has(t),
     key: (m) => keyStatus(m, readSecrets(home.home), {}),
     settings: { get maxCallsPerTurn() { return state.max; } },
     ...o.host,

@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import type { EngineProbe } from '@reins/core';
 import { loadMods } from './mods/loader.js';
 import { loopEngine } from './loop/engine.js';
-import { childEnv, envGet, keyStatus, readSecrets, Redactor, redactCut } from './secrets.js';
+import { childEnv, envGet, keyStatus, readSecrets, Redactor, redactCut, StreamRedactor } from './secrets.js';
 import { makeSend } from './send.js';
 import type { EngineHost, LoadedMod, Mods, Protocol, ProviderManifest, SendWithKey } from './mods/types.js';
 import type { MakeEngine, SessionDeps } from './session.js';
@@ -47,7 +47,7 @@ export const redactEnvNames = (mods: Mods): string[] => {
  * The `send` a production host carries. Consent is refused for now, so nothing is sent by accident; Task 21 replaces the callback
  * with the consent store. Built on first use: a session that never sends reads no secrets.
  */
-export function hostSend(mods: Mods, base: Pick<EngineHost, 'env' | 'home'>): Pick<EngineHost, 'send' | 'redact' | 'redactAll' | 'key'> {
+export function hostSend(mods: Mods, base: Pick<EngineHost, 'env' | 'home'>): Pick<EngineHost, 'send' | 'redact' | 'redactAll' | 'redactStream' | 'holdsSecret' | 'key'> {
   let redactor: Redactor | undefined;
   let seen = '';
   // The key names and the env values they hold, as one string compared on every call (cheap): a key set or changed in the env after the
@@ -70,6 +70,8 @@ export function hostSend(mods: Mods, base: Pick<EngineHost, 'env' | 'home'>): Pi
     key: (p) => ({ state: keyStatus(p, readSecrets(base.home), base.env).state }),
     redact: (t, max) => redactCut(lazy, t, max),
     redactAll: (t) => lazy.redact(t),
+    redactStream: () => new StreamRedactor(lazy),
+    holdsSecret: (t) => lazy.has(t),
     send: (m, url, init, purpose) => {
       send ??= makeSend({ secrets: () => readSecrets(base.home), env: base.env, redactor: lazy, consent: () => false });
       return send(m, url, init, purpose);
@@ -77,12 +79,25 @@ export function hostSend(mods: Mods, base: Pick<EngineHost, 'env' | 'home'>): Pi
   };
 }
 
+/**
+ * The env of a shell command, worked out on every call: `childEnv` for the providers installed NOW, and no variable whose value holds a known
+ * secret (an alias of a key, or a key inside a longer value).
+ * ponytail: nothing else is taken out. BASH_ENV, NODE_OPTIONS and PSModulePath are the user's own and stay: a shell is not a sandbox, and the real
+ * guard is the approval.
+ */
+export const shellEnvFrom = (mods: Mods, env: NodeJS.ProcessEnv, holdsSecret: (t: string) => boolean) => (): NodeJS.ProcessEnv => {
+  const clean = childEnv(env, keyEnvNames(mods));
+  for (const [k, v] of Object.entries(clean)) if (v !== undefined && holdsSecret(v)) delete clean[k];
+  return clean;
+};
+
 /** The engine factory sessions use. Synchronous: a session's microtask order depends on it. */
 export function makeEngineFrom(mods: Mods, base: Pick<EngineHost, 'env' | 'home' | 'send' | 'redact'>): MakeEngine {
   return ({ provider, ...rest }) => {
     const found = resolve(mods, provider);
     if (!found) throw new Error(`The provider "${provider}" is not installed.`);
-    const host = { ...hostSend(mods, base), ...base, helperEnv: childEnv(base.env, keyEnvNames(mods)), ...rest };
+    const sent = hostSend(mods, base);
+    const host = { ...sent, ...base, helperEnv: childEnv(base.env, keyEnvNames(mods)), shellEnv: shellEnvFrom(mods, base.env, sent.holdsSecret!), ...rest };
     // A 'reins' protocol is a wire: Reins owns the conversation and runs it in the API agent loop.
     if (found.protocol.conversation === 'reins') return loopEngine(found.manifest, found.protocol.wire, host);
     return found.protocol.engine(found.manifest, host);

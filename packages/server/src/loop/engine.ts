@@ -1,5 +1,6 @@
 // The API agent loop, parts 1 and 2 (spec 4.1 to 4.5): one model call per step, cost, retries, errors, interrupt, the per-reply call cap, and the file tools
-// behind path confinement and `checkTool`. A call that would need the user's approval (outside the folder, the shell) is refused: nothing can ask yet.
+// behind path confinement and `checkTool`, and the shell tool (shell.ts). A call that would need the user's approval (outside the folder, the shell) is
+// refused: nothing can ask yet.
 // No conversation file, no compaction, no USD guard: history lives in memory for the life of the session.
 import { randomUUID } from 'node:crypto';
 import { checkTool, type Engine, type EngineEvent, type EngineProbe, type EngineSession, type OpenOptions, type TurnResult } from '@reins/core';
@@ -9,7 +10,7 @@ import { callCost, priceOf } from './cost.js';
 import { confine, type FsLike } from './paths.js';
 import { classify, retryDelay, sleep as realSleep, STALL_MS, TRIES, WORDS, type ErrorClass } from './retry.js';
 import { systemPrompt } from './system.js';
-import { checkInput, cutText, findTool, noTool, toolSpecs, type Target, type ToolCtx, type ToolOut } from './tools.js';
+import { checkInput, cutText, noTool, offered, toolSpecs, type Target, type ToolCtx, type ToolOut } from './tools.js';
 import type { Block, Extra, ModelRequest, Msg, Usage, WireEvent } from './types.js';
 
 const CANNOT_ASK = 'Blocked by Reins: this needs your approval, which this build cannot ask yet.';
@@ -264,12 +265,13 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
   function prepare(c: Call, entry: { input: unknown; bad?: string }, ctx: ToolCtx): Prep {
     try {
       if (entry.bad !== undefined) return plain(entry.bad);
-      const tool = toolsOn ? findTool(c.name) : undefined;
+      // Only what this platform offers: a model that calls the other platform's shell gets "no such tool", as for any invented name.
+      const tool = toolsOn ? offered(platform).find((t) => t.name === c.name) : undefined;
       if (!tool) return plain(noTool(c.name, platform, toolsOn), true);
       const wrong = checkInput(tool, entry.input);
       if (wrong) return plain(wrong);
       const args = entry.input as Record<string, unknown>;
-      const refused = tool.refuse?.(args);
+      const refused = tool.refuse?.(args, { home: ctx.home, cwd: ctx.cwd, platform });
       if (refused) return plain(refused, true);
       let target: Target | undefined;
       let inside = true;
@@ -284,7 +286,8 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
         const why = checkTool(ctx.policy(), tool.name, args, ctx.cwd) ?? (target ? checkTool(ctx.policy(), tool.name, { ...args, file_path: target.abs }, target.root) : null);
         if (why) return plain(why, true);
       }
-      // Anything that would need the user's approval: outside the folder, or the shell (its tool runs in a later build).
+      // Anything that would need the user's approval: outside the folder, or the shell.
+      // ponytail: the shell tool has its `run` (shell.ts) but is never reached from here; Task 13 asks first, then runs it.
       if (!inside || tool.class === 'shell' || !tool.run) return plain(CANNOT_ASK, true);
       const run = tool.run.bind(tool);
       return {
@@ -403,7 +406,7 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
           stubUnanswered();
           return finish('');
         }
-        const ctx: ToolCtx = { cwd, home: h.home, policy: opts.policy, signal, redact: red, redactAll: redAll, platform, ...(deps.fs ? { fs: deps.fs } : {}) };
+        const ctx: ToolCtx = { cwd, home: h.home, policy: opts.policy, signal, redact: red, redactAll: redAll, platform, env: h.shellEnv, redactStream: h.redactStream, ...(deps.fs ? { fs: deps.fs } : {}) };
         // Settles when the turn is aborted: a tool that does not look at the signal (a stuck read) is no longer waited for, and its late answer is dropped.
         const aborted = new Promise<'aborted'>((ok) => {
           if (signal.aborted) ok('aborted');

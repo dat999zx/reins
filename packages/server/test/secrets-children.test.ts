@@ -2,12 +2,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeEngine, type Workflow } from '@reins/core';
 
-const calls = vi.hoisted(() => [] as Array<{ fn: string; command: string; env: NodeJS.ProcessEnv | undefined }>);
+const calls = vi.hoisted(() => [] as Array<{ fn: string; command: string; env: NodeJS.ProcessEnv | undefined; cwd?: string }>);
 vi.mock('node:child_process', async (orig) => {
   const m = await orig<typeof import('node:child_process')>();
   const seen = (fn: string) => (command: string, ...rest: unknown[]) => {
-    const opts = rest.find((r) => r && typeof r === 'object' && !Array.isArray(r)) as { env?: NodeJS.ProcessEnv } | undefined;
-    calls.push({ fn, command, env: opts?.env });
+    const opts = rest.find((r) => r && typeof r === 'object' && !Array.isArray(r)) as { env?: NodeJS.ProcessEnv; cwd?: string } | undefined;
+    calls.push({ fn, command, env: opts?.env, ...(opts?.cwd !== undefined ? { cwd: opts.cwd } : {}) });
   };
   return {
     ...m,
@@ -85,15 +85,19 @@ describe('spawn sites get the cleaned env', () => {
     await s.interrupt();
     await turn;
     await s.close();
-    const kill = calls.filter((c) => c.command === 'taskkill');
+    const kill = calls.filter((c) => /taskkill(\.exe)?$/i.test(c.command));
     expect(kill.length).toBeGreaterThanOrEqual(1);
     for (const c of kill) noKey(c.env);
   }, 30_000);
 
   it.skipIf(process.platform !== 'win32')('proc.ts: taskkill (Windows only: skipped elsewhere, where no helper process is started)', () => {
     killTree(99999999, clean);
-    const kill = calls.filter((c) => c.command === 'taskkill');
+    const kill = calls.filter((c) => /taskkill(\.exe)?$/i.test(c.command));
     expect(kill).toHaveLength(1);
+    // Started by its absolute path under the Windows folder, never by a bare name that a project file could stand in for.
+    expect(kill[0]!.command).toMatch(/^[A-Za-z]:\\.*\\System32\\taskkill\.exe$/i);
+    // And run from the system folder, so neither this server's cwd nor a project can supply a file it would find first.
+    expect(kill[0]!.cwd).toMatch(/\\System32$/i);
     noKey(kill[0]!.env);
   });
 });
