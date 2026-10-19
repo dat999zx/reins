@@ -6,7 +6,7 @@ import vm from 'node:vm';
 import picomatch from 'picomatch';
 import type { Policy } from '@reins/core';
 import { HOME_UNKNOWN_WORDS, homeGuard, readBounded, readBoundedSync, replaceFile, type Bounded } from './fileio.js';
-import { confine, HOME_WORDS, toRel, walkFiles, type FsLike } from './paths.js';
+import { confine, HOME_WORDS, isUnder, toRel, walkFiles, type FsLike } from './paths.js';
 import { HOME_NAMED_WORDS, namesHome, runShell } from './shell.js';
 import type { ToolSpec } from './types.js';
 
@@ -37,6 +37,11 @@ export interface ToolCtx {
 export interface Target {
   abs: string;
   root: string;
+  /**
+   * Set when the user approved a path outside the project: a Glob or Grep stays inside this path (not the cwd), and shows its results relative
+   * to it. The Reins home is refused all the same.
+   */
+  scope?: string;
 }
 
 export interface ToolOut {
@@ -299,19 +304,25 @@ async function* results(ctx: ToolCtx, t: Target, state: WalkState, deadline: num
     return;
   }
   const cf = { cwd: ctx.cwd, home: ctx.home, platform: ctx.platform, ...(ctx.fs ? { fs: ctx.fs } : {}) };
-  const allowDir = (abs: string) => {
+  // Inside the cwd, or, for a path the user approved outside it, inside that path. The Reins home is refused by `confine` either way.
+  // ponytail: the scope test on a result is a defensive second check behind `confine` and a walk that follows no link; no test can make a result
+  // outside the approved path, so none turns red if it is removed. Keep it: it is the line that holds if the walk ever follows a link.
+  const allowed = (abs: string) => {
     const c = confine(toRel(abs, t.root, ctx.platform), cf);
-    return c.ok && c.inside;
+    return c.ok && (t.scope === undefined ? c.inside : isUnder(c.abs, t.scope, ctx.platform)) ? c : undefined;
   };
-  const files = state.single ? [t.abs] : walkFiles(t.abs, { allowDir, signal: ctx.signal, state, deadline, now: ctx.now ?? Date.now, ...(ctx.maxEntries ? { maxEntries: ctx.maxEntries } : {}) });
+  const files = state.single ? [t.abs] : walkFiles(t.abs, { allowDir: (abs) => allowed(abs) !== undefined, signal: ctx.signal, state, deadline, now: ctx.now ?? Date.now, ...(ctx.maxEntries ? { maxEntries: ctx.maxEntries } : {}) });
   for await (const abs of files) {
     if (ctx.signal.aborted) return;
-    const c = confine(toRel(abs, t.root, ctx.platform), cf);
-    if (c.ok && c.inside) yield [c.abs, state.single ? path.basename(abs) : toRel(abs, t.abs, ctx.platform)];
+    const c = allowed(abs);
+    if (c?.ok) yield [c.abs, state.single ? path.basename(abs) : toRel(abs, t.abs, ctx.platform)];
   }
 }
 
 const TOO_MANY = 'search stopped: too many entries';
+
+/** What a search shows its results relative to: the cwd, or the approved path outside the project (its folder, for a single file). */
+const shownRoot = (t: Target, state: WalkState) => (t.scope === undefined ? t.root : state.single ? path.dirname(t.abs) : t.abs);
 
 const glob: Tool = {
   name: 'Glob',
@@ -341,7 +352,7 @@ const glob: Tool = {
         cut = true;
         break;
       }
-      found.push(toRel(abs, t.root, ctx.platform));
+      found.push(toRel(abs, shownRoot(t, state), ctx.platform));
     }
     if (ctx.signal.aborted) return fail('Interrupted.');
     const notes = [...(cut ? [`[results cut at ${MAX_PATHS} paths]`] : []), ...(state.stopped === 'entries' ? [TOO_MANY] : []), ...(state.stopped === 'deadline' ? [DEADLINE_WORDS('Glob')] : [])];
@@ -406,7 +417,7 @@ const grep: Tool = {
         timeStop = true;
         break;
       }
-      const shown = toRel(abs, t.root, ctx.platform);
+      const shown = toRel(abs, shownRoot(t, state), ctx.platform);
       // Every byte is charged to the budget: a file over the limit is skipped by its size, and its size still counts.
       let size: number;
       try {

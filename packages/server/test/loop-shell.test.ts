@@ -42,7 +42,6 @@ type ShellCtx = import('../src/loop/shell.js').ShellCtx;
 const win = process.platform === 'win32';
 const SHELL = shellToolName(process.platform);
 const WRITE_MODE: Policy = { mode: 'write', guards: [], allowShell: true };
-const CANNOT_ASK = 'Blocked by Reins: this needs your approval, which this build cannot ask yet.';
 const plain = (t: string, max?: number) => (max === undefined ? t : t.slice(0, max));
 const skip = (t: { skip: (m: string) => void }, why: string) => t.skip(`SKIPPED: ${why}`);
 const KEY43 = 'sk-fake-' + 'abcdefghij'.repeat(3) + 'ABCDE';
@@ -736,14 +735,14 @@ describe('through the engine', () => {
   };
   const ofType = <T extends EngineEvent['type']>(ev: EngineEvent[], type: T) => ev.filter((e): e is Extract<EngineEvent, { type: T }> => e.type === type);
 
-  it('a shell call ends with the cannot-ask words, after every check, and nothing is spawned', async () => {
-    const r = await make();
+  it('a shell call is asked, after every check; a no ends with the deny words and nothing is spawned', async () => {
+    const r = await make({ host: { onApprove: async () => ({ behavior: 'deny', message: 'The user said no.' }) } });
     const { said } = await go(r, WRITE_MODE, call('a', SHELL, { command: 'echo hi' }));
-    expect(said).toEqual([CANNOT_ASK]);
+    expect(said).toEqual(['The user said no.']);
     expect(spawned).toHaveLength(0);
   });
 
-  it('the policy answers before "cannot ask": a read-only step says read-only', async () => {
+  it('the policy answers before the question: a read-only step says read-only', async () => {
     const r = await make();
     const { said } = await go(r, { mode: 'read-only', guards: [], allowShell: false }, call('a', SHELL, { command: 'echo hi' }));
     expect(said[0]).toContain('this step is read-only, so shell commands are blocked');

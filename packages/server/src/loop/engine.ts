@@ -1,20 +1,23 @@
-// The API agent loop, parts 1 and 2 (spec 4.1 to 4.5): one model call per step, cost, retries, errors, interrupt, the per-reply call cap, and the file tools
-// behind path confinement and `checkTool`, and the shell tool (shell.ts). A call that would need the user's approval (outside the folder, the shell) is
-// refused: nothing can ask yet.
+// The API agent loop, parts 1 to 4 (spec 4.1 to 4.5, 4.11): one model call per step, cost, retries, errors, interrupt, the per-reply call cap, the file
+// tools behind path confinement and `checkTool`, the shell tool (shell.ts), the user's approval for the shell and for paths outside the project, the
+// cards that arrive during a turn, and the system prompt.
 // No conversation file, no compaction, no USD guard: history lives in memory for the life of the session.
 import { randomUUID } from 'node:crypto';
-import { checkTool, type Engine, type EngineEvent, type EngineProbe, type EngineSession, type OpenOptions, type TurnResult } from '@reins/core';
+import { checkTool, type Decision, type Engine, type EngineEvent, type EngineProbe, type EngineSession, type OpenOptions, type ToolRequest, type TurnResult } from '@reins/core';
+import { CARD_CONTEXT_LIMIT, newNonce, noLoneSurrogate, wrapCard } from '../cards.js';
 import type { EngineHost, ProviderManifest, Wire } from '../mods/types.js';
 import { SETTINGS } from '../settings.js';
 import { callCost, priceOf } from './cost.js';
 import { confine, type FsLike } from './paths.js';
 import { classify, retryDelay, sleep as realSleep, STALL_MS, TRIES, WORDS, type ErrorClass } from './retry.js';
-import { systemPrompt } from './system.js';
+import { readAgents, systemPrompt } from './system.js';
 import { checkInput, cutText, noTool, offered, toolSpecs, type Target, type ToolCtx, type ToolOut } from './tools.js';
 import type { Block, Extra, ModelRequest, Msg, Usage, WireEvent } from './types.js';
 
-const CANNOT_ASK = 'Blocked by Reins: this needs your approval, which this build cannot ask yet.';
 const INTERRUPTED = 'Interrupted; the tool did not finish.';
+const DENIED = 'Denied by the user in Reins.';
+const CARD_CUT = ' […cut]';
+const PATH_CHANGED = 'Blocked by Reins: the path changed while the question was open.';
 
 /** The clock and the dice of the retry back-off, and the platform and fs the tools see, for tests. */
 export interface LoopDeps {
@@ -68,8 +71,12 @@ function preview(v: unknown, red: (t: string, max?: number) => string, redAll: (
   return v;
 }
 
-/** What one tool call comes to before it runs: a result already (a refusal, an input error), or the function that runs it. */
-type Prep = { text: string; isError: true; denied: boolean } | { run: () => Promise<ToolOut>; parallel: boolean };
+/**
+ * What one tool call comes to before it runs: a result already (a refusal, an input error), or the function that runs it. `ask` is set when the
+ * user must say yes first (the shell, a path outside the project): such a call is never in the parallel batch. `same` names what the question was
+ * about (tool, real path, root, class, scope): after the yes the call is prepared again and must come to the same, or it does not run.
+ */
+type Prep = { text: string; isError: true; denied: boolean } | { run: () => Promise<ToolOut>; parallel: boolean; ask?: ToolRequest; same?: string };
 const plain = (text: string, denied = false): Prep => ({ text, isError: true, denied });
 
 type Call = Extract<Block, { type: 'tool_call' }>;
@@ -135,6 +142,9 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
   const platform = deps.platform ?? process.platform;
   const toolsOn = info?.tools !== false;
   const keyEnv = p.auth?.keyEnv[0] ?? 'a key';
+  // The card marker of this session: in its system prompt (trust note) and on every card it is sent.
+  const nonce = newNonce();
+  const onApprove = opts.onApprove ?? h.onApprove;
   const red = (t: string, max?: number) => (h.redact ? h.redact(t, max) : max === undefined ? t : t.slice(0, max));
   /** A whole text redacted, with no trim of an ending that could be the start of a key. */
   const redAll = (t: string) => (h.redactAll ? h.redactAll(t) : red(t));
@@ -278,20 +288,21 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
       if (tool.path) {
         const at = confine((args[tool.path.arg] as string | undefined) ?? '.', { cwd: ctx.cwd, home: ctx.home, platform, ...(ctx.fs ? { fs: ctx.fs } : {}) });
         if (!at.ok) return plain(at.reason, true);
-        target = { abs: at.abs, root: at.root };
         inside = at.inside;
+        target = { abs: at.abs, root: at.root, ...(inside ? {} : { scope: at.abs }) };
       }
       if (tool.class !== 'read') {
         // The path as the model wrote it, then the real path the tool would open: a guard holds for both.
         const why = checkTool(ctx.policy(), tool.name, args, ctx.cwd) ?? (target ? checkTool(ctx.policy(), tool.name, { ...args, file_path: target.abs }, target.root) : null);
         if (why) return plain(why, true);
       }
-      // Anything that would need the user's approval: outside the folder, or the shell.
-      // ponytail: the shell tool has its `run` (shell.ts) but is never reached from here; Task 13 asks first, then runs it.
-      if (!inside || tool.class === 'shell' || !tool.run) return plain(CANNOT_ASK, true);
+      if (!tool.run) return plain(`Blocked by Reins: ${tool.name} cannot run.`, true);
       const run = tool.run.bind(tool);
+      // Only now, after every check above: the shell and a path outside the folder need the user's yes. The tool gets the input as the model wrote it.
+      const ask: ToolRequest | undefined = !inside || tool.class === 'shell' ? { tool: tool.name, input: entry.input, id: c.id, ...(inside ? {} : { reason: `outside the project (${target!.abs})` }) } : undefined;
       return {
-        parallel: tool.class === 'read',
+        parallel: tool.class === 'read' && !ask,
+        ...(ask ? { ask, same: JSON.stringify([tool.name, target?.abs, target?.root, inside, target?.scope]) } : {}),
         run: async () => {
           try {
             return await run(args, ctx, target ?? { abs: ctx.cwd, root: ctx.cwd });
@@ -314,6 +325,14 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
     let calls = 0;
     let finished = 0;
     let lastUsage: Usage | undefined;
+    // Once per turn, not per model call: the project's AGENTS.md as the file tools would read it.
+    const system = systemPrompt({
+      cwd,
+      platform,
+      tools: toolsOn ? offered(platform).map((t) => t.name) : [],
+      nonce,
+      agents: readAgents({ cwd, home: h.home, platform, fs: deps.fs, redact: red, redactAll: redAll }),
+    });
 
     const finish = (text: string, error?: string): TurnResult => {
       if (error) emit({ type: 'error', message: error });
@@ -349,7 +368,7 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
         history = pairUp(history).msgs;
         const req: ModelRequest = {
           model,
-          system: systemPrompt(cwd),
+          system,
           messages: history,
           ...(toolsOn ? { tools: toolSpecs(platform) } : {}),
           ...(effort ? { effort } : {}),
@@ -413,6 +432,8 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
           else signal.addEventListener('abort', () => ok('aborted'), { once: true });
         });
         const runIt = async (r: { run: () => Promise<ToolOut> }): Promise<ToolOut | undefined> => {
+          // Nothing starts once the turn is aborted (a synchronous Write would be done before the race could look at the signal).
+          if (signal.aborted) return undefined;
           const out = await Promise.race([r.run(), aborted]);
           return out === 'aborted' || signal.aborted ? undefined : out;
         };
@@ -427,6 +448,26 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
           emit({ type: 'tool_result', tool: c.name, output: shown });
           results.push(resultBlock(c.id, shown, isError));
         };
+        /**
+         * Puts the question to the user (spec 4.5 step 4) and gives the answer; undefined when the turn was aborted first (the question is void:
+         * the host closes it when the turn ends, and a late answer is dropped). The raw input goes to the host. A failure or a malformed answer is a deny.
+         */
+        const askUser = async (c: Call, req: ToolRequest): Promise<Decision | undefined> => {
+          let d: Decision;
+          try {
+            const answer = Promise.resolve().then(() => onApprove(req));
+            answer.catch(() => {}); // a rejection after the abort has no one to tell
+            const got = await Promise.race([answer, aborted]);
+            if (got === 'aborted' || signal.aborted) return undefined;
+            if (got?.behavior !== 'allow' && got?.behavior !== 'deny') throw new Error('the answer was not allow or deny');
+            d = got;
+          } catch (e) {
+            d = { behavior: 'deny', message: `Blocked by Reins: internal error (${red(e instanceof Error ? e.message : String(e), 200)}).` };
+          }
+          emit({ type: 'hook', event: 'approve', tool: c.name, decision: d.behavior, ...(d.message ? { reason: redAll(d.message) } : {}) });
+          // The event itself may have interrupted the turn (a host listening for it): then the answer does not count.
+          return signal.aborted ? undefined : d;
+        };
         const ready = asked.map((c) => prepare(c, parsed.get(c)!, ctx));
         if (ready.every((r) => 'run' in r && r.parallel)) {
           // Only reads inside the folder: all at once, the results in the model's order. A call that was cut short by an interrupt does not count.
@@ -436,18 +477,63 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
           // Anything else, one by one in the model's order; each call is judged just before it runs, not at the start of the batch.
           for (let i = 0; i < asked.length; i++) {
             if (signal.aborted) break;
-            const r = i === 0 ? ready[0]! : prepare(asked[i]!, parsed.get(asked[i]!)!, ctx);
+            let r = i === 0 ? ready[0]! : prepare(asked[i]!, parsed.get(asked[i]!)!, ctx);
             if ('run' in r) {
+              if (r.ask) {
+                const d = await askUser(asked[i]!, r.ask);
+                if (!d) break;
+                // A user's no is not a guard refusal: no `refusal` event, so the receipt does not count it.
+                if (d.behavior !== 'allow') {
+                  settle(asked[i]!, d.message || DENIED, true);
+                  continue;
+                }
+                // The user answered about the call as it was. Time has passed: judge it again from the start (the path, the policy, the word scan)
+                // and run only a call that is the same question. Reins, not the user, refuses a call that is not.
+                const fresh = prepare(asked[i]!, parsed.get(asked[i]!)!, ctx);
+                if (!('run' in fresh)) {
+                  settle(asked[i]!, fresh.text, true, true);
+                  continue;
+                }
+                if (fresh.same !== r.same) {
+                  settle(asked[i]!, PATH_CHANGED, true, true);
+                  continue;
+                }
+                r = fresh;
+              }
               const out = await runIt(r);
               if (!out) break;
               settle(asked[i]!, out.text, out.isError === true);
             } else settle(asked[i]!, r.text, true, r.denied);
           }
         }
-        if (results.length) history.push({ role: 'user', blocks: results });
+        // The completed results enter the history first: whatever the cards do, they are not lost.
+        const message: Msg = { role: 'user', blocks: results };
+        if (results.length) history.push(message);
         if (signal.aborted) {
           stubUnanswered();
           return finish('');
+        }
+        // Spec 4.5 step 6: the cards queued while the tools ran go in the same user message as the results, after them. An aborted batch leaves them queued.
+        // A host that throws, or answers with anything but a list of texts, delivers no card.
+        let cards: string[] = [];
+        try {
+          const got: unknown = opts.pendingCards?.();
+          if (Array.isArray(got)) cards = got.filter((x): x is string => typeof x === 'string');
+        } catch {
+          cards = [];
+        }
+        emit({ type: 'hook', event: 'post-tool', tool: asked.at(-1)!.name, decision: cards.length ? 'card' : 'pass' });
+        // ponytail: a card is never cut to nothing (at least 500 characters of text), so more than about 20 cards in one round go over the 10,000
+        // characters of CARD_CONTEXT_LIMIT. A person types few; a bounded drain (the host handing over only what fits) would belong to the host.
+        const budget = Math.max(500, Math.floor(CARD_CONTEXT_LIMIT / Math.max(cards.length, 1)) - 400);
+        const wrapped = cards.map((card): Block => {
+          emit({ type: 'card_delivered', card, channel: 'mid-turn' });
+          return { type: 'text', text: wrapCard(card.length > budget ? noLoneSurrogate(card.slice(0, budget)) + CARD_CUT : card, nonce) };
+        });
+        if (wrapped.length) {
+          const placed = results.length > 0;
+          results.push(...wrapped);
+          if (!placed) history.push(message);
         }
       }
     } catch (e) {

@@ -5,6 +5,8 @@ import fs, { type BigIntStats } from 'node:fs';
 import path from 'node:path';
 
 const CHUNK = 1024 * 1024;
+/** Read-only and, where the platform has it, non-blocking: opening a FIFO with no writer must not hang. The handle is checked to be a regular file before any read. */
+export const OPEN_FLAGS = fs.constants.O_RDONLY | (fs.constants.O_NONBLOCK ?? 0);
 
 export interface Bounded {
   st: BigIntStats;
@@ -21,7 +23,7 @@ const done = (st: BigIntStats, chunks: Buffer[], max: number): Bounded => {
 
 /** Reads up to `max + 1` bytes from the opened file, in chunks, looking at the signal between them. 'notfile' when the handle is not a regular file. */
 export async function readBounded(abs: string, max: number, signal?: AbortSignal): Promise<Bounded | 'aborted' | 'notfile'> {
-  const fh = await fs.promises.open(abs, 'r');
+  const fh = await fs.promises.open(abs, OPEN_FLAGS);
   try {
     const st = await fh.stat({ bigint: true });
     if (!st.isFile()) return 'notfile';
@@ -47,7 +49,7 @@ export async function readBounded(abs: string, max: number, signal?: AbortSignal
  * true ends the read with 'stopped' (a deadline).
  */
 export function readBoundedSync(abs: string, max: number, stop?: () => boolean): Bounded | 'notfile' | 'stopped' {
-  const fd = fs.openSync(abs, 'r');
+  const fd = fs.openSync(abs, OPEN_FLAGS);
   try {
     const st = fs.fstatSync(fd, { bigint: true });
     if (!st.isFile()) return 'notfile';

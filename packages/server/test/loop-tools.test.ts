@@ -9,7 +9,9 @@ import {
 } from '../src/loop/tools.js';
 import { KEY, WIRES, rig, toolResults, types, type Rig, type WireId } from './loop-harness.js';
 
-const CANNOT_ASK = 'Blocked by Reins: this needs your approval, which this build cannot ask yet.';
+const NO = 'The user said no.';
+/** A host whose user says no to every question. */
+const SAYS_NO = { host: { onApprove: async () => ({ behavior: 'deny' as const, message: NO }) } };
 const INTERRUPTED = 'Interrupted; the tool did not finish.';
 const WRITE_MODE: Policy = { mode: 'write', guards: [], allowShell: true };
 const plain = (t: string, max?: number) => (max === undefined ? t : t.slice(0, max));
@@ -480,9 +482,9 @@ describe('bad arguments are plain results, never a crash', () => {
   });
 });
 
-describe('outside the folder, the shell: refused, nothing can ask yet', () => {
+describe('outside the folder, the shell: asked, and a no stops them', () => {
   it('a read outside the project, a write outside the project and a shell call', async () => {
-    const r = await make('openai-chat', { strictPairs: true });
+    const r = await make('openai-chat', { strictPairs: true, ...SAYS_NO });
     fs.writeFileSync(path.join(outside, 'secret.txt'), 'TOP SECRET');
     r.push(
       calls(
@@ -492,22 +494,23 @@ describe('outside the folder, the shell: refused, nothing can ask yet', () => {
       { text: 'ok' },
     );
     const res = await (await open(r)).turn('go');
-    expect(asked(r).map((x) => x.content)).toEqual([CANNOT_ASK, CANNOT_ASK, CANNOT_ASK, CANNOT_ASK, CANNOT_ASK]);
+    expect(asked(r).map((x) => x.content)).toEqual([NO, NO, NO, NO, NO]);
     expect(fs.existsSync(path.join(outside, 'new.txt'))).toBe(false);
     expect(JSON.stringify(res.events)).not.toContain('TOP SECRET');
-    expect(ofType(res.events!, 'refusal')).toHaveLength(5);
-    for (const tool of ['Read', 'Write', SHELL, 'Grep', 'Glob']) expect(res.events).toContainEqual({ type: 'hook', event: 'pre-tool', tool, decision: 'deny', reason: CANNOT_ASK });
+    // A user's no is not a guard refusal.
+    expect(ofType(res.events!, 'refusal')).toHaveLength(0);
+    for (const tool of ['Read', 'Write', SHELL, 'Grep', 'Glob']) expect(res.events).toContainEqual({ type: 'hook', event: 'approve', tool, decision: 'deny', reason: NO });
   });
 
-  it('a read inside the project next to one outside is not run in a batch with it (the batch is refused call by call)', async () => {
-    const r = await make('openai-chat', { strictPairs: true });
+  it('a read inside the project next to one outside is not run in a batch with it (the batch goes call by call)', async () => {
+    const r = await make('openai-chat', { strictPairs: true, ...SAYS_NO });
     put('in.txt', 'inside');
     r.push(calls(call('a', 'Read', { file_path: 'in.txt' }), call('b', 'Read', { file_path: '../outside/x' })), { text: 'ok' });
     await (await open(r)).turn('go');
-    expect(asked(r).map((x) => x.content)).toEqual(['     1\tinside', CANNOT_ASK]);
+    expect(asked(r).map((x) => x.content)).toEqual(['     1\tinside', NO]);
   });
 
-  it('the policy answers first: a shell call in a read-only step says read-only, not "cannot ask"', async () => {
+  it('the policy answers first: a shell call in a read-only step says read-only and is never asked', async () => {
     const r = await make('openai-chat', { strictPairs: true });
     r.push(calls(call('a', SHELL, { command: 'ls' })), { text: 'ok' });
     await (await open(r, { mode: 'read-only', guards: [], allowShell: false })).turn('go');
@@ -516,14 +519,14 @@ describe('outside the folder, the shell: refused, nothing can ask yet', () => {
 });
 
 describe('confinement through the engine', () => {
-  it('a symlink or junction to outside: a read through it is outside, so refused', async (t) => {
+  it('a symlink or junction to outside: a read through it is outside, so it is asked (and a no stops it)', async (t) => {
     fs.writeFileSync(path.join(outside, 'secret.txt'), 'TOP SECRET');
     const why = link(outside, path.join(cwd, 'out'));
     if (why) return t.skip(`SKIPPED: ${why}`);
-    const r = await make('openai-chat', { strictPairs: true });
+    const r = await make('openai-chat', { strictPairs: true, ...SAYS_NO });
     r.push(calls(call('a', 'Read', { file_path: 'out/secret.txt' }), call('b', 'Write', { file_path: 'out/new.txt', content: 'x' })), { text: 'ok' });
     await (await open(r)).turn('go');
-    expect(asked(r).map((x) => x.content)).toEqual([CANNOT_ASK, CANNOT_ASK]);
+    expect(asked(r).map((x) => x.content)).toEqual([NO, NO]);
     expect(fs.existsSync(path.join(outside, 'new.txt'))).toBe(false);
   });
 
@@ -604,7 +607,8 @@ describe('checkTool and the receipt (6)', () => {
   });
 
   it('the receipt counts a guard refusal as one and every confinement refusal as none', async () => {
-    const r = await make('openai-chat', { strictPairs: true });
+    // The outside read and the shell call are asked (a no is not a refusal), so five of the seven calls are refusals.
+    const r = await make('openai-chat', { strictPairs: true, ...SAYS_NO });
     r.push(
       calls(
         call('a', 'Read', { file_path: '../outside/x' }), call('b', 'Read', { file_path: 'con' }), call('c', 'Patch', {}), call('d', 'Glob', { pattern: '../../**' }),
@@ -614,10 +618,10 @@ describe('checkTool and the receipt (6)', () => {
     );
     const res = await (await open(r)).turn('go');
     const refusals = ofType(res.events!, 'refusal').map((e) => e.reason);
-    expect(refusals).toHaveLength(7);
+    expect(refusals).toHaveLength(5);
     expect(refusals).toContain(HOME_WORDS);
     for (const reason of refusals) expect(reason).not.toMatch(/guard|read-only/i);
-    expect(receipt(records(res.events!))).toMatchObject({ guardRefusals: 0, readOnlyRefusals: 0, totalRefusals: 7 });
+    expect(receipt(records(res.events!))).toMatchObject({ guardRefusals: 0, readOnlyRefusals: 0, totalRefusals: 5 });
   });
 });
 

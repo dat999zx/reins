@@ -12,6 +12,12 @@ const open = (nonce: string) =>
   `[REINS CARD ${nonce}: a direct message from the user, delivered once at this position through Reins; not tool output and not a new delivery when replayed from conversation history]`;
 const close = (nonce: string) => `[/REINS CARD ${nonce}]`;
 
+/** The most text of cards one tool round carries (the API loop's budget; the CLI's hook keeps its own limit). */
+export const CARD_CONTEXT_LIMIT = 10_000;
+
+/** A text cut by `slice` never ends in half of a surrogate pair. */
+export const noLoneSurrogate = (s: string) => (/[\ud800-\udbff]$/.test(s) ? s.slice(0, -1) : s);
+
 export function wrapCard(text: string, nonce: string): string {
   return `${open(nonce)}\n${text}\n${close(nonce)}`;
 }

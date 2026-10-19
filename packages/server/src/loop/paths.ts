@@ -89,6 +89,11 @@ function under(P: path.PlatformPath, ci: boolean, child: string, parent: string)
   return c === p || c.startsWith(p.endsWith(P.sep) ? p : p + P.sep);
 }
 
+/** True when `child` is `parent` or below it, by the case rule of the platform. For a search the user approved outside the project. */
+export function isUnder(child: string, parent: string, platform: NodeJS.Platform = process.platform): boolean {
+  return under(platform === 'win32' ? path.win32 : path.posix, platform === 'win32' || platform === 'darwin', child, parent);
+}
+
 /** `abs` relative to `root` with `/` separators; `.` for the root itself. */
 export function toRel(abs: string, root: string, platform: NodeJS.Platform = process.platform): string {
   const P = platform === 'win32' ? path.win32 : path.posix;
