@@ -1,22 +1,75 @@
-// The API agent loop, part 1 (spec 4.1): one model call per step, cost, retries, errors, interrupt, the per-reply call cap. No tools run yet:
-// a tool call is answered with a stub. No conversation file, no compaction, no USD guard: history lives in memory for the life of the session.
+// The API agent loop, parts 1 and 2 (spec 4.1 to 4.5): one model call per step, cost, retries, errors, interrupt, the per-reply call cap, and the file tools
+// behind path confinement and `checkTool`. A call that would need the user's approval (outside the folder, the shell) is refused: nothing can ask yet.
+// No conversation file, no compaction, no USD guard: history lives in memory for the life of the session.
 import { randomUUID } from 'node:crypto';
-import type { Engine, EngineEvent, EngineProbe, EngineSession, OpenOptions, TurnResult } from '@reins/core';
+import { checkTool, type Engine, type EngineEvent, type EngineProbe, type EngineSession, type OpenOptions, type TurnResult } from '@reins/core';
 import type { EngineHost, ProviderManifest, Wire } from '../mods/types.js';
 import { SETTINGS } from '../settings.js';
 import { callCost, priceOf } from './cost.js';
+import { confine, type FsLike } from './paths.js';
 import { classify, retryDelay, sleep as realSleep, STALL_MS, TRIES, WORDS, type ErrorClass } from './retry.js';
 import { systemPrompt } from './system.js';
+import { checkInput, cutText, findTool, noTool, toolSpecs, type Target, type ToolCtx, type ToolOut } from './tools.js';
 import type { Block, Extra, ModelRequest, Msg, Usage, WireEvent } from './types.js';
 
-const STUB = 'Tools come in a later build.';
+const CANNOT_ASK = 'Blocked by Reins: this needs your approval, which this build cannot ask yet.';
 const INTERRUPTED = 'Interrupted; the tool did not finish.';
 
-/** The clock and the dice of the retry back-off, for tests. */
+/** The clock and the dice of the retry back-off, and the platform and fs the tools see, for tests. */
 export interface LoopDeps {
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
   random?: () => number;
+  platform?: NodeJS.Platform;
+  fs?: FsLike;
 }
+
+/** A tool input larger than this (in characters, strings and keys together) is shown in the public event as a preview. */
+const PUBLIC_MAX = 1024 * 1024;
+const PREVIEW_CHARS = 4096;
+const PREVIEW_ITEMS = 100;
+
+/** The size of a value in characters, counted up to a little over PUBLIC_MAX (it stops counting there). */
+function weigh(v: unknown, sum = { n: 0 }): number {
+  if (sum.n > PUBLIC_MAX) return sum.n;
+  if (typeof v === 'string') sum.n += v.length;
+  else if (Array.isArray(v)) for (const x of v) weigh(x, sum);
+  else if (typeof v === 'object' && v !== null) {
+    for (const [k, x] of Object.entries(v)) {
+      sum.n += k.length;
+      weigh(x, sum);
+    }
+  }
+  else sum.n += 8;
+  return sum.n;
+}
+
+/**
+ * The same shape with every long string cut to its first 4,096 characters (redacted, the cut never ends on the start of a key) and "[N more
+ * characters]" after it, and more than 100 entries of a list or object left out. Short strings are redacted whole. Not a full-size copy.
+ */
+function preview(v: unknown, red: (t: string, max?: number) => string, redAll: (t: string) => string): unknown {
+  if (typeof v === 'string') {
+    if (v.length <= PREVIEW_CHARS) return redAll(v);
+    // Twice the shown length is redacted, so a key at the cut is seen whole; the cut itself is the redaction-safe one.
+    return `${red(v.slice(0, PREVIEW_CHARS * 2), PREVIEW_CHARS)} [${v.length - PREVIEW_CHARS} more characters]`;
+  }
+  if (Array.isArray(v)) {
+    const head = v.slice(0, PREVIEW_ITEMS).map((x) => preview(x, red, redAll));
+    return v.length > PREVIEW_ITEMS ? [...head, `[${v.length - PREVIEW_ITEMS} more items]`] : head;
+  }
+  if (typeof v === 'object' && v !== null) {
+    const entries = Object.entries(v);
+    const out: Record<string, unknown> = {};
+    for (const [k, x] of entries.slice(0, PREVIEW_ITEMS)) Object.defineProperty(out, redAll(k.slice(0, PREVIEW_CHARS)), { value: preview(x, red, redAll), enumerable: true, writable: true, configurable: true });
+    if (entries.length > PREVIEW_ITEMS) out['[more]'] = `${entries.length - PREVIEW_ITEMS} more entries`;
+    return out;
+  }
+  return v;
+}
+
+/** What one tool call comes to before it runs: a result already (a refusal, an input error), or the function that runs it. */
+type Prep = { text: string; isError: true; denied: boolean } | { run: () => Promise<ToolOut>; parallel: boolean };
+const plain = (text: string, denied = false): Prep => ({ text, isError: true, denied });
 
 type Call = Extract<Block, { type: 'tool_call' }>;
 type Reply = { blocks: Block[]; usage: Usage; extra?: Extra };
@@ -78,8 +131,23 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
   const model = opts.model ?? h.model ?? p.defaultModel;
   const effort = opts.effort ?? h.effort ?? p.defaultEffort;
   const info = p.models.find((m) => m.id === model);
+  const platform = deps.platform ?? process.platform;
+  const toolsOn = info?.tools !== false;
   const keyEnv = p.auth?.keyEnv[0] ?? 'a key';
   const red = (t: string, max?: number) => (h.redact ? h.redact(t, max) : max === undefined ? t : t.slice(0, max));
+  /** A whole text redacted, with no trim of an ending that could be the start of a key. */
+  const redAll = (t: string) => (h.redactAll ? h.redactAll(t) : red(t));
+  /** A copy of a tool input for the events: strings redacted whole (through its JSON text, where a key is found in its escaped form too). */
+  const publicInput = (input: unknown): unknown => {
+    try {
+      // An input that is big is shown as a preview, never copied whole: the copy would cost as much memory again, several times over.
+      if (weigh(input) > PUBLIC_MAX) return preview(input, red, redAll);
+      const json = JSON.stringify(input);
+      return json === undefined ? input : JSON.parse(redAll(json));
+    } catch {
+      return redAll(String(input).slice(0, PREVIEW_CHARS));
+    }
+  };
 
   let history: Msg[] = [];
   // The running total of USD; undefined = unknown (an unpriced call, or a resumed session whose total was not kept), and it stays so.
@@ -189,6 +257,51 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
     }
   }
 
+  /**
+   * Spec 4.5 steps 1 to 4 for one call, in order: the tool table, the input, confinement, `checkTool`, then whether it would have to ask.
+   * It runs nothing. Any exception is a deny (fail closed, as the CLI's hooks do).
+   */
+  function prepare(c: Call, entry: { input: unknown; bad?: string }, ctx: ToolCtx): Prep {
+    try {
+      if (entry.bad !== undefined) return plain(entry.bad);
+      const tool = toolsOn ? findTool(c.name) : undefined;
+      if (!tool) return plain(noTool(c.name, platform, toolsOn), true);
+      const wrong = checkInput(tool, entry.input);
+      if (wrong) return plain(wrong);
+      const args = entry.input as Record<string, unknown>;
+      const refused = tool.refuse?.(args);
+      if (refused) return plain(refused, true);
+      let target: Target | undefined;
+      let inside = true;
+      if (tool.path) {
+        const at = confine((args[tool.path.arg] as string | undefined) ?? '.', { cwd: ctx.cwd, home: ctx.home, platform, ...(ctx.fs ? { fs: ctx.fs } : {}) });
+        if (!at.ok) return plain(at.reason, true);
+        target = { abs: at.abs, root: at.root };
+        inside = at.inside;
+      }
+      if (tool.class !== 'read') {
+        // The path as the model wrote it, then the real path the tool would open: a guard holds for both.
+        const why = checkTool(ctx.policy(), tool.name, args, ctx.cwd) ?? (target ? checkTool(ctx.policy(), tool.name, { ...args, file_path: target.abs }, target.root) : null);
+        if (why) return plain(why, true);
+      }
+      // Anything that would need the user's approval: outside the folder, or the shell (its tool runs in a later build).
+      if (!inside || tool.class === 'shell' || !tool.run) return plain(CANNOT_ASK, true);
+      const run = tool.run.bind(tool);
+      return {
+        parallel: tool.class === 'read',
+        run: async () => {
+          try {
+            return await run(args, ctx, target ?? { abs: ctx.cwd, root: ctx.cwd });
+          } catch (e) {
+            return { text: `${tool.name} failed: ${e instanceof Error ? e.message : String(e)}`, isError: true };
+          }
+        },
+      };
+    } catch (e) {
+      return plain(`Blocked by Reins: internal error (${red(e instanceof Error ? e.message : String(e), 200)}).`, true);
+    }
+  }
+
   async function runTurn(text: string, ac: AbortController): Promise<TurnResult> {
     const signal = ac.signal;
     const max = h.settings?.maxCallsPerTurn ?? SETTINGS.maxCallsPerTurn.default;
@@ -235,6 +348,7 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
           model,
           system: systemPrompt(cwd),
           messages: history,
+          ...(toolsOn ? { tools: toolSpecs(platform) } : {}),
           ...(effort ? { effort } : {}),
           ...(info?.maxOutput !== undefined ? { maxOutput: info.maxOutput } : {}),
         };
@@ -258,40 +372,80 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
         }
 
         // Tool-call arguments arrive as JSON text; a block keeps them parsed when they are, as the text when they are not.
-        const parsed = new Map<string, { input: unknown; bad?: string }>();
+        // Keyed by the block itself: two calls with the same id (a broken provider) never share an input.
+        const parsed = new Map<Block, { input: unknown; bad?: string }>();
         const blocks = reply.blocks.map((b): Block => {
           if (b.type !== 'tool_call') return b;
           try {
             const input: unknown = JSON.parse(b.args as string);
-            parsed.set(b.id, { input });
-            return { ...b, args: input };
+            const parsedBlock = { ...b, args: input };
+            parsed.set(parsedBlock, { input });
+            return parsedBlock;
           } catch (e) {
-            parsed.set(b.id, { input: b.args, bad: red(`Your arguments were not valid JSON: ${(e as Error).message}. Call the tool again.`) });
+            parsed.set(b, { input: b.args, bad: `Your arguments were not valid JSON: ${(e as Error).message}. Call the tool again.` });
             return b;
           }
         });
         history.push({ role: 'assistant', blocks, ...(reply.extra ? { extra: reply.extra } : {}) });
 
-        // ponytail: the loop must run text and thinking through StreamRedactor before they become events or history (a key split across two deltas); it is wired in a later task.
-        const thought = blocks.flatMap((b) => (b.type === 'thinking' ? [b.text] : [])).join('');
+        // The loop has already joined the stream's deltas into whole messages, so a key split across deltas is whole here and one redaction finds it.
+        // History keeps the raw text: the next request goes to the provider that wrote it.
+        const thought = redAll(blocks.flatMap((b) => (b.type === 'thinking' ? [b.text] : [])).join(''));
         if (thought !== '') emit({ type: 'thinking', tokens: Math.ceil(thought.length / 4), text: thought });
-        const said = textOf(blocks);
+        const said = redAll(textOf(blocks));
         if (said !== '') emit({ type: 'text', text: said });
         const asked = callsOf(blocks);
         if (!asked.length) return finish(said);
 
-        for (const c of asked) emit({ type: 'tool_call', tool: c.name, input: parsed.get(c.id)!.input });
+        // The event shows a redacted copy of the input; the tool is given the arguments as they came.
+        for (const c of asked) emit({ type: 'tool_call', tool: c.name, input: publicInput(parsed.get(c)!.input) });
         if (signal.aborted) {
           stubUnanswered();
           return finish('');
         }
+        const ctx: ToolCtx = { cwd, home: h.home, policy: opts.policy, signal, redact: red, redactAll: redAll, platform, ...(deps.fs ? { fs: deps.fs } : {}) };
+        // Settles when the turn is aborted: a tool that does not look at the signal (a stuck read) is no longer waited for, and its late answer is dropped.
+        const aborted = new Promise<'aborted'>((ok) => {
+          if (signal.aborted) ok('aborted');
+          else signal.addEventListener('abort', () => ok('aborted'), { once: true });
+        });
+        const runIt = async (r: { run: () => Promise<ToolOut> }): Promise<ToolOut | undefined> => {
+          const out = await Promise.race([r.run(), aborted]);
+          return out === 'aborted' || signal.aborted ? undefined : out;
+        };
         const results: Block[] = [];
-        for (const c of asked) {
-          const out = parsed.get(c.id)!.bad ?? STUB;
-          emit({ type: 'tool_result', tool: c.name, output: out });
-          results.push(resultBlock(c.id, out, parsed.get(c.id)!.bad !== undefined));
+        /** The result enters the conversation and the events once, redacted and capped (spec 8.3 choke point 3). A refusal also says so as events. */
+        const settle = (c: Call, text: string, isError: boolean, denied = false) => {
+          const shown = cutText(red, redAll, text);
+          if (denied) {
+            emit({ type: 'refusal', reason: shown });
+            emit({ type: 'hook', event: 'pre-tool', tool: c.name, decision: 'deny', reason: shown });
+          }
+          emit({ type: 'tool_result', tool: c.name, output: shown });
+          results.push(resultBlock(c.id, shown, isError));
+        };
+        const ready = asked.map((c) => prepare(c, parsed.get(c)!, ctx));
+        if (ready.every((r) => 'run' in r && r.parallel)) {
+          // Only reads inside the folder: all at once, the results in the model's order. A call that was cut short by an interrupt does not count.
+          const outs = await Promise.all(ready.map((r) => runIt(r as { run: () => Promise<ToolOut> })));
+          asked.forEach((c, i) => { const out = outs[i]; if (out) settle(c, out.text, out.isError === true); });
+        } else {
+          // Anything else, one by one in the model's order; each call is judged just before it runs, not at the start of the batch.
+          for (let i = 0; i < asked.length; i++) {
+            if (signal.aborted) break;
+            const r = i === 0 ? ready[0]! : prepare(asked[i]!, parsed.get(asked[i]!)!, ctx);
+            if ('run' in r) {
+              const out = await runIt(r);
+              if (!out) break;
+              settle(asked[i]!, out.text, out.isError === true);
+            } else settle(asked[i]!, r.text, true, r.denied);
+          }
         }
-        history.push({ role: 'user', blocks: results });
+        if (results.length) history.push({ role: 'user', blocks: results });
+        if (signal.aborted) {
+          stubUnanswered();
+          return finish('');
+        }
       }
     } catch (e) {
       stubUnanswered();

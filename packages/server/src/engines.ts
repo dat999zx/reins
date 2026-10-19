@@ -47,7 +47,7 @@ export const redactEnvNames = (mods: Mods): string[] => {
  * The `send` a production host carries. Consent is refused for now, so nothing is sent by accident; Task 21 replaces the callback
  * with the consent store. Built on first use: a session that never sends reads no secrets.
  */
-export function hostSend(mods: Mods, base: Pick<EngineHost, 'env' | 'home'>): Pick<EngineHost, 'send' | 'redact' | 'key'> {
+export function hostSend(mods: Mods, base: Pick<EngineHost, 'env' | 'home'>): Pick<EngineHost, 'send' | 'redact' | 'redactAll' | 'key'> {
   let redactor: Redactor | undefined;
   let seen = '';
   // The key names and the env values they hold, as one string compared on every call (cheap): a key set or changed in the env after the
@@ -69,6 +69,7 @@ export function hostSend(mods: Mods, base: Pick<EngineHost, 'env' | 'home'>): Pi
     // Only the state ever leaves: never the key, nor the env var it came from.
     key: (p) => ({ state: keyStatus(p, readSecrets(base.home), base.env).state }),
     redact: (t, max) => redactCut(lazy, t, max),
+    redactAll: (t) => lazy.redact(t),
     send: (m, url, init, purpose) => {
       send ??= makeSend({ secrets: () => readSecrets(base.home), env: base.env, redactor: lazy, consent: () => false });
       return send(m, url, init, purpose);

@@ -59,6 +59,7 @@ export async function rig(wireId: WireId, o: {
   const host: EngineHost = {
     env: {}, home: home.home, onApprove: async () => ({ behavior: 'allow' }), onLive: (e) => live.push(e), send,
     redact: (t, max) => redactCut(redactor, t, max),
+    redactAll: (t) => redactor.redact(t),
     key: (m) => keyStatus(m, readSecrets(home.home), {}),
     settings: { get maxCallsPerTurn() { return state.max; } },
     ...o.host,
@@ -95,4 +96,7 @@ export function toolResults(body: any): Array<{ id: string; content: string }> {
 }
 
 export const types = (ev: EngineEvent[] | undefined) => (ev ?? []).map((e) => e.type);
-export const toolReply = (n = 0): FakeReply => ({ toolCalls: [{ id: `c${n}`, name: 'read_file', args: '{"path":"a"}' }] });
+/** A call to a real tool whose answer is a fixed plain result: the file is not there. */
+export const MISSING = 'reins-no-such-file.txt';
+export const MISSING_RESULT = `File not found: ${MISSING}`;
+export const toolReply = (n = 0): FakeReply => ({ toolCalls: [{ id: `c${n}`, name: 'Read', args: JSON.stringify({ file_path: MISSING }) }] });

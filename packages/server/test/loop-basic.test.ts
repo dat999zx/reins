@@ -7,11 +7,10 @@ import type { Store } from '../src/store.js';
 import { setKey } from '../src/secrets.js';
 import { pairUp } from '../src/loop/engine.js';
 import type { Msg } from '../src/loop/types.js';
-import { COST_120, KEY, USAGE_120, WIRES, rig, toolReply, toolResults, types, type Rig } from './loop-harness.js';
+import { COST_120, KEY, MISSING_RESULT, USAGE_120, WIRES, rig, toolReply, toolResults, types, type Rig } from './loop-harness.js';
 import { tempHome } from './mods-harness.js';
 
 const INTERRUPTED = 'Interrupted; the tool did not finish.';
-const STUB = 'Tools come in a later build.';
 const rigs: Rig[] = [];
 const make = async (...a: Parameters<typeof rig>) => {
   const r = await rig(...a);
@@ -181,7 +180,7 @@ describe('strict pairing (4.12a)', () => {
     const res = await s.turn('go');
     expect(res.text).toBe('');
     expect(res.isError).toBeUndefined();
-    expect(res.events).toContainEqual({ type: 'tool_result', tool: 'read_file', output: INTERRUPTED });
+    expect(res.events).toContainEqual({ type: 'tool_result', tool: 'Read', output: INTERRUPTED });
     r.host.onLive = (e) => void r.live.push(e);
     const next = await s.turn('again');
     expect(next.text).toBe('ok');
@@ -194,25 +193,25 @@ describe('strict pairing (4.12a)', () => {
     const s = await r.open();
     await expect(s.turn('go')).rejects.toThrow('Fake had a server error (500).');
     expect((await s.turn('again')).text).toBe('ok');
-    expect(toolResults(r.fake.requests.at(-1)!.body)).toEqual([{ id: 'c0', content: STUB }]);
+    expect(toolResults(r.fake.requests.at(-1)!.body)).toEqual([{ id: 'c0', content: MISSING_RESULT }]);
   });
 });
 
 describe('stubbed tool calls', () => {
   it.each(WIRES)('every call gets the stub; invalid JSON arguments get their own result, on %s', async (wireId) => {
     const r = await make(wireId, { strictPairs: true });
-    r.push({ toolCalls: [{ id: 'a', name: 'read_file', args: '{"path":"x"}' }, { id: 'b', name: 'bash', args: '{"cmd":' }] }, { text: 'done' });
+    r.push({ toolCalls: [{ id: 'a', name: 'Read', args: '{"file_path":"x"}' }, { id: 'b', name: 'bash', args: '{"cmd":' }] }, { text: 'done' });
     const res = await (await r.open()).turn('go');
     expect(res.text).toBe('done');
     const calls = res.events!.filter((e): e is Extract<EngineEvent, { type: 'tool_call' }> => e.type === 'tool_call');
-    expect(calls[0]).toEqual({ type: 'tool_call', tool: 'read_file', input: { path: 'x' } });
+    expect(calls[0]).toEqual({ type: 'tool_call', tool: 'Read', input: { file_path: 'x' } });
     expect(calls[1]).toMatchObject({ tool: 'bash', input: '{"cmd":' });
     const results = res.events!.filter((e): e is Extract<EngineEvent, { type: 'tool_result' }> => e.type === 'tool_result');
-    expect(results[0]!.output).toBe(STUB);
+    expect(results[0]!.output).toBe('File not found: x');
     expect(results[1]!.output).toMatch(/^Your arguments were not valid JSON: .+\. Call the tool again\.$/);
     const sent = toolResults(r.fake.requests[1]!.body);
     expect(sent.map((x) => x.id)).toEqual(['a', 'b']);
-    expect(sent[0]!.content).toBe(STUB);
+    expect(sent[0]!.content).toBe('File not found: x');
   });
 
   it('a tool call the wire gave no id still gets its result', async () => {

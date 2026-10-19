@@ -299,7 +299,7 @@ export function redactCut(r: Pick<Redactor, 'redact' | 'safeLength'>, text: stri
  * Redacts a stream that arrives in pieces (command output): a key split across any number of chunks is still found. `push` returns the
  * text that is safe to write now; only the end of the pending text that could be the start of a known secret is held back, so ordinary
  * output is not delayed. `end` writes what is left (a half key that never completed is written as it is).
- * ponytail: the API agent loop (a later task) must use this for streamed model text; it is not wired there yet.
+ * The API agent loop does not use this: it joins a reply's deltas into whole messages first and redacts each whole message (the host's `redactAll`).
  */
 export class StreamRedactor {
   private pending = '';

@@ -33,6 +33,11 @@ export interface EngineHost {
    * then cut to that length without leaving the start of a known secret (`redactCut`). Without one a wire leaves provider text out of its errors.
    */
   redact?: (text: string, max?: number) => string;
+  /**
+   * The same redaction of a WHOLE text, without the trim of an ending that could be the start of a key (`redact` always trims it, even when
+   * nothing is cut). For a message that is complete: the loop's text, thinking, tool inputs and tool results. None: `redact` is used.
+   */
+  redactAll?: (text: string) => string;
   /** The API agent loop's settings, read on every turn (a getter works). None: the defaults. */
   settings?: { maxCallsPerTurn: number };
   /** Whether the provider's key is set, missing, or not needed. Never the key. None: the loop does not check before a request. */
