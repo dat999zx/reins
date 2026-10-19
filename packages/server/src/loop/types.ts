@@ -43,7 +43,8 @@ export interface Usage {
 
 export type WireEvent =
   | { type: 'text'; text: string }
-  | { type: 'thinking'; text: string }
+  /** `signature`: the provider's proof of the thinking block, complete, in the event that ends the block (its `text` may be empty). */
+  | { type: 'thinking'; text: string; signature?: string }
   /** Once, complete. `args` is the raw JSON text; the loop parses it. */
   | { type: 'tool_call'; id: string; name: string; args: string; extra?: Extra }
   | { type: 'usage'; usage: Usage }

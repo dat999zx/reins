@@ -40,6 +40,7 @@ describe('the claude mods', () => {
     const mods = await start();
     expect(mods.problems).toEqual([]);
     expect(mods.mods.map((m) => [m.id, m.kind, m.source, m.problems])).toEqual([
+      ['anthropic-messages', 'protocol', 'bundled', []],
       ['claude-code-cli', 'protocol', 'bundled', []],
       ['openai-chat', 'protocol', 'bundled', []],
       ['claude-code', 'provider', 'bundled', []],

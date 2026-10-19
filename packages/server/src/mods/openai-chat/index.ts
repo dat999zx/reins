@@ -1,75 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { readBounded } from '../../loop/bounded.js';
 import { parseSse } from '../../loop/sse.js';
 import type { Extra, Msg, ModelRequest, Usage, WireEvent } from '../../loop/types.js';
+import { MAX_ARGS, MAX_CALLS, MAX_EXTRA, accumulate, count, failures, isObj, listModelIds, mergeBodies, setOwn, type Obj } from '../../loop/wire-util.js';
 import type { EngineHost, ModApi, ProviderManifest, Wire } from '../types.js';
 
-/** What one reply may hold, in characters (text and thinking are streamed on and not counted), and the model list in bytes. */
-const MAX_ARGS = 4 * 1024 * 1024;
-const MAX_CALLS = 128;
-const MAX_EXTRA = 256 * 1024;
-const MAX_LIST = 1024 * 1024;
-
-type Obj = Record<string, unknown>;
-const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
-// An own property even for the key `__proto__`, which a plain assignment would take for the prototype.
-const setOwn = (o: Obj, k: string, v: unknown) => Object.defineProperty(o, k, { value: v, enumerable: true, writable: true, configurable: true });
-
-/** `b` over `a`: objects are merged, anything else (arrays too) is replaced. Returns a new object; neither input is changed. */
-function merge(a: Obj, b: Obj): Obj {
-  const out: Obj = {};
-  for (const [k, v] of Object.entries(a)) setOwn(out, k, v);
-  for (const [k, v] of Object.entries(b)) {
-    const cur = Object.hasOwn(out, k) ? out[k] : undefined;
-    setOwn(out, k, isObj(v) ? merge(isObj(cur) ? cur : {}, v) : v);
-  }
-  return out;
-}
-
-/** Streamed unknown fields add up: text joins, lists extend, objects merge, anything else is replaced. */
-function accumulate(into: Obj, k: string, v: unknown) {
-  const cur = Object.hasOwn(into, k) ? into[k] : undefined;
-  if (typeof cur === 'string' && typeof v === 'string') setOwn(into, k, cur + v);
-  else if (Array.isArray(cur) && Array.isArray(v)) setOwn(into, k, [...cur, ...v]);
-  else if (isObj(cur) && isObj(v)) setOwn(into, k, merge(cur, v));
-  else setOwn(into, k, v);
-}
-
 const reasoningField = (p: ProviderManifest) => p.reasoning?.field ?? 'reasoning_content';
-
-/** Most of a provider's error text that is shown, after redacting. */
-const MAX_ERROR_TEXT = 500;
-/** What an error says when the host's sanitizer fails: built without calling it again. */
-const HIDDEN = 'The request failed and its details were hidden.';
-
-/**
- * Makes the errors of ONE call of the wire. Each is a new Error whose whole message went through the host's `redact` (provider text
- * included), cut after redacting to MAX_ERROR_TEXT plus the head; without a `redact` the provider's text and the manifest's label are
- * left out. `own` holds this call's errors only, so an error from anywhere else, an earlier call's included, is never taken for one.
- */
-function failures(h: EngineHost, p: ProviderManifest) {
-  const own = new WeakSet<Error>();
-  const fail = (what: (who: string) => string, provider?: string): Error => {
-    let e: Error;
-    try {
-      const head = what(p.label);
-      const max = head.length + 2 + MAX_ERROR_TEXT;
-      let text = what('The provider');
-      if (h.redact) {
-        // The host's answer is held to its contract: a string of at most `max` characters. Anything else is not used.
-        const got: unknown = h.redact(`${head}${provider ? `: ${provider}` : ''}`, max);
-        if (typeof got !== 'string' || got.length > max) throw new Error('the sanitizer broke its contract');
-        text = got;
-      }
-      e = new Error(text);
-    } catch {
-      e = new Error(HIDDEN); // the sanitizer itself failed: a constant, and it is not asked again
-    }
-    own.add(e);
-    return e;
-  };
-  return { fail, own };
-}
 
 /** The neutral conversation as chat messages. Every tool result is its own `tool` message, and comes before any text of the same turn. */
 function toMessages(req: ModelRequest, p: ProviderManifest): Obj[] {
@@ -107,16 +42,8 @@ function requestBody(req: ModelRequest, p: ProviderManifest): Obj {
   const base: Obj = { model: req.model, messages: toMessages(req, p) };
   if (req.tools?.length) base.tools = req.tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.schema } }));
   if (p.usage?.streamOptions !== false) base.stream_options = { include_usage: true };
-  const layers = [p.body, p.models.find((x) => x.id === req.model)?.body, p.efforts?.find((e) => e.id === req.effort)?.body];
-  const body = layers.reduce<Obj>((acc, l) => (l ? merge(acc, l) : acc), base);
-  return setOwn(body, 'stream', true);
+  return setOwn(mergeBodies(base, p, req.model, req.effort), 'stream', true);
 }
-
-/** A count from a provider: a whole number from 0 up. A fraction is cut down; a negative, odd or unsafe value is 0. */
-const count = (v: unknown) => {
-  const n = typeof v === 'number' ? Math.floor(v) : 0;
-  return Number.isSafeInteger(n) && n > 0 ? n : 0;
-};
 
 /**
  * Spec 4.7: `input` is what the prompt count (`prompt_tokens`, or the `input_tokens` spelling) holds beyond the cache reads and writes.
@@ -149,7 +76,7 @@ async function* call(req: ModelRequest, p: ProviderManifest, h: EngineHost, sign
     body: JSON.stringify(requestBody(req, p)),
     signal,
   }, 'chat');
-  const { fail, own } = failures(h, p);
+  const { fail, foreign } = failures(h, p);
   if (!res.body) throw fail((who) => `${who} sent no reply.`);
 
   const known = new Set(['role', 'content', 'tool_calls', 'reasoning_content', 'reasoning', reasoningField(p)]);
@@ -218,15 +145,7 @@ async function* call(req: ModelRequest, p: ProviderManifest, h: EngineHost, sign
     }
   } catch (e) {
     if (signal.aborted) return;
-    // This call's own errors go on as they are. Anything else (a read that failed, a stream that is not valid, a hostile value) is
-    // rebuilt: a new error with the host's sanitizer over the whole text. If looking at it fails, the error is a constant.
-    let out: Error;
-    try {
-      out = own.has(e as Error) ? (e as Error) : fail((who) => `${who}'s reply was cut off`, e instanceof Error ? String(e.message) : String(e));
-    } catch {
-      out = new Error(HIDDEN);
-    }
-    throw out;
+    throw foreign(e);
   }
   if (signal.aborted) return; // the caller stopped it: no half calls, no done
 
@@ -238,22 +157,8 @@ async function* call(req: ModelRequest, p: ProviderManifest, h: EngineHost, sign
   yield { type: 'done', ...(stop ? { stop } : {}), ...(Object.keys(messageExtra).length ? { extra: messageExtra } : {}) };
 }
 
-/** `{ data: [{ id }] }`, or a bare list. Sorted; undefined when the request or the reading fails, the body is over 1 MiB, or nothing is listed. */
-async function listModels(p: ProviderManifest, h: EngineHost, signal: AbortSignal): Promise<string[] | undefined> {
-  try {
-    if (!h.send) return undefined;
-    const url = p.modelsUrl ?? `${p.baseUrl.replace(/\/+$/, '')}/models`;
-    const res = await h.send(p, url, { method: 'GET', headers: { accept: 'application/json' }, signal }, 'models');
-    const { text, over } = await readBounded(res, MAX_LIST);
-    if (over) return undefined;
-    const body: unknown = JSON.parse(text);
-    const list = Array.isArray(body) ? body : isObj(body) && Array.isArray(body.data) ? body.data : undefined;
-    const ids = (list ?? []).flatMap((x: unknown) => (typeof x === 'string' ? [x] : isObj(x) && typeof x.id === 'string' ? [x.id] : []));
-    return ids.length ? [...new Set(ids)].sort() : undefined;
-  } catch {
-    return undefined;
-  }
-}
+const listModels = (p: ProviderManifest, h: EngineHost, signal: AbortSignal) =>
+  listModelIds(p, h, signal, p.modelsUrl ?? `${p.baseUrl.replace(/\/+$/, '')}/models`);
 
 const wire: Wire = { call, listModels };
 
