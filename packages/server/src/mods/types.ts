@@ -1,4 +1,5 @@
 import type { Decision, Engine, EngineEvent, EngineProbe, ToolRequest } from '@reins/core';
+import type { ModelRequest, WireEvent } from '../loop/types.js';
 import type { Registry } from './registry.js';
 
 export type ModSource = 'bundled' | 'user';
@@ -6,7 +7,13 @@ export type ModSource = 'bundled' | 'user';
 /** One thing wrong with one mod, in plain words (spec 5.5). It starts with the mod's id in backticks. */
 export type Problem = string;
 
-/** What a protocol is given to make an engine or probe one. Later tasks add `send`, `fetch` and `settings`. */
+/**
+ * Spec 7.8: the only function that attaches a key. `purpose` is the optional 4th argument: `'models'` (a model list or the probe) may skip
+ * the consent question for a keyless provider; the default `'chat'` always asks. A wire passes `'models'` only from `listModels`.
+ */
+export type SendWithKey = (mod: ProviderManifest, url: string, init: RequestInit, purpose?: 'models' | 'chat') => Promise<Response>;
+
+/** What a protocol is given to make an engine or probe one. Later tasks add `fetch` and `settings`. */
 export interface EngineHost {
   model?: string;
   effort?: string;
@@ -18,6 +25,13 @@ export interface EngineHost {
   helperEnv?: NodeJS.ProcessEnv;
   /** The Reins home (`<REINS_HOME>/.reins`). */
   home: string;
+  /** The only way a key leaves Reins (spec 7.8). Optional on the type because the CLI protocol never sends; a wire throws a clear error without it. */
+  send?: SendWithKey;
+  /**
+   * The host's sanitizer (the Redactor): a wire runs the whole message of every error it builds through it. With `max` the redacted text is
+   * then cut to that length without leaving the start of a known secret (`redactCut`). Without one a wire leaves provider text out of its errors.
+   */
+  redact?: (text: string, max?: number) => string;
 }
 
 /** The question a protocol wants answered before it starts a process in a folder, and what to say when it is not. */
@@ -33,17 +47,36 @@ export interface FolderTrust {
   key: string;
 }
 
-/** What a protocol mod hands over. Later tasks add the `conversation: 'reins'` wire members. */
-export interface Protocol {
-  id: string;
-  /** `'own'`: the engine keeps the conversation (the CLI). */
-  conversation: 'own';
-  capabilities: EngineProbe['capabilities'];
-  engine(p: ProviderManifest, h: EngineHost): Engine;
-  /** A probe opens no conversation, so it needs only the environment. */
-  probe?(p: ProviderManifest, h: Pick<EngineHost, 'env' | 'helperEnv' | 'home'>): Promise<EngineProbe>;
-  folderTrust?(cwd: string): FolderTrust | undefined;
+/** One call to a model API (spec 3.2). The wire turns the neutral request into its protocol and the stream back into events. */
+export interface Wire {
+  call(req: ModelRequest, p: ProviderManifest, h: EngineHost, signal: AbortSignal): AsyncIterable<WireEvent>;
+  /** Ids sorted; undefined on any failure (never throws). */
+  listModels?(p: ProviderManifest, h: EngineHost, signal: AbortSignal): Promise<string[] | undefined>;
 }
+
+/**
+ * What a protocol mod hands over. `'reins'`: Reins owns the history and the protocol is a wire. `'own'`: the engine keeps it (the CLI).
+ * The members of the other variant are `?: undefined`, so `protocol.engine` and the like read as optional on the union.
+ */
+export type Protocol =
+  | {
+      id: string;
+      conversation: 'reins';
+      wire: Wire;
+      engine?: undefined;
+      probe?: undefined;
+      folderTrust?: undefined;
+    }
+  | {
+      id: string;
+      conversation: 'own';
+      wire?: undefined;
+      capabilities: EngineProbe['capabilities'];
+      engine(p: ProviderManifest, h: EngineHost): Engine;
+      /** A probe opens no conversation, so it needs only the environment. */
+      probe?(p: ProviderManifest, h: Pick<EngineHost, 'env' | 'helperEnv' | 'home'>): Promise<EngineProbe>;
+      folderTrust?(cwd: string): FolderTrust | undefined;
+    };
 
 /** What a code mod's default export (`activate(api)`) is given. */
 export interface ModApi {
@@ -87,8 +120,14 @@ export interface ProviderManifest extends Manifest {
   /** The provider new sessions use when the user has not chosen one (`defaultProvider` setting). */
   default?: boolean;
   modelsUrl?: string;
-  auth?: { style: string; keyEnv: string[] };
+  /** `style`: `bearer`, `header` (the header named in `header`) or `none`. */
+  auth?: { style: string; keyEnv: string[]; header?: string };
   headers?: Record<string, string>;
+  /** Where the model's reasoning text comes in the stream, and whether it is sent back on later assistant messages. */
+  reasoning?: { field?: string; echo?: boolean };
+  /** Deep-merged into every request body, under each model's `body` and the chosen effort's `body`. */
+  body?: Record<string, unknown>;
+  usage?: { streamOptions?: boolean };
   catalog?: string;
   defaultModel: string;
   price?: { input: number; output: number };

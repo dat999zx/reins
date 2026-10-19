@@ -2,8 +2,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { EngineProbe } from '@reins/core';
 import { loadMods } from './mods/loader.js';
-import { childEnv } from './secrets.js';
-import type { EngineHost, LoadedMod, Mods, Protocol, ProviderManifest } from './mods/types.js';
+import { childEnv, envGet, readSecrets, Redactor, redactCut } from './secrets.js';
+import { makeSend } from './send.js';
+import type { EngineHost, LoadedMod, Mods, Protocol, ProviderManifest, SendWithKey } from './mods/types.js';
 import type { MakeEngine, SessionDeps } from './session.js';
 
 /** The bundled mods: the folder this code sits in, `src/mods` under tests and `dist/mods` in the build. */
@@ -41,12 +42,45 @@ export const redactEnvNames = (mods: Mods): string[] => {
   return [...names];
 };
 
+/**
+ * The `send` a production host carries. Consent is refused for now, so nothing is sent by accident; Task 21 replaces the callback
+ * with the consent store. Built on first use: a session that never sends reads no secrets.
+ */
+export function hostSend(mods: Mods, base: Pick<EngineHost, 'env' | 'home'>): Pick<EngineHost, 'send' | 'redact'> {
+  let redactor: Redactor | undefined;
+  let seen = '';
+  // The key names and the env values they hold, as one string compared on every call (cheap): a key set or changed in the env after the
+  // start, or a provider installed later, makes the Redactor read the env and the names again. The secrets file it already watches itself.
+  const envStamp = () => {
+    const names = redactEnvNames(mods);
+    return JSON.stringify([names, names.map((n) => envGet(base.env, n))]);
+  };
+  const get = () => {
+    const now = envStamp();
+    if (!redactor) redactor = new Redactor({ home: base.home, env: base.env, keyEnvNames: () => redactEnvNames(mods) });
+    else if (now !== seen) redactor.refresh();
+    seen = now;
+    return redactor;
+  };
+  const lazy = { redact: (t: string) => get().redact(t), has: (t: string) => get().has(t), safeLength: (t: string) => get().safeLength(t) };
+  let send: SendWithKey | undefined;
+  return {
+    redact: (t, max) => redactCut(lazy, t, max),
+    send: (m, url, init, purpose) => {
+      send ??= makeSend({ secrets: () => readSecrets(base.home), env: base.env, redactor: lazy, consent: () => false });
+      return send(m, url, init, purpose);
+    },
+  };
+}
+
 /** The engine factory sessions use. Synchronous: a session's microtask order depends on it. */
-export function makeEngineFrom(mods: Mods, base: Pick<EngineHost, 'env' | 'home'>): MakeEngine {
+export function makeEngineFrom(mods: Mods, base: Pick<EngineHost, 'env' | 'home' | 'send' | 'redact'>): MakeEngine {
   return ({ provider, ...rest }) => {
     const found = resolve(mods, provider);
     if (!found) throw new Error(`The provider "${provider}" is not installed.`);
-    return found.protocol.engine(found.manifest, { ...base, helperEnv: childEnv(base.env, keyEnvNames(mods)), ...rest });
+    // ponytail: a 'reins' protocol (a wire) runs in the API agent loop, which a later task adds here.
+    if (found.protocol.conversation !== 'own') throw new Error(`The provider "${provider}" needs the API agent loop, which is not available yet.`);
+    return found.protocol.engine(found.manifest, { ...hostSend(mods, base), ...base, helperEnv: childEnv(base.env, keyEnvNames(mods)), ...rest });
   };
 }
 

@@ -1,0 +1,9 @@
+{
+  "reins": 1,
+  "id": "openai-chat",
+  "kind": "protocol",
+  "version": "1.0.0",
+  "label": "Chat completions",
+  "description": "The chat completions wire: Reins keeps the conversation and streams each reply",
+  "main": "index.js"
+}

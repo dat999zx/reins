@@ -41,6 +41,7 @@ describe('the claude mods', () => {
     expect(mods.problems).toEqual([]);
     expect(mods.mods.map((m) => [m.id, m.kind, m.source, m.problems])).toEqual([
       ['claude-code-cli', 'protocol', 'bundled', []],
+      ['openai-chat', 'protocol', 'bundled', []],
       ['claude-code', 'provider', 'bundled', []],
     ]);
     expect(mods.registry.has('protocol-impl', 'claude-code-cli')).toBe(true);

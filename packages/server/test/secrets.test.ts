@@ -9,7 +9,7 @@ import { FakeEngine, type RunSnapshot } from '@reins/core';
 import { main } from '../src/cli.js';
 import { runCommand } from '../src/commands.js';
 import { startRunCli } from '../src/run-cli.js';
-import { childEnv, clearKey, keyFor, keyStatus, readSecrets, Redactor, setKey } from '../src/secrets.js';
+import { childEnv, clearKey, keyFor, keyStatus, knownSecrets, readSecrets, Redactor, redactCut, setKey, StreamRedactor } from '../src/secrets.js';
 import { startServer } from '../src/server.js';
 import { openStore, redactingStore } from '../src/store.js';
 import { boot, cleanup, openStream, request, tmpDir } from './http-helpers.js';
@@ -153,6 +153,33 @@ describe('2. keyFor and keyStatus', () => {
     expect(keyStatus(p, new Map(), { B_API_KEY: KEY })).toEqual({ state: 'set', source: 'B_API_KEY' });
     expect(keyStatus(p, new Map(), {})).toEqual({ state: 'missing' });
     for (const s of [keyStatus(p, secrets, { A_API_KEY: KEY }), keyStatus(p, new Map(), { B_API_KEY: KEY })]) expect(JSON.stringify(s)).not.toContain(KEY);
+  });
+
+  it('a key is trimmed once, from either source, so what is sent is what knownSecrets hides', () => {
+    const raw = 'sk-trim-0123456789abcdef';
+    expect(keyFor(p, new Map(), { A_API_KEY: `${raw}\n` })).toEqual({ kind: 'key', key: raw, source: 'A_API_KEY' });
+    expect(keyFor(p, new Map(), { A_API_KEY: `  ${raw} \r\n\t` })).toEqual({ kind: 'key', key: raw, source: 'A_API_KEY' });
+    expect(keyFor(p, new Map([['deep', ` ${raw}\n`]]), {})).toEqual({ kind: 'key', key: raw, source: 'Reins' });
+    // the value as stored and its trimmed form are both known
+    expect(knownSecrets(new Map([['deep', ` ${raw}\n`]]), { A_API_KEY: `${raw}2 \n` }, ['A_API_KEY']).map((s) => s.value)).toEqual([` ${raw}\n`, raw, `${raw}2 \n`, `${raw}2`]);
+  });
+
+  it('the raw and the trimmed form each need 8 characters on their own: " abcdefg " is hidden whole, and keyFor still sends it trimmed', () => {
+    expect(knownSecrets(new Map(), { A_API_KEY: ' abcdefg ' }, ['A_API_KEY'])).toEqual([{ value: ' abcdefg ', name: 'A_API_KEY' }]);
+    expect(knownSecrets(new Map([['deep', '  abcdefg  ']]), {}, [])).toEqual([{ value: '  abcdefg  ', name: 'Reins' }]);
+    expect(knownSecrets(new Map([['deep', ' abcdefg']]), {}, [])).toEqual([{ value: ' abcdefg', name: 'Reins' }]); // 8 raw characters with the space: known; 7 trimmed: not
+    expect(keyFor(p, new Map(), { A_API_KEY: ' abcdefg ' })).toEqual({ kind: 'key', key: 'abcdefg', source: 'A_API_KEY' });
+    expect(knownSecrets(new Map(), { A_API_KEY: 'abcdefg' }, ['A_API_KEY'])).toEqual([]);
+  });
+
+  it('a Redactor hides the padded raw form of a short key whole', () => {
+    const r = new Redactor({ home: tmpDir(), env: { A_API_KEY: ' abcdefg ' }, keyEnvNames: () => ['A_API_KEY'] });
+    expect(r.redact('the key is " abcdefg " here')).toBe('the key is "[key A_API_KEY]" here');
+  });
+
+  it('a key that is only whitespace is missing, from either source', () => {
+    expect(keyFor(p, new Map([['deep', ' \n ']]), { A_API_KEY: '  \t' })).toEqual({ kind: 'missing' });
+    expect(keyStatus(p, new Map(), { A_API_KEY: '\n' })).toEqual({ state: 'missing' });
   });
 });
 
@@ -429,5 +456,70 @@ describe('doctor and problem lines', () => {
     } finally {
       await srv.close();
     }
+  });
+});
+
+
+describe('7. overlapping secrets: the union of every match is replaced', () => {
+  const A = 'abcdefghABCDEFGH';
+  const B = 'ABCDEFGHABCDEFGH';
+  const mk = (env: Record<string, string>) => new Redactor({ home: tmpDir(), env, keyEnvNames: () => Object.keys(env) });
+
+  it('two secrets that overlap leave no raw piece of either: one marker, the one of the first of the longest', () => {
+    expect(mk({ A_API_KEY: A, B_API_KEY: B }).redact(`${A}ABCDEFGH!`)).toBe('[key A_API_KEY]!');
+    expect(mk({ B_API_KEY: B, A_API_KEY: A }).redact(`${A}ABCDEFGH!`)).toBe('[key B_API_KEY]!');
+    expect(mk({ A_API_KEY: A, B_API_KEY: B }).redact(`x ${A}ABCDEFGH`)).toBe('x [key A_API_KEY]');
+  });
+
+  it('a secret that overlaps itself is found at every offset, so no raw piece of it is left', () => {
+    // 'abababab' occurs at 0, 2 and 4 inside 12 characters; skipping a whole key length after a hit would leave 'abab' raw.
+    const S = 'abababab';
+    expect(mk({ S_API_KEY: S }).redact('-abababababab-')).toBe('-[key S_API_KEY]-');
+  });
+
+  it('a chain of three overlapping secrets is one range', () => {
+    const X = 'aaaaaaaabbbbbbbb';
+    const Y = 'bbbbbbbbcccccccc';
+    const Z = 'ccccccccdddddddd';
+    expect(mk({ X_API_KEY: X, Y_API_KEY: Y, Z_API_KEY: Z }).redact('-aaaaaaaabbbbbbbbccccccccdddddddd-')).toBe('-[key X_API_KEY]-');
+  });
+
+  it('secrets that only touch stay two markers; a short secret inside a long one gives the long one', () => {
+    expect(mk({ X_API_KEY: 'aaaaaaaa', Y_API_KEY: 'bbbbbbbb' }).redact('aaaaaaaabbbbbbbb')).toBe('[key X_API_KEY][key Y_API_KEY]');
+    const r = mk({ S_API_KEY: 'abcdefgh', L_API_KEY: 'abcdefghijklmnop' });
+    expect(r.redact('abcdefghijklmnop and abcdefgh')).toBe('[key L_API_KEY] and [key S_API_KEY]');
+  });
+
+  it('redactJson and a key inside a JSON string follow the same rule', () => {
+    expect(mk({ A_API_KEY: A, B_API_KEY: B }).redactJson({ a: `${A}ABCDEFGH!`, b: [`${A}ABCDEFGH`] })).toEqual({ a: '[key A_API_KEY]!', b: ['[key A_API_KEY]'] });
+  });
+
+  it('redactCut holds back a partial key at the end even when the text is shorter than max, and masks the overlap before the cap', () => {
+    const r = mk({ A_API_KEY: A, B_API_KEY: B });
+    expect(redactCut(r, 'blah abcdefghABC', 100)).toBe('blah ');
+    expect(redactCut(r, 'blah abcdefghABC')).toBe('blah ');
+    expect(redactCut(r, `${A}ABCDEFGH!`, 100)).toBe('[key A_API_KEY]!');
+  });
+
+  it('a stream split at any point never shows the overlapped tail', () => {
+    const text = `ok ${A}ABCDEFGH! done`;
+    for (let cut = 1; cut < text.length; cut++) {
+      const s = new StreamRedactor(mk({ A_API_KEY: A, B_API_KEY: B }));
+      const out = s.push(text.slice(0, cut)) + s.push(text.slice(cut)) + s.end();
+      expect(out, `cut at ${cut}`).toBe('ok [key A_API_KEY]! done');
+    }
+  });
+
+  it('is not slow: 10000 redact calls on a 200-character text with 3 secrets, with and without a hit', () => {
+    const r = mk({ A_API_KEY: 'sk-aaaaaaaaaaaa-0001', B_API_KEY: 'sk-bbbbbbbbbbbb-0002', C_API_KEY: 'sk-cccccccccccc-0003' });
+    const hit = `${'x'.repeat(90)} sk-bbbbbbbbbbbb-0002 ${'y'.repeat(88)}`;
+    const miss = 'z'.repeat(200);
+    const t0 = performance.now();
+    for (let i = 0; i < 10_000; i++) {
+      r.redact(hit);
+      r.redact(miss);
+    }
+    expect(performance.now() - t0).toBeLessThan(5000); // about 0.5 s on a laptop: the bound only catches a change of order of growth
+    expect(r.redact(hit)).toContain('[key B_API_KEY]');
   });
 });

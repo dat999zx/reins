@@ -78,10 +78,12 @@ export function clearKey(home: string, providerId: string) {
 /** The secrets entry first, else the first SET env var named in `auth.keyEnv` (an empty one is not set). `env` is the injected one, not `process.env`. */
 export function keyFor(p: KeyAuth, secrets: Secrets, env: NodeJS.ProcessEnv, platform: string = process.platform): Key {
   if (!p.auth || p.auth.style === 'none') return { kind: 'none' };
-  const own = secrets.get(p.id);
+  // Trimmed here, once, so the string that is sent is a string `knownSecrets` hides (a header would drop the edge whitespace on its own).
+  // String.trim() removes Unicode whitespace, not only what a header drops: a key whose real value starts or ends with a no-break space is not supported.
+  const own = secrets.get(p.id)?.trim();
   if (own) return { kind: 'key', key: own, source: 'Reins' };
   for (const name of p.auth.keyEnv) {
-    const v = envGet(env, name, platform);
+    const v = envGet(env, name, platform)?.trim();
     if (v) return { kind: 'key', key: v, source: name };
   }
   return { kind: 'missing' };
@@ -103,12 +105,16 @@ export interface KnownSecret { value: string; name: string }
 /** Every value to hide: the secrets file's (named `Reins`) and the value of every env var in `keyEnvNames`, 8 characters or more. */
 export function knownSecrets(secrets: Secrets, env: NodeJS.ProcessEnv, keyEnvNames: string[], platform: string = process.platform): KnownSecret[] {
   const out: KnownSecret[] = [];
-  for (const v of secrets.values()) out.push({ value: v, name: 'Reins' });
+  // The value as stored and its trimmed form are two secrets, each subject to the minimum on its own: ` abcdefg ` (9 characters) is hidden whole.
+  const add = (raw: string, name: string) => {
+    for (const value of new Set([raw, raw.trim()])) if (value.length >= MIN_SECRET) out.push({ value, name });
+  };
+  for (const v of secrets.values()) add(v, 'Reins');
   for (const name of keyEnvNames) {
     const v = envGet(env, name, platform);
-    if (v) out.push({ value: v, name });
+    if (v) add(v, name);
   }
-  return out.filter((s) => s.value.length >= MIN_SECRET);
+  return out;
 }
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -164,8 +170,49 @@ export class Redactor {
     if (this.stampNow() !== this.stamp) this.refresh();
   }
 
+  /**
+   * Every occurrence of every variant, overlapping ones included, as [start, end, variant index] sorted by start then index (the variants
+   * are sorted longest first, so a lower index is a longer or earlier one). Cost: one native `indexOf` pass per variant, O(V * L) for V
+   * variants and L characters, plus a sort of the K occurrences found. Callers run it only after the single regex has found a match.
+   */
+  private occurrences(text: string): Array<[number, number, number]> {
+    const hits: Array<[number, number, number]> = [];
+    this.variants.forEach((v, vi) => {
+      for (let i = text.indexOf(v); i >= 0; i = text.indexOf(v, i + 1)) hits.push([i, i + v.length, vi]);
+    });
+    return hits.sort((a, b) => a[0] - b[0] || a[2] - b[2]);
+  }
+
+  /**
+   * Replaces the UNION of all matches: the ranges of every occurrence are merged where they overlap, and each merged range becomes one marker,
+   * the one of the longest (then first) variant in it. A single regex pass would take one of two overlapping secrets and leave the rest of the other.
+   * The regex runs first as a cheap test: when no variant occurs at all, the text is returned as it is.
+   */
   private sub(text: string): string {
-    return this.re ? text.replace(this.re, (m) => `[key ${this.names.get(m)}]`) : text;
+    if (!this.re || text.search(this.re) < 0) return text;
+    let out = '';
+    let at = 0;
+    let start = -1;
+    let end = -1;
+    let best = 0;
+    const flush = () => {
+      if (end < 0) return;
+      out += `${text.slice(at, start)}[key ${this.names.get(this.variants[best])}]`;
+      at = end;
+    };
+    for (const [s, e, vi] of this.occurrences(text)) {
+      if (end >= 0 && s < end) {
+        end = Math.max(end, e);
+        best = Math.min(best, vi);
+      } else {
+        flush();
+        start = s;
+        end = e;
+        best = vi;
+      }
+    }
+    flush();
+    return out + text.slice(at);
   }
 
   // Arrow properties, so a caller can pass `redactor.redact` around without binding it.
@@ -224,9 +271,28 @@ export class Redactor {
       }
     }
     let at = text.length - hold;
-    if (hold) for (const m of text.matchAll(this.re)) if (m.index < at && m.index + m[0].length > at) { at = m.index; break; }
+    if (hold) {
+      // Any occurrence, overlapping ones too, that starts before the cut and reaches past it moves the cut to its start; that can bring another into reach.
+      const hits = this.occurrences(text);
+      for (let moved = true; moved; ) {
+        moved = false;
+        for (const [s, e] of hits) if (s < at && e > at) { at = s; moved = true; }
+      }
+    }
     return at;
   };
+}
+
+/**
+ * `text` redacted as a whole, then cut to `max` characters. The cut comes after the redaction, and it never leaves an end that could be
+ * the start of a known secret (`safeLength`), so no half key is shown. Use it for every error text that is cut to a display length.
+ */
+export function redactCut(r: Pick<Redactor, 'redact' | 'safeLength'>, text: string, max?: number): string {
+  const red = r.redact(text);
+  // The guard runs on every result, cut or not: a text that ends on the start of a key is not shown with that end. (A message that merely
+  // ends in the first character of a key loses that last character; that is the price of the guard.)
+  const head = max === undefined ? red : red.slice(0, Math.max(0, max));
+  return head.slice(0, r.safeLength(head));
 }
 
 /**
