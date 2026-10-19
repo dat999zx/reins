@@ -124,6 +124,7 @@ function hasToolBlocks(wire: 'chat' | 'messages', body: any): boolean {
 export async function startFakeProvider(o: { strictPairs?: boolean; toolBlocksFail?: boolean } = {}) {
   const queue: FakeReply[] = [];
   const requests: FakeRequest[] = [];
+  let aborted = 0;   // requests the client closed while they hung (hangMs)
 
   const server = http.createServer((req, res) => {
     let raw = '';
@@ -168,9 +169,10 @@ export async function startFakeProvider(o: { strictPairs?: boolean; toolBlocksFa
     // hangMs: nothing is sent until the delay passes; a client abort ends the wait and the timer never holds the process.
     const wait = new Promise<boolean>((done) => {
       if (!r.hangMs) return done(true);
-      const t = setTimeout(() => done(true), r.hangMs);
+      let waiting = true;
+      const t = setTimeout(() => { waiting = false; done(true); }, r.hangMs);
       t.unref();
-      res.on('close', () => { clearTimeout(t); done(false); });
+      res.on('close', () => { clearTimeout(t); if (waiting) aborted++; done(false); });
     });
     void wait.then((go) => {
       if (!go || res.destroyed) return;
@@ -196,6 +198,7 @@ export async function startFakeProvider(o: { strictPairs?: boolean; toolBlocksFa
     url,
     push: (...r: FakeReply[]) => void queue.push(...r),
     requests,
+    aborted: () => aborted,
     close: () => new Promise<void>((ok) => { server.close(() => ok()); server.closeAllConnections(); }),
   };
 }
