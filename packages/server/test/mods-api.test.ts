@@ -115,13 +115,27 @@ describe('GET /api/mods', () => {
     const r = await w.call('GET', '/api/mods');
     expect(r.status).toBe(200);
     const cc = r.json.mods.find((m: { id: string }) => m.id === 'claude-code');
-    expect(cc).toEqual({ id: 'claude-code', kind: 'provider', label: 'Claude', version: '1.0.0', enabled: true, bundled: true, source: 'bundled', problems: [] });
+    expect(cc).toEqual({ id: 'claude-code', kind: 'provider', label: 'Claude', version: '1.0.0', enabled: true, bundled: true, source: 'bundled', problems: [], manifest: expect.objectContaining({ id: 'claude-code' }) });
     expect(ids(r.json)).toEqual(expect.arrayContaining(['claude-code', 'claude-code-cli', 'openai-chat', 'anthropic-messages']));
     expect(r.json.firstRun).toBe(true);
     expect(r.json.problems).toEqual([]);
     // the chooser: installable providers that are not installed; never the built-in one, an invalid entry, or a folder that is not an id
     expect(r.json.chooser.map((c: { id: string }) => c.id)).toEqual(['alpha', 'beta']);
     expect(r.json.chooser[0]).toEqual({ id: 'alpha', label: 'ALPHA', description: 'The alpha test provider', protocol: 'openai-chat', host: 'api.alpha.test', keyEnv: ['ALPHA_API_KEY'], untested: true });
+  });
+
+  it('provider rows carry their manifest (names only), and the list holds no key value', async () => {
+    const w = await boot();
+    await w.call('POST', '/api/mods/install', { body: { ids: ['alpha', 'beta'] } });
+    expect((await w.call('PUT', '/api/mods/alpha/key', { body: { key: KEY } })).status).toBe(200);
+    const r = await w.call('GET', '/api/mods');
+    const alpha = r.json.mods.find((m: { id: string }) => m.id === 'alpha');
+    expect(alpha.manifest).toMatchObject({ id: 'alpha', protocol: 'openai-chat', untested: true, auth: { style: 'bearer', keyEnv: ['ALPHA_API_KEY'] } });
+    expect(alpha.manifest.models).toHaveLength(1);
+    expect(alpha.key).toEqual({ state: 'set', source: 'Reins' });
+    expect(r.json.mods.find((m: { id: string }) => m.id === 'beta').manifest.auth).toEqual({ style: 'none', keyEnv: [] });
+    expect(r.json.mods.find((m: { kind: string }) => m.kind === 'protocol')).not.toHaveProperty('manifest');
+    expect(r.text).not.toContain(KEY);
   });
 
   it('the first-run flag: true on a fresh home, false with the marker or with an installed provider', async () => {

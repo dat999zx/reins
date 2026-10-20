@@ -49,7 +49,13 @@ function hit(line: string, names: string[]): string | undefined {
 }
 
 // Exact text per line; a stale entry fails.
-const ALLOW: Array<{ file: string; text: string; reason: string }> = [];
+const ALLOW: Array<{ file: string; text: string; reason: string }> = [
+  {
+    file: 'packages/app/src/providersStatus.ts',
+    text: "export const AGENTS_LINE = 'Sessions on API providers do not read CLAUDE.md; put shared rules in AGENTS.md.';",
+    reason: 'the fixed line of spec 7.4 names a file, not a provider',
+  },
+];
 
 describe('no provider name outside packages/server/src/mods', () => {
   const names = nameList(shipped());

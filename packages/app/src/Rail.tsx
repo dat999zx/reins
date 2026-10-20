@@ -28,9 +28,9 @@ function Item({ s, selected, badge, onSelect, onRename }: { s: Sess; selected: b
   );
 }
 
-export function Rail({ state, selected, onSelect, onNew, onPlus, onRename, pathBox }: {
+export function Rail({ state, selected, onSelect, onNew, onPlus, onRename, onSettings, pathBox }: {
   state: State; selected: string | null; onSelect: (id: string) => void; onNew: () => void; onPlus: (cwd: string) => void;
-  onRename: (id: string, title: string) => void; pathBox: ReactNode;
+  onRename: (id: string, title: string) => void; onSettings: () => void; pathBox: ReactNode;
 }) {
   const { waiting, groups } = railGroups(state);
   const item = (s: Sess) => <Item key={s.id} s={s} selected={s.id === selected} badge={s.status === 'waiting'} onSelect={() => onSelect(s.id)} onRename={(t) => onRename(s.id, t)} />;
@@ -46,6 +46,7 @@ export function Rail({ state, selected, onSelect, onNew, onPlus, onRename, pathB
           <ul>{g.sessions.map(item)}</ul>
         </section>
       ))}
+      <button className="gear" aria-label="Settings: Providers" onClick={onSettings}>⚙ Providers</button>
     </nav>
   );
 }

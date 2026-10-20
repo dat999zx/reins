@@ -5,6 +5,7 @@ import { ApiError, get, initToken, post, stream } from './api.js';
 import { Chat, type Provider } from './Chat.js';
 import { loadEditorState, makeSaver, type EditorState, type Tab } from './editorState.js';
 import { ProviderBanner, type Engines } from './ProviderBanner.js';
+import { Providers } from './Providers.js';
 import { Rail } from './Rail.js';
 import { afterOf, finishReplay, initial, loadSessions, pageTitle, reduceAll, takeRefill, type SessionView, type State } from './state.js';
 
@@ -29,6 +30,7 @@ export function App() {
   const [selected, setSelected] = useState<string | null>(fromHash);
   const [tab, setTab] = useState<Tab>('chat');
   const [notice, setNotice] = useState('');
+  const [settings, setSettings] = useState(false);
   const [pathBox, setPathBox] = useState(false);
   const [path, setPath] = useState('');
   const dirty = useRef(false);
@@ -133,6 +135,7 @@ export function App() {
   const leave = () => !dirty.current || window.confirm('Discard unsaved changes?');
   const select = (id: string) => {
     if (id !== selected && !leave()) return;
+    setSettings(false);
     setSelected(id);
     setTab('chat');
     toHash(id);
@@ -186,6 +189,7 @@ export function App() {
         <Rail
           state={st} selected={selected} onSelect={select} onNew={() => void newSession()} onPlus={(cwd) => void start(cwd)}
           onRename={(id, title) => { post(`/api/sessions/${id}/settings`, { title }).catch((e) => flash(e.message)); }}
+          onSettings={() => { if (leave()) setSettings(true); }}
           pathBox={pathBox && (
             <form className="pathbox" onSubmit={(e) => { e.preventDefault(); void start(path.trim()).then(() => setPath('')); }}>
               <label>No folder picker here. Absolute folder path
@@ -195,7 +199,7 @@ export function App() {
             </form>
           )}
         />
-        {sess ? (
+        {settings ? <Providers onClose={() => setSettings(false)} /> : sess ? (
           <Chat
             key={sess.id} sess={sess} catalogue={catalogue} providers={providers} tab={tab}
             onTab={(t) => { if (t === tab || t !== 'chat' || leave()) { setTab(t); if (t !== tab) onState(sess.cwd, { tab: t }); } }}

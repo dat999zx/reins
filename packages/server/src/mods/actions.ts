@@ -269,6 +269,8 @@ function summary(env: ModEnv, m: LoadedMod) {
   return {
     ...(trust ? { trust } : {}),
     ...(m.kind === 'provider' ? providerStatus(env, m.id) : {}),
+    // The manifest holds env var NAMES, never a key value (keys live in secrets.json); the settings page reads protocol, auth, models and untested from it.
+    ...(m.kind === 'provider' && m.manifest !== undefined ? { manifest: m.manifest } : {}),
     id: m.id, kind: m.kind, label: typeof man.label === 'string' ? man.label : m.id, version: typeof man.version === 'string' ? man.version : '',
     enabled: m.enabled, bundled: m.source === 'bundled',
     // A user mod is "installed" when the catalog has that id (custom endpoints may not take a catalog id), else it is the user's own.
