@@ -3,7 +3,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { BUNDLED_MODS, folderTrustFrom, makeEngineFrom, probeFrom, providerViews, startMods } from '../src/engines.js';
+import { BUNDLED_MODS, checkEnvFrom, folderTrustFrom, makeEngineFrom, probeFrom, providerViews, startMods } from '../src/engines.js';
 import { loadMods } from '../src/mods/loader.js';
 import type { Mods } from '../src/mods/types.js';
 import { openSession } from '../src/session.js';
@@ -123,8 +123,9 @@ describe('folder trust follows the protocol of the engine being opened', () => {
   });
 
   it('S4: a CLI subagent opened from a session whose main engine is a loopy provider STILL asks the folder question', async () => {
-    const x = sessionOn(await withLoopy(), 'loopy', claudeFolder(), { subagentProvider: () => 'claude-code', describeModel: (_e: string, m: string) => ({ listed: true, label: m }) });
-    const wf = '---\nreins: 1\nname: sub\nbudget: { turns: 10, minutes: 10, usd: 2.00 }\nalways: []\n---\n\n## subagent research\nmodel: model-h\n> Look.\n';
+    const mods = await withLoopy();
+    const x = sessionOn(mods, 'loopy', claudeFolder(), { providers: checkEnvFrom(mods, { env: {}, home: tmp() }), describeModel: (_e: string, m: string) => ({ listed: true, label: m }) });
+    const wf = '---\nreins: 1\nname: sub\nbudget: { turns: 10, minutes: 10, usd: 2.00 }\nalways: []\n---\n\n## subagent research\nmodel: claude-code:model-h\n> Look.\n';
     const file = path.join(x.store.getSession('s1')!.cwd, 'w.reins.md');
     fs.writeFileSync(file, wf);
     expect(x.s.runFile(file)).toEqual({ ok: true });

@@ -6,7 +6,7 @@ import type { Readable, Writable } from 'node:stream';
 import {
   Run, NODES, parseWorkflow, validate, receipt,
   type Decision, type Diagnostic, type Engine, type EngineEvent, type Receipt,
-  type RunEventRecord, type RunStatus, type ToolRequest, type Workflow,
+  type RunEventRecord, type RunStatus, type SubagentOpen, type SubagentOpened, type ToolRequest, type Workflow,
 } from '@reins/core';
 import { askTool, driveRun, indent, runOptions, type DriveIo } from './drive.js';
 import { StreamRedactor, type Redactor } from './secrets.js';
@@ -21,6 +21,11 @@ export interface RunCliOptions {
   output: Writable;
   store: Store;
   makeEngine: (io: { onApprove: (r: ToolRequest) => Promise<Decision>; onLive: (e: EngineEvent) => void }) => Engine;
+  /** The run-start checks (spec 10.2) for the loaded workflow: the words of the first that fails, or none. Nothing is created or spent before it. */
+  refuse?: (w: Workflow, resolveBlock: (name: string) => Workflow | undefined) => string | undefined;
+  /** A subagent's own engine on the provider its step names (spec 10.3), or the words it cannot start with. None: the run's own engine opens it. */
+  subagentEngine?: (s: SubagentOpen, io: { onApprove: (r: ToolRequest) => Promise<Decision>; onLive: (e: EngineEvent) => void }) =>
+    { engine: Engine; model?: string } | { error: string };
   /** Approve gates and terminal judge questions without asking. Never touches guards or tool approvals. */
   yes?: boolean;
   /** Everything written to `output` passes through this (the secrets redactor). None = written as given. */
@@ -164,11 +169,24 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
     for (const d of loaded.diagnostics) say(formatDiagnostic(file, d));
     if (!loaded.workflow) return { runId, status: 'invalid', exitCode: 1 };
     const workflow = loaded.workflow;
+    const refused = o.refuse?.(workflow, loaded.resolveBlock);
+    if (refused) {
+      say(refused);
+      return { runId, status: 'invalid', exitCode: 1 };
+    }
 
     const cwd = o.cwd;
     const engine = o.makeEngine({ onApprove: (r) => askTool(io, r), onLive: printLive });
+    const openSubagent = o.subagentEngine && (async (s: SubagentOpen): Promise<SubagentOpened> => {
+      const made = o.subagentEngine!(s, { onApprove: (r) => askTool(io, r, `Subagent ${s.title} (\`${s.step}\`)`), onLive: printLive });
+      if ('error' in made) throw new Error(made.error);
+      const { step: _s, title: _t, reasoning, model: _m, ...open } = s;
+      const session = await made.engine.open({ ...open, ...(made.model && s.model ? { model: made.model } : {}), ...(reasoning ? { effort: reasoning } : {}), pendingCards: () => [] });
+      return { session, ...(made.model ? { model: made.model, label: made.model } : {}) };
+    });
     const runOpts = runOptions(io, {
       workflow, engine, cwd, resolveBlock: loaded.resolveBlock,
+      ...(openSubagent ? { openSubagent } : {}),
       ...(o.env ? { env: o.env } : {}),
       onEvent: (ev) => {
         o.store.appendEvent(runId, ev);

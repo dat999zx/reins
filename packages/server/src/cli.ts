@@ -7,15 +7,17 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Readable, Writable } from 'node:stream';
 import { printWorkflow } from '@reins/core';
 import { doctor, doctorMods } from './doctor.js';
-import { defaultProviderOf, keyEnvNames, makeEngineFrom, probeFrom, providerViews, redactEnvNames, startMods } from './engines.js';
+import { checkEnvFrom, defaultProviderOf, keyEnvNames, makeEngineFrom, probeFrom, providerViews, redactEnvNames, startMods } from './engines.js';
+import { parseModel } from './models.js';
 import type { Mods } from './mods/types.js';
+import { missingProviderWords, resolveSubagent, runChecks } from './run-checks.js';
 import { childEnv, KEY_IN_WORKFLOW, Redactor } from './secrets.js';
 import { openUrl } from './opener.js';
 import { pickFolder } from './picker.js';
 import { runServe } from './serve.js';
 import { formatDiagnostic, loadWorkflow, startRunCli } from './run-cli.js';
 import { readSetting } from './settings.js';
-import { defaultStorePath, openStore, redactingStore } from './store.js';
+import { openStore, redactingStore } from './store.js';
 
 const USAGE = `usage:
   reins                  (opens the app: starts the server and your browser)
@@ -154,19 +156,44 @@ async function dispatch(argv: string[], io: Io, c: { home: string; dir: string; 
 
   if (cmd === 'run' && (pos[0] || typeof flags.resume === 'string')) {
     const installed = providerViews(mods);
+    const env = checkEnvFrom(mods, { env: io.env, home: dir });
     const named = typeof flags.provider === 'string' ? flags.provider : undefined;
-    if (named !== undefined && !installed.some((p) => p.id === named)) {
+    if (named !== undefined && !env.installed(named)) {
       err(`No provider \`${named}\` is installed.`);
       return 1;
     }
-    const store = redactingStore(openStore(defaultStorePath()), redactor);
-    const provider = named ?? defaultProviderOf(installed, readSetting(store, 'defaultProvider'))?.id;
-    if (!provider) {
+    const store = redactingStore(openStore(path.join(dir, 'reins.db')), redactor);
+    // A run that belongs to a chat session is resumed from the app; if that session's provider is gone, the words of spec 9.4 say why first.
+    const owner = typeof flags.resume === 'string' ? store.sessionOfRun(flags.resume) : undefined;
+    const ownerProvider = owner ? store.getSession(owner)?.engine : undefined;
+    if (ownerProvider !== undefined && !env.installed(ownerProvider)) {
+      err(missingProviderWords(ownerProvider));
+      store.close();
+      return 1;
+    }
+    const chosen = named ?? defaultProviderOf(installed, readSetting(store, 'defaultProvider'))?.id;
+    if (!chosen) {
       err('No provider is installed.');
       store.close();
       return 1;
     }
+    // `--model` is a model name like any other (spec 9.2): `<provider>:<model>` puts the run on that provider, even against `--provider`.
+    let provider = chosen;
+    let model = typeof flags.model === 'string' && flags.model ? flags.model : undefined;
+    if (model) {
+      const p = parseModel(model, chosen, env.installed);
+      if ('error' in p) {
+        err(p.error);
+        store.close();
+        return 1;
+      }
+      if (named !== undefined && p.provider !== named) err(`--model ${model} names ${p.provider}, so the run is on ${p.provider}, not ${named}.`);
+      provider = p.provider;
+      model = p.model;
+    }
+    const effort = typeof flags.effort === 'string' ? flags.effort : undefined;
     const engineOf = makeEngineFrom(mods, { env: io.env, home: dir });
+    const settings = { get maxCallsPerTurn() { return readSetting(store, 'maxCallsPerTurn'); } };
     const h = startRunCli({
       ...(pos[0] ? { file: pos[0] } : {}),
       ...(typeof flags.resume === 'string' ? { resumeId: flags.resume } : {}),
@@ -177,15 +204,12 @@ async function dispatch(argv: string[], io: Io, c: { home: string; dir: string; 
       redactor,
       env: children(),
       yes: flags.yes === true,
-      makeEngine: (cb) => {
-        const model = typeof flags.model === 'string' ? flags.model : undefined;
-        return engineOf({
-          provider,
-          ...(model ? { model } : {}),
-          ...(typeof flags.effort === 'string' ? { effort: flags.effort } : {}),
-          settings: { get maxCallsPerTurn() { return readSetting(store, 'maxCallsPerTurn'); } },
-          ...cb,
-        });
+      refuse: (w, resolveBlock) => runChecks(env, { provider, model }, w, resolveBlock),
+      makeEngine: (cb) => engineOf({ provider, ...(model ? { model } : {}), ...(effort ? { effort } : {}), settings, ...cb }),
+      subagentEngine: (s, cb) => {
+        const r = resolveSubagent(env, { provider, model, effort }, s);
+        if ('error' in r) return r;
+        return { engine: engineOf({ provider: r.provider, ...(r.model ? { model: r.model } : {}), ...(r.effort ? { effort: r.effort } : {}), settings, ...cb }), ...(r.model ? { model: r.model } : {}) };
       },
     });
     const onSigint = () => h.sigint();

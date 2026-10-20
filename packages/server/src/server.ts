@@ -7,7 +7,7 @@ import { printWorkflow, type EngineProbe, type Workflow } from '@reins/core';
 import { sameToken } from './token.js';
 import { releaseLock, runningLock, takeLock } from './lock.js';
 import type { Catalog, CatalogModel } from './catalog.js';
-import { defaultProviderOf, folderTrustFrom, keyEnvNames, providerViews, startMods, type ProviderView } from './engines.js';
+import { checkEnvFrom, defaultProviderOf, folderTrustFrom, keyEnvNames, providerViews, startMods, type ProviderView } from './engines.js';
 import { childEnv, type Redactor } from './secrets.js';
 import { listModels } from './models.js';
 import type { Mods } from './mods/types.js';
@@ -184,7 +184,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
   };
   // The settings are read when a turn starts, so a change in Settings counts from the next reply.
   const settings = { get maxCallsPerTurn() { return readSetting(o.store, 'maxCallsPerTurn'); } };
-  const deps: SessionDeps = { store: o.store, makeEngine: (a) => o.makeEngine({ ...a, settings }), dir: o.dir, env: childEnv(o.env ?? process.env, keyEnvNames(mods)), ...(o.redactor ? { redactor: o.redactor } : {}), describeModel, describeEffort, folderTrust: folderTrustFrom(mods), onRow: (row) => { for (const f of subs) f(row); } };
+  const deps: SessionDeps = { store: o.store, makeEngine: (a) => o.makeEngine({ ...a, settings }), dir: o.dir, env: childEnv(o.env ?? process.env, keyEnvNames(mods)), ...(o.redactor ? { redactor: o.redactor } : {}), describeModel, describeEffort, folderTrust: folderTrustFrom(mods), providers: checkEnvFrom(mods, { env: o.env ?? process.env, home: o.dir }), onRow: (row) => { for (const f of subs) f(row); } };
   let engines: Array<{ id: string } & EngineProbe> = [];
   let host = '';
   let origin = '';

@@ -2,6 +2,31 @@ import type { CatalogModel } from './catalog.js';
 
 export interface PickerModel { id: string; label: string; window?: number }
 
+export type ParsedModel = { provider: string; model: string };
+
+// What a provider id looks like (the loader's rule), in either case: a word before a colon that has this shape was meant as a provider.
+const ID_SHAPE = /^[A-Za-z0-9][A-Za-z0-9-]{0,39}$/;
+
+/**
+ * A model name in a file, a switch or `reins run --model` (spec 9.2): split at the FIRST `:`. The part before it counts only when it is an
+ * installed provider; with none the name is a model on `sessionProvider`. A word before the colon that looks like a provider id but is not
+ * installed is refused (`qwen3:30b` must be written <provider>:qwen3:30b); anything else (`hf.co/a:Q4`) is a plain model name.
+ * `step` is the step the name came from, for the words; their example names the session's provider.
+ */
+export function parseModel(name: string, sessionProvider: string, installed: (id: string) => boolean, step?: string): ParsedModel | { error: string } {
+  const text = name.trim();
+  const where = step === undefined ? '' : ` in step \`${step}\``;
+  const cut = text.indexOf(':');
+  if (cut < 0) return text ? { provider: sessionProvider, model: text } : { error: `Unknown model${where}: no model is named.` };
+  const prefix = text.slice(0, cut);
+  if (installed(prefix)) {
+    const model = text.slice(cut + 1).trim();
+    return model ? { provider: prefix, model } : { error: `Unknown model ${text}${where}: no model is named after \`${prefix}:\`.` };
+  }
+  if (!ID_SHAPE.test(prefix)) return { provider: sessionProvider, model: text };
+  return { error: `Unknown model ${text}${where}: no provider \`${prefix}\` is installed. To name a model on another provider, write <provider>:<model>, for example ${sessionProvider}:${text}.` };
+}
+
 /**
  * The picker's list, after Hermes's model catalog: the provider's models first, in file order (its label wins),
  * then catalog extras: tool-call models, no dated ids (`-YYYYMMDD`), newest first, the whole list at most `limit` long

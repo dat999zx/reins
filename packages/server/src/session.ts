@@ -13,7 +13,9 @@ import { KEY_IN_WORKFLOW, StreamRedactor, type Redactor } from './secrets.js';
 import { taggedWorkflow, type Tag, type Tagged } from './tags.js';
 import { loadWorkflow } from './run-cli.js';
 import type { FolderTrust } from './mods/types.js';
-import { commandsOf, hashCommands, modelsOf } from './trust.js';
+import { parseModel } from './models.js';
+import { resolveSubagent, runChecks, type CheckEnv } from './run-checks.js';
+import { commandsOf, hashCommands } from './trust.js';
 
 export type MakeEngine = (o: {
   /** The id of the provider whose engine this is. */
@@ -37,9 +39,13 @@ export interface SessionDeps {
   redactor?: Redactor;
   /** The folder question of a provider's protocol, if it has one (spec S4: asked for the engine being opened). */
   folderTrust?: (provider: string, cwd: string) => FolderTrust | undefined;
-  /** The provider a subagent runs on; none = the session's own. ponytail: plan Task 18 replaces this with the step's `provider:model` name. */
-  subagentProvider?: (o: SubagentOpen) => string;
+  /** Which providers are installed and what they are (spec 10.2); none = only the session's own provider is known and the checks beyond the model list are skipped. */
+  providers?: Pick<CheckEnv, 'installed' | 'facts'>;
+  /** The question a provider wants answered before it is sent the user's prompts and key (spec 7.8), if it is not answered yet. */
+  consent?: (provider: string) => Consent | undefined;
 }
+/** A provider's consent question: the words, and what a yes records. */
+export interface Consent { prompt: string; detail: string; refused: string; stopped: string; grant(): void }
 export type Ack = { ok: true } | { ok: false; code: 400 | 409; error: string; text?: string; diagnostics?: Diagnostic[] };
 export type SessionStatus = 'idle' | 'running' | 'waiting' | 'closed';
 export type Session = ReturnType<typeof openSession>;
@@ -224,9 +230,17 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
 
   // ponytail: a run's model step is never refused as busy or because another run is left detached; a detached run resumed later goes on with the model stored then.
   /** A run's model step: the same rules and card as the header's switch, asked inside the run (which waits on it). */
-  async function runSwitch(model: string, step: string): Promise<SwitchOutcome> {
+  async function runSwitch(name: string, step: string): Promise<SwitchOutcome> {
     const cur = store.getSession(id)!;
     const used = contextSize(store.readLog(id));
+    const p = parseModel(name, cur.engine, checkEnv().installed, step);
+    // ponytail: a model block naming another provider is checked at the start but not switched to here; the steps after it stay on the session's provider.
+    if ('error' in p || p.provider !== cur.engine) {
+      const label = cur.model ? describe(cur.engine, cur.model, used).label : 'the default model';
+      log('note', { text: `${'error' in p ? p.error : `Step \`${step}\` names ${name}, a model on another provider, and a run cannot move the session there.`} Kept ${label}: the steps after \`${step}\` run on it.` }, runId);
+      return { to: 'kept', label };
+    }
+    const model = p.model;
     const d = describe(cur.engine, model, used);
     if ((cur.model ?? '') === model) return { to: 'same', label: d.label };
     const c = switchCheck({
@@ -247,12 +261,21 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     return { to: 'switched', label: d.label };
   }
 
-  /** A run start refuses a model the session's provider does not list (the session's own model excepted). */
-  function unknownModel(w: Workflow, resolveBlock: (name: string) => Workflow | undefined): Ack | undefined {
-    if (!deps.describeModel) return undefined;
+  /** What the run-start checks read: the installed providers, and the session's provider list when the host has one. */
+  const checkEnv = (): CheckEnv => {
+    const engine = store.getSession(id)!.engine;
+    return {
+      installed: deps.providers?.installed ?? ((p) => p === engine),
+      facts: deps.providers?.facts ?? (() => undefined),
+      ...(deps.describeModel ? { listed: (p: string, m: string) => describe(p, m, undefined).listed } : {}),
+    };
+  };
+
+  /** The six checks of spec 10.2, before trust and spend: the first that fails is the refusal. */
+  function refuseRun(w: Workflow, resolveBlock: (name: string) => Workflow | undefined): Ack | undefined {
     const cur = store.getSession(id)!;
-    const m = modelsOf(w, resolveBlock).find((x) => !describe(cur.engine, x.model, undefined).listed && x.model !== cur.model);
-    return m ? bad(`Unknown model ${m.model} in step \`${m.step}\`: it is not in this session's provider list.`) : undefined;
+    const why = runChecks(checkEnv(), { provider: cur.engine, model: cur.model ?? undefined }, w, resolveBlock);
+    return why ? bad(why) : undefined;
   }
 
   /** The receipt's models with the provider's label for each, as the header shows it. */
@@ -266,19 +289,34 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   async function trustFolder(provider: string) {
     const f = deps.folderTrust?.(provider, cwd);
     if (f && !store.isTrusted(cwd, f.key, f.hash)) {
-      const a = await ask({ id: questionId(), kind: 'trust', detail: f.detail, prompt: f.prompt });
-      if (a === null || !/^(y|yes)$/i.test(a)) {
-        const error = stopping ? f.stopped : f.refused;
-        log('note', { text: error });
-        throw new Error(error);
-      }
+      await mustSayYes(f);
       store.trust(cwd, f.key, f.hash);
     }
   }
 
+  /** A `trust` question that must be answered yes; a no (or a stop) leaves a note and throws its words. */
+  async function mustSayYes(q: { detail: string; prompt: string; refused: string; stopped: string }) {
+    const a = await ask({ id: questionId(), kind: 'trust', detail: q.detail, prompt: q.prompt });
+    if (a === null || !/^(y|yes)$/i.test(a)) {
+      const error = stopping ? q.stopped : q.refused;
+      log('note', { text: error });
+      throw new Error(error);
+    }
+  }
+
+  /** Before a process or a request of `provider` starts: its consent, then its folder question (the session's own provider and a subagent's alike). */
+  async function allowProvider(provider: string) {
+    const c = deps.consent?.(provider);
+    if (c) {
+      await mustSayYes(c);
+      c.grant();
+    }
+    await trustFolder(provider);
+  }
+
   async function openEngine(): Promise<EngineSession | undefined> {
     cancelOpen = false;
-    await trustFolder(store.getSession(id)!.engine);
+    await allowProvider(store.getSession(id)!.engine);
     await retiring;
     if (cancelOpen || stopping) return undefined;
     const sid = store.getSession(id)!.engineSessionId;
@@ -314,21 +352,23 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   // ponytail: the subagent runs on its block's model, else the session's; its guard refusals count in the receipt but not on its chip (run `refusal` rows are not in the session log, :43).
   /** A subagent's own engine (D): its model, its own hook server, and its text, reasoning and tools kept as engine rows with its `step` (never usage or cost: they measure the parent's context). */
   async function openSubagent(o: SubagentOpen): Promise<SubagentOpened> {
-    const provider = deps.subagentProvider?.(o) ?? store.getSession(id)!.engine;
-    await trustFolder(provider);
-    if (stopping) throw new Error('The session was stopped before the subagent started.');
     const cur = store.getSession(id)!;
-    const model = o.model ?? cur.model;
+    // The step's `provider:model`, on its own provider; a provider that is gone, has no key or cannot take the step pauses the step with the words.
+    const r = resolveSubagent(checkEnv(), { provider: cur.engine, model: cur.model ?? undefined, effort: cur.effort ?? undefined }, o);
+    if ('error' in r) throw new Error(r.error);
+    const { provider, model } = r;
+    await allowProvider(provider);
+    if (stopping) throw new Error('The session was stopped before the subagent started.');
     const title = `Subagent ${o.title} (\`${o.step}\`)`;
     const e = deps.makeEngine({
       provider,
-      ...(model ? { model } : {}), ...(o.reasoning ?? cur.effort ? { effort: (o.reasoning ?? cur.effort)! } : {}),
-      onApprove: (r) => subagentApprove(title, r),
+      ...(model ? { model } : {}), ...(r.effort ? { effort: r.effort } : {}),
+      onApprove: (x) => subagentApprove(title, x),
       // usage, cost, compacted and hook measure or note the parent's context, so they stay out; the rest is kept under the step
       onLive: (ev) => { if (KEPT.has(ev.type)) log('engine', { ...ev, step: o.step }, runId); },
     });
-    const { step: _s, title: _t, reasoning: _r, ...open } = o;
-    const s = await e.open({ ...open, cwd, pendingCards: () => [] });
+    const { step: _s, title: _t, reasoning: _r, model: _m, ...open } = o;
+    const s = await e.open({ ...open, ...(o.model && model ? { model } : {}), cwd, pendingCards: () => [] });
     const session: EngineSession = {
       sessionId: s.sessionId,
       async turn(text) {
@@ -339,7 +379,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       events: s.events,
       close: () => s.close(),
     };
-    return { session, ...(model ? { model, label: describe(cur.engine, model, undefined).label } : {}) };
+    return { session, ...(model ? { model, label: describe(provider, model, undefined).label } : {}) };
   }
 
   /** One engine call (a reply or a compaction): the process, the cost total, the unknown-cost note, a failed switch. */
@@ -608,8 +648,8 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     const loaded = loadWorkflow(file);
     const w = loaded.workflow;
     if (!w) return bad(loaded.diagnostics.filter((d) => d.severity === 'error').map((d) => d.message).join('; ') || 'Invalid workflow.', loaded.diagnostics);
-    const unknown = unknownModel(w, loaded.resolveBlock);
-    if (unknown) return unknown;
+    const refused = refuseRun(w, loaded.resolveBlock);
+    if (refused) return refused;
     begin();
     start(async () => {
       if (!(await trustedCommands(file, w, loaded.resolveBlock))) return;

@@ -6,6 +6,7 @@ import { loopEngine } from './loop/engine.js';
 import { childEnv, envGet, keyStatus, readSecrets, Redactor, redactCut, StreamRedactor } from './secrets.js';
 import { makeSend } from './send.js';
 import type { EngineHost, LoadedMod, Mods, Protocol, ProviderManifest, SendWithKey } from './mods/types.js';
+import type { CheckEnv, ProviderFacts } from './run-checks.js';
 import type { MakeEngine, SessionDeps } from './session.js';
 
 /** The bundled mods: the folder this code sits in, `src/mods` under tests and `dist/mods` in the build. */
@@ -113,6 +114,30 @@ export async function probeFrom(mods: Mods, provider: string, base: Pick<EngineH
   if (!found?.protocol.probe) throw new Error(`The provider "${provider}" cannot be probed.`);
   return found.protocol.probe(found.manifest, { ...base, helperEnv: childEnv(base.env, keyEnvNames(mods)) });
 }
+
+/**
+ * What the run-start checks (spec 10.2) read of the installed providers, worked out on every call: the key state is read from the secrets file
+ * and the env as they are now. A provider counts as installed when its manifest and its protocol are both loaded and enabled.
+ * ponytail: a model is priced when its table row or the provider's default price has an output price (what the loop bills with); the catalog is not read.
+ */
+export const checkEnvFrom = (mods: Mods, base: Pick<EngineHost, 'env' | 'home'>): Pick<CheckEnv, 'installed' | 'facts'> => {
+  const facts = (id: string): ProviderFacts | undefined => {
+    const found = resolve(mods, id);
+    if (!found) return undefined;
+    const { manifest: m, protocol } = found;
+    return {
+      id: m.id, label: m.label, conversation: protocol.conversation,
+      key: keyStatus(m, readSecrets(base.home), base.env).state,
+      keyEnv: m.auth?.keyEnv ?? [],
+      defaultModel: m.defaultModel,
+      model: (model) => {
+        const x = m.models.find((v) => v.id === model);
+        return { tools: x?.tools !== false, efforts: x?.efforts ?? (m.efforts ?? []).map((e) => e.id), priced: x?.price?.output !== undefined || m.price !== undefined };
+      },
+    };
+  };
+  return { installed: (id) => resolve(mods, id) !== undefined, facts };
+};
 
 export const folderTrustFrom = (mods: Mods): NonNullable<SessionDeps['folderTrust']> =>
   (provider, cwd) => resolve(mods, provider)?.protocol.folderTrust?.(cwd);
