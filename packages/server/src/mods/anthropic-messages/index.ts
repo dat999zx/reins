@@ -268,10 +268,10 @@ async function* call(req: ModelRequest, p: ProviderManifest, h: EngineHost, sign
 }
 
 /** `modelsUrl`, or `{baseUrl}/v1/models`; the provider's own page size is raised so one request lists them all. */
-const listModels = (p: ProviderManifest, h: EngineHost, signal: AbortSignal) =>
-  listModelIds(p, h, signal, p.modelsUrl ?? `${endpoint(p.baseUrl, 'models')}?limit=1000`);
+const listRequest = (p: ProviderManifest) => ({ manifest: withKeyHeader(p), url: p.modelsUrl ?? `${endpoint(p.baseUrl, 'models')}?limit=1000`, headers: { accept: 'application/json' } });
+const listModels = (p: ProviderManifest, h: EngineHost, signal: AbortSignal) => listModelIds(listRequest(p), h, signal);
 
-const wire: Wire = { call, listModels };
+const wire: Wire = { call, listRequest, listModels };
 
 export default function activate(api: ModApi): void {
   api.registerProtocol({ id: 'anthropic-messages', conversation: 'reins', wire });

@@ -125,7 +125,15 @@ export async function startFakeProvider(o: { strictPairs?: boolean; toolBlocksFa
   const queue: FakeReply[] = [];
   const requests: FakeRequest[] = [];
   let aborted = 0;   // requests the client closed while they hung (hangMs)
-  const list: { data: unknown[]; status?: number; hangMs?: number } = { data: [{ id: 'fake-model-1', object: 'model' }, { id: 'fake-model-2', object: 'model' }] };
+  const list: {
+    data: unknown[]; status?: number; hangMs?: number; errorBody?: string; redirectTo?: string; redirectStatus?: number;
+    /** A 200 with this text (and `rawType`) instead of the list. */
+    rawBody?: string; rawType?: string;
+    /** A 200 that sends its headers and some bytes and then never ends. */
+    stall?: boolean;
+    /** Answers `status` with the request's Authorization and x-api-key headers as the body (a provider that echoes what it was sent). */
+    echoAuth?: boolean;
+  } = { data: [{ id: 'fake-model-1', object: 'model' }, { id: 'fake-model-2', object: 'model' }] };
 
   const server = http.createServer((req, res) => {
     let raw = '';
@@ -137,17 +145,33 @@ export async function startFakeProvider(o: { strictPairs?: boolean; toolBlocksFa
       const headers: Record<string, string> = {};
       for (const [k, v] of Object.entries(req.headers)) headers[k] = Array.isArray(v) ? v.join(', ') : String(v);
       requests.push({ path, headers, body });
-      serve(req.method ?? 'GET', path, body, res);
+      serve(req.method ?? 'GET', path, body, res, headers);
     });
   });
 
-  function serve(method: string, path: string, body: any, res: http.ServerResponse) {
+  function serve(method: string, path: string, body: any, res: http.ServerResponse, reqHeaders: Record<string, string>) {
     if (method === 'GET' && path.endsWith('/v1/models')) {
       // `list` is the test's to change: the entries (any JSON), a failing status, a delay.
       const send = () => {
         if (res.destroyed) return;
+        if (list.redirectTo) {
+          res.writeHead(list.redirectStatus ?? 307, { location: list.redirectTo });
+          res.end();
+          return;
+        }
+        if (list.stall) {
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.write('{"data":[');
+          return; // never ended; the client's abort closes it
+        }
+        if (list.rawBody !== undefined) {
+          res.writeHead(200, { 'content-type': list.rawType ?? 'text/html' });
+          res.end(list.rawBody);
+          return;
+        }
         res.writeHead(list.status ?? 200, { 'content-type': 'application/json' });
-        res.end(list.status && list.status >= 400 ? JSON.stringify({ error: { message: 'the list failed' } }) : JSON.stringify({ object: 'list', data: list.data }));
+        const echoed = JSON.stringify({ authorization: reqHeaders.authorization, 'x-api-key': reqHeaders['x-api-key'] });
+        res.end(list.status && list.status >= 400 ? (list.echoAuth ? echoed : list.errorBody ?? JSON.stringify({ error: { message: 'the list failed' } })) : JSON.stringify({ object: 'list', data: list.data }));
       };
       if (list.hangMs) setTimeout(send, list.hangMs).unref();
       else send();
@@ -205,7 +229,7 @@ export async function startFakeProvider(o: { strictPairs?: boolean; toolBlocksFa
     url,
     push: (...r: FakeReply[]) => void queue.push(...r),
     requests,
-    /** The model list the fake answers with: `data` entries (any JSON), `status` (400 and up fails), `hangMs` (a slow answer). */
+    /** The model list the fake answers with: `data` entries (any JSON), `status` (400 and up fails, with `errorBody` as its text), `hangMs` (a slow answer), `redirectTo` (a redirect instead, `redirectStatus` default 307). */
     list,
     /** The requests that asked for the model list. */
     listRequests: () => requests.filter((r) => r.path.endsWith('/v1/models')),

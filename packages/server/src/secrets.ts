@@ -100,6 +100,20 @@ export const KEY_IN_WORKFLOW = 'That text contains a saved key, so it was not sa
 /** A secret shorter than this is left alone: it would hit ordinary text. */
 export const MIN_SECRET = 8;
 
+/** Most RETIRED values a Redactor keeps for the life of the process (see `Redactor`): the oldest retired one is dropped first. */
+export const MAX_RETAINED = 1000;
+
+/**
+ * Most CURRENT values (file and env keys, keys learned since the last refresh, keys in use by a send) a Redactor holds. None of them is ever
+ * evicted to make room; past this bound `learn` and `hold` refuse (return false / undefined) and the send that wanted it is refused in plain words.
+ */
+export const MAX_CURRENT = 10_000;
+
+/** The most text a StreamRedactor holds back while it cannot tell whether the end of it is the start of a key. */
+export const MAX_HOLDBACK = 64 * 1024;
+/** What replaces held text that grew past MAX_HOLDBACK. */
+export const HELD_MARKER = '[hidden: text that looked like a key]';
+
 export interface KnownSecret { value: string; name: string }
 
 /** Every value to hide: the secrets file's (named `Reins`) and the value of every env var in `keyEnvNames`, 8 characters or more. */
@@ -137,9 +151,17 @@ const isPlain = (v: object) => {
  */
 export class Redactor {
   private re: RegExp | undefined;
+  /** Variant (raw or JSON-escaped) to the name in its marker; built from the three sets below, lazily. */
   private names = new Map<string, string>();
   private variants: string[] = [];
   private stamp = '';
+  private dirty = true;
+  // Three sets, all masked. CURRENT: the file and env values at the last refresh, plus values learned since; never evicted while current.
+  // HELD: a key a send is using right now (a count); protected until the send's response is read or has failed. RETIRED: values that were
+  // current and are not now; bounded at MAX_RETAINED, the one retired first dropped first. Nothing protected is ever evicted.
+  private live = new Map<string, string>();
+  private held = new Map<string, { name: string; n: number }>();
+  private retired = new Map<string, string>();
 
   constructor(private o: { home: string; env: NodeJS.ProcessEnv; keyEnvNames: () => string[]; platform?: string }) {
     this.refresh();
@@ -153,12 +175,82 @@ export class Redactor {
     } catch { return 'none'; }
   }
 
+  /**
+   * Reads the secrets file and the env again. What they hold is CURRENT; a value that was current and no longer is (deleted or replaced) becomes
+   * RETIRED, not forgotten: a request made with it can still be answered (an error that echoes its header) after it left the file. Retired values
+   * stay masked until MAX_RETAINED newer ones have been retired. A value a send is using is protected whatever the file says.
+   */
   refresh() {
     this.stamp = this.stampNow();
-    const names = new Map<string, string>();
-    for (const s of knownSecrets(readSecrets(this.o.home), this.o.env, this.o.keyEnvNames(), this.o.platform)) {
-      for (const v of [s.value, jsonEscaped(s.value)]) if (!names.has(v)) names.set(v, s.name);
+    const next = new Map<string, string>();
+    for (const s of knownSecrets(readSecrets(this.o.home), this.o.env, this.o.keyEnvNames(), this.o.platform)) if (!next.has(s.value)) next.set(s.value, s.name);
+    for (const v of next.keys()) this.retired.delete(v);
+    for (const [v, name] of this.live) if (!next.has(v)) this.retire(v, name);
+    this.live = next;
+    this.dirty = true;
+  }
+
+  private retire(value: string, name: string) {
+    if (this.held.has(value)) return; // released later, then retired
+    this.retired.delete(value);
+    this.retired.set(value, name);
+    while (this.retired.size > MAX_RETAINED) this.retired.delete(this.retired.keys().next().value!);
+  }
+
+  private room(value: string): boolean {
+    return this.live.has(value) || this.held.has(value) || this.live.size + this.held.size < MAX_CURRENT;
+  }
+
+  /**
+   * Masks this value from now on, as a CURRENT value until the next refresh (then it is retired if the file and env do not hold it). Values under
+   * MIN_SECRET are left alone. Returns false, and learns nothing, when MAX_CURRENT values are already protected.
+   */
+  learn = (value: string, name: string): boolean => {
+    const vs = [...new Set([value, value.trim()])].filter((v) => v.length >= MIN_SECRET);
+    if (!vs.every((v) => this.room(v))) return false;
+    for (const v of vs) if (!this.live.has(v)) { this.retired.delete(v); this.live.set(v, name); }
+    this.dirty = true;
+    return true;
+  };
+
+  /**
+   * Protects the key a send is about to attach until the send is over: the returned function releases it (call it when the response is read or
+   * has failed; calling it twice does nothing). While held the value is masked and cannot be evicted. Undefined = no room (MAX_CURRENT values
+   * are protected); the send must not go. A value under MIN_SECRET gets a function that does nothing.
+   */
+  hold = (value: string, name: string): (() => void) | undefined => {
+    const vs = [...new Set([value, value.trim()])].filter((v) => v.length >= MIN_SECRET);
+    if (!vs.every((v) => this.room(v))) return undefined;
+    for (const v of vs) {
+      this.retired.delete(v);
+      const h = this.held.get(v);
+      if (h) h.n++;
+      else this.held.set(v, { name, n: 1 });
     }
+    this.dirty = true;
+    let done = false;
+    return () => {
+      if (done) return;
+      done = true;
+      for (const v of vs) {
+        const h = this.held.get(v);
+        if (!h || --h.n > 0) continue;
+        this.held.delete(v);
+        if (!this.live.has(v)) this.retire(v, h.name);
+      }
+      this.dirty = true;
+    };
+  };
+
+  private rebuild() {
+    this.dirty = false;
+    const names = new Map<string, string>();
+    const add = (value: string, name: string) => {
+      for (const v of [value, jsonEscaped(value)]) if (!names.has(v)) names.set(v, name); // first seen, first named
+    };
+    for (const [v, name] of this.live) add(v, name);
+    for (const [v, h] of this.held) add(v, h.name);
+    for (const [v, name] of this.retired) add(v, name);
     this.names = names;
     // Longest first: at one position the regex takes the first alternative that matches, so a secret that contains another is removed whole.
     this.variants = [...names.keys()].sort((a, b) => b.length - a.length);
@@ -168,6 +260,7 @@ export class Redactor {
   /** Looks at the secrets file once; the string walks below do it once per call, not once per string. ponytail: one stat per call (about 70 microseconds), not per operation. */
   private fresh() {
     if (this.stampNow() !== this.stamp) this.refresh();
+    if (this.dirty) this.rebuild();
   }
 
   /**
@@ -273,10 +366,12 @@ export class Redactor {
     let at = text.length - hold;
     if (hold) {
       // Any occurrence, overlapping ones too, that starts before the cut and reaches past it moves the cut to its start; that can bring another into reach.
+      // One pass from the last start to the first is exact (a hit that starts at or after the cut can never straddle a cut that only moves back)
+      // and linear; repeated passes over the list were quadratic for periodic text.
       const hits = this.occurrences(text);
-      for (let moved = true; moved; ) {
-        moved = false;
-        for (const [s, e] of hits) if (s < at && e > at) { at = s; moved = true; }
+      for (let i = hits.length - 1; i >= 0; i--) {
+        const [s, e] = hits[i]!;
+        if (s < at && e > at) at = s;
       }
     }
     return at;
@@ -298,7 +393,8 @@ export function redactCut(r: Pick<Redactor, 'redact' | 'safeLength'>, text: stri
 /**
  * Redacts a stream that arrives in pieces (command output): a key split across any number of chunks is still found. `push` returns the
  * text that is safe to write now; only the end of the pending text that could be the start of a known secret is held back, so ordinary
- * output is not delayed. `end` writes what is left (a half key that never completed is written as it is).
+ * output is not delayed. `end` writes what is left (a half key that never completed is written as it is). What is held never exceeds
+ * MAX_HOLDBACK characters (see `push`).
  * The API agent loop does not use this: it joins a reply's deltas into whole messages first and redacts each whole message (the host's `redactAll`).
  */
 export class StreamRedactor {
@@ -311,6 +407,12 @@ export class StreamRedactor {
     const at = this.r.safeLength(this.pending);
     const head = this.pending.slice(0, at);
     this.pending = this.pending.slice(at);
+    // Text such as a long run of one letter against a key made of it can never be told apart from a key's start. The hold is bounded: past
+    // MAX_HOLDBACK the held text is replaced whole by a marker and the hold starts empty, so nothing unredacted leaves and memory stays bounded.
+    if (this.pending.length > MAX_HOLDBACK) {
+      this.pending = '';
+      return this.r.redact(head) + HELD_MARKER;
+    }
     return this.r.redact(head);
   }
 

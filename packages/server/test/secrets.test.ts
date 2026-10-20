@@ -257,7 +257,7 @@ describe('3. redact and redactJson', () => {
       expect(r.redact(KEY)).toBe('[key Reins]');                    // seen through the file's stat
       clearKey(t.home, 'p');
       r.refresh();
-      expect(r.redact(KEY)).toBe(KEY);
+      expect(r.redact(KEY)).toBe('[key Reins]');                    // a retired key stays masked for the life of the process (Task 21 fix round)
     } finally {
       t.cleanup();
     }

@@ -90,6 +90,9 @@ export function redactingStore(store: Store, redactor: Pick<Redactor, 'redactJso
     sessionOfRun: (runId) => r(store.sessionOfRun(runId)),
     isTrusted: (cwd, p, hash) => store.isTrusted(cwd, p, hash),
     trust: (cwd, p, hash) => { refuse(cwd, p, hash); store.trust(cwd, p, hash); },
+    hasConsent: (id, origin) => store.hasConsent(id, origin),
+    grantConsent: (id, origin) => { refuse(id, origin); store.grantConsent(id, origin); },
+    revokeConsent: (id) => store.revokeConsent(id),
     getEditorState: (cwd) => r(store.getEditorState(cwd)),
     putEditorState: (cwd, json) => { refuse(cwd); store.putEditorState(cwd, r(json)); },
     getSetting: (key) => r(store.getSetting(key)),
@@ -132,6 +135,10 @@ export function openStore(file: string) {
       cwd text not null, path text not null, hash text not null, ts integer not null,
       primary key (cwd, path)
     );
+    create table if not exists consent (
+      id text not null, origin text not null, ts integer not null,
+      primary key (id, origin)
+    );
     create table if not exists editor_state (cwd text primary key, json text not null, ts integer not null);
     create table if not exists settings (key text primary key, json text not null);
     create table if not exists engine_costs (engine_session_id text primary key, total real not null, ts integer not null);
@@ -155,6 +162,9 @@ export function openStore(file: string) {
   const runOwner = db.prepare('select session_id from session_log where run_id = ? limit 1');
   const getTrust = db.prepare('select 1 as ok from trust where cwd = ? and path = ? and hash = ?');
   const putTrust = db.prepare('insert or replace into trust (cwd, path, hash, ts) values (?, ?, ?, ?)');
+  const getConsent = db.prepare('select 1 as ok from consent where id = ? and origin = ?');
+  const putConsent = db.prepare('insert or replace into consent (id, origin, ts) values (?, ?, ?)');
+  const delConsent = db.prepare('delete from consent where id = ?');
   const getEditor = db.prepare('select json from editor_state where cwd = ?');
   const putEditor = db.prepare('insert or replace into editor_state (cwd, json, ts) values (?, ?, ?)');
   const getSettingRow = db.prepare('select json from settings where key = ?');
@@ -224,6 +234,17 @@ export function openStore(file: string) {
     },
     trust(cwd: string, p: string, hash: string) {
       putTrust.run(cwd, p, hash, Date.now());
+    },
+    /** Spec 7.8: the user said yes to sending prompts and the key to this ORIGIN for this provider id. Per (id, origin), never per id alone. */
+    hasConsent(id: string, origin: string): boolean {
+      return getConsent.get(id, origin) !== undefined;
+    },
+    grantConsent(id: string, origin: string) {
+      putConsent.run(id, origin, Date.now());
+    },
+    /** Every origin of the id: a removed provider leaves nothing behind. */
+    revokeConsent(id: string) {
+      delConsent.run(id);
     },
     getEditorState(cwd: string): string | undefined {
       return (getEditor.get(cwd) as { json: string } | undefined)?.json;

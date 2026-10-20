@@ -76,6 +76,11 @@ export interface FolderTrust {
 /** One call to a model API (spec 3.2). The wire turns the neutral request into its protocol and the stream back into events. */
 export interface Wire {
   call(req: ModelRequest, p: ProviderManifest, h: EngineHost, signal: AbortSignal): AsyncIterable<WireEvent>;
+  /**
+   * THE model-list request of this wire: the manifest to send as (the wire's own key-header default included), the address (its fixed query
+   * included) and the headers. `listModels`, Test connection and the sender's keyless exemption all read it, so none of them can drift.
+   */
+  listRequest?(p: ProviderManifest): { manifest: ProviderManifest; url: string; headers: Record<string, string> };
   /** Ids sorted; undefined on any failure (never throws). */
   listModels?(p: ProviderManifest, h: EngineHost, signal: AbortSignal): Promise<string[] | undefined>;
 }

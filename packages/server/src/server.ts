@@ -7,8 +7,8 @@ import { printWorkflow, type EngineProbe, type Workflow } from '@reins/core';
 import { sameToken } from './token.js';
 import { releaseLock, runningLock, takeLock } from './lock.js';
 import type { Catalog, CatalogModel } from './catalog.js';
-import { CATALOG_DIR, checkEnvFrom, defaultProviderOf, folderTrustFrom, hostSend, keyEnvNames, liveListSource, providerViews, startMods, type ProviderView } from './engines.js';
-import { addCustom, editMod, installMods, listMods, reinstallMod, removeMod, setEnabled } from './mods/actions.js';
+import { CATALOG_DIR, checkEnvFrom, consentFrom, defaultProviderOf, folderTrustFrom, hostSend, keyEnvNames, liveListSource, providerOrigin, providerViews, startMods, type ProviderView } from './engines.js';
+import { addCustom, deleteKey, editMod, installMods, listMods, providerStatus, putKey, reinstallMod, removeMod, revokeConsent, setConsent, setEnabled, testConnection, type ConsentStore } from './mods/actions.js';
 import { childEnv, type Redactor } from './secrets.js';
 import { createLiveModels } from './live-models.js';
 import { listModels, parseModel, type PickerModel } from './models.js';
@@ -42,15 +42,17 @@ export interface ServerOptions {
   env?: NodeJS.ProcessEnv;
   /** Hides secrets in what the API shows (the probe answers) and in streamed command output, and refuses workflow text that holds one. None: nothing is hidden. */
   redactor?: Redactor;
-  /** The only way the live model lists send (spec 7.8). None: the host's own `send`, which refuses until consent is stored. */
+  /** The only way the live model lists and Test connection send (spec 7.8). None: the host's own `send`, which asks the store for consent. */
   send?: SendWithKey;
-  /** The consent seam (`SessionDeps.consent`): undefined for a provider means its consent is recorded. None: no consent is recorded for any keyed provider. */
+  /** The consent seam (`SessionDeps.consent`): undefined for a provider means its consent is recorded. None: the store decides (`consentFrom`). */
   consent?: SessionDeps['consent'];
+  /** How long Test connection waits for the provider, in ms. None: 8 seconds. */
+  testTimeoutMs?: number;
 }
 export interface Server { port: number; token: string; url: string; close(): Promise<void> }
 
-/** A provider's models in the picker, with what it needs: `installed` (a key is set), `needs-key`, or `keyless`. */
-export interface ProviderGroup { id: string; label: string; status: 'installed' | 'needs-key' | 'keyless'; models: PickerModel[] }
+/** A provider's models in the picker, with what it needs: `installed` (a key is set), `needs-key`, or `keyless`. `consent`: a yes is recorded for its current address (only for a provider Reins sends to). */
+export interface ProviderGroup { id: string; label: string; status: 'installed' | 'needs-key' | 'keyless'; consent?: 'granted' | 'needed'; models: PickerModel[] }
 /** What the picker needs of one session (spec 9.1, 9.3, 9.4): its provider's status, `provider:model`, and where it may switch. */
 export interface SessionProviderState {
   provider: ProviderStatus;
@@ -196,10 +198,13 @@ export async function startServer(o: ServerOptions): Promise<Server> {
   const catalog = o.catalog;
   const catalogOf = (p: ProviderView): CatalogModel[] => (p.catalog ? catalog?.models(p.catalog) ?? [] : []);
   // The live lists (spec 7.2) go through the host's `send` only, and a keyed provider's only once its consent is recorded.
-  const sender = hostSend(mods, { env: o.env ?? process.env, home: o.dir });
+  // Consent is the store's: (provider id, origin of its base address), kept like folder trust. A test may inject a seam instead.
+  const consentStore: ConsentStore = { has: (id, origin) => o.store.hasConsent(id, origin), grant: (id, origin) => o.store.grantConsent(id, origin), revoke: (id) => o.store.revokeConsent(id) };
+  const sender = hostSend(mods, { env: o.env ?? process.env, home: o.dir }, consentStore.has);
+  const asks = o.consent ?? consentFrom(mods, o.store);
   const live = createLiveModels({
     ...liveListSource(mods, { env: o.env ?? process.env, home: o.dir, send: o.send ?? sender.send!, ...(sender.redact ? { redact: sender.redact } : {}) }),
-    consented: (provider) => (o.consent ? o.consent(provider) === undefined : false),
+    consented: (provider) => asks(provider) === undefined,
     holdsSecret: (t) => !!sender.holdsSecret?.(t) || !!o.redactor?.has(t),
   });
   const list = (p: ProviderView) => listModels(p, catalogOf(p), readSetting(o.store, 'pickerLimit'), live.ids(p.id));
@@ -220,7 +225,12 @@ export async function startServer(o: ServerOptions): Promise<Server> {
   };
   // The settings are read when a turn starts, so a change in Settings counts from the next reply.
   const settings = { get maxCallsPerTurn() { return readSetting(o.store, 'maxCallsPerTurn'); } };
-  const deps: SessionDeps = { store: o.store, makeEngine: (a) => o.makeEngine({ ...a, settings }), dir: o.dir, env: childEnv(o.env ?? process.env, keyEnvNames(mods)), ...(o.redactor ? { redactor: o.redactor } : {}), describeModel, describeEffort, folderTrust: folderTrustFrom(mods), providers: checkEnvFrom(mods, { env: o.env ?? process.env, home: o.dir }), ...(o.consent ? { consent: o.consent } : {}), onRow: (row) => { for (const f of subs) f(row); } };
+  // What Settings > Providers acts on. `send` is the one function that attaches a key; Test connection uses nothing else.
+  const modEnv = () => ({
+    home: o.dir, catalogDir: o.catalogDir ?? CATALOG_DIR, mods, consent: consentStore, send: o.send ?? sender.send!, env: o.env ?? process.env, redact: sender.redact!,
+    ...(o.testTimeoutMs !== undefined ? { testTimeoutMs: o.testTimeoutMs } : {}),
+  });
+  const deps: SessionDeps = { store: o.store, makeEngine: (a) => o.makeEngine({ ...a, settings }), dir: o.dir, env: childEnv(o.env ?? process.env, keyEnvNames(mods)), ...(o.redactor ? { redactor: o.redactor } : {}), describeModel, describeEffort, folderTrust: folderTrustFrom(mods), providers: checkEnvFrom(mods, { env: o.env ?? process.env, home: o.dir }), consent: asks, origin: (provider) => providerOrigin(mods, provider), onRow: (row) => { for (const f of subs) f(row); } };
   let engines: Array<{ id: string } & EngineProbe> = [];
   let host = '';
   let origin = '';
@@ -262,7 +272,10 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     const key = deps.providers!.facts(id)?.key;
     return key === 'missing' ? 'needs-key' : key === 'none' ? 'keyless' : 'installed';
   };
-  const groups = (): ProviderGroup[] => providers.filter((p) => deps.providers!.installed(p.id)).map((p) => ({ id: p.id, label: p.label, status: statusOf(p.id), models: list(p) }));
+  const groups = (): ProviderGroup[] => providers.filter((p) => deps.providers!.installed(p.id)).map((p) => {
+    const consent = providerStatus(modEnv(), p.id)?.consent;
+    return { id: p.id, label: p.label, status: statusOf(p.id), ...(consent ? { consent } : {}), models: list(p) };
+  });
 
   function create(b: Body): Reply {
     if (!str(b.cwd) || !path.isAbsolute(b.cwd)) return fail(400, 'cwd must be an absolute path.');
@@ -315,13 +328,15 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     o.redactor?.refresh();
   };
   async function modsApi(req: http.IncomingMessage, sub: string | undefined, action: string | undefined): Promise<Reply> {
-    const env = { home: o.dir, catalogDir: o.catalogDir ?? CATALOG_DIR, mods };
+    const env = modEnv();
     const given = async <T>(use: (b: Record<string, unknown>) => Promise<T> | T): Promise<T | Reply> => {
       const r = await parse(req);
       return 'fail' in r ? r.fail : use(r.b as Record<string, unknown>);
     };
     let id: string | undefined;
     try { id = sub === undefined ? undefined : decodeURIComponent(sub); } catch { return fail(400, 'That is not a valid mod id.'); }
+    // A key in the address would sit in logs and history; the route refuses before it reads the body, and never repeats the address.
+    if (action === 'key' && (req.url ?? '').includes('?')) return fail(400, 'A key goes in the request body, never in the address.');
     if (req.method === 'GET' && id === undefined) return listMods(env);
     let reply: Reply | undefined;
     if (req.method === 'POST' && id === 'install' && !action) reply = (await given((b) => installMods(env, b.ids))) as Reply;
@@ -330,6 +345,11 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     else if (req.method === 'DELETE' && id !== undefined && !action) reply = await removeMod(env, id);
     else if (req.method === 'POST' && id !== undefined && (action === 'enable' || action === 'disable')) reply = await setEnabled(env, id, action === 'enable');
     else if (req.method === 'POST' && id !== undefined && action === 'reinstall') reply = await reinstallMod(env, id);
+    else if (req.method === 'PUT' && id !== undefined && action === 'key') reply = (await given((b) => putKey(env, id, b))) as Reply;
+    else if (req.method === 'DELETE' && id !== undefined && action === 'key') reply = await deleteKey(env, id);
+    else if (req.method === 'POST' && id !== undefined && action === 'consent') reply = (await given((b) => setConsent(env, id, b))) as Reply;
+    else if (req.method === 'DELETE' && id !== undefined && action === 'consent') reply = await revokeConsent(env, id);
+    else if (req.method === 'POST' && id !== undefined && action === 'test') reply = await testConnection(env, id);
     if (!reply) return fail(404, 'Not found.');
     if (reply.status === 200) afterModChange(); // a refused change touched nothing
     return reply;

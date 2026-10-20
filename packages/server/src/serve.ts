@@ -6,7 +6,7 @@ import type { Mods } from './mods/types.js';
 import { startServer } from './server.js';
 import type { MakeEngine } from './session.js';
 import { Redactor } from './secrets.js';
-import { redactEnvNames } from './engines.js';
+import { redactEnvNames, type ConsentCheck } from './engines.js';
 import { openStore, redactingStore } from './store.js';
 
 export interface ServeOptions {
@@ -14,7 +14,8 @@ export interface ServeOptions {
   /** The loaded mods (cli.ts loads them first: its `makeEngine` and `probe` go through them). */
   mods: Mods;
   port?: number;
-  makeEngine: MakeEngine;
+  /** The engine factory, given the store's consent check (the store opens here, after cli.ts built its options). */
+  makeEngine: (consent: ConsentCheck) => MakeEngine;
   probe: (provider: string) => Promise<EngineProbe>;
   out: (line: string) => void;
   err: (line: string) => void;
@@ -36,7 +37,7 @@ export async function runServe(o: ServeOptions): Promise<number> {
   const store = redactingStore(openStore(path.join(dir, 'reins.db')), redactor);
   try {
     const server = await startServer({
-      store, dir, mods: o.mods, env, redactor, makeEngine: o.makeEngine, probe: o.probe, lockFile: path.join(dir, 'serve.lock'),
+      store, dir, mods: o.mods, env, redactor, makeEngine: o.makeEngine((id, origin) => store.hasConsent(id, origin)), probe: o.probe, lockFile: path.join(dir, 'serve.lock'),
       catalog: createCatalog({ file: path.join(dir, 'models-dev-cache.json'), ...(o.fetch ? { fetch: o.fetch } : {}) }),
       ...(o.port !== undefined ? { port: o.port } : {}),
       ...(o.appDir ? { appDir: o.appDir } : {}), ...(o.pickFolder ? { pickFolder: o.pickFolder } : {}),

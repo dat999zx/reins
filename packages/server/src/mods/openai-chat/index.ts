@@ -157,10 +157,10 @@ async function* call(req: ModelRequest, p: ProviderManifest, h: EngineHost, sign
   yield { type: 'done', ...(stop ? { stop } : {}), ...(Object.keys(messageExtra).length ? { extra: messageExtra } : {}) };
 }
 
-const listModels = (p: ProviderManifest, h: EngineHost, signal: AbortSignal) =>
-  listModelIds(p, h, signal, p.modelsUrl ?? `${p.baseUrl.replace(/\/+$/, '')}/models`);
+const listRequest = (p: ProviderManifest) => ({ manifest: p, url: p.modelsUrl ?? `${p.baseUrl.replace(/\/+$/, '')}/models`, headers: { accept: 'application/json' } });
+const listModels = (p: ProviderManifest, h: EngineHost, signal: AbortSignal) => listModelIds(listRequest(p), h, signal);
 
-const wire: Wire = { call, listModels };
+const wire: Wire = { call, listRequest, listModels };
 
 export default function activate(api: ModApi): void {
   api.registerProtocol({ id: 'openai-chat', conversation: 'reins', wire });

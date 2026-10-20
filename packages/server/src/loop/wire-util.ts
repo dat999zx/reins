@@ -88,17 +88,23 @@ export function failures(h: EngineHost, p: ProviderManifest) {
   return { fail, own, foreign };
 }
 
+/** The model ids of a list: strings, and the `id` of an object that has a string one; anything else in the list is dropped. Sorted, each once. */
+export function modelIdsFrom(list: unknown[]): string[] {
+  const ids = list.flatMap((x: unknown) => (typeof x === 'string' ? [x] : isObj(x) && typeof x.id === 'string' ? [x.id] : []));
+  return [...new Set(ids)].sort();
+}
+
 /** `{ data: [{ id }] }`, or a bare list. Sorted; undefined when the request or the reading fails, the body is over 1 MiB, or nothing is listed. */
-export async function listModelIds(p: ProviderManifest, h: EngineHost, signal: AbortSignal, url: string): Promise<string[] | undefined> {
+export async function listModelIds(req: { manifest: ProviderManifest; url: string; headers: Record<string, string> }, h: EngineHost, signal: AbortSignal): Promise<string[] | undefined> {
   try {
     if (!h.send) return undefined;
-    const res = await h.send(p, url, { method: 'GET', headers: { accept: 'application/json' }, signal }, 'models');
+    const res = await h.send(req.manifest, req.url, { method: 'GET', headers: req.headers, signal }, 'models');
     const { text, over } = await readBounded(res, MAX_LIST);
     if (over) return undefined;
     const body: unknown = JSON.parse(text);
     const list = Array.isArray(body) ? body : isObj(body) && Array.isArray(body.data) ? body.data : undefined;
-    const ids = (list ?? []).flatMap((x: unknown) => (typeof x === 'string' ? [x] : isObj(x) && typeof x.id === 'string' ? [x.id] : []));
-    return ids.length ? [...new Set(ids)].sort() : undefined;
+    const ids = modelIdsFrom(list ?? []);
+    return ids.length ? ids : undefined;
   } catch {
     return undefined;
   }

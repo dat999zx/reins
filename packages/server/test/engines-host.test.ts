@@ -25,16 +25,16 @@ afterEach(() => {
 });
 
 describe('the production host redacts what the env holds now', () => {
-  it('a key set in the env after the host was made is hidden, a changed value follows, and a removed one is let go', () => {
+  it('a key set in the env after the host was made is hidden, a changed value follows, and a replaced or removed one stays hidden', () => {
     const h = hostSend(mods, { env, home: home.home });
     expect(mods.problems).toEqual([]);
     expect(h.redact!(`say ${KEY1}`)).toBe(`say ${KEY1}`); // not set yet, and the redactor is built now
     env.P_API_KEY = KEY1;
     expect(h.redact!(`say ${KEY1}`)).toBe('say [key P_API_KEY]');
     env.P_API_KEY = KEY2;
-    expect(h.redact!(`${KEY1} ${KEY2}`)).toBe(`${KEY1} [key P_API_KEY]`);
+    expect(h.redact!(`${KEY1} ${KEY2}`)).toBe('[key P_API_KEY] [key P_API_KEY]'); // a replaced value stays hidden (Task 21 fix round)
     delete env.P_API_KEY;
-    expect(h.redact!(`${KEY2} x`)).toBe(`${KEY2} x`);
+    expect(h.redact!(`${KEY2} x`)).toBe('[key P_API_KEY] x');                     // and so does a removed one
   });
 
   it('the send of that host hides it in an error too', async () => {

@@ -144,7 +144,7 @@ async function dispatch(argv: string[], io: Io, c: { home: string; dir: string; 
       ...(io.fetch ? { fetch: io.fetch } : {}),
       env: io.env,
       ...(bare ? { open } : {}),
-      makeEngine: makeEngineFrom(mods, host),
+      makeEngine: (consent) => makeEngineFrom(mods, host, consent),
       probe: (provider) => probeFrom(mods, provider, host),
       out, err,
       stop: io.stop ?? new Promise<void>((resolve) => {
@@ -192,7 +192,8 @@ async function dispatch(argv: string[], io: Io, c: { home: string; dir: string; 
       model = p.model;
     }
     const effort = typeof flags.effort === 'string' ? flags.effort : undefined;
-    const engineOf = makeEngineFrom(mods, { env: io.env, home: dir });
+    // `reins run` asks no consent question: a provider answers only where the app already recorded the user's yes for its address.
+    const engineOf = makeEngineFrom(mods, { env: io.env, home: dir }, (id, origin) => store.hasConsent(id, origin));
     const settings = { get maxCallsPerTurn() { return readSetting(store, 'maxCallsPerTurn'); } };
     const h = startRunCli({
       ...(pos[0] ? { file: pos[0] } : {}),

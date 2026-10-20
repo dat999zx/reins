@@ -4,18 +4,39 @@
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { setKey } from '../secrets.js';
+import { MIN_SECRET, clearKey, keyStatus, readSecrets, setKey, type KeyStatus } from '../secrets.js';
+import { ConsentNeeded, ProviderChanged, ProviderError } from '../send.js';
+import { readBounded } from '../loop/bounded.js';
+import { classify, WORDS } from '../loop/retry.js';
+import { modelIdsFrom } from '../loop/wire-util.js';
+import { cleanIds } from '../live-models.js';
 import { cap, show } from './kinds.js';
 import { isModId, validateMod } from './loader.js';
-import type { LoadedMod, Mods, Protocol } from './types.js';
+import type { LoadedMod, Mods, Protocol, ProviderManifest, SendWithKey } from './types.js';
 
 export type Reply = { status: number; body: unknown };
+/** The yes answers of spec 7.8, kept per (provider id, origin) in the Reins store. */
+export interface ConsentStore {
+  has(id: string, origin: string): boolean;
+  grant(id: string, origin: string): void;
+  /** Every origin of the id. */
+  revoke(id: string): void;
+}
 export interface ModEnv {
   /** The Reins folder (`~/.reins`). */
   home: string;
   /** `catalog/<id>/mod.json`, the providers the chooser offers. May not exist. */
   catalogDir: string;
   mods: Mods;
+  consent: ConsentStore;
+  /** The only function that attaches a key (spec 7.8). Test connection sends through it and nothing else. */
+  send: SendWithKey;
+  /** The env a key variable is looked up in (the server's injected one). */
+  env: NodeJS.ProcessEnv;
+  /** The host's sanitizer, cut to `max`. */
+  redact: (text: string, max?: number) => string;
+  /** How long Test connection waits for the provider. None: 8 seconds. */
+  testTimeoutMs?: number;
 }
 
 const MAX_MANIFEST = 256 * 1024;
@@ -135,9 +156,35 @@ const exists = (env: ModEnv, id: string) => env.mods.mods.some((m) => m.id === i
 
 // ---- GET /api/mods
 
+/** The origin of a base address, or undefined when it is not an http(s) address. Consent is kept per this. */
+const originOf = (address: unknown): string | undefined => {
+  try {
+    const u = new URL(String(address));
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.origin : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/** An installed, enabled provider that Reins itself sends to (a wire protocol), with its protocol. The CLI provider is not one. */
+function wireProvider(mods: Mods, id: string): { manifest: ProviderManifest; protocol: Extract<Protocol, { conversation: 'reins' }> } | undefined {
+  const manifest = mods.registry.get<LoadedMod>('provider', id)?.manifest as ProviderManifest | undefined;
+  const protocol = manifest && mods.registry.get<Protocol>('protocol-impl', manifest.protocol);
+  return manifest && protocol?.conversation === 'reins' ? { manifest, protocol } : undefined;
+}
+
+/** What the settings page shows of a provider's key and consent: states only, never a value (spec 8.1). `needed` = no yes for the CURRENT origin. */
+export function providerStatus(env: Pick<ModEnv, 'home' | 'mods' | 'consent' | 'env'>, id: string): { host: string; key: KeyStatus; consent: 'granted' | 'needed' } | undefined {
+  const found = wireProvider(env.mods, id);
+  const origin = found && originOf(found.manifest.baseUrl);
+  if (!found || !origin) return undefined;
+  return { host: new URL(origin).host, key: keyStatus(found.manifest, readSecrets(env.home), env.env), consent: env.consent.has(id, origin) ? 'granted' : 'needed' };
+}
+
 function summary(env: ModEnv, m: LoadedMod) {
   const man = isObj(m.manifest) ? m.manifest : {};
   return {
+    ...(m.kind === 'provider' ? providerStatus(env, m.id) : {}),
     id: m.id, kind: m.kind, label: typeof man.label === 'string' ? man.label : m.id, version: typeof man.version === 'string' ? man.version : '',
     enabled: m.enabled, bundled: m.source === 'bundled',
     // A user mod is "installed" when the catalog has that id (custom endpoints may not take a catalog id), else it is the user's own.
@@ -218,6 +265,8 @@ export function addCustom(env: ModEnv, b: Record<string, unknown>): Promise<Repl
   const auth = authOf(b.auth ?? { style: 'none' });
   if ('error' in auth) return Promise.resolve(fail(400, auth.error));
   if (auth.auth.style === 'none' && key) return Promise.resolve(fail(400, 'A key was given but `auth.style` is none. Pick bearer or header.'));
+  if (typeof key === 'string' && key.trim() && key.trim().length < MIN_SECRET) return Promise.resolve(fail(400, SHORT_KEY));
+  if (typeof key === 'string' && key.length > MAX_KEY) return Promise.resolve(fail(400, `The key is longer than ${MAX_KEY} characters.`));
   const models = b.models ?? (typeof b.defaultModel === 'string' ? [{ id: b.defaultModel }] : undefined);
   const raw: Record<string, unknown> = { reins: 1, id, kind: 'provider', version: '1.0.0' };
   for (const k of ['label', 'description', 'protocol', 'baseUrl', 'modelsUrl', 'defaultModel', 'price', 'efforts', 'defaultEffort'] as const) if (b[k] !== undefined) raw[k] = b[k];
@@ -321,7 +370,9 @@ export function removeMod(env: ModEnv, id: unknown): Promise<Reply> {
     } catch {
       return fail(409, `${id$(id)} could not be removed.`);
     }
-    // The key (secrets file) stays: a later install of the same id finds it again. The on/off mark goes with the mod.
+    // The key (secrets file) stays: a later install of the same id finds it again. The yes answers go with the mod, so a later install asks again.
+    // The on/off mark goes with the mod.
+    env.consent.revoke(id);
     const off = readDisabled(env.home);
     if (off.delete(id)) writeWhole(env.home, disabledFile(env.home), JSON.stringify([...off].sort(), null, 2) + '\n');
     return reloaded(env, { id });
@@ -356,6 +407,146 @@ export function reinstallMod(env: ModEnv, id: unknown): Promise<Reply> {
       return fail(409, `${id$(id)} could not be installed again. Your copy is unchanged.`);
     }
     quietRm(old);
+    env.consent.revoke(id); // a new copy of the manifest asks again; nothing is regranted for it
     return reloaded(env, { id });
   });
+}
+
+// ---- PUT / DELETE /api/mods/:id/key
+
+const MAX_KEY = 4096;
+const SHORT_KEY = `The key must be at least ${MIN_SECRET} characters. Reins can hide a longer key from logs and errors, not a shorter one.`;
+const BAD_ID = 'That is not a valid mod id.';
+
+/** The provider mod of this id (on or off) and its raw `auth`, for the key routes. The key never goes in the manifest; only the states are read. */
+function keyed(env: ModEnv, id: string): { auth: { style: string; keyEnv: string[] } } | Reply {
+  const mod = env.mods.mods.find((m) => m.id === id && m.kind === 'provider');
+  if (!mod) return fail(404, `No provider ${id$(id)} is installed.`);
+  const auth = isObj(mod.manifest) && isObj(mod.manifest.auth) ? mod.manifest.auth : undefined;
+  if (!auth || (auth.style !== 'bearer' && auth.style !== 'header')) return fail(409, `${id$(id)} does not use a key.`);
+  return { auth: { style: auth.style, keyEnv: Array.isArray(auth.keyEnv) ? auth.keyEnv.filter((n): n is string => typeof n === 'string') : [] } };
+}
+const stateOf = (env: ModEnv, id: string, a: { auth: { style: string; keyEnv: string[] } }): KeyStatus => keyStatus({ id, auth: a.auth }, readSecrets(env.home), env.env);
+
+/** Stores the key in the secrets file (spec 8.1). The answer is the key's STATE; the value is never sent back, not even in part. */
+export function putKey(env: ModEnv, id: unknown, b: Record<string, unknown>): Promise<Reply> {
+  if (!isModId(id)) return Promise.resolve(fail(400, BAD_ID));
+  const key = b.key;
+  if (typeof key !== 'string' || key.trim() === '') return Promise.resolve(fail(400, 'The key must be text that is not empty.'));
+  if (hasControl(key)) return Promise.resolve(fail(400, 'The key must have no line breaks or control characters.'));
+  if (key.trim().length < MIN_SECRET) return Promise.resolve(fail(400, SHORT_KEY));
+  if (key.length > MAX_KEY) return Promise.resolve(fail(400, `The key is longer than ${MAX_KEY} characters.`));
+  return serial(env.home, async () => {
+    const a = keyed(env, id);
+    if (!('auth' in a)) return a;
+    try {
+      setKey(env.home, id, key);
+    } catch {
+      return fail(500, 'The key could not be saved.');
+    }
+    return { status: 200, body: { ok: true, keyStatus: stateOf(env, id, a) } };
+  });
+}
+
+export function deleteKey(env: ModEnv, id: unknown): Promise<Reply> {
+  if (!isModId(id)) return Promise.resolve(fail(400, BAD_ID));
+  return serial(env.home, async () => {
+    const a = keyed(env, id);
+    try {
+      clearKey(env.home, id); // also for a mod that is gone: its key stayed in the file
+    } catch {
+      return fail(500, 'The key could not be cleared.');
+    }
+    return { status: 200, body: { ok: true, keyStatus: 'auth' in a ? stateOf(env, id, a) : { state: 'missing' } } };
+  });
+}
+
+// ---- POST /api/mods/:id/consent, DELETE /api/mods/:id/consent
+
+/**
+ * Spec 7.8: records the user's yes for this provider and the origin of ITS base address. The origin is read from the manifest, never taken from
+ * the body: a body `origin` is only checked against it. `revoke: true` forgets every origin of the id.
+ */
+export function setConsent(env: ModEnv, id: unknown, b: Record<string, unknown>): Promise<Reply> {
+  if (!isModId(id)) return Promise.resolve(fail(400, BAD_ID));
+  if (b.origin !== undefined && typeof b.origin !== 'string') return Promise.resolve(fail(400, '`origin` must be text.'));
+  if (b.revoke !== undefined && typeof b.revoke !== 'boolean') return Promise.resolve(fail(400, '`revoke` must be true or false.'));
+  return serial(env.home, async () => {
+    if (b.revoke === true) {
+      env.consent.revoke(id);
+      return { status: 200, body: { ok: true, consent: 'needed' } };
+    }
+    const found = wireProvider(env.mods, id);
+    if (!found) return fail(404, `No provider ${id$(id)} that Reins sends to is installed.`);
+    const origin = originOf(found.manifest.baseUrl);
+    if (!origin) return fail(409, `The base address of ${id$(id)} is not a web address.`);
+    if (b.origin !== undefined && b.origin !== origin) return fail(400, `That is not the address of ${id$(id)}. A yes is recorded only for ${origin}.`);
+    env.consent.grant(id, origin);
+    return { status: 200, body: { ok: true, consent: 'granted', origin } };
+  });
+}
+
+export function revokeConsent(env: ModEnv, id: unknown): Promise<Reply> {
+  return setConsent(env, id, { revoke: true });
+}
+
+// ---- POST /api/mods/:id/test
+
+const TEST_MS = 8000;
+const MAX_TEST_TEXT = 200;
+const MAX_LIST_BODY = 1024 * 1024;
+
+/**
+ * Spec 7.6: one GET of the model list, through `send` (same origin, no redirect), never a model call, never retried. The answer is one of
+ * `ok`, `bad-key`, `not-found`, `unreachable`, `redirected`, or `needs-consent` (no request was made). Provider text is cut to 200
+ * characters and redacted; the key is in no part of the answer.
+ */
+export async function testConnection(env: ModEnv, id: unknown): Promise<Reply> {
+  if (!isModId(id)) return fail(400, BAD_ID);
+  const found = wireProvider(env.mods, id);
+  if (!found) return fail(404, `No provider ${id$(id)} that Reins sends to is installed.`);
+  const { manifest, protocol } = found;
+  const origin = originOf(manifest.baseUrl);
+  const label = cap(typeof manifest.label === 'string' && manifest.label ? manifest.label : id, 60);
+  const done = (result: string, message: string, extra: Record<string, unknown> = {}): Reply =>
+    ({ status: 200, body: { result, message: env.redact(message), ...extra } });
+  if (!origin) return done('unreachable', `The base address of ${id$(id)} is not a web address.`);
+  const host = new URL(origin).host;
+  const keyNames = manifest.auth?.keyEnv ?? [];
+  const needsKey = !!manifest.auth && manifest.auth.style !== 'none';
+  // A provider with a key is asked about FIRST, with no request made. A keyless one sends no prompt and no key to its model list (7.8), so it is not.
+  if (needsKey && !env.consent.has(id, origin)) {
+    return done('needs-consent', `Reins has not been allowed to send your key to ${host} yet.`, { host });
+  }
+  if (needsKey && keyStatus(manifest, readSecrets(env.home), env.env).state === 'missing') {
+    return done('bad-key', `${label} has no key. ${keyNames.length ? `Set ${keyNames.join(' or ')}, or add` : 'Add'} a key in Settings > Providers.`, { host });
+  }
+  const ms = env.testTimeoutMs ?? TEST_MS;
+  try {
+    // The wire's own list request (address with its fixed query, headers, key-header default): the same one the live model list sends.
+    const req = protocol.wire.listRequest?.(manifest) ?? { manifest, url: manifest.modelsUrl ?? `${manifest.baseUrl.replace(/\/+$/, '')}/models`, headers: { accept: 'application/json' } };
+    const res = await env.send(req.manifest, req.url, { method: 'GET', headers: req.headers, signal: AbortSignal.timeout(ms) }, 'models');
+    // A read that fails (timeout, abort, a stalled body) or is over the cap is an error like any other: it goes to the handler below, never to `ok`.
+    const { text, over } = await readBounded(res, MAX_LIST_BODY);
+    if (over) throw new Error(`The model list is larger than ${MAX_LIST_BODY / 1024 / 1024} MB.`);
+    let body: unknown;
+    try { body = JSON.parse(text); } catch { body = undefined; }
+    const list = Array.isArray(body) ? body : isObj(body) && Array.isArray(body.data) ? body.data : undefined;
+    // Reached, but what came back is not a model list (a web page, other JSON): the closest of the five is the 404 one, said plainly.
+    // Only what the live list would keep counts: a nonempty array with no valid model id in it (`[null, 42, {}]`) is no model list.
+    const ids = list ? cleanIds(modelIdsFrom(list)) : [];
+    if (!list || (list.length > 0 && ids.length === 0)) return done('not-found', `Reached ${host}, but it answered with something that is not a model list, so the first reply will tell.`, { host });
+    return done('ok', `Reached ${host}: ${ids.length} ${ids.length === 1 ? 'model' : 'models'}.`, { host, models: ids.length });
+  } catch (e) {
+    if (e instanceof ProviderChanged) return done('unreachable', e.message, { host });
+    const cls = e instanceof ConsentNeeded ? 'consent' : classify(e);
+    if (cls === 'consent') return done('needs-consent', `Reins has not been allowed to send your key to ${host} yet.`, { host });
+    if (cls === 'auth') return done('bad-key', 'The key was refused.', { host });
+    if (cls === 'notFound') return done('not-found', `Reached ${host}; it has no model list, so the first reply will tell.`, { host });
+    if (cls === 'redirect') return done('redirected', WORDS.redirect.say(label, undefined, ''), { host });
+    if (e instanceof ProviderError) return done('unreachable', `Cannot reach ${host}: it answered ${e.status}. ${env.redact(e.message.replace(/^[\s\S]*?answered \d{3}(?:: )?/, ''), MAX_TEST_TEXT)}`.trim(), { host });
+    const name = (e as { name?: unknown })?.name;
+    if (name === 'TimeoutError' || name === 'AbortError') return done('unreachable', `Cannot reach ${host}: no answer in ${Math.round(ms / 100) / 10} seconds.`, { host });
+    return done('unreachable', `Cannot reach ${host}: ${env.redact(e instanceof Error ? e.message : String(e), MAX_TEST_TEXT)}`, { host });
+  }
 }

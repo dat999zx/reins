@@ -9,6 +9,7 @@ import { makeSend } from './send.js';
 import type { EngineHost, LoadedMod, Mods, Protocol, ProviderManifest, SendWithKey } from './mods/types.js';
 import type { CheckEnv, ProviderFacts } from './run-checks.js';
 import type { MakeEngine, SessionDeps } from './session.js';
+import type { Store } from './store.js';
 
 /** The bundled mods: the folder this code sits in, `src/mods` under tests and `dist/mods` in the build. */
 export const BUNDLED_MODS = fileURLToPath(new URL('./mods/', import.meta.url));
@@ -74,11 +75,14 @@ export const redactEnvNames = (mods: Mods): string[] => {
   return [...names];
 };
 
+/** Whether the user said yes to sending prompts and the key to this origin for this provider id (the store's `hasConsent`). */
+export type ConsentCheck = (modId: string, origin: string) => boolean;
+
 /**
- * The `send` a production host carries. Consent is refused for now, so nothing is sent by accident; Task 21 replaces the callback
- * with the consent store. Built on first use: a session that never sends reads no secrets.
+ * The `send` a production host carries. `consent` is the store's check; the default says no, so a host built without one sends nothing.
+ * Built on first use: a session that never sends reads no secrets.
  */
-export function hostSend(mods: Mods, base: Pick<EngineHost, 'env' | 'home'>): Pick<EngineHost, 'send' | 'redact' | 'redactAll' | 'redactStream' | 'holdsSecret' | 'key'> {
+export function hostSend(mods: Mods, base: Pick<EngineHost, 'env' | 'home'>, consent: ConsentCheck = () => false): Pick<EngineHost, 'send' | 'redact' | 'redactAll' | 'redactStream' | 'holdsSecret' | 'key'> {
   let redactor: Redactor | undefined;
   let seen = '';
   // The key names and the env values they hold, as one string compared on every call (cheap): a key set or changed in the env after the
@@ -94,7 +98,7 @@ export function hostSend(mods: Mods, base: Pick<EngineHost, 'env' | 'home'>): Pi
     seen = now;
     return redactor;
   };
-  const lazy = { redact: (t: string) => get().redact(t), has: (t: string) => get().has(t), safeLength: (t: string) => get().safeLength(t) };
+  const lazy = { redact: (t: string) => get().redact(t), has: (t: string) => get().has(t), safeLength: (t: string) => get().safeLength(t), learn: (v: string, n: string) => get().learn(v, n), hold: (v: string, n: string) => get().hold(v, n) };
   let send: SendWithKey | undefined;
   return {
     // Only the state ever leaves: never the key, nor the env var it came from.
@@ -104,7 +108,11 @@ export function hostSend(mods: Mods, base: Pick<EngineHost, 'env' | 'home'>): Pi
     redactStream: () => new StreamRedactor(lazy),
     holdsSecret: (t) => lazy.has(t),
     send: (m, url, init, purpose) => {
-      send ??= makeSend({ secrets: () => readSecrets(base.home), env: base.env, redactor: lazy, consent: () => false });
+      send ??= makeSend({ secrets: () => readSecrets(base.home), env: base.env, redactor: lazy, consent,
+        // The registry is read at every send: an engine opened before a reload keeps its old manifest, but never sends by it.
+        current: (id) => manifestOf(mods, id),
+        listUrl: (m) => resolve(mods, m.id)?.protocol.wire?.listRequest?.(m).url,
+      });
       return send(m, url, init, purpose);
     },
   };
@@ -123,11 +131,11 @@ export const shellEnvFrom = (mods: Mods, env: NodeJS.ProcessEnv, holdsSecret: (t
 };
 
 /** The engine factory sessions use. Synchronous: a session's microtask order depends on it. */
-export function makeEngineFrom(mods: Mods, base: Pick<EngineHost, 'env' | 'home' | 'send' | 'redact'>): MakeEngine {
+export function makeEngineFrom(mods: Mods, base: Pick<EngineHost, 'env' | 'home' | 'send' | 'redact'>, consent?: ConsentCheck): MakeEngine {
   return ({ provider, ...rest }) => {
     const found = resolve(mods, provider);
     if (!found) throw new Error(`The provider "${provider}" is not installed.`);
-    const sent = hostSend(mods, base);
+    const sent = hostSend(mods, base, consent);
     const host = { ...sent, ...base, helperEnv: childEnv(base.env, keyEnvNames(mods)), shellEnv: shellEnvFrom(mods, base.env, sent.holdsSecret!), ...rest };
     // A 'reins' protocol is a wire: Reins owns the conversation and runs it in the API agent loop.
     if (found.protocol.conversation === 'reins') return loopEngine(found.manifest, found.protocol.wire, host);
@@ -185,6 +193,56 @@ export const checkEnvFrom = (mods: Mods, base: Pick<EngineHost, 'env' | 'home'>)
   };
   return { installed: (id) => resolve(mods, id) !== undefined, facts };
 };
+
+/** The origin of an address (`https://host:port`), or undefined when it is not one. Consent is kept per this, never per the whole address. */
+export const originOf = (address: string): string | undefined => {
+  try {
+    const u = new URL(address);
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.origin : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/** Whether Reins itself sends to this provider (a wire protocol), and so needs the user's yes first; the CLI provider talks for itself. */
+export const sendsFromReins = (mods: Mods, provider: string): boolean => resolve(mods, provider)?.protocol.conversation === 'reins';
+
+/** The origin of the provider's base address as installed NOW; undefined when it is gone, switched off, or Reins sends nothing to it. */
+export const providerOrigin = (mods: Mods, provider: string): string | undefined => {
+  const found = resolve(mods, provider);
+  return found?.protocol.conversation === 'reins' ? originOf(found.manifest.baseUrl) : undefined;
+};
+
+/**
+ * Spec 7.8: the question a session asks before the first reply on a provider whose CURRENT origin has no yes in the store (keyed or keyless alike).
+ * undefined = the yes is recorded, or Reins sends nothing to this provider. A yes records (provider id, origin) as the manifest names them now.
+ */
+export function consentFrom(mods: Mods, store: Pick<Store, 'hasConsent' | 'grantConsent'>): NonNullable<SessionDeps['consent']> {
+  return (provider) => {
+    const found = resolve(mods, provider);
+    if (!found || found.protocol.conversation !== 'reins') return undefined;
+    const m = found.manifest;
+    const origin = originOf(m.baseUrl);
+    if (origin === undefined || store.hasConsent(m.id, origin)) return undefined;
+    // The yes is for the origin the question showed. It is recorded only if the provider still has that origin when the answer comes.
+    const grant = () => {
+      if (providerOrigin(mods, provider) !== origin) return false;
+      store.grantConsent(m.id, origin);
+      return true;
+    };
+    const host = new URL(origin).host;
+    const keyed = !!m.auth && m.auth.style !== 'none';
+    return {
+      prompt: keyed
+        ? `This session sends your prompts, the files the agent reads, and your key to ${host}. Go on? [y / n]`
+        : `This session sends your prompts and the files the agent reads to ${host}. Go on? [y / n]`,
+      detail: `${m.label}: ${origin}${origin.startsWith('http:') ? ' (plain http, not encrypted)' : ''}`,
+      refused: `Nothing was sent: you did not allow ${host}.`,
+      stopped: `The session was stopped before you answered, so nothing was sent to ${host}.`,
+      grant,
+    };
+  };
+}
 
 export const folderTrustFrom = (mods: Mods): NonNullable<SessionDeps['folderTrust']> =>
   (provider, cwd) => resolve(mods, provider)?.protocol.folderTrust?.(cwd);

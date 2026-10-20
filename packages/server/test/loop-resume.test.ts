@@ -634,7 +634,7 @@ describe('through the HTTP server: a restart, then the next reply continues', ()
     const dbFile = path.join(tmpDir(), 'reins.db');
     const cwd = tmpDir();
     const start = (store: Store) => startServer({
-      store, dir: home, probe: async () => PROBE,
+      store, dir: home, probe: async () => PROBE, consent: () => undefined, // S16: the user's yes is pre-granted
       makeEngine: ({ model, effort, onApprove, onLive, settings }) => loopEngine(r.p, r.wire, { ...r.host, onApprove, onLive, ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(settings ? { settings } : {}) }),
     });
     const settled = (store: Store, id: string, n: number) => until(() => {

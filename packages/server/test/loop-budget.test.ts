@@ -302,7 +302,7 @@ describe('through the HTTP server: the Run pauses on the USD card when the loop 
     fs.writeFileSync(path.join(home, 'mods', 'p', 'mod.json'), JSON.stringify(r.p));
     const store = openStore(':memory:');
     const srv = await startServer({
-      store, dir: home, probe: async () => PROBE,
+      store, dir: home, probe: async () => PROBE, consent: () => undefined, // S16: the user's yes is pre-granted
       makeEngine: ({ model, effort, onApprove, onLive, settings }) => loopEngine(r.p, r.wire, { ...r.host, onApprove, onLive, ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(settings ? { settings } : {}) }),
     });
     const cwd = tmpDir();

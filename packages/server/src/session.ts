@@ -10,6 +10,7 @@ import { askTool, driveRun, questionId, runOptions, type DriveIo, type Question 
 import { contextSize, contextWindow, detachedRuns, modelWithoutWindow, readSetting, stillOverAfterCompaction, switchCheck, type SwitchCheck } from './settings.js';
 import type { LogRow, SessionRow, Store } from './store.js';
 import { KEY_IN_WORKFLOW, StreamRedactor, type Redactor } from './secrets.js';
+import { ProviderChanged } from './send.js';
 import { taggedWorkflow, type Tag, type Tagged } from './tags.js';
 import { loadWorkflow } from './run-cli.js';
 import type { FolderTrust } from './mods/types.js';
@@ -43,9 +44,15 @@ export interface SessionDeps {
   providers?: Pick<CheckEnv, 'installed' | 'facts'>;
   /** The question a provider wants answered before it is sent the user's prompts and key (spec 7.8), if it is not answered yet. */
   consent?: (provider: string) => Consent | undefined;
+  /** The origin of the provider's address as installed NOW (undefined: gone, off, or Reins sends nothing to it). A running engine opened for another origin is dropped. */
+  origin?: (provider: string) => string | undefined;
 }
 /** A provider's consent question: the words, and what a yes records. */
-export interface Consent { prompt: string; detail: string; refused: string; stopped: string; grant(): void }
+export interface Consent {
+  prompt: string; detail: string; refused: string; stopped: string;
+  /** Records the yes. `false` = it was not recorded (the provider's address is no longer the one the question showed), so the question is asked again. */
+  grant(): boolean | void;
+}
 export type Ack = { ok: true } | { ok: false; code: 400 | 409; error: string; text?: string; diagnostics?: Diagnostic[] };
 export type SessionStatus = 'idle' | 'running' | 'waiting' | 'closed';
 export type Session = ReturnType<typeof openSession>;
@@ -152,9 +159,12 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     endOutput: () => { if (cmdOut) outputRow(cmdOut.end()); },
   };
 
+  // The origin of the provider's address when `engine` was made. A reload that changes it (or removes the provider) retires the engine before its next use.
+  let openedFor: string | undefined;
   const getEngine = () => {
     if (engine) return engine;
     const cur = store.getSession(id)!; // the model can change after the session was opened
+    openedFor = deps.origin?.(cur.engine);
     return (engine = deps.makeEngine({
       provider: cur.engine,
       ...(cur.model ? { model: cur.model } : {}),
@@ -330,13 +340,18 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     }
   }
 
+  /** Spec 7.8: the provider's consent question, when its current address has no yes yet. A yes records it; a no (or a stop) throws its words and nothing is sent. */
+  async function askConsent(provider: string) {
+    // The question is read again after every answer: a yes counts only for the address it showed, so a changed address asks about the new one.
+    for (let c = deps.consent?.(provider); c; c = deps.consent?.(provider)) {
+      await mustSayYes(c);
+      if (c.grant() !== false) return;
+    }
+  }
+
   /** Before a process or a request of `provider` starts: its consent, then its folder question (the session's own provider and a subagent's alike). */
   async function allowProvider(provider: string) {
-    const c = deps.consent?.(provider);
-    if (c) {
-      await mustSayYes(c);
-      c.grant();
-    }
+    await askConsent(provider);
     await trustFolder(provider);
   }
 
@@ -363,8 +378,14 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     live = s;
     return cancelOpen || stopping ? undefined : s;
   }
-  const ensureEngine = (): Promise<EngineSession | undefined> =>
-    live ? Promise.resolve(live) : (opening ??= openEngine().finally(() => { opening = undefined; }));
+  /** Retires an engine that was made for another address than the provider has now; the next use opens a new one, which asks first. */
+  function dropIfStale() {
+    if (engine && !opening && deps.origin && deps.origin(store.getSession(id)!.engine) !== openedFor) dropEngine();
+  }
+  const ensureEngine = (): Promise<EngineSession | undefined> => {
+    dropIfStale();
+    return live ? Promise.resolve(live) : (opening ??= openEngine().finally(() => { opening = undefined; }));
+  };
 
   /** A subagent never asks the user itself (Hermes): its tool request is a card on the parent run, titled with it, or refused by the setting. */
   function subagentApprove(title: string, r: ToolRequest): Promise<Decision> {
@@ -411,6 +432,10 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   /** One engine call (a reply or a compaction): the process, the cost total, the unknown-cost note, a failed switch. */
   async function call(f: (s: EngineSession) => Promise<TurnResult>): Promise<TurnResult> {
     notSent = false;
+    // A running engine was opened under an earlier yes: the yes is looked up again for the CURRENT address on every call (a revoke, or a
+    // changed address, asks again). A closed engine asks when it opens.
+    dropIfStale();
+    if (live) await askConsent(store.getSession(id)!.engine);
     const s = await ensureEngine();
     if (!s) { notSent = true; return { text: '', events: [] }; }
     let res: TurnResult;
@@ -419,6 +444,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       res = await f(s);
     } catch (e) {
       markDead(msg(e));
+      if (e instanceof ProviderChanged) dropEngine(); // its manifest is old: the next reply makes a new engine from the installed one
       undoSwitch(msg(e));
       throw e;
     } finally {

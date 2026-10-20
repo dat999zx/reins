@@ -1,5 +1,5 @@
 // Spec 4.9: which failures are tried again, how long to wait, and the words of the final error.
-import { ConsentNeeded, ProviderError } from '../send.js';
+import { ConsentNeeded, ProviderChanged, ProviderError } from '../send.js';
 
 export type ErrorClass = 'rate' | 'server' | 'network' | 'stall' | 'auth' | 'notFound' | 'bad' | 'unpaired' | 'context' | 'redirect' | 'consent';
 
@@ -73,7 +73,7 @@ export const isContextTooLong = (body: string): boolean => {
 
 /** The class of a thrown error: a ProviderError by its status; the redirect and consent refusals by what send.ts makes of them; anything else is a network failure. */
 export function classify(err: unknown): ErrorClass {
-  if (err instanceof ConsentNeeded) return 'consent';
+  if (err instanceof ConsentNeeded || err instanceof ProviderChanged) return 'consent'; // refused before sending: not tried again
   if (err instanceof ProviderError) {
     if (err.status === 400) {
       const body = bodyOf(err.message);

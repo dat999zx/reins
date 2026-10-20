@@ -86,6 +86,10 @@ beforeAll(async () => {
   store.appendLog('gone1', { type: 'message', data: { role: 'user', text: 'an earlier question' } });
   store.createSession({ id: 'old1', cwd: proj, engine: 'claude', model: 'old' });
   store.appendLog('old1', { type: 'message', data: { role: 'user', text: 'an older question' } });
+  // The user's yes (spec 7.8, Task 21) for the providers that answer in this file; their live lists are empty, so no extra ids show.
+  for (const [id, fake] of [['p', p], ['other', q], ['nokey', p]] as const) store.grantConsent(id, new URL(fake.url).origin);
+  p.list.data = [];
+  q.list.data = [];
   const srv = await startServer({ store, dir, mods, env: {}, send, probe: async () => PROBE, makeEngine });
   w = { root, dir, proj, mods, p, q, store, srv, made, sends };
 });

@@ -10,6 +10,17 @@ export class ConsentNeeded extends Error {
   }
 }
 
+/**
+ * The engine that asked to send was opened for an address that is no longer the provider's (it was edited, replaced, switched off or removed
+ * since). Nothing was sent; the session drops that engine, so the next reply opens a new one and asks about the new address.
+ */
+export class ProviderChanged extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ProviderChanged';
+  }
+}
+
 /** The provider answered with an error status. `message` holds the status and the redacted body. */
 export class ProviderError extends Error {
   /** `retryAfter`: the reply's Retry-After header as sent (seconds or a date), for the loop's back-off; never shown. */
@@ -26,10 +37,43 @@ const MAX_ERROR_TEXT = 2000;
 const HIDDEN = 'The request failed and its details were hidden.';
 const hasControl = (s: string) => [...s].some((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f);
 
+/**
+ * The same reply with its body passed through, calling `release` once when the body ends, fails or is cancelled. Undefined when the reply cannot
+ * be rebuilt (a status that takes no body); the caller then releases at once.
+ */
+function watchBody(res: Response, release: () => void): Response | undefined {
+  if ([101, 204, 205, 304].includes(res.status)) return undefined;
+  try {
+    const reader = res.body!.getReader();
+    const out = new ReadableStream<Uint8Array>({
+      async pull(c) {
+        try {
+          const r = await reader.read();
+          if (r.done) {
+            release();
+            c.close();
+          } else c.enqueue(r.value);
+        } catch (e) {
+          release();
+          c.error(e);
+        }
+      },
+      cancel(reason) {
+        release();
+        return reader.cancel(reason);
+      },
+    });
+    return new Response(out, { status: res.status, statusText: res.statusText, headers: res.headers });
+  } catch {
+    return undefined;
+  }
+}
+
 /** What one call refused, as plain fields. It becomes a public error only at the boundary, with every text sanitized there. */
 type Refusal =
   | { kind: 'plain'; message: string }
   | { kind: 'consent'; modId: string; origin: string }
+  | { kind: 'changed'; message: string }
   | { kind: 'provider'; status: number; message: string; cap: number; retryAfter?: string };
 
 /** Carries a Refusal out of `run`. Never leaves this file; the boundary reads it only when its token is the one of this very call. */
@@ -46,7 +90,8 @@ class Local extends Error {
  * (5) every error, and the body of an error reply, is sanitized as one assembled string at a single boundary.
  *
  * `purpose` (4th argument, default `'chat'`): `'models'` skips the consent question only for a keyless provider, a GET with no body, to the
- * snapshot's own model-list address (no query string). Anything else asks, because prompts and files go there.
+ * snapshot's own model-list address, exactly (the wire's fixed query included, any other path or query asks). Anything else asks, because
+ * prompts and files go there.
  *
  * The fetch options are built here from an allowlist (method, body, signal, the rebuilt headers): a `dispatcher` or any other transport
  * option of the caller is never passed on, since the transport must belong to this function.
@@ -58,8 +103,15 @@ class Local extends Error {
 export function makeSend(o: {
   secrets(): Secrets;
   env: NodeJS.ProcessEnv;
-  redactor: Pick<Redactor, 'redact' | 'has' | 'safeLength'>;
+  redactor: Pick<Redactor, 'redact' | 'has' | 'safeLength'> & Partial<Pick<Redactor, 'learn' | 'hold'>>;
   consent(modId: string, origin: string): boolean | Promise<boolean>;
+  /**
+   * The provider's CURRENT installed manifest (the live registry), asked at every send. An engine keeps the manifest it was opened with; when the
+   * current base address has another origin, or the provider is gone, nothing is sent. None: the manifest of the call is trusted (tests).
+   */
+  current?(modId: string): { id: string; kind: string; baseUrl: string; label?: string } | undefined;
+  /** The address of the provider's model list as its wire defines it (query included), for the keyless exemption. None: `modelsUrl` or `<baseUrl>/models`. */
+  listUrl?(mod: ProviderManifest): string | undefined;
   fetch?: typeof fetch;
   platform?: string;
 }): SendWithKey {
@@ -88,6 +140,7 @@ export function makeSend(o: {
           const origin = sanitize(r.origin);
           return new ConsentNeeded(modId, origin, sanitize(new ConsentNeeded(r.modId, r.origin).message));
         }
+        if (r.kind === 'changed') return new ProviderChanged(sanitize(r.message));
         if (r.kind === 'provider') return new ProviderError(sanitize(r.message, r.cap), r.status, r.retryAfter);
         return new Error(sanitize(r.message));
       }
@@ -145,6 +198,22 @@ export function makeSend(o: {
     const label = typeof m.label === 'string' && m.label !== '' ? m.label : m.id;
 
     const base = originOf(token, `The base address of \`${m.id}\``, m.baseUrl);
+    // The engine's own copy of the manifest may be old: the provider's installed manifest NOW decides where anything may go. Synchronous, and
+    // run twice: early (so a stale engine is refused before it asks anything) and again as the very last step before the request starts.
+    const checkCurrent = () => {
+      if (!o.current) return;
+      let now: string | undefined;
+      try {
+        const cur = o.current(m.id);
+        // Only a provider of this very id counts; any other shape (another kind, another id, a value that is not a manifest) is "not installed".
+        now = cur && typeof cur === 'object' && cur.id === m.id && cur.kind === 'provider' ? new URL(cur.baseUrl).origin : undefined;
+      } catch {
+        now = undefined; // a lookup that throws is no answer: nothing is sent
+      }
+      if (now === undefined) throw new Local(token, { kind: 'changed', message: `${label} is no longer installed or is switched off, so nothing was sent.` });
+      if (now !== base.origin) throw new Local(token, { kind: 'changed', message: `The address of ${label} changed. The next reply asks again.` });
+    };
+    checkCurrent();
     const target = originOf(token, 'The request address', String(url));
     if (target.username || target.password) refuse('The request address must not hold a user name or password.');
     if (target.origin !== base.origin) refuse(`Reins sends \`${m.id}\` requests only to ${base.origin}; ${target.origin} was refused. Nothing was sent.`);
@@ -155,11 +224,12 @@ export function makeSend(o: {
     const keyless = !m.auth || m.auth.style === 'none';
     let modelList = '';
     try {
-      modelList = new URL(typeof m.modelsUrl === 'string' ? m.modelsUrl : `${m.baseUrl.replace(/\/+$/, '')}/models`).href;
+      modelList = new URL(o.listUrl?.(m) ?? (typeof m.modelsUrl === 'string' ? m.modelsUrl : `${m.baseUrl.replace(/\/+$/, '')}/models`)).href;
     } catch {
       /* no valid list address: nothing qualifies as the list */
     }
-    const listing = purpose === 'models' && keyless && modelList !== '' && target.href === modelList && target.search === ''
+    // The exact address of the list, its fixed query included, and nothing else.
+    const listing = purpose === 'models' && keyless && modelList !== '' && target.href === modelList
       && (method === undefined || method.toUpperCase() === 'GET') && (body === undefined || body === null);
     if (!listing && (await o.consent(m.id, base.origin)) !== true) throw new Local(token, { kind: 'consent', modId: m.id, origin: base.origin });
 
@@ -174,43 +244,66 @@ export function makeSend(o: {
       const names = Array.isArray(m.auth?.keyEnv) ? m.auth.keyEnv : [];
       return refuse(`No key for ${label}. Add it in Settings${names.length ? ` or set ${names.join(' or ')}` : ''}.`);
     }
-    if (key.kind === 'key') {
-      const style = m.auth?.style;
-      const name = style === 'bearer' ? 'Authorization' : style === 'header' ? m.auth?.header : undefined;
-      if (!name) return refuse(style === 'header' ? `\`${m.id}\` uses a key header but names none.` : `\`${m.id}\` has an auth style Reins does not know.`);
-      if (hasControl(key.key)) return refuse(`The key for ${label} holds a control character, so it cannot be sent as a header.`);
-      try {
-        headers.set(name, style === 'bearer' ? `Bearer ${key.key}` : key.key); // last, so it replaces any same-named header, whatever its case
-      } catch {
-        return refuse(`The key for ${label} cannot be sent as a header (it holds a character a header cannot).`);
+    // A key that is attached is masked, and protected from eviction, until this send is over, even if it is removed or replaced before the
+    // answer comes back. `release` runs when the response is fully read or has failed (below).
+    let release: (() => void) | undefined;
+    if (key.kind === 'key' && o.redactor.hold) {
+      release = o.redactor.hold(key.key, key.source);
+      if (!release) return refuse('Too many keys are in use to keep them all hidden, so nothing was sent.');
+    } else if (key.kind === 'key') o.redactor.learn?.(key.key, key.source);
+    let handedOver = false;
+    try {
+      if (key.kind === 'key') {
+        const style = m.auth?.style;
+        const name = style === 'bearer' ? 'Authorization' : style === 'header' ? m.auth?.header : undefined;
+        if (!name) return refuse(style === 'header' ? `\`${m.id}\` uses a key header but names none.` : `\`${m.id}\` has an auth style Reins does not know.`);
+        if (hasControl(key.key)) return refuse(`The key for ${label} holds a control character, so it cannot be sent as a header.`);
+        try {
+          headers.set(name, style === 'bearer' ? `Bearer ${key.key}` : key.key); // last, so it replaces any same-named header, whatever its case
+        } catch {
+          return refuse(`The key for ${label} cannot be sent as a header (it holds a character a header cannot).`);
+        }
       }
-    }
 
-    const doFetch = o.fetch ?? fetch;
-    const res = await doFetch(target.href, {
-      ...(method !== undefined ? { method } : {}),
-      ...(body !== undefined && body !== null ? { body } : {}),
-      ...(signal ? { signal } : {}),
-      headers,
-      redirect: 'error',
-    });
-    // The status is read once, and only a whole HTTP status is used: a fetch that hands over anything else gets no further.
-    const status: unknown = res.status;
-    if (typeof status !== 'number' || !Number.isInteger(status) || status < 100 || status > 599) return refuse(`${label} answered with a status Reins cannot use, so the reply was not used.`);
-    if (status >= 400) {
-      const { text, over } = await readBounded(res, MAX_ERROR_READ);
-      // A read cut by the limit may end inside a key: that end is dropped before anything is redacted.
-      const detail = over ? text.slice(0, o.redactor.safeLength(text)) : text;
-      const head = `${label} answered ${status}`;
-      const message = detail ? `${head}: ${detail}` : `${head}.`;
-      // The whole message is sanitized as one string at the boundary; the cap leaves room for the head, however it reads redacted.
-      let retryAfter: string | undefined;
-      try {
-        retryAfter = res.headers.get('retry-after')?.slice(0, 100); // a fetch that hands over odd headers has no Retry-After
-      } catch { /* none */ }
-      throw new Local(token, { kind: 'provider', status, message, cap: sanitize(head).length + 2 + MAX_ERROR_TEXT, ...(retryAfter ? { retryAfter } : {}) });
+      // Every await is behind us. The installed provider is looked at once more, and the request starts in the same synchronous step: nothing
+      // can change the installed address between this check and the call that sends.
+      checkCurrent();
+      const started = (o.fetch ?? fetch)(target.href, {
+        ...(method !== undefined ? { method } : {}),
+        ...(body !== undefined && body !== null ? { body } : {}),
+        ...(signal ? { signal } : {}),
+        headers,
+        redirect: 'error',
+      });
+      const res = await started;
+      // The status is read once, and only a whole HTTP status is used: a fetch that hands over anything else gets no further.
+      const status: unknown = res.status;
+      if (typeof status !== 'number' || !Number.isInteger(status) || status < 100 || status > 599) return refuse(`${label} answered with a status Reins cannot use, so the reply was not used.`);
+      if (status >= 400) {
+        const { text, over } = await readBounded(res, MAX_ERROR_READ);
+        // A read cut by the limit may end inside a key: that end is dropped before anything is redacted.
+        const detail = over ? text.slice(0, o.redactor.safeLength(text)) : text;
+        const head = `${label} answered ${status}`;
+        const message = detail ? `${head}: ${detail}` : `${head}.`;
+        // The whole message is sanitized as one string at the boundary; the cap leaves room for the head, however it reads redacted.
+        let retryAfter: string | undefined;
+        try {
+          retryAfter = res.headers.get('retry-after')?.slice(0, 100); // a fetch that hands over odd headers has no Retry-After
+        } catch { /* none */ }
+        throw new Local(token, { kind: 'provider', status, message, cap: sanitize(head).length + 2 + MAX_ERROR_TEXT, ...(retryAfter ? { retryAfter } : {}) });
+      }
+      // A good reply is read by the caller, later: the key stays protected until its body has ended, failed or been cancelled.
+      if (release && res.body && typeof res.body.getReader === 'function') {
+        const wrapped = watchBody(res, release);
+        if (wrapped) {
+          handedOver = true;
+          return wrapped;
+        }
+      }
+      return res;
+    } finally {
+      if (!handedOver) release?.();
     }
-    return res;
   };
 
   return async (mod, url, init, purpose = 'chat') => {
