@@ -54,6 +54,24 @@ describe('model and engine', () => {
     const loaded = loadSessions(initial(), [{ id: 's9', cwd: 'c', autoApprove: false, status: 'idle', engine: 'claude', model: 'm' }]);
     expect(loaded.sessions.s9).toMatchObject({ engine: 'claude', model: 'm' });
   });
+  it('a switch to another provider moves the session there and drops a level that provider lacks', () => {
+    seq = 0;
+    let st = fold([created({ engine: 'alpha', effort: 'high' })]);
+    st = fold([row('settings', { model: 'b1', engine: 'beta', effort: '' })], 0, st);
+    expect(st.sessions[S]).toMatchObject({ engine: 'beta', model: 'b1' });
+    expect('effort' in st.sessions[S]!).toBe(false);
+  });
+  it('the provider words and the usable providers come from /api/state, are replaced each time, and clear when the provider is back', () => {
+    const words = 'This session uses zeta, which is not installed. Install it in Settings > Providers, or start a new session.';
+    const view = { id: 's9', cwd: 'c', autoApprove: false, status: 'idle' as const, engine: 'zeta' };
+    let st = loadSessions(initial(), [{ ...view, provider: { status: 'missing', words }, switchTo: [{ provider: 'alpha' }] }]);
+    expect(st.sessions.s9).toMatchObject({ missing: words, installed: ['alpha'] });
+    st = loadSessions(st, [{ ...view, provider: { status: 'ok' }, switchTo: [{ provider: 'alpha' }, { provider: 'zeta' }] }]);
+    expect('missing' in st.sessions.s9!).toBe(false);
+    expect(st.sessions.s9!.installed).toEqual(['alpha', 'zeta']);
+    st = loadSessions(st, [view]); // a view with no provider facts (a just-created session) changes nothing
+    expect(st.sessions.s9!.installed).toEqual(['alpha', 'zeta']);
+  });
 });
 
 describe('reduce', () => {

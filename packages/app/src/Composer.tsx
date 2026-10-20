@@ -6,7 +6,7 @@ import { chipsToTags, missingArg, pickerFor, takeTag, type Chip } from './tags.j
 
 interface Listed { path: string; name: string; scope: string }
 
-export function Composer({ id, cwd, busy, catalogue, takeRefill, bar }: { id: string; cwd: string; busy: boolean; catalogue: TagEntry[]; takeRefill: (input: string) => string; bar?: ReactNode }) {
+export function Composer({ id, cwd, busy, locked, catalogue, takeRefill, bar }: { id: string; cwd: string; busy: boolean; locked?: boolean; catalogue: TagEntry[]; takeRefill: (input: string) => string; bar?: ReactNode }) {
   const [text, setText] = useState('');
   const [chips, setChips] = useState<Chip[]>([]);
   const [caret, setCaret] = useState(0);
@@ -124,7 +124,7 @@ export function Composer({ id, cwd, busy, catalogue, takeRefill, bar }: { id: st
         </div>
       )}
       <textarea
-        ref={box} id="chat-input" aria-label="Message" rows={2} value={text}
+        ref={box} id="chat-input" aria-label="Message" rows={2} value={text} disabled={locked}
         placeholder={busy ? 'Steer the agent (sent as a card)…' : 'Message, #tag, or /run'}
         onChange={(e) => { setText(e.target.value); setCaret(e.target.selectionStart); setIdx(0); setDismissed(false); }}
         onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
@@ -135,7 +135,7 @@ export function Composer({ id, cwd, busy, catalogue, takeRefill, bar }: { id: st
         <span className="hint">Enter sends · Shift+Enter is a new line</span>
         {busy && <button disabled={!text.trim()} onClick={() => void card('now')}>Now</button>}
         {busy && <button className="danger" onClick={() => void card('stop')}>Stop</button>}
-        <button className="primary" disabled={!text.trim()} onClick={() => void send()}>Send</button>
+        <button className="primary" disabled={locked || !text.trim()} onClick={() => void send()}>Send</button>
       </div>
       {notice && (
         <div className="bad" role="alert">

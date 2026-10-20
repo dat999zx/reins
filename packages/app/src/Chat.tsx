@@ -11,12 +11,13 @@ import { PHASE, runView, thinkingHeads, thinkingNow } from './runState.js';
 import { TextTab } from './TextTab.js';
 import { mergeOutput, openQuestions, title, type Sess } from './state.js';
 import { OptionPicker } from './OptionPicker.js';
-import { compressBlock, compressBusy, contextWords, effortBlock, hasReplied, pickerBlock, shownEffort, shownModel, usageOf } from './usage.js';
+import type { Engines } from './ProviderBanner.js';
+import { compressBlock, compressBusy, contextWords, effortBlock, hasReplied, modelGroups, pickerBlock, shownEffort, shownModel, usableProvider, usageOf, windowOf } from './usage.js';
 
 export type Provider = { id: string; label: string; defaultModel: string; defaultEffort: string; efforts: Array<{ id: string; label: string }>; models: Array<{ id: string; label: string; window?: number }> };
 
-export function Chat({ sess, catalogue, providers, takeRefill, tab, onTab, restore, onState, onDirty, onError }: {
-  sess: Sess; catalogue: TagEntry[]; providers: Provider[]; takeRefill: (input: string) => string; tab: Tab; onTab: (t: Tab) => void;
+export function Chat({ sess, catalogue, providers, engines = [], takeRefill, tab, onTab, restore, onState, onDirty, onError }: {
+  sess: Sess; catalogue: TagEntry[]; providers: Provider[]; engines?: Engines; takeRefill: (input: string) => string; tab: Tab; onTab: (t: Tab) => void;
   restore?: EditorState; onState: (patch: Partial<EditorState>) => void;
   onDirty: (dirty: boolean) => void; onError: (message: string) => void;
 }) {
@@ -40,9 +41,13 @@ export function Chat({ sess, catalogue, providers, takeRefill, tab, onTab, resto
   const level = shownEffort(sess, providers) ?? '';
   const sessionEffort = { id: level, label: `${efforts.find((e) => e.id === level)?.label ?? level} (session)` };
   // The stream's window wins; the catalog's (from /api/state) only fills a gap.
-  const ctx = contextWords(usage, models.find((m) => m.id === shown)?.window);
+  const ctx = contextWords(usage, windowOf(providers, sess.engine, shown));
   const asking = openQuestions(sess).some((r) => (r.data as { kind?: string }).kind === 'switch');
-  const block = pickerBlock({ busy, detached: sess.detached.length, asking });
+  // every working provider's models, the session's first: `provider:model` here; the Blocks tab keeps the session's own models as plain ids
+  const usable = (id: string) => usableProvider(id, sess.installed, engines);
+  const modelList = modelGroups(providers, sess.engine, usable);
+  const stepModels = modelGroups(providers, sess.engine, usable, true);
+  const block = sess.missing ?? pickerBlock({ busy, detached: sess.detached.length, asking });
   const effortOff = effortBlock(busy);
   // the server accepts Compress while only a switch card waits (it closes the card)
   const cb = compressBlock({
@@ -114,14 +119,14 @@ export function Chat({ sess, catalogue, providers, takeRefill, tab, onTab, resto
         <span className={`status ${sess.status}`}><span className={`dot ${sess.status}`} /> {sess.status}</span>
         <label className="sx-model">
           Model
-          <OptionPicker label="Model" options={models} value={shown} disabled={block !== undefined}
+          <OptionPicker label="Model" options={modelList} value={sess.engine ? `${sess.engine}:${shown}` : shown} disabled={block !== undefined} other={{ ...(sess.engine ? { own: sess.engine } : {}) }}
             title={block ?? (usage ? `In use: ${usage.model}` : undefined)}
             onChange={(v) => post(`${base}/settings`, { model: v }).catch((err) => onError(err.message))} />
         </label>
         <label className="sx-model">
           Reasoning
-          <OptionPicker label="Reasoning" options={efforts} value={level} disabled={effortOff !== undefined} title={effortOff}
-            onChange={(v) => post(`/settings`, { effort: v }).catch((err) => onError(err.message))} />
+          <OptionPicker label="Reasoning" options={efforts} value={level} disabled={effortOff !== undefined || sess.missing !== undefined} title={sess.missing ?? effortOff}
+            onChange={(v) => post(`${base}/settings`, { effort: v }).catch((err) => onError(err.message))} />
         </label>
         <span className="sx-ctx" title={ctx.title}>{ctx.text}</span>
         <button className="sx-compress" disabled={cb !== undefined} title={cb ?? 'Summarise the conversation so far to free context. It costs one model call.'}
@@ -149,13 +154,14 @@ export function Chat({ sess, catalogue, providers, takeRefill, tab, onTab, resto
               if (bottom) setFresh(false);
             }} />
           {fresh && <button className="pill" onClick={() => { setStick(true); setFresh(false); log.current!.scrollTop = log.current!.scrollHeight; }}>Jump to live ↓</button>}
-          <Composer key={sess.id} id={sess.id} cwd={sess.cwd} busy={busy} catalogue={catalogue} takeRefill={takeRefill}
+          {sess.missing && <div className="banner bad" role="alert">{sess.missing}</div>}
+          <Composer key={sess.id} id={sess.id} cwd={sess.cwd} busy={busy} locked={sess.missing !== undefined} catalogue={catalogue} takeRefill={takeRefill}
             bar={chatPanel && <RunDock run={run} sess={sess} act={act} surface="chat" match following={false}
               open={dockOpen.chat} onOpen={(o) => setDockOpen((d) => ({ ...d, chat: o }))} onJump={() => onTab('blocks')} onDismiss={() => setDismissed(run.runId)} />} />
         </>
       ) : (
         restore === undefined ? <p className="hint">Loading…</p>
-          : <TextTab view={tab} onView={onTab} sess={sess} models={models} efforts={efforts} sessionModel={sessionModel} sessionEffort={sessionEffort} run={run} act={act} restore={restore} onState={onState} onDirty={onDirty} onRun={() => onTab('chat')}
+          : <TextTab view={tab} onView={onTab} sess={sess} models={stepModels} efforts={efforts} sessionModel={sessionModel} sessionEffort={sessionEffort} run={run} act={act} restore={restore} onState={onState} onDirty={onDirty} onRun={() => onTab('chat')}
             reveal={reveal} onRevealed={() => setReveal(undefined)} onChat={onChat} dockOpen={dockOpen.blocks} onDockOpen={(o) => setDockOpen((d) => ({ ...d, blocks: o }))} dismissed={dismissed} onDismiss={setDismissed} />
       )}
     </main>

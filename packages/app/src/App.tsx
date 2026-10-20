@@ -103,6 +103,16 @@ export function App() {
     return () => { stopped = true; es?.close(); clearTimeout(timer); };
   }, [token]);
 
+  // Leaving Settings: a provider may have been installed, disabled or removed, so the lists, the probes and each session's provider status are read again.
+  useEffect(() => {
+    if (settings || !ready) return;
+    get<{ sessions: SessionView[]; engines: Engines; providers?: Provider[] }>('/api/state').then((r) => {
+      commit(loadSessions(stRef.current, r.sessions));
+      setEngines(r.engines);
+      setProviders(r.providers ?? []);
+    }).catch(() => {});
+  }, [settings]);
+
   // Editor state per cwd. The saver stays silent until the stored state has loaded, so an early change can't overwrite it.
   const [editor, setEditor] = useState<Record<string, EditorState>>({});
   const editorRef = useRef(editor);
@@ -217,7 +227,7 @@ export function App() {
         />
         {settings ? <Providers onClose={() => setSettings(false)} /> : sess ? (
           <Chat
-            key={sess.id} sess={sess} catalogue={catalogue} providers={providers} tab={tab}
+            key={sess.id} sess={sess} catalogue={catalogue} providers={providers} engines={engines} tab={tab}
             onTab={(t) => { if (t === tab || t !== 'chat' || leave()) { setTab(t); if (t !== tab) onState(sess.cwd, { tab: t }); } }}
             restore={editor[sess.cwd]} onState={(p) => onState(sess.cwd, p)}
             onDirty={(d) => { dirty.current = d; }} onError={flash}

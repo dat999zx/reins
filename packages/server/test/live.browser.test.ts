@@ -607,14 +607,14 @@ describe.skipIf(skip)('live run e2e', () => {
     // The estimate depends on list prices; this step tests the switch, not the limit.
     store!.putSetting('switchApprovalUsd', 100);
     const model = page.getByRole('combobox', { name: 'Model', exact: true });
-    expect(await model.inputValue()).toBe('claude-sonnet-5-5');
-    expect(await model.locator('option').allInnerTexts()).toEqual(['Opus 5.5', 'Sonnet 5.5', 'Haiku 5.5', 'Fable 5.1']);
-    await model.selectOption('claude-opus-5-5');
+    expect(await model.inputValue()).toBe('claude-code:claude-sonnet-5-5');
+    expect(await model.locator('option').allInnerTexts()).toEqual(['Opus 5.5', 'Sonnet 5.5', 'Haiku 5.5', 'Fable 5.1', 'Other model...']);
+    await model.selectOption('claude-code:claude-opus-5-5');
     await tab('Chat').click();
     await page.getByText('Model set to Opus 5.5 from the next reply.', { exact: false }).waitFor();
     await page.reload();
     await rail.waitFor();
-    await expect.poll(() => model.inputValue()).toBe('claude-opus-5-5');
+    await expect.poll(() => model.inputValue()).toBe('claude-code:claude-opus-5-5');
     const costOf = async () => Number((await page.getByLabel('Session cost').innerText()).replace('$', ''));
     const c0 = await costOf();
     if ((await tab('Chat').getAttribute('aria-selected')) !== 'true') await tab('Chat').click();
@@ -627,7 +627,7 @@ describe.skipIf(skip)('live run e2e', () => {
 
     // LS. A switch over a limit asks with a card: the title and the select wait, Keep leaves the model, Switch applies it.
     store!.putSetting('switchApprovalTokens', 1000);
-    await model.selectOption('claude-sonnet-5-5');
+    await model.selectOption('claude-code:claude-sonnet-5-5');
     const sq = page.getByRole('region', { name: 'switch question', exact: true });
     await sq.locator('.qprompt').waitFor();
     expect(await sq.locator('.qprompt').innerText()).toContain('Switch to Sonnet 5.5?');
@@ -638,12 +638,12 @@ describe.skipIf(skip)('live run e2e', () => {
     expect(await model.getAttribute('title')).toBe('Answer the switch question first.');
     await sq.getByRole('button', { name: 'Keep the current model', exact: true }).click();
     await expect.poll(() => sq.count()).toBe(0);
-    expect(await model.inputValue()).toBe('claude-opus-5-5');
+    expect(await model.inputValue()).toBe('claude-code:claude-opus-5-5');
     await expect.poll(() => page.title()).toBe('Reins');
-    await model.selectOption('claude-sonnet-5-5');
+    await model.selectOption('claude-code:claude-sonnet-5-5');
     await sq.getByRole('button', { name: 'Switch', exact: true }).click();
     await page.getByText('Model set to Sonnet 5.5 from the next reply.', { exact: false }).waitFor();
-    await expect.poll(() => model.inputValue()).toBe('claude-sonnet-5-5');
+    await expect.poll(() => model.inputValue()).toBe('claude-code:claude-sonnet-5-5');
     store!.putSetting('switchApprovalTokens', 200_000);
 
     // LP. Compress: the button sends /compact on the switched model's process, the feed says how many tokens of conversation remain
@@ -694,7 +694,7 @@ describe.skipIf(skip)('live run e2e', () => {
     // every wait is on the receipt row, never a timer. fake-claude's turn index is per process, so the subagent's process plays P (0.0640898).
     await tab('Blocks').click();
     await page.locator('.wflist button', { has: page.locator('.sx-wfname', { hasText: /^sub$/ }) }).click();
-    expect(await model.inputValue()).toBe('claude-opus-5-5');
+    expect(await model.inputValue()).toBe('claude-code:claude-opus-5-5');
     const spawnsAtSub = fake.log().filter((e) => e.kind === 'args').length;
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     await dockCard('trust').getByRole('button', { name: 'Trust', exact: true }).click();

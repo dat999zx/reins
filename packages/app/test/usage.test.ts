@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { LogRow } from '@reins/server/store.js';
-import { compressBlock, compressBusy, contextWords, effortBlock, hasReplied, modelOptions, pickerBlock, shownEffort, shownModel, tokens, usageOf } from '../src/usage.js';
+import { compressBlock, compressBusy, contextWords, effortBlock, groupOptions, hasReplied, modelGroups, modelOptions, pickerBlock, shownEffort, shownModel, tokens, typedModel, usableProvider, usageOf, windowOf } from '../src/usage.js';
 
 let seq = 0;
 const row = (type: string, data: unknown = {}): LogRow => ({ sessionId: 's1', seq: ++seq, ts: 1000 + seq, type, data });
@@ -79,6 +79,59 @@ describe('modelOptions', () => {
     expect(modelOptions(list)).toEqual(list);
     expect(modelOptions(list, 'b')).toEqual(list);
     expect(modelOptions(list, 'sonnet')).toEqual([...list, { id: 'sonnet', label: 'sonnet' }]);
+  });
+});
+
+describe('providers in one picker', () => {
+  const providers = [
+    { id: 'alpha', label: 'Alpha', models: [{ id: 'a1', label: 'A1', window: 1000 }, { id: 'a2', label: 'A2' }] },
+    { id: 'beta', label: 'Beta', models: [{ id: 'b1', label: 'B1', window: 64_000 }, { id: 'q:30b', label: 'Q', window: 32_000 }] },
+    { id: 'gamma', label: 'Gamma', models: [{ id: 'g1', label: 'G1' }] },
+  ];
+  const all = () => true;
+  it('groups N providers, the session provider first, values provider:model', () => {
+    const out = modelGroups(providers, 'beta', all);
+    expect(out.map((o) => [o.group, o.id])).toEqual([
+      ['Beta', 'beta:b1'], ['Beta', 'beta:q:30b'], ['Alpha', 'alpha:a1'], ['Alpha', 'alpha:a2'], ['Gamma', 'gamma:g1'],
+    ]);
+    expect(groupOptions(out).map((g) => [g.label, g.options.length])).toEqual([['Beta', 2], ['Alpha', 2], ['Gamma', 1]]);
+  });
+  it('with plainOwn the session provider keeps plain ids and the others are provider:model', () => {
+    expect(modelGroups(providers, 'alpha', all, true).map((o) => o.id)).toEqual(['a1', 'a2', 'beta:b1', 'beta:q:30b', 'gamma:g1']);
+  });
+  it('leaves out a provider that is not usable but never the session provider', () => {
+    expect(modelGroups(providers, 'alpha', (id) => id === 'gamma').map((o) => o.id)).toEqual(['alpha:a1', 'alpha:a2', 'gamma:g1']);
+  });
+  it('one provider is a flat list', () => {
+    expect(groupOptions(modelGroups(providers.slice(0, 1), 'alpha', all))).toHaveLength(1);
+    expect(groupOptions(modelGroups(providers.slice(0, 1), 'alpha', all))[0]!.label).toBeUndefined();
+  });
+  it('usableProvider: not installed or disabled (absent from the server list) is out; a failed probe is out; no probe entry is in', () => {
+    const e = [{ id: 'beta', installed: true, loggedIn: false }, { id: 'gamma', installed: true, loggedIn: 'a warning' }];
+    expect(usableProvider('alpha', ['alpha'], e)).toBe(true);
+    expect(usableProvider('beta', ['alpha', 'beta'], e)).toBe(false);
+    expect(usableProvider('gamma', ['alpha', 'gamma'], e)).toBe(true);
+    expect(usableProvider('gamma', ['alpha'], e)).toBe(false);
+    expect(usableProvider('alpha', undefined, [])).toBe(true);
+  });
+  it('typedModel: a colon names its provider, none means the session provider, blank is ignored', () => {
+    expect(typedModel('beta:b9', 'alpha')).toBe('beta:b9');
+    expect(typedModel('  x1  ', 'alpha')).toBe('alpha:x1');
+    expect(typedModel('x1')).toBe('x1');
+    expect(typedModel('   ', 'alpha')).toBeUndefined();
+    expect(typedModel('', 'alpha')).toBeUndefined();
+  });
+  it('windowOf reads a plain id on the session provider and a provider:model of any provider', () => {
+    expect(windowOf(providers, 'beta', 'b1')).toBe(64_000);
+    expect(windowOf(providers, 'beta', 'alpha:a1')).toBe(1000);
+    expect(windowOf(providers, 'alpha', 'beta:b1')).toBe(64_000);
+    expect(windowOf(providers, 'alpha', 'beta:q:30b')).toBe(32_000);
+    expect(windowOf(providers, 'beta', 'q:30b')).toBe(32_000);
+    expect(windowOf(providers, 'alpha', 'beta:nope')).toBeUndefined();
+    expect(windowOf(providers, 'alpha', 'a2')).toBeUndefined();
+  });
+  it('the context words use the window of a model of a provider other than the first', () => {
+    expect(contextWords({ model: 'b1', used: 32_000, stale: false }, windowOf(providers, 'beta', 'b1')).text).toBe('Context 32k / 64k');
   });
 });
 

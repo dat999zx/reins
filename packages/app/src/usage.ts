@@ -46,11 +46,62 @@ export function contextWords(u?: Usage, fallback?: number): { text: string; titl
   return { text, title: `${u.model}: ${num(u.used)}${window === undefined ? '' : ` of ${num(window)}`} tokens after the last reply.` };
 }
 
-/** The provider's list, then the current model when the list does not have it. */
-export function modelOptions(models: Array<{ id: string; label: string }>, current?: string): Array<{ id: string; label: string }> {
+/** One picker entry; `group` is the provider's label (set when the list spans providers). */
+export interface PickOption { id: string; label: string; group?: string }
+
+/** The list, then the current model when the list does not have it (in the first entry's group). */
+export function modelOptions(models: PickOption[], current?: string): PickOption[] {
   const out = [...models];
-  if (current && !models.some((m) => m.id === current)) out.push({ id: current, label: current });
+  if (current && !models.some((m) => m.id === current)) out.push({ id: current, label: current, ...(models[0]?.group !== undefined ? { group: models[0].group } : {}) });
   return out;
+}
+
+/** The entries split by group, in order; one group (or none) is a flat list with no label. */
+export function groupOptions(options: PickOption[]): Array<{ label?: string; options: PickOption[] }> {
+  const labels = [...new Set(options.map((o) => o.group))];
+  if (labels.length < 2) return [{ options }];
+  return labels.map((label) => ({ ...(label !== undefined ? { label } : {}), options: options.filter((o) => o.group === label) }));
+}
+
+/** The words of the last option of a model picker, and the value it carries (never a model id). */
+export const OTHER = { id: '__other__', label: 'Other model...' };
+
+/** What a typed model id posts (spec 9.1): with a `:` it is `provider:model`; without, a model on `own` (the session's provider), else the plain id. Empty: nothing. */
+export function typedModel(text: string, own?: string): string | undefined {
+  const t = text.trim();
+  if (!t) return undefined;
+  return t.includes(':') || own === undefined ? t : `${own}:${t}`;
+}
+
+/**
+ * Every provider's models as one tagged list, the session's provider first. Values are `provider:model`; with `plainOwn` the session's own
+ * models keep their plain id (a step's `model:` field names its own provider's models that way). `usable` says which other providers may be offered.
+ */
+export function modelGroups(
+  providers: Array<{ id: string; label: string; models: Array<{ id: string; label: string }> }>, own: string | undefined,
+  usable: (id: string) => boolean, plainOwn = false,
+): PickOption[] {
+  const list = providers.filter((p) => p.id === own || usable(p.id));
+  return [...list.filter((p) => p.id === own), ...list.filter((p) => p.id !== own)].flatMap((p) =>
+    p.models.map((m) => ({ id: plainOwn && p.id === own ? m.id : `${p.id}:${m.id}`, label: m.label, group: p.label })));
+}
+
+/** Whether a provider may be offered in a picker: the server lists it as installed and enabled for the session, and its probe (if it has one) is well. */
+export function usableProvider(id: string, installed: string[] | undefined, engines: Array<{ id: string; installed: boolean; loggedIn: boolean | string }>): boolean {
+  if (installed && !installed.includes(id)) return false;
+  const e = engines.find((x) => x.id === id);
+  return !e || (e.installed && !!e.loggedIn);
+}
+
+/**
+ * The catalog's context window for a model: a plain id is a model of `own`; `provider:model` is read at the first `:` when that prefix is a listed provider
+ * (any provider, not only the first or the session's), else the whole text is a plain id of `own`.
+ */
+export function windowOf(providers: Array<{ id: string; models: Array<{ id: string; window?: number }> }>, own: string | undefined, name: string): number | undefined {
+  const cut = name.indexOf(':');
+  const named = cut > 0 ? providers.find((p) => p.id === name.slice(0, cut)) : undefined;
+  const [provider, model] = named ? [named, name.slice(cut + 1)] : [providers.find((p) => p.id === own), name];
+  return provider?.models.find((m) => m.id === model)?.window;
 }
 
 /** The model a session runs on: its own, else the last reply's (a session from before every session had one), else its provider's default. */

@@ -116,7 +116,7 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, models, e
     const set = (nv: string) => onEdit((m) => editStep(m, s.id, (x) => applyField(x, t.field, nv)));
     if (f?.input === 'model' || f?.input === 'effort') {
       const pick = pickFor(f, { models, efforts, sessionModel, sessionEffort });
-      return <OptionPicker key={i} className="sx-pill" label={label} options={pick.options} value={v} blank={pick.blank} disabled={dead} onChange={set} />;
+      return <OptionPicker key={i} className="sx-pill" label={label} options={pick.options} value={v} blank={pick.blank} other={pick.other} disabled={dead} onChange={set} />;
     }
     if (f?.input === 'mode') {
       return <select key={i} aria-label={label} className="sx-pill" value={v} inert={dead} onChange={(e) => set(e.target.value)}>
