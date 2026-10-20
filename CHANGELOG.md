@@ -4,6 +4,12 @@ Format: [Keep a Changelog](https://keepachangelog.com). Versions: [SemVer](https
 
 ## Unreleased
 
+- Providers are mods (Milestone P). A provider is one folder in `~/.reins/mods/<id>/` with a `mod.json`: any endpoint and any API key works through the two built-in chat protocols, and a new API is a code mod (a protocol) that you write and trust. Settings > Providers lists them with their status, and has Test connection, Set key, Edit, Disable, Export and Remove. `packages/server/src/mods/README.md` is the guide.
+- Reins has its own agent loop for API providers: Read, Write, Edit, Glob, Grep and a shell tool (Bash, or PowerShell on Windows), with the same approval cards, budget and receipt as a Claude Code session. The conversation is a file in `~/.reins/conversations/` and is kept when you switch between two API providers. These sessions read `AGENTS.md`, not `CLAUDE.md`. The file tools stay in the project folder (outside it they ask); the shell is not confined to it, so the approval is the guard.
+- A first-run chooser offers the catalog of 11 providers. Every one is marked untested until someone has run it, and a price is shown only where a source is known. Programs on your own machine are pre-ticked and are looked for only on local addresses, only on the first run.
+- Export and import: a mod exports as one JSON file with no key in it, and an import shows a preview first. A mod with code is imported but does not run until you trust it. Trust is by hash and asks again when any file changes.
+- Consent and keys: before Reins sends your prompts and a key to an address, it asks once for that provider and address. Keys are stored in plain text in `~/.reins/secrets.json` (an environment variable always works instead). They are kept out of the shell tool and workflow commands, and hidden in the log, the events, the conversation file and exports.
+- The built-in `claude` provider is renamed `claude-code`. A session that still names `claude` says it no longer exists and needs a new session. Everything is local: Reins itself sends nothing anywhere except to a provider address you said yes to.
 - Each block now lives in its own files (a node and a view); adding a block takes two files and one line. Files, runs, the receipt and the terminal output are unchanged.
 - The Chat renders the agent's markdown (headings, lists, tables, code, links), in its replies, its reasoning and a subagent's result.
 - A verify (and a knowl store) now gets the subagent results like a plain step, and a verify against a step that never ran says so.

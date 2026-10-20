@@ -1,0 +1,9 @@
+{
+  "reins": 1,
+  "id": "toy-echo",
+  "kind": "protocol",
+  "version": "1.0.0",
+  "label": "Toy echo wire",
+  "description": "A fixed script for tests: one shell call, then the answer.",
+  "main": "index.js"
+}
