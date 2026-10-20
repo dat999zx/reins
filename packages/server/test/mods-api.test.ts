@@ -121,7 +121,7 @@ describe('GET /api/mods', () => {
     expect(r.json.problems).toEqual([]);
     // the chooser: installable providers that are not installed; never the built-in one, an invalid entry, or a folder that is not an id
     expect(r.json.chooser.map((c: { id: string }) => c.id)).toEqual(['alpha', 'beta']);
-    expect(r.json.chooser[0]).toEqual({ id: 'alpha', label: 'ALPHA', description: 'The alpha test provider', protocol: 'openai-chat', host: 'api.alpha.test', keyEnv: ['ALPHA_API_KEY'], untested: true });
+    expect(r.json.chooser[0]).toEqual({ id: 'alpha', label: 'ALPHA', description: 'The alpha test provider', protocol: 'openai-chat', host: 'api.alpha.test', keyEnv: ['ALPHA_API_KEY'], untested: true, local: false });
   });
 
   it('provider rows carry their manifest (names only), and the list holds no key value', async () => {

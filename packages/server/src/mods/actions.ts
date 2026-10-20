@@ -48,7 +48,7 @@ const id$ = (id: string) => `\`${cap(id, 40)}\``;
 
 const modsDir = (home: string) => path.join(home, 'mods');
 const disabledFile = (home: string) => path.join(home, 'disabled-mods.json');
-/** The marker Task 22's `POST /api/mods/first-run/done` writes. */
+/** The marker `POST /api/mods/first-run/done` (Skip) and a first install write. */
 export const firstRunFile = (home: string) => path.join(home, 'first-run-done');
 
 /** The ids the user switched off. A missing or damaged file reads as none. */
@@ -280,25 +280,68 @@ function summary(env: ModEnv, m: LoadedMod) {
   };
 }
 
-/** The catalog providers not installed yet. `claude-code` is built in and never offered. */
-function chooser(env: ModEnv) {
-  return catalogIds(env).flatMap((id) => {
+const PROBE_MS = 1000;
+/**
+ * Whether a catalog entry is a program on this machine that is running: it needs no key, its address is localhost, 127.0.0.0/8 or ::1, and a
+ * plain GET of its model list answers 2xx within a second. Any other address is never contacted. The request carries nothing but the default
+ * headers (no key, no body, no cookies), a redirect is refused, and the answer's body is thrown away after the status. Any error is false.
+ */
+async function runsHere(raw: Record<string, unknown>): Promise<boolean> {
+  if (!isObj(raw.auth) || raw.auth.style !== 'none') return false;
+  try {
+    const base = new URL(String(raw.baseUrl));
+    const list = new URL(typeof raw.modelsUrl === 'string' ? raw.modelsUrl : `${String(raw.baseUrl).replace(/\/+$/, '')}/models`);
+    for (const u of [base, list]) if ((u.protocol !== 'http:' && u.protocol !== 'https:') || !isLocalHost(u.hostname) || u.username || u.password) return false;
+    const res = await fetch(list, { method: 'GET', redirect: 'error', signal: AbortSignal.timeout(PROBE_MS) });
+    void res.body?.cancel().catch(() => {});
+    return res.status >= 200 && res.status < 300;
+  } catch {
+    return false;
+  }
+}
+
+/** The catalog providers not installed yet. `claude-code` is built in and never offered. `local`: it runs on this machine now (see `runsHere`). */
+async function chooser(env: ModEnv, probe: boolean) {
+  const entries = catalogIds(env).flatMap((id) => {
     const raw = readCatalog(env, id);
     if (!raw || id === 'claude-code' || exists(env, id) || problemsOf(env, raw, id).length) return [];
     const auth = isObj(raw.auth) && Array.isArray(raw.auth.keyEnv) ? raw.auth.keyEnv.filter((x): x is string => typeof x === 'string') : [];
     let host = '';
     try { host = new URL(String(raw.baseUrl)).host; } catch { /* validated above */ }
-    return [{
+    return [{ raw, entry: {
       id, label: String(raw.label), description: typeof raw.description === 'string' ? raw.description : '',
       protocol: String(raw.protocol), host, keyEnv: auth, untested: raw.untested === true,
-    }];
+    } }];
   });
+  // Only the first-run screen pre-ticks, so only then is anything asked of a local address.
+  const up = probe ? await Promise.all(entries.map((e) => runsHere(e.raw))) : entries.map(() => false);
+  return entries.map((e, i) => ({ ...e.entry, local: up[i]! }));
 }
 
-export function listMods(env: ModEnv): Reply {
+export async function listMods(env: ModEnv): Promise<Reply> {
   // First run: the marker was never written and no provider besides the built-in ones was installed.
   const firstRun = !there(firstRunFile(env.home)) && !env.mods.mods.some((m) => m.kind === 'provider' && m.source === 'user');
-  return { status: 200, body: { mods: env.mods.mods.map((m) => summary(env, m)), firstRun, chooser: chooser(env), problems: env.mods.problems } };
+  return { status: 200, body: { mods: env.mods.mods.map((m) => summary(env, m)), firstRun, chooser: await chooser(env, firstRun), problems: env.mods.problems } };
+}
+
+// ---- POST /api/mods/first-run/done
+
+/** Writes the first-run marker and makes the mods folder (empty) when it is not there. Safe to repeat. */
+function markFirstRunDone(home: string) {
+  fs.mkdirSync(modsDir(home), { recursive: true });
+  writeWhole(home, firstRunFile(home), '');
+}
+
+/** "Skip" of the first-run screen: the chooser is not shown again, and nothing is installed. */
+export function firstRunDone(env: ModEnv): Promise<Reply> {
+  return serial(env.home, () => {
+    try {
+      markFirstRunDone(env.home);
+    } catch {
+      return fail(500, 'Reins could not save that the first run is done.');
+    }
+    return { status: 200, body: { ok: true } };
+  });
 }
 
 // ---- POST /api/mods/install
@@ -323,6 +366,9 @@ export function installMods(env: ModEnv, ids: unknown): Promise<Reply> {
       } catch {
         no('could not be written. Nothing was added.');
       }
+    }
+    if (results.some((r) => r.ok)) {
+      try { markFirstRunDone(env.home); } catch { /* the installed provider already ends the first run */ }
     }
     return reloaded(env, { results });
   });

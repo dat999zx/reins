@@ -3,6 +3,8 @@ import type { LogRow } from '@reins/server/store.js';
 import type { TagEntry } from '@reins/server/tags.js';
 import { ApiError, get, initToken, post, stream } from './api.js';
 import { Chat, type Provider } from './Chat.js';
+import { FirstRun } from './FirstRun.js';
+import { cardsOf, type ChooserEntry } from './firstRunCards.js';
 import { loadEditorState, makeSaver, type EditorState, type Tab } from './editorState.js';
 import { ProviderBanner, type Engines } from './ProviderBanner.js';
 import { Providers } from './Providers.js';
@@ -34,6 +36,19 @@ export function App() {
   const [pathBox, setPathBox] = useState(false);
   const [path, setPath] = useState('');
   const dirty = useRef(false);
+  // The first-run screen (spec 7.3): the chooser entries while it is showing. Asked once; a failed or empty answer never holds the app back.
+  const [firstRun, setFirstRun] = useState<ChooserEntry[] | undefined>();
+  const [asked, setAsked] = useState(false);
+  useEffect(() => {
+    if (!token) return;
+    get<{ firstRun: boolean; chooser: ChooserEntry[]; mods: Array<{ id: string; kind: string; bundled: boolean }> }>('/api/mods')
+      .then((r) => {
+        const cards = cardsOf(r.chooser, r.mods.filter((m) => m.kind === 'provider' && m.bundled).map((m) => m.id));
+        if (r.firstRun && cards.length) setFirstRun(cards);
+      })
+      .catch(() => {})
+      .finally(() => setAsked(true));
+  }, [token]);
 
   const commit = (next: State) => { stRef.current = next; setSt(next); };
 
@@ -176,7 +191,8 @@ export function App() {
   }, []);
 
   if (!token) return <div className="center"><h1>Reins</h1><p>Open the address <code>reins</code> printed.</p></div>;
-  if (!ready) return <div className="center"><p>{reconnecting ? 'Reconnecting…' : 'Loading…'}</p></div>;
+  if (!ready || !asked) return <div className="center"><p>{reconnecting ? 'Reconnecting…' : 'Loading…'}</p></div>;
+  if (firstRun) return <div className="app"><FirstRun cards={firstRun} onLeave={() => setFirstRun(undefined)} /></div>;
 
   const sess = selected ? st.sessions[selected] : undefined;
 

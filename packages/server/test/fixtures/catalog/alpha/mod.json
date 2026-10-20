@@ -1,0 +1,15 @@
+{
+  "reins": 1,
+  "id": "alpha",
+  "kind": "provider",
+  "version": "1.0.0",
+  "label": "Alpha",
+  "description": "A test provider that runs on this machine and needs no key.",
+  "protocol": "openai-chat",
+  "baseUrl": "http://127.0.0.1:__PORT__/v1",
+  "auth": { "style": "none", "keyEnv": [] },
+  "defaultModel": "alpha-m",
+  "models": [{ "id": "alpha-m", "label": "Alpha M", "price": { "input": 0, "output": 0 } }],
+  "price": { "input": 0, "output": 0 },
+  "untested": true
+}

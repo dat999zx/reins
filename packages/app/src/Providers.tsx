@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ApiError, del, get, post, put } from './api.js';
 import { cx } from './generic.js';
+import { ImportPanel } from './ImportSummary.js';
 import { editBody, emptyForm, emptyModel, errorsByField, formToManifest, manifestToForm, type AuthStyle, type ProviderForm } from './providerForm.js';
 import { AGENTS_LINE, KEYS_LINE, apiProtocols, rowInfo, type ModRow } from './providersStatus.js';
 
@@ -160,7 +161,7 @@ function Row({ row, reload, edit }: { row: ModRow; reload: () => Promise<void>; 
     a.href = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' }));
     a.download = `${row.id}.reins-mod.json`;
     a.click();
-    URL.revokeObjectURL(a.href);
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   });
   return (
     <li className={cx('prow', !row.enabled && 'dim')} data-id={row.id}>
@@ -210,6 +211,8 @@ export function Providers({ onClose }: { onClose: () => void }) {
   const [rows, setRows] = useState<ModRow[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [problem, setProblem] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [said, setSaid] = useState('');
   const [form, setForm] = useState<{ initial: ProviderForm; editing: boolean; original?: unknown } | undefined>();
   const reload = async () => {
     try {
@@ -230,7 +233,10 @@ export function Providers({ onClose }: { onClose: () => void }) {
       <p className="hint">{AGENTS_LINE}</p>
       <div className="pactions">
         <button className="primary" onClick={() => setForm({ initial: emptyForm(protocols[0]?.id ?? ''), editing: false })}>Add custom endpoint</button>
+        <button onClick={() => setImporting(true)}>Import</button>
       </div>
+      {said && <p className="pmsg" role="status">{said}</p>}
+      {importing && <ImportPanel onCancel={() => setImporting(false)} onDone={(m) => { setImporting(false); setSaid(m); void reload(); }} />}
       {form && (
         <FormView key={form.initial.id || 'new'} {...form} protocols={protocols} onCancel={() => setForm(undefined)} onDone={() => { setForm(undefined); void reload(); }} />
       )}

@@ -8,7 +8,7 @@ import { sameToken } from './token.js';
 import { releaseLock, runningLock, takeLock } from './lock.js';
 import type { Catalog, CatalogModel } from './catalog.js';
 import { CATALOG_DIR, checkEnvFrom, consentFrom, defaultProviderOf, folderTrustFrom, hostSend, keyEnvNames, liveListSource, providerOrigin, providerViews, startMods, type ProviderView } from './engines.js';
-import { addCustom, deleteKey, editMod, exportMod, importApply, importPreview, installMods, listMods, providerStatus, putKey, reinstallMod, removeMod, revokeConsent, setConsent, setEnabled, testConnection, type ConsentStore } from './mods/actions.js';
+import { addCustom, deleteKey, editMod, exportMod, firstRunDone, importApply, importPreview, installMods, listMods, providerStatus, putKey, reinstallMod, removeMod, revokeConsent, setConsent, setEnabled, testConnection, type ConsentStore } from './mods/actions.js';
 import { childEnv, type Redactor } from './secrets.js';
 import { createLiveModels } from './live-models.js';
 import { listModels, parseModel, type PickerModel } from './models.js';
@@ -340,6 +340,8 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     if (action === 'key' && (req.url ?? '').includes('?')) return fail(400, 'A key goes in the request body, never in the address.');
     if (req.method === 'GET' && id === undefined) return listMods(env);
     let reply: Reply | undefined;
+    if (req.method === 'POST' && id === 'first-run' && action === 'done') reply = await firstRunDone(env);
+    else
     if (req.method === 'POST' && id === 'install' && !action) reply = (await given((b) => installMods(env, b.ids))) as Reply;
     else if (req.method === 'POST' && id === 'custom' && !action) reply = (await given((b) => addCustom(env, b))) as Reply;
     else if (req.method === 'POST' && id === 'import' && action === 'preview') reply = (await given((b) => importPreview(env, b.file))) as Reply;

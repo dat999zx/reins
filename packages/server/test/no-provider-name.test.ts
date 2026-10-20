@@ -55,6 +55,11 @@ const ALLOW: Array<{ file: string; text: string; reason: string }> = [
     text: "export const AGENTS_LINE = 'Sessions on API providers do not read CLAUDE.md; put shared rules in AGENTS.md.';",
     reason: 'the fixed line of spec 7.4 names a file, not a provider',
   },
+  {
+    file: 'packages/app/src/firstRunCards.ts',
+    text: "export const BUILT_IN_LINE = 'Claude Code is built in and ready if it is installed.';",
+    reason: 'the fixed sentence of spec 7.3 on the first-run screen names the built-in program; no card or id of it is in the app',
+  },
 ];
 
 describe('no provider name outside packages/server/src/mods', () => {
