@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { EngineProbe } from '@reins/core';
+import { readDisabled } from './mods/actions.js';
 import { loadMods } from './mods/loader.js';
 import { loopEngine } from './loop/engine.js';
 import { childEnv, envGet, keyStatus, readSecrets, Redactor, redactCut, StreamRedactor } from './secrets.js';
@@ -12,10 +13,39 @@ import type { MakeEngine, SessionDeps } from './session.js';
 /** The bundled mods: the folder this code sits in, `src/mods` under tests and `dist/mods` in the build. */
 export const BUNDLED_MODS = fileURLToPath(new URL('./mods/', import.meta.url));
 
-/** Loads the bundled mods and the user's (`<dir>/mods`). `dir` is the Reins folder (`~/.reins`). */
-export const startMods = (o: { dir: string; env: NodeJS.ProcessEnv }): Promise<Mods> =>
-  // ponytail: nothing is switched off and no code is trusted yet; settings and the trust store come with the settings tasks.
-  loadMods({ bundledDir: BUNDLED_MODS, userDir: path.join(o.dir, 'mods'), home: o.dir, disabled: new Set(), trusted: () => false, env: o.env });
+/** The providers the first-run list and Settings offer to install: `packages/server/catalog`, beside `src` and `dist`. */
+export const CATALOG_DIR = fileURLToPath(new URL('../catalog/', import.meta.url));
+
+/**
+ * Loads the bundled mods and the user's (`<dir>/mods`). `dir` is the Reins folder (`~/.reins`). The result can `reload()`: it reads the folders
+ * and the on/off list again and swaps the new state into the same object. One reload at a time.
+ * ponytail: no code is trusted yet; the trust store comes with the settings tasks.
+ */
+export async function startMods(o: { dir: string; env: NodeJS.ProcessEnv }): Promise<Mods> {
+  const load = () => loadMods({ bundledDir: BUNDLED_MODS, userDir: path.join(o.dir, 'mods'), home: o.dir, disabled: readDisabled(o.dir), trusted: () => false, env: o.env });
+  let inner = await load();
+  let tail: Promise<unknown> = Promise.resolve();
+  const live: Mods = {
+    mods: inner.mods, registry: inner.registry, problems: inner.problems,
+    dispose: () => inner.dispose(),
+    reload: () => (tail = tail.catch(() => {}).then(async () => {
+      const next = await load();
+      // Trouble with a whole folder (it could not be read): what ran before stays, and the words come back.
+      if (next.problems.length) {
+        next.dispose();
+        return next.problems;
+      }
+      const old = inner;
+      inner = next;
+      live.mods = next.mods;
+      live.registry = next.registry;
+      live.problems = next.problems;
+      old.dispose();
+      return [];
+    })) as Promise<string[]>,
+  };
+  return live;
+}
 
 const manifestOf = (mods: Mods, provider: string) => mods.registry.get<LoadedMod>('provider', provider)?.manifest as ProviderManifest | undefined;
 

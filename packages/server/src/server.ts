@@ -7,7 +7,8 @@ import { printWorkflow, type EngineProbe, type Workflow } from '@reins/core';
 import { sameToken } from './token.js';
 import { releaseLock, runningLock, takeLock } from './lock.js';
 import type { Catalog, CatalogModel } from './catalog.js';
-import { checkEnvFrom, defaultProviderOf, folderTrustFrom, hostSend, keyEnvNames, liveListSource, providerViews, startMods, type ProviderView } from './engines.js';
+import { CATALOG_DIR, checkEnvFrom, defaultProviderOf, folderTrustFrom, hostSend, keyEnvNames, liveListSource, providerViews, startMods, type ProviderView } from './engines.js';
+import { addCustom, editMod, installMods, listMods, reinstallMod, removeMod, setEnabled } from './mods/actions.js';
 import { childEnv, type Redactor } from './secrets.js';
 import { createLiveModels } from './live-models.js';
 import { listModels, parseModel, type PickerModel } from './models.js';
@@ -35,6 +36,8 @@ export interface ServerOptions {
   catalog?: Catalog;
   /** The loaded mods. None: the bundled ones are loaded here (tests that build a server by hand). */
   mods?: Mods;
+  /** Where the providers the settings can install from live (`<id>/mod.json`). None: the catalog that ships with Reins. */
+  catalogDir?: string;
   /** The env workflow commands start from; the server removes the installed key names and REINS_* from it, whatever it is given. None: this process's. */
   env?: NodeJS.ProcessEnv;
   /** Hides secrets in what the API shows (the probe answers) and in streamed command output, and refuses workflow text that holds one. None: nothing is hidden. */
@@ -188,7 +191,8 @@ function send(res: http.ServerResponse, r: Reply) {
 export async function startServer(o: ServerOptions): Promise<Server> {
   const ownMods = o.mods ? undefined : await startMods({ dir: o.dir, env: {} });
   const mods = (o.mods ?? ownMods)!;
-  const providers = providerViews(mods);
+  // Read again after every change in Settings > Providers (`afterModChange`); everything below reads the variable when it runs.
+  let providers = providerViews(mods);
   const catalog = o.catalog;
   const catalogOf = (p: ProviderView): CatalogModel[] => (p.catalog ? catalog?.models(p.catalog) ?? [] : []);
   // The live lists (spec 7.2) go through the host's `send` only, and a keyed provider's only once its consent is recorded.
@@ -304,14 +308,46 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     }
   }
 
+  // Settings > Providers (spec 7.3 to 7.5). The loader has already swapped its registry inside `mods`; what the server copied from it is read again here.
+  const afterModChange = () => {
+    providers = providerViews(mods);
+    deps.env = childEnv(o.env ?? process.env, keyEnvNames(mods));
+    o.redactor?.refresh();
+  };
+  async function modsApi(req: http.IncomingMessage, sub: string | undefined, action: string | undefined): Promise<Reply> {
+    const env = { home: o.dir, catalogDir: o.catalogDir ?? CATALOG_DIR, mods };
+    const given = async <T>(use: (b: Record<string, unknown>) => Promise<T> | T): Promise<T | Reply> => {
+      const r = await parse(req);
+      return 'fail' in r ? r.fail : use(r.b as Record<string, unknown>);
+    };
+    let id: string | undefined;
+    try { id = sub === undefined ? undefined : decodeURIComponent(sub); } catch { return fail(400, 'That is not a valid mod id.'); }
+    if (req.method === 'GET' && id === undefined) return listMods(env);
+    let reply: Reply | undefined;
+    if (req.method === 'POST' && id === 'install' && !action) reply = (await given((b) => installMods(env, b.ids))) as Reply;
+    else if (req.method === 'POST' && id === 'custom' && !action) reply = (await given((b) => addCustom(env, b))) as Reply;
+    else if (req.method === 'PUT' && id !== undefined && !action) reply = (await given((b) => editMod(env, id, b))) as Reply;
+    else if (req.method === 'DELETE' && id !== undefined && !action) reply = await removeMod(env, id);
+    else if (req.method === 'POST' && id !== undefined && (action === 'enable' || action === 'disable')) reply = await setEnabled(env, id, action === 'enable');
+    else if (req.method === 'POST' && id !== undefined && action === 'reinstall') reply = await reinstallMod(env, id);
+    if (!reply) return fail(404, 'Not found.');
+    if (reply.status === 200) afterModChange(); // a refused change touched nothing
+    return reply;
+  }
+
   async function dispatch(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<Reply> {
     const p = url.pathname;
+    const modsRoute = /^\/api\/mods(?:\/([^/]+)(?:\/([a-z]+))?)?$/.exec(p);
+    if (modsRoute) {
+      const r = await modsApi(req, modsRoute[1], modsRoute[2]);
+      return { status: r.status, body: hide(r.body) };
+    }
     if (req.method === 'GET' && p === '/api/state') {
       void catalog?.refresh(); // never rejects; a no-op inside 4 hours
       // The live lists are asked for here (a keyed provider only with consent); the answer shows in the next state. Never rejects.
       for (const pr of providers) if (deps.providers!.installed(pr.id)) void live.refresh(pr.id);
       // Provider and model names come from manifests and the catalog: text a mod or a provider wrote.
-      return ok(hide({ sessions: [...sessions.values()].map((s) => ({ ...view(s), ...providerState(s) })), engines, groups: groups(), providers: providers.map((pr) => ({ id: pr.id, label: pr.label, defaultModel: pr.defaultModel, defaultEffort: pr.defaultEffort, efforts: pr.efforts, models: list(pr) })) }));
+      return ok(hide({ sessions: [...sessions.values()].map((s) => ({ ...view(s), ...providerState(s) })), engines: engines.filter((e) => providers.some((pr) => pr.id === e.id)), groups: groups(), providers: providers.map((pr) => ({ id: pr.id, label: pr.label, defaultModel: pr.defaultModel, defaultEffort: pr.defaultEffort, efforts: pr.efforts, models: list(pr) })) }));
     }
     if (req.method === 'POST' && p === '/api/state/probe') { engines = await probeNow(); return ok({ engines }); }
     if (req.method === 'GET' && p === '/api/tags') return ok({ tags: tagCatalogue() });

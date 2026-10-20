@@ -216,4 +216,9 @@ export interface Mods {
   /** Trouble with a whole mods folder (it could not be read), as opposed to one mod. */
   problems: Problem[];
   dispose(): void;
+  /**
+   * Reads the folders again and swaps `mods`, `registry` and `problems` in this same object, so everything holding it sees the new state.
+   * A read with trouble in a whole folder keeps the old state; the problems come back. None when the loader was not started by `startMods`.
+   */
+  reload?(): Promise<Problem[]>;
 }

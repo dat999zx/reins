@@ -275,6 +275,16 @@ function commonProblems(raw: Record<string, unknown>, f: Pick<Found, 'folder' | 
   return out;
 }
 
+/** The id rule, whole: the shape and not a Windows reserved name. Settings actions check every id with this before any file is touched. */
+export const isModId = (id: unknown): id is string => typeof id === 'string' && ID.test(id) && !RESERVED.test(id);
+
+/** The loader's whole check of one manifest: the common checks, then the kind's own. The settings actions run the same function before they write. */
+export function validateMod(raw: Record<string, unknown>, f: { folder: string; source: ModSource }, id: string, bundledKinds: Map<string, string>, registry: Registry): Problem[] {
+  const common = commonProblems(raw, f, id, bundledKinds);
+  if (common.length) return common;
+  return kindOf(raw.kind as string)!.validate(raw, { id, registry }).slice(0, 20); // a hostile file cannot flood the list
+}
+
 /** Everything one mod must undo: its registry entries and whatever else a kind handed back. */
 interface Tx {
   undo: Array<() => void>;
@@ -370,9 +380,8 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
         mod.manifest = raw;
         mod.hasCode = raw.main !== undefined;
       }
-      mod.problems.push(...commonProblems(raw, f, id, bundledKinds));
+      mod.problems.push(...validateMod(raw, f, id, bundledKinds, registry));
       const kind = kindOf(kindId)!;
-      if (!mod.problems.length) mod.problems.push(...kind.validate(raw, { id, registry }).slice(0, 20)); // a hostile file cannot flood the list
       if (mod.problems.length) return;
 
       const main = canonMain(raw.main);
