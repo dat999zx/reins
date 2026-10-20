@@ -1,5 +1,6 @@
 import type { Workflow } from '@reins/core';
 import { parseModel } from './models.js';
+import { retiredProviders } from './mods/retired.js';
 import { modelStepsOf } from './trust.js';
 
 /** What the run-start checks need to know of one installed, enabled provider (built from its manifest and its key state, `engines.ts`). */
@@ -27,7 +28,15 @@ export interface CheckEnv {
 
 export interface RunSession { provider: string; model?: string | undefined }
 
-export const missingProviderWords = (id: string) => `This session uses ${id}, which is not installed. Install it in Settings > Providers, or start a new session.`;
+export const missingProviderWords = (id: string) => retiredProviders.includes(id)
+  ? `This session uses ${id}, which no longer exists. Start a new session.`
+  : `This session uses ${id}, which is not installed. Install it in Settings > Providers, or start a new session.`;
+
+/** What the UI shows of a session's provider: `ok`, `missing` (not installed or disabled; installing fixes it) or `gone` (retired; only a new session helps). */
+export type ProviderStatus = { status: 'ok' } | { status: 'missing' | 'gone'; words: string };
+
+export const providerStatus = (id: string, installed: (id: string) => boolean): ProviderStatus =>
+  installed(id) ? { status: 'ok' } : { status: retiredProviders.includes(id) ? 'gone' : 'missing', words: missingProviderWords(id) };
 export const noKeyWords = (f: Pick<ProviderFacts, 'label' | 'keyEnv'>) =>
   `${f.label} has no key. ${f.keyEnv.length ? `Set ${f.keyEnv.join(' or ')}, or add` : 'Add'} a key in Settings > Providers.`;
 
@@ -72,14 +81,15 @@ const price: Check = (c) => {
   return firstWords(c, (u, { f, m }) =>
     f.conversation === 'reins' && !m.priced ? `${u.model} has no price, so Reins cannot hold the $${n} budget. Add a price in Settings > Providers, or remove the budget.` : undefined);
 };
+/** Spec 9.3: the words when a session cannot move between two providers because one of them keeps its own conversation; none when it can. */
+export const crossWords = (from: Pick<ProviderFacts, 'label' | 'conversation'> | undefined, to: Pick<ProviderFacts, 'label' | 'conversation'> | undefined) =>
+  from && to && from.conversation !== to.conversation
+    ? `${from.label} keeps its own conversation, so Reins cannot move it to ${to.label}. Start a new session for ${to.label}.`
+    : undefined;
 const conversation: Check = (c) => {
   for (const u of c.used) {
-    if (!u.switches) continue;
-    const from = c.env.facts(u.before);
-    const to = c.env.facts(u.provider);
-    if (from && to && from.conversation !== to.conversation) {
-      return `${from.label} keeps its own conversation, so Reins cannot move it to ${to.label}. Start a new session for ${to.label}.`;
-    }
+    const why = u.switches ? crossWords(c.env.facts(u.before), c.env.facts(u.provider)) : undefined;
+    if (why) return why;
   }
   return undefined;
 };

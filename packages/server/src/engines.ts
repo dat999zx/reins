@@ -105,6 +105,23 @@ export function makeEngineFrom(mods: Mods, base: Pick<EngineHost, 'env' | 'home'
   };
 }
 
+/**
+ * What the live model lists (`live-models.ts`) read of the installed providers: the list through the provider's wire, which sends only through
+ * `host.send` (spec 7.8), and whether the provider needs a key. A provider whose protocol has no list (the CLI) fetches nothing.
+ */
+export const liveListSource = (mods: Mods, host: Pick<EngineHost, 'env' | 'home' | 'send' | 'redact'>) => ({
+  fetchIds: (provider: string, signal: AbortSignal): Promise<string[] | undefined> | undefined => {
+    const found = resolve(mods, provider);
+    const wire = found?.protocol.wire;
+    if (!found || !wire?.listModels) return undefined;
+    return wire.listModels(found.manifest, { ...host, onApprove: async () => ({ behavior: 'deny' as const }), onLive: () => {} }, signal);
+  },
+  keyless: (provider: string): boolean => {
+    const auth = manifestOf(mods, provider)?.auth;
+    return !auth || auth.style === 'none';
+  },
+});
+
 export async function probeFrom(mods: Mods, provider: string, base: Pick<EngineHost, 'env' | 'home'>): Promise<EngineProbe> {
   const found = resolve(mods, provider);
   if (found?.protocol.conversation === 'reins') {

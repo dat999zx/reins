@@ -31,18 +31,21 @@ export function parseModel(name: string, sessionProvider: string, installed: (id
  * The picker's list, after Hermes's model catalog: the provider's models first, in file order (its label wins),
  * then catalog extras: tool-call models, no dated ids (`-YYYYMMDD`), newest first, the whole list at most `limit` long
  * (the provider's own models are never cut). `window` is the catalog's context size.
+ * `live` is the provider's own list (spec 7.2): its ids not already curated come after the curated models, before the catalog extras, all cut to `limit`.
  * ponytail: the picker can list an id the CLI rejects; a switch whose first reply fails is undone (session.ts).
  */
-export function listModels(provider: { models: Array<{ id: string; label?: string }> }, catalog: CatalogModel[], limit: number): PickerModel[] {
+export function listModels(provider: { models: Array<{ id: string; label?: string }> }, catalog: CatalogModel[], limit: number, live: readonly string[] = []): PickerModel[] {
   const known = new Map(catalog.map((m) => [m.id, m]));
   const withWindow = (id: string, label: string): PickerModel => {
     const window = known.get(id)?.context;
     return window === undefined ? { id, label } : { id, label, window };
   };
   const have = new Set(provider.models.map((m) => m.id));
+  const fromLive = live.filter((id) => !have.has(id)).slice(0, Math.max(0, limit - provider.models.length));
+  for (const id of fromLive) have.add(id);
   const extras = catalog
     .filter((m) => m.toolCall === true && !/-\d{8}$/.test(m.id) && !have.has(m.id))
     .sort((a, b) => (b.released ?? '').localeCompare(a.released ?? ''))
-    .slice(0, Math.max(0, limit - provider.models.length));
-  return [...provider.models.map((m) => withWindow(m.id, m.label ?? m.id)), ...extras.map((m) => withWindow(m.id, m.label))];
+    .slice(0, Math.max(0, limit - provider.models.length - fromLive.length));
+  return [...provider.models.map((m) => withWindow(m.id, m.label ?? m.id)), ...fromLive.map((id) => withWindow(id, id)), ...extras.map((m) => withWindow(m.id, m.label))];
 }

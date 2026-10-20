@@ -31,7 +31,7 @@ const toLog = (r: any): LogRow => ({
   type: r.type, data: JSON.parse(r.data),
 });
 
-const sessionColumns = { autoApprove: 'auto_approve', title: 'title', engineSessionId: 'engine_session_id', model: 'model', effort: 'effort' } as const;
+const sessionColumns = { autoApprove: 'auto_approve', title: 'title', engine: 'engine', engineSessionId: 'engine_session_id', model: 'model', effort: 'effort' } as const;
 
 export const KEY_IN_IDENTITY = 'That value contains a saved key, so it was not saved.';
 
@@ -77,7 +77,7 @@ export function redactingStore(store: Store, redactor: Pick<Redactor, 'redactJso
     getSession: (id) => session(store.getSession(id)),
     listSessions: () => store.listSessions().flatMap((row) => { const s = session(row); return s ? [s] : []; }),
     updateSession: (id, patch) => {
-      refuse(patch.engineSessionId);
+      refuse(patch.engine, patch.engineSessionId);
       store.updateSession(id, {
         ...patch,
         ...(patch.title !== undefined ? { title: r(patch.title) } : {}),
@@ -195,7 +195,7 @@ export function openStore(file: string) {
       return listSessions.all().map(toSession);
     },
     /** `model: null` clears the model (the provider's default). */
-    updateSession(id: string, patch: { autoApprove?: boolean; title?: string; engineSessionId?: string; model?: string | null; effort?: string | null }) {
+    updateSession(id: string, patch: { autoApprove?: boolean; title?: string; engine?: string; engineSessionId?: string; model?: string | null; effort?: string | null }) {
       const sets: string[] = ['updated_at = ?'];
       const vals: Array<string | number | null> = [Date.now()];
       for (const k of Object.keys(sessionColumns) as Array<keyof typeof sessionColumns>) {

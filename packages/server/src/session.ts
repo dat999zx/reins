@@ -14,7 +14,7 @@ import { taggedWorkflow, type Tag, type Tagged } from './tags.js';
 import { loadWorkflow } from './run-cli.js';
 import type { FolderTrust } from './mods/types.js';
 import { parseModel } from './models.js';
-import { resolveSubagent, runChecks, type CheckEnv } from './run-checks.js';
+import { crossWords, missingProviderWords, noKeyWords, providerStatus, resolveSubagent, runChecks, type CheckEnv } from './run-checks.js';
 import { commandsOf, hashCommands } from './trust.js';
 
 export type MakeEngine = (o: {
@@ -93,8 +93,8 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   let retiring: Promise<unknown> = Promise.resolve();
   // The open that is live had no stored cost total to count from, so its first reply's cost is unknown.
   let baseUnknown = false;
-  // A model switch no reply has proved yet: where to go back to if the first reply fails.
-  let pendingSwitch: { from: string | undefined; to: string } | undefined;
+  // A model switch no reply has proved yet: where to go back to (model, provider, reasoning) if the first reply fails.
+  let pendingSwitch: { from: string | undefined; to: string; fromEngine: string; fromEffort: string | undefined } | undefined;
   let run: Run | undefined;
   let runId: string | undefined;
   let worker: Promise<void> = Promise.resolve();
@@ -183,9 +183,11 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     const p = pendingSwitch;
     if (!p) return;
     pendingSwitch = undefined;
-    store.updateSession(id, { model: p.from ?? null });
-    log('settings', { model: p.from ?? '' });
-    log('note', { text: `${p.to} did not answer (${why}). The model is back to ${p.from ?? 'the default'}.` });
+    const cur = store.getSession(id)!;
+    const moved = p.fromEngine !== cur.engine;
+    store.updateSession(id, { model: p.from ?? null, ...(moved ? { engine: p.fromEngine, effort: p.fromEffort ?? null } : {}) });
+    log('settings', { model: p.from ?? '', ...(moved ? { engine: p.fromEngine } : {}) });
+    log('note', { text: `${p.to} did not answer (${why}). The model is back to ${moved ? `${p.fromEngine}:` : ''}${p.from ?? 'the default'}.` });
     dropEngine();
   }
 
@@ -202,13 +204,24 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   const describe: DescribeModel = deps.describeModel ?? ((_e, m) => ({ listed: false, label: m }));
   const limits = () => ({ tokens: readSetting(store, 'switchApprovalTokens'), usd: readSetting(store, 'switchApprovalUsd') });
 
-  /** The one place a model switch lands (the header and a run's model step): the stored model, its row and note, and the process retired. */
-  function applySwitch(from: string | undefined, to: string, label: string | undefined) {
-    store.updateSession(id, { model: to || null });
-    log('settings', { model: to });
-    log('note', { text: `Model set to ${to ? label ?? to : 'the default'} from the next reply. The whole conversation goes to it as input.` }, runId);
+  /**
+   * The one place a model switch lands (the header and a run's model step): the stored model (and provider, when `provider` is another one),
+   * its row and note, and the process retired. The conversation stays: the next reply opens the same session id on the new provider.
+   */
+  function applySwitch(from: string | undefined, to: string, label: string | undefined, provider?: string) {
+    const cur = store.getSession(id)!;
+    const target = provider ?? cur.engine;
+    const moving = target !== cur.engine;
+    // A reasoning level the new provider does not list cannot be sent to it.
+    const dropLevel = moving && !!cur.effort && !describeLevel(target, cur.effort).listed;
+    store.updateSession(id, { model: to || null, ...(moving ? { engine: target } : {}), ...(dropLevel ? { effort: null } : {}) });
+    log('settings', { model: to, ...(moving ? { engine: target } : {}), ...(dropLevel ? { effort: '' } : {}) });
+    const where = moving ? ` on ${deps.providers?.facts(target)?.label ?? target}` : '';
+    log('note', { text: `Model set to ${to ? label ?? to : 'the default'}${where} from the next reply. The whole conversation goes to it as input.` }, runId);
     const was = pendingSwitch ? pendingSwitch.from : from;
-    pendingSwitch = (to || undefined) === was ? undefined : { from: was, to };
+    const wasEngine = pendingSwitch ? pendingSwitch.fromEngine : cur.engine;
+    const wasEffort = pendingSwitch ? pendingSwitch.fromEffort : cur.effort;
+    pendingSwitch = (to || undefined) === was && target === wasEngine ? undefined : { from: was, to, fromEngine: wasEngine, fromEffort: wasEffort };
     dropEngine();
   }
 
@@ -234,15 +247,17 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     const cur = store.getSession(id)!;
     const used = contextSize(store.readLog(id));
     const p = parseModel(name, cur.engine, checkEnv().installed, step);
-    // ponytail: a model block naming another provider is checked at the start but not switched to here; the steps after it stay on the session's provider.
-    if ('error' in p || p.provider !== cur.engine) {
+    // A bad name (a resumed run has no start check) or a provider the session cannot move to now (removed, key gone, the other kind of conversation) is kept as it is.
+    const why = 'error' in p ? p.error : providerRefusal(p.provider);
+    if ('error' in p || why) {
       const label = cur.model ? describe(cur.engine, cur.model, used).label : 'the default model';
-      log('note', { text: `${'error' in p ? p.error : `Step \`${step}\` names ${name}, a model on another provider, and a run cannot move the session there.`} Kept ${label}: the steps after \`${step}\` run on it.` }, runId);
+      log('note', { text: `${why} Kept ${label}: the steps after \`${step}\` run on it.` }, runId);
       return { to: 'kept', label };
     }
     const model = p.model;
-    const d = describe(cur.engine, model, used);
-    if ((cur.model ?? '') === model) return { to: 'same', label: d.label };
+    const moving = p.provider !== cur.engine;
+    const d = describe(p.provider, model, used);
+    if (!moving && (cur.model ?? '') === model) return { to: 'same', label: d.label };
     const c = switchCheck({
       busy: false, detached: false, hasSession: !!cur.engineSessionId, used, target: model, label: d.label,
       estimate: d.estimate, ...(d.source ? { source: d.source } : {}), limits: limits(),
@@ -257,8 +272,19 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
         return { to: 'kept', label };
       }
     }
-    applySwitch(cur.model, model, d.label);
+    applySwitch(cur.model, model, d.label, p.provider);
     return { to: 'switched', label: d.label };
+  }
+
+  /** Why the session cannot move to `provider` (spec 9.3, 10.2), before anything is opened: not installed, no key, or the other kind of conversation. None = it can. */
+  function providerRefusal(provider: string): string | undefined {
+    const cur = store.getSession(id)!;
+    if (provider === cur.engine) return undefined;
+    const env = checkEnv();
+    if (!env.installed(provider)) return missingProviderWords(provider);
+    const to = env.facts(provider);
+    if (to?.key === 'missing') return noKeyWords(to);
+    return crossWords(env.facts(cur.engine), to);
   }
 
   /** What the run-start checks read: the installed providers, and the session's provider list when the host has one. */
@@ -666,6 +692,8 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   function resume(rid: string): Ack {
     if (closingP) return closingAck();
     if (busy) return conflict('The session is busy.');
+    const gone = providerGone();
+    if (gone) return gone;
     if (store.sessionOfRun(rid) !== id) return conflict(`Run ${rid} does not belong to this session.`);
     if (ended(rid)) return conflict(`Run ${rid} has already ended.`);
     const saved = store.loadRun(rid);
@@ -717,6 +745,13 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
 
   const closingAck = () => conflict('The session is closing.');
 
+  /** Spec 9.4: a session whose provider is not installed (or was retired) takes no new reply; reading its log still works. A turn already running is left alone. */
+  const providerGone = (): Ack | undefined => {
+    if (busy) return undefined;
+    const s = providerStatus(store.getSession(id)!.engine, checkEnv().installed);
+    return s.status === 'ok' ? undefined : conflict(s.words);
+  };
+
   // A plain turn from the input box (fromCards false) or from a card typed while idle (true; spec 1557).
   function startPlain(text: string, fromCards: boolean): Ack {
     begin();
@@ -729,6 +764,8 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   function compress(): Ack {
     if (closingP) return closingAck();
     if (busy) return conflict('Compress when the session is idle.');
+    const gone = providerGone();
+    if (gone) return gone;
     if (detachedRuns(store.readLog(id)).length > 0) return conflict('A run is left paused in this session. Resume or stop it before compressing.');
     if (!store.getSession(id)!.engineSessionId) return conflict('Nothing to compress yet: send a message first.');
     begin();
@@ -739,6 +776,8 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
 
   function message(text: string, tags: Tag[] = []): Ack {
     if (closingP) return closingAck();
+    const gone = providerGone();
+    if (gone) return gone;
     if (tags.length) {
       if (busy) return conflict('The session is busy; tags start a new run, so wait until it is idle.');
       const t = taggedWorkflow(text, tags);
@@ -762,6 +801,8 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   function card(text: string, kind: 'steer' | 'now' | 'stop'): Ack {
     if (closingP) return closingAck();
     if (!busy) {
+      const gone = kind !== 'stop' ? providerGone() : undefined;
+      if (gone) return gone;
       if (kind !== 'stop') return startPlain(text, true);
       const sq = [...pending].find(([, p]) => p.q.kind === 'switch');
       if (!sq) return conflict('Nothing is running, so there is nothing to stop.');
@@ -790,9 +831,17 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
    * `estimate` and `label` describe the target model (the server knows the provider's prices; the session does not).
    * A model switch retires the process; the next reply opens `--resume <same id>` on the new model (F1).
    */
-  function settings(p: { autoApprove?: boolean; title?: string; model?: string; estimate?: number | undefined; label?: string; source?: 'table' | 'catalog'; effort?: string; effortLabel?: string }): Ack {
+  function settings(p: { autoApprove?: boolean; title?: string; model?: string; provider?: string; estimate?: number | undefined; label?: string; source?: 'table' | 'catalog'; effort?: string; effortLabel?: string }): Ack {
     const from = store.getSession(id)!.model;
-    const switching = p.model !== undefined && p.model !== (from ?? '');
+    // `provider`: the provider the model is on, when it is not the session's own. A model of the same name on another provider is still a switch.
+    const moving = p.provider !== undefined && p.provider !== store.getSession(id)!.engine;
+    const switching = p.model !== undefined && (moving || p.model !== (from ?? ''));
+    if ((switching || p.effort !== undefined) && !checkEnv().installed(store.getSession(id)!.engine)) return conflict(missingProviderWords(store.getSession(id)!.engine));
+    if (moving) {
+      if (closingP) return closingAck();
+      const why = providerRefusal(p.provider!);
+      if (why) return conflict(why);
+    }
     const leveling = p.effort !== undefined && p.effort !== store.getSession(id)!.effort;
     if (leveling) {
       if (closingP) return closingAck();
@@ -819,8 +868,8 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     if (switching) {
       const to = p.model!;
       // ponytail: a switch card waits with no timeout; any new work closes it without switching; a server stop leaves it to recover.ts.
-      if (check && 'ask' in check) void ask({ id: questionId(), kind: 'switch', ...check.ask }).then((a) => { if (a === 'switch') applySwitch(from, to, p.label); });
-      else applySwitch(from, to, p.label);
+      if (check && 'ask' in check) void ask({ id: questionId(), kind: 'switch', ...check.ask }).then((a) => { if (a === 'switch') applySwitch(from, to, p.label, p.provider); });
+      else applySwitch(from, to, p.label, p.provider);
     }
     return OK;
   }
@@ -868,6 +917,10 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     info: () => store.getSession(id)!,
     status: () => status,
     message, card, answer, settings, compress, runFile, resume, close, shutdown,
+    /** Spec 9.4: `ok`, `missing` or `gone`, with the words, for the state the UI reads. */
+    providerStatus: () => providerStatus(store.getSession(id)!.engine, checkEnv().installed),
+    /** Why the session cannot move to `provider` now (spec 9.3), or undefined when it can; the session is not touched. */
+    providerRefusal: (provider: string) => (providerStatus(store.getSession(id)!.engine, checkEnv().installed).status === 'ok' ? providerRefusal(provider) : missingProviderWords(store.getSession(id)!.engine)),
     idle: () => worker,
   };
 }

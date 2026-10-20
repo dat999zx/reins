@@ -7,10 +7,12 @@ import { printWorkflow, type EngineProbe, type Workflow } from '@reins/core';
 import { sameToken } from './token.js';
 import { releaseLock, runningLock, takeLock } from './lock.js';
 import type { Catalog, CatalogModel } from './catalog.js';
-import { checkEnvFrom, defaultProviderOf, folderTrustFrom, keyEnvNames, providerViews, startMods, type ProviderView } from './engines.js';
+import { checkEnvFrom, defaultProviderOf, folderTrustFrom, hostSend, keyEnvNames, liveListSource, providerViews, startMods, type ProviderView } from './engines.js';
 import { childEnv, type Redactor } from './secrets.js';
-import { listModels } from './models.js';
-import type { Mods } from './mods/types.js';
+import { createLiveModels } from './live-models.js';
+import { listModels, parseModel, type PickerModel } from './models.js';
+import type { Mods, SendWithKey } from './mods/types.js';
+import type { ProviderStatus } from './run-checks.js';
 import { recover } from './recover.js';
 import { loadWorkflow } from './run-cli.js';
 import { openSession, under, type Ack, type DescribeEffort, type DescribeModel, type MakeEngine, type Session, type SessionDeps } from './session.js';
@@ -37,8 +39,22 @@ export interface ServerOptions {
   env?: NodeJS.ProcessEnv;
   /** Hides secrets in what the API shows (the probe answers) and in streamed command output, and refuses workflow text that holds one. None: nothing is hidden. */
   redactor?: Redactor;
+  /** The only way the live model lists send (spec 7.8). None: the host's own `send`, which refuses until consent is stored. */
+  send?: SendWithKey;
+  /** The consent seam (`SessionDeps.consent`): undefined for a provider means its consent is recorded. None: no consent is recorded for any keyed provider. */
+  consent?: SessionDeps['consent'];
 }
 export interface Server { port: number; token: string; url: string; close(): Promise<void> }
+
+/** A provider's models in the picker, with what it needs: `installed` (a key is set), `needs-key`, or `keyless`. */
+export interface ProviderGroup { id: string; label: string; status: 'installed' | 'needs-key' | 'keyless'; models: PickerModel[] }
+/** What the picker needs of one session (spec 9.1, 9.3, 9.4): its provider's status, `provider:model`, and where it may switch. */
+export interface SessionProviderState {
+  provider: ProviderStatus;
+  composite: string;
+  /** Every installed provider: `allowed`, or why the session cannot move there. */
+  switchTo: Array<{ provider: string; allowed: boolean; why?: string }>;
+}
 
 const MAX_BODY = 1024 * 1024;
 type Reply = { status: number; body: unknown };
@@ -63,7 +79,7 @@ const str = (v: unknown): v is string => typeof v === 'string';
 const isTags = (v: unknown): v is Tag[] =>
   Array.isArray(v) && v.every((t) => typeof t === 'object' && t !== null && str(t.tag) && (t.arg === undefined || str(t.arg)));
 
-interface Ctx { store: Store; describe: DescribeModel; describeEffort: DescribeEffort }
+interface Ctx { store: Store; describe: DescribeModel; describeEffort: DescribeEffort; installed: (provider: string) => boolean }
 const actions: Record<string, (s: Session, b: Body, ctx: Ctx) => Reply | Promise<Reply>> = {
   message: (s, b) => {
     const tags = b.tags ?? [];
@@ -77,26 +93,34 @@ const actions: Record<string, (s: Session, b: Body, ctx: Ctx) => Reply | Promise
     return fromAck(s.card(b.text, b.kind));
   },
   answer: (s, b) => (str(b.questionId) && str(b.answer) ? fromAck(s.answer(b.questionId, b.answer)) : fail(400, 'questionId and answer must be strings.')),
-  settings: (s, b, { store, describe, describeEffort }) => {
+  settings: (s, b, { store, describe, describeEffort, installed }) => {
     const { autoApprove, title, model, effort } = b;
     if (autoApprove !== undefined && typeof autoApprove !== 'boolean') return fail(400, 'autoApprove must be a boolean.');
     if (title !== undefined && !str(title)) return fail(400, 'title must be a string.');
     if (model !== undefined && !str(model)) return fail(400, 'model must be a string.');
+    if (str(model) && (model.length > 400 || [...model].some((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f))) return fail(400, 'model must be a short name with no control characters.');
     if (effort !== undefined && !str(effort)) return fail(400, 'effort must be a string.');
     const level = str(effort) ? describeEffort(s.info().engine, effort) : undefined;
     if (level && !level.listed) return fail(400, 'Unknown reasoning level.');
     let target: { estimate: number | undefined; label: string; source?: 'table' | 'catalog' } | undefined;
+    let named: { provider: string; model: string } | undefined;
     if (model) {
-      // '' is the default; the session's own current model stays selectable even when the list no longer has it.
-      const d = describe(s.info().engine, model, contextSize(store.readLog(s.id)));
-      if (!d.listed && model !== s.info().model) return fail(400, "Unknown model for this session's provider.");
+      // `provider:model` (spec 9.2) or a bare model of the session's provider. '' is the default.
+      const p = parseModel(model, s.info().engine, installed);
+      if ('error' in p) return fail(400, p.error);
+      named = p;
+      const d = describe(p.provider, p.model, contextSize(store.readLog(s.id)));
+      // The session's own current model stays selectable even when the list no longer has it. A model written with its provider is a typed id
+      // (spec 9.1): it is accepted although no list has it, and shown as typed. A bare name that is in no list is still refused.
+      const typed = p.model !== model.trim();
+      if (!d.listed && !typed && !(p.provider === s.info().engine && p.model === s.info().model)) return fail(400, "Unknown model for this session's provider.");
       target = { estimate: d.estimate, label: d.label, ...(d.source ? { source: d.source } : {}) };
     } else if (model === '') {
       target = { estimate: undefined, label: 'the default model' };
     }
     return fromAck(s.settings({
       ...(autoApprove !== undefined ? { autoApprove } : {}), ...(title !== undefined ? { title } : {}),
-      ...(model !== undefined ? { model, ...target } : {}),
+      ...(model !== undefined ? { model: named ? named.model : model, ...(named ? { provider: named.provider } : {}), ...target } : {}),
       ...(str(effort) ? { effort, effortLabel: level!.label } : {}),
     }));
   },
@@ -167,16 +191,24 @@ export async function startServer(o: ServerOptions): Promise<Server> {
   const providers = providerViews(mods);
   const catalog = o.catalog;
   const catalogOf = (p: ProviderView): CatalogModel[] => (p.catalog ? catalog?.models(p.catalog) ?? [] : []);
-  const list = (p: ProviderView) => listModels(p, catalogOf(p), readSetting(o.store, 'pickerLimit'));
+  // The live lists (spec 7.2) go through the host's `send` only, and a keyed provider's only once its consent is recorded.
+  const sender = hostSend(mods, { env: o.env ?? process.env, home: o.dir });
+  const live = createLiveModels({
+    ...liveListSource(mods, { env: o.env ?? process.env, home: o.dir, send: o.send ?? sender.send!, ...(sender.redact ? { redact: sender.redact } : {}) }),
+    consented: (provider) => (o.consent ? o.consent(provider) === undefined : false),
+    holdsSecret: (t) => !!sender.holdsSecret?.(t) || !!o.redactor?.has(t),
+  });
+  const list = (p: ProviderView) => listModels(p, catalogOf(p), readSetting(o.store, 'pickerLimit'), live.ids(p.id));
   const token = randomBytes(32).toString('hex');
   const sessions = new Map<string, Session>();
   const subs = new Set<(row: LogRow) => void>();
   // One copy of the rule: the header's switch and a run's model step both read the list and the estimate here.
   const describeModel: DescribeModel = (engine, model, used) => {
     const provider = providers.find((p) => p.id === engine);
-    const listed = provider && list(provider).find((m) => m.id === model);
+    const found = provider && list(provider).find((m) => m.id === model);
     const price = provider && used !== undefined ? priceFor(provider, catalogOf(provider), model, used) : undefined;
-    return { listed: !!listed, label: listed?.label ?? model, estimate: switchEstimate(used, price), ...(price ? { source: price.source } : {}) };
+    // A live id the picker's limit cut is still a listed model.
+    return { listed: !!found || (!!provider && live.ids(provider.id).includes(model)), label: found?.label ?? model, estimate: switchEstimate(used, price), ...(price ? { source: price.source } : {}) };
   };
   const describeEffort: DescribeEffort = (engine, id) => {
     const found = providers.find((p) => p.id === engine)?.efforts.find((e) => e.id === id);
@@ -184,7 +216,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
   };
   // The settings are read when a turn starts, so a change in Settings counts from the next reply.
   const settings = { get maxCallsPerTurn() { return readSetting(o.store, 'maxCallsPerTurn'); } };
-  const deps: SessionDeps = { store: o.store, makeEngine: (a) => o.makeEngine({ ...a, settings }), dir: o.dir, env: childEnv(o.env ?? process.env, keyEnvNames(mods)), ...(o.redactor ? { redactor: o.redactor } : {}), describeModel, describeEffort, folderTrust: folderTrustFrom(mods), providers: checkEnvFrom(mods, { env: o.env ?? process.env, home: o.dir }), onRow: (row) => { for (const f of subs) f(row); } };
+  const deps: SessionDeps = { store: o.store, makeEngine: (a) => o.makeEngine({ ...a, settings }), dir: o.dir, env: childEnv(o.env ?? process.env, keyEnvNames(mods)), ...(o.redactor ? { redactor: o.redactor } : {}), describeModel, describeEffort, folderTrust: folderTrustFrom(mods), providers: checkEnvFrom(mods, { env: o.env ?? process.env, home: o.dir }), ...(o.consent ? { consent: o.consent } : {}), onRow: (row) => { for (const f of subs) f(row); } };
   let engines: Array<{ id: string } & EngineProbe> = [];
   let host = '';
   let origin = '';
@@ -209,6 +241,24 @@ export async function startServer(o: ServerOptions): Promise<Server> {
       autoApprove: r.autoApprove, createdAt: r.createdAt, updatedAt: r.updatedAt, status: s.status(),
     };
   };
+  // The picker's view of one session (spec 9.1, 9.3, 9.4): its provider's status, `provider:model`, and where it may switch.
+  const providerState = (s: Session): SessionProviderState => {
+    const r = s.info();
+    const own = providers.find((p) => p.id === r.engine);
+    return {
+      provider: s.providerStatus(),
+      composite: `${r.engine}:${r.model ?? own?.defaultModel ?? ''}`,
+      switchTo: providers.filter((p) => deps.providers!.installed(p.id)).map((p) => {
+        const why = s.providerRefusal(p.id);
+        return { provider: p.id, allowed: why === undefined, ...(why ? { why } : {}) };
+      }),
+    };
+  };
+  const statusOf = (id: string): ProviderGroup['status'] => {
+    const key = deps.providers!.facts(id)?.key;
+    return key === 'missing' ? 'needs-key' : key === 'none' ? 'keyless' : 'installed';
+  };
+  const groups = (): ProviderGroup[] => providers.filter((p) => deps.providers!.installed(p.id)).map((p) => ({ id: p.id, label: p.label, status: statusOf(p.id), models: list(p) }));
 
   function create(b: Body): Reply {
     if (!str(b.cwd) || !path.isAbsolute(b.cwd)) return fail(400, 'cwd must be an absolute path.');
@@ -258,8 +308,10 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     const p = url.pathname;
     if (req.method === 'GET' && p === '/api/state') {
       void catalog?.refresh(); // never rejects; a no-op inside 4 hours
+      // The live lists are asked for here (a keyed provider only with consent); the answer shows in the next state. Never rejects.
+      for (const pr of providers) if (deps.providers!.installed(pr.id)) void live.refresh(pr.id);
       // Provider and model names come from manifests and the catalog: text a mod or a provider wrote.
-      return ok(hide({ sessions: [...sessions.values()].map(view), engines, providers: providers.map((pr) => ({ id: pr.id, label: pr.label, defaultModel: pr.defaultModel, defaultEffort: pr.defaultEffort, efforts: pr.efforts, models: list(pr) })) }));
+      return ok(hide({ sessions: [...sessions.values()].map((s) => ({ ...view(s), ...providerState(s) })), engines, groups: groups(), providers: providers.map((pr) => ({ id: pr.id, label: pr.label, defaultModel: pr.defaultModel, defaultEffort: pr.defaultEffort, efforts: pr.efforts, models: list(pr) })) }));
     }
     if (req.method === 'POST' && p === '/api/state/probe') { engines = await probeNow(); return ok({ engines }); }
     if (req.method === 'GET' && p === '/api/tags') return ok({ tags: tagCatalogue() });
@@ -328,7 +380,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
       }
       if (req.method === 'POST' && Object.hasOwn(actions, m[2]!)) {
         const r = await parse(req);
-        return 'fail' in r ? r.fail : actions[m[2]!]!(s, r.b, { store: o.store, describe: describeModel, describeEffort });
+        return 'fail' in r ? r.fail : actions[m[2]!]!(s, r.b, { store: o.store, describe: describeModel, describeEffort, installed: deps.providers!.installed });
       }
     }
     return fail(404, 'Not found.');

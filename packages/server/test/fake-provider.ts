@@ -125,6 +125,7 @@ export async function startFakeProvider(o: { strictPairs?: boolean; toolBlocksFa
   const queue: FakeReply[] = [];
   const requests: FakeRequest[] = [];
   let aborted = 0;   // requests the client closed while they hung (hangMs)
+  const list: { data: unknown[]; status?: number; hangMs?: number } = { data: [{ id: 'fake-model-1', object: 'model' }, { id: 'fake-model-2', object: 'model' }] };
 
   const server = http.createServer((req, res) => {
     let raw = '';
@@ -142,8 +143,14 @@ export async function startFakeProvider(o: { strictPairs?: boolean; toolBlocksFa
 
   function serve(method: string, path: string, body: any, res: http.ServerResponse) {
     if (method === 'GET' && path.endsWith('/v1/models')) {
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ object: 'list', data: [{ id: 'fake-model-1', object: 'model' }, { id: 'fake-model-2', object: 'model' }] }));
+      // `list` is the test's to change: the entries (any JSON), a failing status, a delay.
+      const send = () => {
+        if (res.destroyed) return;
+        res.writeHead(list.status ?? 200, { 'content-type': 'application/json' });
+        res.end(list.status && list.status >= 400 ? JSON.stringify({ error: { message: 'the list failed' } }) : JSON.stringify({ object: 'list', data: list.data }));
+      };
+      if (list.hangMs) setTimeout(send, list.hangMs).unref();
+      else send();
       return;
     }
     const wire = method === 'POST' && path.endsWith('/v1/chat/completions') ? 'chat' : method === 'POST' && path.endsWith('/v1/messages') ? 'messages' : undefined;
@@ -198,6 +205,10 @@ export async function startFakeProvider(o: { strictPairs?: boolean; toolBlocksFa
     url,
     push: (...r: FakeReply[]) => void queue.push(...r),
     requests,
+    /** The model list the fake answers with: `data` entries (any JSON), `status` (400 and up fails), `hangMs` (a slow answer). */
+    list,
+    /** The requests that asked for the model list. */
+    listRequests: () => requests.filter((r) => r.path.endsWith('/v1/models')),
     aborted: () => aborted,
     close: () => new Promise<void>((ok) => { server.close(() => ok()); server.closeAllConnections(); }),
   };
