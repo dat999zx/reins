@@ -75,7 +75,7 @@ describe.skipIf(skip)('live run e2e', () => {
     const folders = [folderA, folderB];
     store = openStore(':memory:');
     srv = await startServer({
-      store, dir: tmpDir(), appDir: APP,
+      store, dir: tmpDir(), appDir: APP, catalogDir: path.join(tmpDir(), 'no-catalog'), // no catalog: a fresh home would show the first-run chooser instead of the app
       probe: async () => PROBE,
       pickFolder: async () => folders.shift() ?? null,
       makeEngine: ({ model, effort, onApprove, onLive }) =>

@@ -1,0 +1,25 @@
+{
+  "reins": 1,
+  "id": "ollama-cloud",
+  "kind": "provider",
+  "version": "1.0.0",
+  "label": "Ollama Cloud",
+  "description": "Open models run by Ollama in the cloud.",
+  "homepage": "https://ollama.com/",
+  "protocol": "openai-chat",
+  "baseUrl": "https://ollama.com/v1",
+  "auth": { "style": "bearer", "keyEnv": ["OLLAMA_API_KEY"] },
+  "catalog": "ollama-cloud",
+  "defaultModel": "glm-5.3",
+  "models": [
+    { "id": "glm-5.3", "label": "GLM 5.3", "context": 1048576, "maxOutput": 131072, "tools": true, "price": { "input": 1.4, "output": 4.4, "cacheRead": 0.26 }, "_source": "https://models.dev/api.json#ollama-cloud" },
+    { "id": "deepseek-v4.1-flash", "label": "DeepSeek V4.1 Flash", "context": 1048576, "maxOutput": 384000, "tools": true, "price": { "input": 0.15, "output": 0.6, "cacheRead": 0.003 }, "_source": "https://models.dev/api.json#ollama-cloud" },
+    { "id": "kimi-k3", "label": "Kimi K3", "context": 1048576, "maxOutput": 131072, "tools": true, "price": { "input": 3, "output": 15, "cacheRead": 0.3 }, "_source": "https://models.dev/api.json#ollama-cloud" },
+    { "id": "minimax-m3.1-flash", "label": "MiniMax M3.1 Flash", "context": 1000000, "maxOutput": 512000, "tools": true, "price": { "input": 0.15, "output": 0.6, "cacheRead": 0.015 }, "_source": "https://models.dev/api.json#ollama-cloud" }
+  ],
+  "efforts": [
+    { "id": "low", "label": "Low", "body": { "reasoning_effort": "low" } },
+    { "id": "high", "label": "High", "body": { "reasoning_effort": "high" } }
+  ],
+  "untested": true
+}

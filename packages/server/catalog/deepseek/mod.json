@@ -1,0 +1,24 @@
+{
+  "reins": 1,
+  "id": "deepseek",
+  "kind": "provider",
+  "version": "1.0.0",
+  "label": "DeepSeek",
+  "description": "DeepSeek's own API.",
+  "homepage": "https://platform.deepseek.com/",
+  "protocol": "openai-chat",
+  "baseUrl": "https://api.deepseek.com/v1",
+  "auth": { "style": "bearer", "keyEnv": ["DEEPSEEK_API_KEY"] },
+  "catalog": "deepseek",
+  "defaultModel": "deepseek-v4-pro",
+  "models": [
+    { "id": "deepseek-v4-pro", "label": "V4 Pro", "context": 1048576, "maxOutput": 393216, "tools": true, "price": { "input": 0.66, "output": 1.98, "cacheRead": 0.022 }, "_source": "https://models.dev/api.json#deepseek" },
+    { "id": "deepseek-flash", "label": "Flash", "context": 1048576, "maxOutput": 393216, "tools": true, "price": { "input": 0.15, "output": 0.6, "cacheRead": 0.003 }, "_source": "https://models.dev/api.json#deepseek" }
+  ],
+  "efforts": [
+    { "id": "low", "label": "Low", "body": { "reasoning_effort": "low" } },
+    { "id": "high", "label": "High", "body": { "reasoning_effort": "high" } },
+    { "id": "max", "label": "Max", "body": { "reasoning_effort": "max" } }
+  ],
+  "untested": true
+}

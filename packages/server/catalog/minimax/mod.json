@@ -1,0 +1,19 @@
+{
+  "reins": 1,
+  "id": "minimax",
+  "kind": "provider",
+  "version": "1.0.0",
+  "label": "MiniMax",
+  "description": "MiniMax models through MiniMax's Messages-style API.",
+  "homepage": "https://www.minimax.io/",
+  "protocol": "anthropic-messages",
+  "baseUrl": "https://api.minimax.io/anthropic",
+  "auth": { "style": "header", "header": "x-api-key", "keyEnv": ["MINIMAX_API_KEY"] },
+  "catalog": "minimax",
+  "defaultModel": "MiniMax-M3.1-Flash",
+  "models": [
+    { "id": "MiniMax-M3.1-Flash", "label": "M3.1 Flash", "context": 1000000, "maxOutput": 524288, "tools": true, "price": { "input": 0.15, "output": 0.6, "cacheRead": 0.015 }, "_source": "https://models.dev/api.json#minimax" },
+    { "id": "MiniMax-M3", "label": "M3", "context": 1000000, "maxOutput": 524288, "tools": true, "_source": "https://models.dev/api.json#minimax" }
+  ],
+  "untested": true
+}

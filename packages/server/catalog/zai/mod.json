@@ -1,0 +1,20 @@
+{
+  "reins": 1,
+  "id": "zai",
+  "kind": "provider",
+  "version": "1.0.0",
+  "label": "Z.AI",
+  "description": "Zhipu's GLM models through the Z.AI API.",
+  "homepage": "https://z.ai/",
+  "protocol": "openai-chat",
+  "baseUrl": "https://api.z.ai/api/paas/v4",
+  "auth": { "style": "bearer", "keyEnv": ["GLM_API_KEY", "ZAI_API_KEY"] },
+  "catalog": "zai",
+  "defaultModel": "glm-5.2",
+  "models": [
+    { "id": "glm-5.3", "label": "GLM 5.3", "context": 1000000, "maxOutput": 131072, "tools": true, "price": { "input": 1.4, "output": 4.4, "cacheRead": 0.26, "cacheWrite": 0 }, "_source": "https://models.dev/api.json#zai" },
+    { "id": "glm-5.2", "label": "GLM 5.2", "context": 1000000, "maxOutput": 131072, "tools": true, "price": { "input": 1.4, "output": 4.4, "cacheRead": 0.26, "cacheWrite": 0 }, "_source": "https://models.dev/api.json#zai" },
+    { "id": "glm-5", "label": "GLM 5", "context": 204800, "maxOutput": 131072, "tools": true, "price": { "input": 1, "output": 3.2, "cacheRead": 0.2, "cacheWrite": 0 }, "_source": "https://models.dev/api.json#zai" }
+  ],
+  "untested": true
+}
