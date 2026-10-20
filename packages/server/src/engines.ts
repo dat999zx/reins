@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { EngineProbe } from '@reins/core';
-import { readDisabled } from './mods/actions.js';
+import { modTrusted, readDisabled, sweepScratch } from './mods/actions.js';
 import { loadMods } from './mods/loader.js';
 import { loopEngine } from './loop/engine.js';
 import { childEnv, envGet, keyStatus, readSecrets, Redactor, redactCut, StreamRedactor } from './secrets.js';
@@ -20,15 +20,24 @@ export const CATALOG_DIR = fileURLToPath(new URL('../catalog/', import.meta.url)
 /**
  * Loads the bundled mods and the user's (`<dir>/mods`). `dir` is the Reins folder (`~/.reins`). The result can `reload()`: it reads the folders
  * and the on/off list again and swaps the new state into the same object. One reload at a time.
- * ponytail: no code is trusted yet; the trust store comes with the settings tasks.
+ * A code mod runs only when `<dir>/mod-trust.json` holds the hash of its files (spec 5.4). Node cannot unload code, so once a hash has run for an id,
+ * a different hash is not run until the process restarts (`codeRan` tells Settings).
  */
 export async function startMods(o: { dir: string; env: NodeJS.ProcessEnv }): Promise<Mods> {
-  const load = () => loadMods({ bundledDir: BUNDLED_MODS, userDir: path.join(o.dir, 'mods'), home: o.dir, disabled: readDisabled(o.dir), trusted: () => false, env: o.env });
+  const ran = new Map<string, string>();
+  const load = () => loadMods({
+    bundledDir: BUNDLED_MODS, userDir: path.join(o.dir, 'mods'), home: o.dir, disabled: readDisabled(o.dir), env: o.env,
+    trusted: (id, hash) => (ran.get(id) ?? hash) === hash && modTrusted(o.dir, id, hash),
+    beforeActivate: (m) => { if (m.hash !== undefined && !ran.has(m.id)) ran.set(m.id, m.hash); },
+  });
+  // A crash in the middle of an import left folders in the home: undo them before anything loads (once per process).
+  const swept = sweepScratch(o.dir);
   let inner = await load();
   let tail: Promise<unknown> = Promise.resolve();
   const live: Mods = {
-    mods: inner.mods, registry: inner.registry, problems: inner.problems,
+    mods: inner.mods, registry: inner.registry, problems: [...swept, ...inner.problems],
     dispose: () => inner.dispose(),
+    codeRan: (id) => ran.get(id),
     reload: () => (tail = tail.catch(() => {}).then(async () => {
       const next = await load();
       // Trouble with a whole folder (it could not be read): what ran before stays, and the words come back.

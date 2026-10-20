@@ -60,6 +60,9 @@ const word = (v: unknown) => (typeof v === 'string' ? cap(v) : show(v));
 // credential from another, so the consent summary (spec 7.8), which lists each variable and where it is sent, is the gate.
 // The spec's own example, AWS_SECRET_ACCESS_KEY, ends in _KEY, so names holding these words are refused too.
 const KEY_ENV = /^(?!.*(SECRET|ACCESS|PASSWORD))[A-Z][A-Z0-9_]*_(API_KEY|KEY|TOKEN)$/;
+const HEADER_TOKEN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+/** Text with everything outside printable ASCII written as \uXXXX, so a problem line shows what a name really holds. */
+const plain = (s: string) => cap(s, 40).replace(/[^ -~]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
 const LOOKS_LIKE_KEY = /(^|\s)(sk-[\w-]{8,}|[A-Za-z0-9_-]{32,})$/;
 
 function origin(v: string): string | undefined {
@@ -121,7 +124,9 @@ registerKind({
       else {
         for (const [name, value] of Object.entries(raw.headers)) {
           if (full()) break;
-          if (typeof value !== 'string') bad(`\`headers.${cap(name)}\` must be text.`);
+          if (!HEADER_TOKEN.test(name)) bad(`\`headers\` has the name "${plain(name)}", which is not a valid header name (letters, digits and !#$%&'*+.^_\`|~- only).`);
+          else if (typeof value !== 'string') bad(`\`headers.${cap(name)}\` must be text.`);
+          else if (value.includes('\r') || value.includes('\n') || value.includes('\0')) bad(`\`headers.${cap(name)}\` must not hold a line break or a NUL character.`);
           else if (LOOKS_LIKE_KEY.test(value.trim())) bad(`\`headers.${cap(name)}\` holds what looks like a key. Keys go in Settings > Providers, never in a mod.`);
         }
       }

@@ -8,7 +8,7 @@ import { sameToken } from './token.js';
 import { releaseLock, runningLock, takeLock } from './lock.js';
 import type { Catalog, CatalogModel } from './catalog.js';
 import { CATALOG_DIR, checkEnvFrom, consentFrom, defaultProviderOf, folderTrustFrom, hostSend, keyEnvNames, liveListSource, providerOrigin, providerViews, startMods, type ProviderView } from './engines.js';
-import { addCustom, deleteKey, editMod, installMods, listMods, providerStatus, putKey, reinstallMod, removeMod, revokeConsent, setConsent, setEnabled, testConnection, type ConsentStore } from './mods/actions.js';
+import { addCustom, deleteKey, editMod, exportMod, importApply, importPreview, installMods, listMods, providerStatus, putKey, reinstallMod, removeMod, revokeConsent, setConsent, setEnabled, testConnection, type ConsentStore } from './mods/actions.js';
 import { childEnv, type Redactor } from './secrets.js';
 import { createLiveModels } from './live-models.js';
 import { listModels, parseModel, type PickerModel } from './models.js';
@@ -62,7 +62,7 @@ export interface SessionProviderState {
 }
 
 const MAX_BODY = 1024 * 1024;
-type Reply = { status: number; body: unknown };
+type Reply = { status: number; body: unknown; headers?: Record<string, string> };
 interface Body {
   text?: unknown; tags?: unknown; kind?: unknown; questionId?: unknown; answer?: unknown; autoApprove?: unknown;
   title?: unknown; path?: unknown; create?: unknown; stepId?: unknown; runId?: unknown; cwd?: unknown; engine?: unknown; model?: unknown; effort?: unknown;
@@ -186,7 +186,7 @@ function serveStatic(appDir: string, pathname: string, res: http.ServerResponse)
 }
 
 function send(res: http.ServerResponse, r: Reply) {
-  res.writeHead(r.status, { 'content-type': 'application/json' });
+  res.writeHead(r.status, { 'content-type': 'application/json', ...r.headers });
   res.end(JSON.stringify(r.body));
 }
 
@@ -228,6 +228,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
   // What Settings > Providers acts on. `send` is the one function that attaches a key; Test connection uses nothing else.
   const modEnv = () => ({
     home: o.dir, catalogDir: o.catalogDir ?? CATALOG_DIR, mods, consent: consentStore, send: o.send ?? sender.send!, env: o.env ?? process.env, redact: sender.redact!,
+    holdsSecret: (t: string) => !!sender.holdsSecret?.(t) || !!o.redactor?.has(t),
     ...(o.testTimeoutMs !== undefined ? { testTimeoutMs: o.testTimeoutMs } : {}),
   });
   const deps: SessionDeps = { store: o.store, makeEngine: (a) => o.makeEngine({ ...a, settings }), dir: o.dir, env: childEnv(o.env ?? process.env, keyEnvNames(mods)), ...(o.redactor ? { redactor: o.redactor } : {}), describeModel, describeEffort, folderTrust: folderTrustFrom(mods), providers: checkEnvFrom(mods, { env: o.env ?? process.env, home: o.dir }), consent: asks, origin: (provider) => providerOrigin(mods, provider), onRow: (row) => { for (const f of subs) f(row); } };
@@ -341,6 +342,9 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     let reply: Reply | undefined;
     if (req.method === 'POST' && id === 'install' && !action) reply = (await given((b) => installMods(env, b.ids))) as Reply;
     else if (req.method === 'POST' && id === 'custom' && !action) reply = (await given((b) => addCustom(env, b))) as Reply;
+    else if (req.method === 'POST' && id === 'import' && action === 'preview') reply = (await given((b) => importPreview(env, b.file))) as Reply;
+    else if (req.method === 'POST' && id === 'import' && !action) reply = (await given((b) => importApply(env, b))) as Reply;
+    else if (req.method === 'GET' && id !== undefined && action === 'export') reply = exportMod(env, id);
     else if (req.method === 'PUT' && id !== undefined && !action) reply = (await given((b) => editMod(env, id, b))) as Reply;
     else if (req.method === 'DELETE' && id !== undefined && !action) reply = await removeMod(env, id);
     else if (req.method === 'POST' && id !== undefined && (action === 'enable' || action === 'disable')) reply = await setEnabled(env, id, action === 'enable');
@@ -360,7 +364,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     const modsRoute = /^\/api\/mods(?:\/([^/]+)(?:\/([a-z]+))?)?$/.exec(p);
     if (modsRoute) {
       const r = await modsApi(req, modsRoute[1], modsRoute[2]);
-      return { status: r.status, body: hide(r.body) };
+      return { status: r.status, body: hide(r.body), ...(r.headers ? { headers: r.headers } : {}) };
     }
     if (req.method === 'GET' && p === '/api/state') {
       void catalog?.refresh(); // never rejects; a no-op inside 4 hours

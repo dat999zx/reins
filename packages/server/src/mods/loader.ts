@@ -38,7 +38,15 @@ function errorText(e: unknown): string {
   }
 }
 
-const linkMsg = (id: string, rel: string) => `\`${id}\`: a link inside the mod folder is not allowed: ${cap(rel, 120)}.`;
+/** Text with the Reins home (as a path in either slash style, or as a file address) written as `~/.reins`. Case-insensitive on Windows. */
+function homeScrubber(home: string): (text: string) => string {
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const forms = new Set<string>([home, home.replaceAll('\\', '/'), home.replaceAll('/', '\\'), pathToFileURL(home).href, pathToFileURL(home).href.replace(/^file:\/\/\//, 'file://')]);
+  const re = new RegExp([...forms].filter(Boolean).map(esc).sort((a, b) => b.length - a.length).join('|'), process.platform === 'win32' ? 'gi' : 'g');
+  return (text) => text.replace(re, '~/.reins');
+}
+
+const linkMsg =(id: string, rel: string) => `\`${id}\`: a link inside the mod folder is not allowed: ${cap(rel, 120)}.`;
 
 /** `~/.reins/mods/x/mod.json` for a file under home, the full path otherwise. */
 const shown = (file: string, home: string) => {
@@ -75,7 +83,7 @@ function depthOf(text: string): number {
 }
 
 /** Size and depth are checked before the JSON is parsed, and so before any validator sees it. */
-function parseManifest(buf: Buffer, file: string): { raw: Record<string, unknown> } | { error: string } {
+export function parseManifest(buf: Buffer, file: string): { raw: Record<string, unknown> } | { error: string } {
   if (buf.length > MAX_MANIFEST) return { error: `${file}: is larger than 256 KB; a manifest this big is refused.` };
   const text = buf.toString('utf8');
   if (depthOf(text) > MAX_DEPTH) return { error: `${file}: is nested more than ${MAX_DEPTH} levels deep; a manifest this deep is refused.` };
@@ -246,7 +254,7 @@ function publish(home: string, hash: string, files: Bytes[], id: string): string
   return final;
 }
 /** One spelling of `main`: slashes, normalised, inside the folder. Undefined when it is not a file path inside the folder. */
-function canonMain(main: unknown): string | undefined {
+export function canonMain(main: unknown): string | undefined {
   if (typeof main !== 'string' || main.length > 200) return undefined;
   const m = path.posix.normalize(main.replaceAll('\\', '/'));
   if (m === '.' || m.endsWith('/') || m === '..' || m.startsWith('../') || m.startsWith('/') || /^[a-z]:/i.test(m)) return undefined;
@@ -457,10 +465,13 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
     list(f, id, typeof f.raw?.kind === 'string' ? f.raw.kind : '', why.length ? why : [`\`${id}\`: this mod was not loaded.`]);
   }
 
+  // Node's own errors (a missing helper, a syntax error) name absolute paths; nothing the loader returns may show the home.
+  const scrub = homeScrubber(o.home);
+  for (const m of mods) m.problems = m.problems.map(scrub);
   return {
     mods,
     registry,
-    problems,
+    problems: problems.map(scrub),
     dispose() {
       for (const tx of [...txs.values()].reverse()) stop(tx);
       txs.clear();

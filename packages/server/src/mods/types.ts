@@ -209,7 +209,7 @@ export interface LoadOptions {
   /** True when the trust record for this id holds this hash. */
   trusted: (id: string, hash: string) => boolean;
   env?: NodeJS.ProcessEnv;
-  /** Tests only: runs after the folder was hashed, before it is copied and its code is imported. */
+  /** Runs after the folder was hashed and found trusted, before it is copied and its code is imported. */
   beforeActivate?: (mod: LoadedMod) => void;
   /** Tests only: runs after the mods folders were scanned, before any mod is loaded. */
   afterScan?: () => void;
@@ -226,4 +226,6 @@ export interface Mods {
    * A read with trouble in a whole folder keeps the old state; the problems come back. None when the loader was not started by `startMods`.
    */
   reload?(): Promise<Problem[]>;
+  /** The hash of the code this process first ran for a mod id. Node cannot unload code, so a different hash waits for a restart. None: not started by `startMods`. */
+  codeRan?(id: string): string | undefined;
 }

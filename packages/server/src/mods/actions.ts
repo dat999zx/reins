@@ -11,10 +11,10 @@ import { classify, WORDS } from '../loop/retry.js';
 import { modelIdsFrom } from '../loop/wire-util.js';
 import { cleanIds } from '../live-models.js';
 import { cap, show } from './kinds.js';
-import { isModId, validateMod } from './loader.js';
+import { canonMain, caseAlias, hashFiles, isModId, parseManifest, validateMod } from './loader.js';
 import type { LoadedMod, Mods, Protocol, ProviderManifest, SendWithKey } from './types.js';
 
-export type Reply = { status: number; body: unknown };
+export type Reply = { status: number; body: unknown; headers?: Record<string, string> };
 /** The yes answers of spec 7.8, kept per (provider id, origin) in the Reins store. */
 export interface ConsentStore {
   has(id: string, origin: string): boolean;
@@ -35,6 +35,8 @@ export interface ModEnv {
   env: NodeJS.ProcessEnv;
   /** The host's sanitizer, cut to `max`. */
   redact: (text: string, max?: number) => string;
+  /** Whether a text holds a key Reins knows (the Redactor's `has`). Export refuses a file that does. */
+  holdsSecret: (text: string) => boolean;
   /** How long Test connection waits for the provider. None: 8 seconds. */
   testTimeoutMs?: number;
 }
@@ -59,6 +61,24 @@ export function readDisabled(home: string): Set<string> {
   }
 }
 
+const trustFile = (home: string) => path.join(home, 'mod-trust.json');
+/** The code a user trusted: `{ "<mod id>": "<hash of all its files>" }`. One hash per id, so a changed file (or an old version) asks again. A missing or damaged file trusts nothing. */
+function readTrust(home: string): Map<string, string> {
+  try {
+    const v: unknown = JSON.parse(fs.readFileSync(trustFile(home), 'utf8'));
+    return new Map(isObj(v) ? Object.entries(v).filter((e): e is [string, string] => typeof e[1] === 'string') : []);
+  } catch {
+    return new Map();
+  }
+}
+export const modTrusted = (home: string, id: string, hash: string) => readTrust(home).get(id) === hash;
+function setTrust(home: string, id: string, hash: string | undefined) {
+  const all = readTrust(home);
+  if (hash === undefined ? !all.delete(id) : all.get(id) === hash) return;
+  if (hash !== undefined) all.set(id, hash);
+  writeWhole(home, trustFile(home), JSON.stringify(Object.fromEntries([...all].sort()), null, 2) + '\n');
+}
+
 // One change at a time per home: two edits of the same file, or a remove during an install, never interleave.
 const tails = new Map<string, Promise<unknown>>();
 function serial<T>(home: string, fn: () => Promise<T> | T): Promise<T> {
@@ -71,6 +91,54 @@ const scratch = (home: string, what: string) => path.join(home, `.mod-${what}-${
 const quietRm = (p: string) => {
   try { fs.rmSync(p, { recursive: true, force: true }); } catch { /* a leftover temp name is harmless */ }
 };
+/** Removes a path; a link is removed itself, never what it points at. Returns a plain line (no home path) when it could not. */
+function removeReport(p: string): string | undefined {
+  try {
+    if (fs.lstatSync(p).isSymbolicLink()) {
+      try { fs.unlinkSync(p); } catch { fs.rmdirSync(p); }
+    } else fs.rmSync(p, { recursive: true, force: true });
+    return undefined;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException)?.code === 'ENOENT' ? undefined : `could not remove ${path.basename(p)}`;
+  }
+}
+const aliveElsewhere = (pid: number) => {
+  if (pid === process.pid) return false; // a leftover of this very pid is from before this start
+  try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException)?.code === 'EPERM'; }
+};
+
+/**
+ * Once per start, before the mods load: undoes what a crash in the middle of an import left in the home. A staging folder or temp file
+ * is deleted. A backup (`.mod-old-<id>-...`) goes back to `mods/<id>` when that is missing (the old install, with its old trust line), and is
+ * deleted when the install is there. Nothing is followed: a link is removed itself. A leftover of a process that is still alive is left alone.
+ * Returns plain lines for what it could not do.
+ */
+export function sweepScratch(home: string): string[] {
+  const problems: string[] = [];
+  let names: string[];
+  try { names = fs.readdirSync(home).sort(); } catch { return problems; }
+  for (const name of names) {
+    const m = /^\.mod-(?:new|file|old-(.+))-(\d+)-[0-9a-f]{12}$/.exec(name);
+    if (!m || aliveElsewhere(Number(m[2]))) continue;
+    const p = path.join(home, name);
+    const id = m[1];
+    if (id !== undefined && isModId(id) && !there(path.join(modsDir(home), id))) {
+      try {
+        if (!fs.lstatSync(p).isDirectory()) throw new Error('not a folder'); // lstat: a link is not a folder
+        fs.mkdirSync(modsDir(home), { recursive: true });
+        fs.renameSync(p, path.join(modsDir(home), id));
+        continue;
+      } catch {
+        const gone = removeReport(p);
+        problems.push(gone ?? `could not restore ${id}`);
+        continue;
+      }
+    }
+    const gone = removeReport(p);
+    if (gone) problems.push(gone);
+  }
+  return problems;
+}
 
 /** A temp file beside the target's home, then a rename over it: a reader sees the old file or the new one, never half. */
 function writeWhole(home: string, file: string, text: string) {
@@ -131,6 +199,10 @@ function problemsOf(env: ModEnv, raw: Record<string, unknown>, id: string): stri
   const out = validateMod(raw, { folder: id, source: 'user' }, id, bundledKinds(env.mods), env.mods.registry);
   if (out.length) return out;
   if (raw.kind !== 'provider' || raw.main !== undefined) return [`${id$(id)}: only a provider with no code of its own can be added here.`];
+  return addressProblems(raw, id);
+}
+/** A web address that carries a user name or password would sit in logs and the model list request. */
+function addressProblems(raw: Record<string, unknown>, id: string): string[] {
   for (const k of ['baseUrl', 'modelsUrl'] as const) {
     const v = raw[k];
     try {
@@ -181,16 +253,28 @@ export function providerStatus(env: Pick<ModEnv, 'home' | 'mods' | 'consent' | '
   return { host: new URL(origin).host, key: keyStatus(found.manifest, readSecrets(env.home), env.env), consent: env.consent.has(id, origin) ? 'granted' : 'needed' };
 }
 
+export type CodeTrust = 'none' | 'trusted' | 'needs-trust' | 'restart';
+const RESTART = 'restart to run the new code';
+/** Where a user mod stands with its code (spec 5.4): no code, running trusted code, waiting for a yes, or trusted but a restart away. */
+function trustOf(env: Pick<ModEnv, 'home' | 'mods'>, m: LoadedMod): CodeTrust {
+  if (!m.hasCode) return 'none';
+  if (m.trusted) return 'trusted';
+  const ran = env.mods.codeRan?.(m.id);
+  return m.hash !== undefined && ran !== undefined && ran !== m.hash && modTrusted(env.home, m.id, m.hash) ? 'restart' : 'needs-trust';
+}
+
 function summary(env: ModEnv, m: LoadedMod) {
   const man = isObj(m.manifest) ? m.manifest : {};
+  const trust = m.source === 'bundled' ? undefined : trustOf(env, m);
   return {
+    ...(trust ? { trust } : {}),
     ...(m.kind === 'provider' ? providerStatus(env, m.id) : {}),
     id: m.id, kind: m.kind, label: typeof man.label === 'string' ? man.label : m.id, version: typeof man.version === 'string' ? man.version : '',
     enabled: m.enabled, bundled: m.source === 'bundled',
     // A user mod is "installed" when the catalog has that id (custom endpoints may not take a catalog id), else it is the user's own.
     source: m.source === 'bundled' ? 'bundled' : readCatalog(env, m.id) ? 'installed' : 'custom',
     ...(m.replaces ? { replaces: m.replaces } : {}),
-    problems: m.problems,
+    problems: trust === 'restart' ? [`${id$(m.id)}: ${RESTART}.`] : m.problems,
   };
 }
 
@@ -373,6 +457,7 @@ export function removeMod(env: ModEnv, id: unknown): Promise<Reply> {
     // The key (secrets file) stays: a later install of the same id finds it again. The yes answers go with the mod, so a later install asks again.
     // The on/off mark goes with the mod.
     env.consent.revoke(id);
+    setTrust(env.home, id, undefined); // trust goes with the mod: the same files imported again ask again
     const off = readDisabled(env.home);
     if (off.delete(id)) writeWhole(env.home, disabledFile(env.home), JSON.stringify([...off].sort(), null, 2) + '\n');
     return reloaded(env, { id });
@@ -392,7 +477,7 @@ export function reinstallMod(env: ModEnv, id: unknown): Promise<Reply> {
     const problems = problemsOf(env, raw, id);
     if (problems.length) return refusal(problems);
     const final = path.join(modsDir(env.home), id);
-    const old = scratch(env.home, 'old');
+    const old = scratch(env.home, `old-${id}`);
     try {
       const text = fs.readFileSync(path.join(env.catalogDir, id, 'mod.json'), 'utf8');
       const had = there(final);
@@ -549,4 +634,352 @@ export async function testConnection(env: ModEnv, id: unknown): Promise<Reply> {
     if (name === 'TimeoutError' || name === 'AbortError') return done('unreachable', `Cannot reach ${host}: no answer in ${Math.round(ms / 100) / 10} seconds.`, { host });
     return done('unreachable', `Cannot reach ${host}: ${env.redact(e instanceof Error ? e.message : String(e), MAX_TEST_TEXT)}`, { host });
   }
+}
+
+// ---- GET /api/mods/:id/export, POST /api/mods/import/preview, POST /api/mods/import (spec 7.7)
+
+const MAX_TOTAL = 1024 * 1024;
+const MAX_FILES = 50;
+const MAX_NAME = 100;
+const WIN_RESERVED = /^(nul|con|prn|aux|com[1-9]|lpt[1-9])$/i;
+const NAME_OK = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/;
+/** The words of the second prompt for a mod with code (spec 7.7). */
+export const CODE_PROMPT = 'This mod runs its own code inside Reins, with your rights: it can read your files and your keys, and use the network. Reins cannot limit what it does. Trust it only if you trust its author.';
+/** Files Reins keeps in its home; no export ever reads or holds them. */
+const HOME_FILES = new Set(['secrets.json', 'disabled-mods.json', 'mod-trust.json', 'mod-cache']);
+
+/** Why a file name cannot be part of a mod file, in plain words; undefined when it can. Flat names only, safe on every system. */
+function nameProblem(name: string): string | undefined {
+  const n = `\`${cap(name, 40)}\``;
+  if (name === '') return 'a file has an empty name.';
+  if (name.length > MAX_NAME) return `${n}: a file name is longer than ${MAX_NAME} characters.`;
+  if (hasControl(name)) return `${n}: a file name must not hold a control character.`;
+  if (name.includes('/') || name.includes('\\')) return `${n}: a file name must not hold / or \\; a mod is one folder with no folders in it.`;
+  if (name.includes('..')) return `${n}: a file name must not hold "..".`;
+  if (name.includes(':')) return `${n}: a file name must not hold ":" (no drive letters).`;
+  if (/[. ]$/.test(name)) return `${n}: a file name must not end in a dot or a space.`;
+  if (WIN_RESERVED.test(name.split('.')[0]!)) return `${n}: this file name is a reserved name on Windows; pick another.`;
+  if (name === '__proto__' || !NAME_OK.test(name)) return `${n}: a file name may hold only letters, digits, dot, dash and underscore, and must not start with a dot.`;
+  return undefined;
+}
+
+/** Text that is really binary: a control character other than tab and line breaks. */
+function binaryLike(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    const k = text.charCodeAt(i);
+    if (k < 0x20 && k !== 9 && k !== 10 && k !== 13) return true;
+  }
+  return false;
+}
+
+/** C0, DEL, C1, line and paragraph separators and the direction controls: characters that change how a line of text reads. */
+function oddChar(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    const k = text.charCodeAt(i);
+    if (k < 0x20 || (k >= 0x7f && k <= 0x9f) || k === 0x2028 || k === 0x2029 || k === 0x200e || k === 0x200f || k === 0x061c
+      || (k >= 0x202a && k <= 0x202e) || (k >= 0x2066 && k <= 0x2069)) return true;
+  }
+  return false;
+}
+
+interface FileBytes {
+  rel: string;
+  bytes: Buffer;
+}
+
+/**
+ * Every plain-file check of an export file, no write and no state read: the shape, the count, the size, each name, each text.
+ * `input` is the file as an object or as text. The exact bytes of each file are what is hashed and written.
+ */
+function parseModFile(input: unknown): { files: FileBytes[] } | { problems: string[] } {
+  const no = (why: string) => ({ problems: [why] });
+  let v = input;
+  if (typeof input === 'string') {
+    if (Buffer.byteLength(input) > MAX_TOTAL) return no('The file is larger than 1 MB.');
+    try { v = JSON.parse(input); } catch { return no('The file is not valid JSON.'); }
+  }
+  if (!isObj(v)) return no('The file must hold one JSON object: { "reinsMod": 1, "files": { ... } }.');
+  for (const k of Object.keys(v)) if (k !== 'reinsMod' && k !== 'files') return no(`\`${cap(k, 40)}\` is not a field of a mod file.`);
+  if (v.reinsMod !== 1) return no(v.reinsMod === undefined ? '`reinsMod` is missing; it must be 1.' : `\`reinsMod\` is ${show(v.reinsMod)}; this Reins reads mod files with \`reinsMod\` 1.`);
+  if (!isObj(v.files)) return no('`files` must be an object of file names and their text.');
+  // Object.entries lists an own key named __proto__ like any other; nothing here reads a name as a property.
+  const entries = Object.entries(v.files);
+  if (entries.length > MAX_FILES) return no(`The file holds ${entries.length} files; the most is ${MAX_FILES}.`);
+  const files: FileBytes[] = [];
+  let total = 0;
+  for (const [name, text] of entries) {
+    const why = nameProblem(name);
+    if (why) return no(why);
+    if (typeof text !== 'string') return no(`\`${cap(name, 40)}\` must be text.`);
+    if (text.length > MAX_TOTAL) return no('The files are larger than 1 MB together.');
+    const bytes = Buffer.from(text, 'utf8');
+    if (binaryLike(text) || bytes.toString('utf8') !== text) return no(`\`${cap(name, 40)}\` is not text. Only text files can be imported.`);
+    total += bytes.length;
+    if (total > MAX_TOTAL) return no('The files are larger than 1 MB together.');
+    files.push({ rel: name, bytes });
+  }
+  const alias = caseAlias(files.map((f) => f.rel));
+  if (alias) return no(`Two files differ only in upper and lower case: \`${cap(alias[0], 40)}\`, \`${cap(alias[1], 40)}\`.`);
+  if (!files.some((f) => f.rel === 'mod.json')) return no('`mod.json` is missing from the files.');
+  return { files };
+}
+
+/** 127.0.0.0/8, ::1 and localhost: where a plain http key goes nowhere past this machine. */
+const isLocalHost = (hostname: string) => hostname === 'localhost' || hostname === '[::1]' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname);
+
+export interface ImportSummary {
+  id: string;
+  label: string;
+  kind: string;
+  protocol: string | null;
+  /** 'your': a copy the user installed is there and is replaced. 'builtin': the mod shadows a bundled one. */
+  replaces: 'your' | 'builtin' | null;
+  replacesLine?: string;
+  keys: Array<{ name: string; host: string; plainHttp: boolean; line: string }>;
+  /** Header names only; the values stay in the file. */
+  headers: string[];
+  hasCode: boolean;
+  /** The second prompt, word for word (spec 7.7). Only for a mod with code. */
+  codePrompt?: string;
+  /** Code mods: the hash the trust is kept under, and whether it is already trusted. */
+  hash?: string;
+  trusted?: boolean;
+  files: Array<{ name: string; bytes: number }>;
+  warnings: string[];
+}
+
+type Checked = { ok: { id: string; files: FileBytes[]; summary: ImportSummary } } | { reply: Reply };
+
+/**
+ * ALL the checks of an import, with no write. Preview and apply both call this with the file as given, so apply never
+ * relies on an earlier preview. The id is checked with `isModId` before it is used as a path, then the loader's own `validateMod` runs.
+ */
+function checkImport(env: ModEnv, input: unknown): Checked {
+  const parsed = parseModFile(input);
+  if ('problems' in parsed) return { reply: refusal(parsed.problems) };
+  const { files } = parsed;
+  const p = parseManifest(files.find((f) => f.rel === 'mod.json')!.bytes, 'mod.json');
+  if ('error' in p) return { reply: refusal([p.error]) };
+  const raw = p.raw;
+  if (!isModId(raw.id)) return { reply: refusal(['The id must be lowercase letters, digits and dashes, start with a letter or digit, be at most 40 long, and not be a name Windows reserves.']) };
+  const id = raw.id;
+  const problems = [
+    ...validateMod(raw, { folder: id, source: 'user' }, id, bundledKinds(env.mods), env.mods.registry),
+    ...addressProblems(raw, id),
+  ];
+  const main = raw.main === undefined ? undefined : canonMain(raw.main);
+  if (!problems.length && raw.main !== undefined && (main === undefined || !files.some((f) => f.rel === main))) {
+    problems.push(`${id$(id)}: \`main\` is ${show(raw.main)}, which is not one of the files in this mod file.`);
+  }
+  if (problems.length) return { reply: refusal(problems) };
+  // Text the confirmation shows must read as it is: no control, line-break or direction-changing character.
+  const shown: Array<[string, unknown]> = [['label', raw.label], ['protocol', raw.protocol], ['kind', raw.kind]];
+  if (isObj(raw.headers)) for (const h of Object.keys(raw.headers)) shown.push(['a header name', h]);
+  if (isObj(raw.auth) && Array.isArray(raw.auth.keyEnv)) for (const k of raw.auth.keyEnv) shown.push(['a key name', k]);
+  for (const [field, v] of shown) {
+    if (typeof v === 'string' && oddChar(v)) return { reply: refusal([`${id$(id)}: ${field} must not hold a control, line-break or direction-changing character.`]) };
+  }
+
+  const yours = there(path.join(modsDir(env.home), id));
+  const builtin = env.mods.mods.some((m) => m.id === id && (m.source === 'bundled' || m.replaces === 'bundled'));
+  const auth = isObj(raw.auth) ? raw.auth : undefined;
+  let host = '';
+  let plain = false;
+  try {
+    const u = new URL(String(raw.baseUrl));
+    host = u.host;
+    plain = u.protocol === 'http:' && !isLocalHost(u.hostname);
+  } catch { /* a mod with no address sends nothing */ }
+  const names = auth && auth.style !== 'none' && Array.isArray(auth.keyEnv) ? auth.keyEnv.filter((n): n is string => typeof n === 'string') : [];
+  const hasCode = raw.main !== undefined;
+  const others = files.map((f) => f.rel).filter((n) => n !== 'mod.json' && n !== main).sort();
+  const hash = hasCode ? hashFiles(files) : undefined;
+  const summary: ImportSummary = {
+    id, label: String(raw.label), kind: String(raw.kind), protocol: typeof raw.protocol === 'string' ? raw.protocol : null,
+    replaces: yours ? 'your' : builtin ? 'builtin' : null,
+    ...(yours || builtin ? { replacesLine: yours ? `replaces your ${id}` : `replaces the built-in ${id}` } : {}),
+    keys: names.map((name) => ({ name, host, plainHttp: plain, line: `sends the value of ${name} to ${host}${plain ? ' over plain http' : ''}` })),
+    headers: isObj(raw.headers) ? Object.keys(raw.headers) : [],
+    hasCode,
+    ...(hasCode ? { codePrompt: CODE_PROMPT, hash: hash!, trusted: modTrusted(env.home, id, hash!) } : {}),
+    files: [...files].sort((a, b) => (a.rel < b.rel ? -1 : 1)).map((f) => ({ name: f.rel, bytes: f.bytes.length })),
+    warnings: [
+      ...(plain && names.length ? [`${host} is not on this machine and is reached over plain http, so the key can be read on the way.`] : []),
+      ...(others.length ? [hasCode ? `also holds files the manifest does not name: ${others.join(', ')}. They are part of the code you would trust.` : `also holds files a mod without code does not use: ${others.join(', ')}.`] : []),
+    ],
+  };
+  return { ok: { id, files, summary } };
+}
+
+/** Spec 7.7: reads a mod file and says what importing it would do. Writes nothing. */
+export function importPreview(env: ModEnv, file: unknown): Reply {
+  const got = checkImport(env, file);
+  return 'reply' in got ? got.reply : { status: 200, body: { ok: true, summary: got.ok.summary } };
+}
+
+/**
+ * The one way a mod file's bytes reach the disk. `name` has passed `nameProblem`; this still checks, by `path.relative`, that the
+ * path stays inside `root` as exactly one component, that `root` is no link, and (by `wx`) that nothing is there to follow or overwrite.
+ * Known limit, accepted: the checks and the write are separate calls, so a second process that can write in the Reins home could swap the
+ * staging folder for a link in between (and could equally rewrite mod-trust.json, which is the bigger power). No directory handle is pinned.
+ */
+function writeInside(root: string, name: string, bytes: Buffer) {
+  const file = path.join(root, name);
+  const rel = path.relative(root, file);
+  if (rel !== name || rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) throw new Error('outside the mod folder');
+  if (fs.lstatSync(root).isSymbolicLink()) throw new Error('a link');
+  fs.writeFileSync(file, bytes, { flag: 'wx' });
+}
+
+/** The staged folder holds exactly these files, with exactly these bytes: what is hashed and trusted is what is on disk. */
+function stagedMatches(stage: string, files: FileBytes[]): boolean {
+  const names = fs.readdirSync(stage).sort();
+  if (names.join('\0') !== files.map((f) => f.rel).sort().join('\0')) return false;
+  return files.every((f) => {
+    const file = path.join(stage, f.rel);
+    return fs.lstatSync(file).isFile() && fs.readFileSync(file).equals(f.bytes);
+  });
+}
+
+/**
+ * Spec 7.7: installs a mod file. Every check of the preview runs again on `b.file`. The files are built whole in a scratch folder in the
+ * home and renamed in; an old copy is moved aside and put back when anything fails. A code mod runs only when `b.trust` is true (its hash is
+ * recorded) or the same bytes were trusted before; a mod that shadows a built-in one needs `b.replaceBuiltin` true.
+ */
+export function importApply(env: ModEnv, b: Record<string, unknown>): Promise<Reply> {
+  for (const k of ['trust', 'replaceBuiltin'] as const) if (b[k] !== undefined && typeof b[k] !== 'boolean') return Promise.resolve(fail(400, `\`${k}\` must be true or false.`));
+  return serial(env.home, async () => {
+    const got = checkImport(env, b.file);
+    if ('reply' in got) return got.reply;
+    const { id, files, summary } = got.ok;
+    if (summary.replaces === 'builtin' && b.replaceBuiltin !== true) return fail(409, `This ${summary.replacesLine}. Import it again with replaceBuiltin true to go on.`);
+    const home = env.home;
+    const final = path.join(modsDir(home), id);
+    let had = false;
+    try {
+      const st = fs.lstatSync(final);
+      if (st.isSymbolicLink() || !st.isDirectory()) return fail(409, `${id$(id)} is a link or a file in the mods folder, so it was not replaced. Remove it first.`);
+      had = true;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException)?.code !== 'ENOENT') return fail(409, `${id$(id)} could not be checked. Nothing was changed.`);
+    }
+    const stage = scratch(home, 'new');
+    const old = scratch(home, `old-${id}`); // the id is in the name so a start after a crash can put the old install back (sweepScratch)
+    const before = readTrust(home).get(id);
+    const marked = readDisabled(home);
+    let moved = false;
+    let placed = false;
+    let trustSet = false;
+    let markCleared = false;
+    let phase: 'build' | 'finish' = 'build';
+    // Order: build and check the new folder, move the old one aside, move the new one in, and only THEN the trust line and the other
+    // state. A crash before the trust line leaves the new code untrusted ("needs trust"), never trusted-but-missing. The backup is
+    // deleted last, so any failure up to then puts everything back.
+    try {
+      fs.mkdirSync(stage);
+      for (const f of files) writeInside(stage, f.rel, f.bytes);
+      if (!stagedMatches(stage, files)) throw new Error('the staged files differ');
+      fs.mkdirSync(modsDir(home), { recursive: true });
+      if (had) { fs.renameSync(final, old); moved = true; }
+      fs.renameSync(stage, final);
+      placed = true;
+      phase = 'finish';
+      if (summary.hasCode && b.trust === true) { setTrust(home, id, summary.hash); trustSet = true; }
+      if (!had && marked.has(id)) {
+        const off = new Set(marked);
+        off.delete(id);
+        writeWhole(home, disabledFile(home), JSON.stringify([...off].sort(), null, 2) + '\n');
+        markCleared = true;
+      }
+      env.consent.revoke(id); // a new manifest asks again, as Re-install does
+    } catch {
+      const stuck: string[] = [];
+      if (placed) {
+        try { fs.renameSync(final, stage); placed = false; } catch { stuck.push('the new copy is still in the mods folder'); }
+      }
+      if (!placed) {
+        const gone = removeReport(stage);
+        if (gone) stuck.push(gone);
+      }
+      if (moved && !placed) {
+        try { fs.renameSync(old, final); } catch { stuck.push(`your old copy is in ${path.basename(old)} in the Reins folder`); }
+      }
+      if (trustSet) {
+        try { setTrust(home, id, before); } catch { stuck.push('the trust line could not be put back'); }
+      }
+      if (markCleared) {
+        try { writeWhole(home, disabledFile(home), JSON.stringify([...marked].sort(), null, 2) + '\n'); } catch { stuck.push('the on/off mark could not be put back'); }
+      }
+      const base = `${id$(id)} could not be imported`;
+      return { status: phase === 'build' ? 409 : 500, body: { error: stuck.length ? `${base} and could not be fully undone: ${stuck.join('; ')}.` : `${base}. Nothing was changed.` } };
+    }
+    const left: string[] = [];
+    if (moved) {
+      const gone = removeReport(old);
+      if (gone) left.push(gone);
+    }
+    const r = await reloaded(env, { id, replaced: had });
+    const body = r.body as Record<string, unknown>;
+    if (left.length) body.problems = [...(Array.isArray(body.problems) ? body.problems : []), ...left];
+    const now = env.mods.mods.find((m) => m.id === id);
+    body.trust = now ? trustOf(env, now) : 'none';
+    return r;
+  });
+}
+
+/** At most `budget` bytes of a plain file, read through one open descriptor, however big it is or grows. */
+function readBudget(file: string, budget: number): Buffer {
+  const fd = fs.openSync(file, 'r');
+  try {
+    if (!fs.fstatSync(fd).isFile()) throw new Error('not a file');
+    const buf = Buffer.alloc(budget);
+    let n = 0;
+    while (n < budget) {
+      const r = fs.readSync(fd, buf, n, budget - n, null);
+      if (r === 0) break;
+      n += r;
+    }
+    return buf.subarray(0, n);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/** Spec 7.7: the mod's own files as `{ reinsMod: 1, files }`. No secret: only the mod folder is read, and a file holding a known key is refused. */
+export function exportMod(env: ModEnv, id: unknown): Reply {
+  if (!isModId(id)) return fail(400, BAD_ID);
+  // The id is the download's file name, and a header is not redacted: an id that is a known key is never sent. Generic words, no value.
+  if (env.holdsSecret(id)) return fail(409, 'This mod cannot be exported.');
+  const mod = env.mods.mods.find((m) => m.id === id);
+  if (!mod) return fail(404, `No mod ${id$(id)} is installed.`);
+  const no = (why: string) => fail(409, `${id$(id)} was not exported: ${why}`);
+  const files: Record<string, string> = {};
+  try {
+    if (fs.lstatSync(mod.dir).isSymbolicLink()) return no('its folder is a link.');
+    const entries = fs.readdirSync(mod.dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1));
+    if (entries.length > MAX_FILES) return no(`it holds ${entries.length} files; the most is ${MAX_FILES}.`);
+    let total = 0;
+    for (const d of entries) {
+      if (env.holdsSecret(d.name)) return no('a file name holds a key Reins knows. Rename the file.'); // before any message that would print the name
+      const why = nameProblem(d.name);
+      if (why) return no(why);
+      if (HOME_FILES.has(d.name)) return no(`\`${d.name}\` belongs to Reins, not to a mod.`);
+      const file = path.join(mod.dir, d.name);
+      const st = fs.lstatSync(file);
+      if (st.isSymbolicLink()) return no(`\`${cap(d.name, 40)}\` is a link.`);
+      if (!st.isFile()) return no(`\`${cap(d.name, 40)}\` is a folder; a mod file holds no folders.`);
+      // The size from lstat is not trusted (a file can grow): at most the room left plus one byte is read, and the bytes read are what count.
+      const bytes = readBudget(file, MAX_TOTAL - total + 1);
+      total += bytes.length;
+      if (total > MAX_TOTAL) return no('its files are larger than 1 MB together.');
+      let text: string;
+      try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); } catch { return no(`\`${cap(d.name, 40)}\` is not text. Only text files can be exported.`); }
+      if (binaryLike(text) || !Buffer.from(text, 'utf8').equals(bytes)) return no(`\`${cap(d.name, 40)}\` is not text. Only text files can be exported.`);
+      if (env.holdsSecret(text)) return no(`\`${cap(d.name, 40)}\` holds a key Reins knows. Take the key out of the file; keys go in Settings > Providers, never in a mod.`);
+      files[d.name] = text;
+    }
+  } catch {
+    return no('its files could not be read.');
+  }
+  return { status: 200, body: { reinsMod: 1, files }, headers: { 'content-disposition': `attachment; filename="${id}.reins-mod.json"` } };
 }
