@@ -285,7 +285,6 @@ export async function startServer(o: ServerOptions): Promise<Server> {
   function create(b: Body): Reply {
     if (!str(b.cwd) || !path.isAbsolute(b.cwd)) return fail(400, 'cwd must be an absolute path.');
     // A root (a drive, a share, `/`) is refused as text, before the filesystem is asked anything about it (a `stat` of a share root can hang).
-    // A root (a drive, a share, `/`) is refused as text, before the filesystem is asked anything about it (a `stat` of a share root can hang).
     const root = rootFolderWords(b.cwd);
     if (root) return fail(400, root);
     if (b.cwd.includes('\0') || !fs.statSync(b.cwd, { throwIfNoEntry: false })?.isDirectory()) return fail(400, 'cwd is not a folder.');

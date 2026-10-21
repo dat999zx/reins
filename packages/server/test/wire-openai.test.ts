@@ -426,6 +426,17 @@ describe('usage', () => {
     expect(usageOf(await run())[0]!.unknown).toBeUndefined();
   });
 
+  it('a counter that is a string, negative, NaN or fractional (0.5 is not rounded to a known zero) makes the usage unknown', async () => {
+    for (const bad of ['10', -1, Number.NaN, 0.5]) {
+      for (const usage of [{ prompt_tokens: bad, completion_tokens: 0 }, { prompt_tokens: 0, completion_tokens: bad }]) {
+        a.push(raw(delta({ content: 'x' }), delta({}, 'stop'), usageFrame(usage), data('[DONE]')));
+        expect(usageOf(await run())[0]!.unknown, JSON.stringify(usage)).toBe(true);
+      }
+    }
+    a.push(raw(delta({ content: 'x' }), delta({}, 'stop'), usageFrame({ prompt_tokens: 0, completion_tokens: 0 }), data('[DONE]')));
+    expect(usageOf(await run())[0]!.unknown).toBeUndefined();
+  });
+
   it('a stream with neither [DONE] nor a finish_reason is an error, not a reply; the text before it is not kept', async () => {
     a.push(raw(delta({ content: 'part' })));
     const got: WireEvent[] = [];

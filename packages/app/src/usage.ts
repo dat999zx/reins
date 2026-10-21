@@ -1,6 +1,6 @@
 import type { LogRow } from '@reins/server/store.js';
 
-export interface Usage { model: string; used: number; window?: number; stale: boolean; compressed?: true } // compressed: `used` is the provider's figure after a compaction, a lower bound
+export interface Usage { model: string; used: number; window?: number; stale: boolean; compressed?: true; unknown?: true } // unknown: the reply gave no figure, `used` means nothing; compressed: `used` is the provider's figure after a compaction, a lower bound
 
 /**
  * The newest `usage` engine row. ponytail: the stale rule copies the server's contextSize (settings.ts), which treats a compaction as
@@ -22,8 +22,10 @@ export function usageOf(rows: LogRow[]): Usage | undefined {
       continue;
     }
     if (d.type !== 'usage') { stale = true; continue; }
-    if (typeof d.used !== 'number' || typeof d.model !== 'string') return undefined;
-    return { model: d.model, used: after ?? d.used, ...(typeof d.window === 'number' ? { window: d.window } : {}), stale, ...(compacted ? { compressed: true as const } : {}) };
+    if (typeof d.model !== 'string') return undefined;
+    // A reply with no usage figure is an unknown context, not an empty one (zero is the conversation with no reply yet).
+    const unknown = typeof d.used !== 'number' && after === undefined;
+    return { model: d.model, used: after ?? (typeof d.used === 'number' ? d.used : 0), ...(unknown ? { unknown: true as const } : {}), ...(typeof d.window === 'number' ? { window: d.window } : {}), stale, ...(compacted ? { compressed: true as const } : {}) };
   }
   return undefined;
 }
@@ -40,6 +42,7 @@ const num = (n: number) => n.toLocaleString('en-US');
 export function contextWords(u?: Usage, fallback?: number): { text: string; title: string } {
   if (!u) return { text: `Context 0 / ${fallback === undefined ? '?' : tokens(fallback)}`, title: 'Measured after the first reply.' };
   const window = u.window ?? fallback;
+  if (u.unknown) return { text: `Context ? / ${window === undefined ? '?' : tokens(window)}`, title: 'The provider did not report the size of the last reply.' };
   const text = `Context ${u.stale ? '≥' : ''}${tokens(u.used)} / ${window === undefined ? '?' : tokens(window)}`;
   if (u.compressed) return { text, title: "At least this: the provider's figure after compressing. The next reply measures it again." };
   if (u.stale) return { text, title: 'At least this: measured before the latest activity.' };

@@ -152,7 +152,8 @@ describe.each(WIRES)('B2: a call that failed after the 200 began has an unknown 
     const res = await s.turn('go');
     expect(sent(r)).toBe(2);
     expect(res.text).toBe('done');
-    expect(res.cost).toBeUndefined();
+    expect(res.unknownCost).toBe(true);
+    expect(res.cost).toBeCloseTo(0.008, 12); // phase E4: the priced retry keeps its subtotal next to the call that was lost
     expect(res.total).toBeUndefined();
   });
 

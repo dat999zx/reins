@@ -184,6 +184,13 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
   // What `maxUsd` counts from: the total when this session opened, so it holds across turns (it is not reset by a new turn).
   const openTotal = total;
 
+  // What the priced calls of this engine cost, apart from the running total (which an unpriced call makes unknown for good), and where the last result left it.
+  let known = 0;
+  let knownBase = 0;
+  let unknownMark = 0; // `unknownCalls` at the last result: the subtotal is given when a call went unknown since then (an unknown base alone gives none)
+  const knownBy: Record<string, number> = {};
+  let knownBaseBy: Record<string, number> = {};
+
   let turnEvents: EngineEvent[] = [];
   const emit = (e: EngineEvent) => {
     turnEvents.push(e);
@@ -329,6 +336,10 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
     // A cost that is not a number (a usage with a NaN in it) is no cost: the total becomes unknown, never a NaN that no comparison catches.
     const spent = cost !== undefined && Number.isFinite(cost) ? cost : undefined;
     if (spent === undefined) unknownCalls++;
+    else {
+      known += spent;
+      knownBy[model] = (knownBy[model] ?? 0) + spent;
+    }
     if (total !== undefined) {
       if (spent === undefined) total = undefined;
       else {
@@ -353,11 +364,16 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
   function costFields(): Pick<TurnResult, 'cost' | 'total' | 'totals' | 'models' | 'unknownCost'> {
     const split = Object.fromEntries(Object.entries(totals).map(([m, t]) => [m, t - (baseBy[m] ?? 0)] as const).filter(([, c]) => c > 0));
     // An unknown total says so (`unknownCost`): the Run, the receipt and the app tell "not known" from "nothing spent".
+    // The priced calls of the turn stay known when another call in it was not: their subtotals do not depend on the running total.
+    const part = Object.fromEntries(Object.entries(knownBy).map(([m, t]) => [m, t - (knownBaseBy[m] ?? 0)] as const).filter(([, c]) => c > 0));
     const fields = total !== undefined
       ? { cost: total - base!, total, totals: { ...totals }, models: split, ...(unknownTail ? { unknownCost: true as const } : {}) }
-      : { unknownCost: true as const };
+      : { ...(unknownCalls > unknownMark && known > knownBase ? { cost: known - knownBase, models: part } : {}), unknownCost: true as const };
+    unknownMark = unknownCalls;
     base = total;
     baseBy = { ...totals };
+    knownBase = known;
+    knownBaseBy = { ...knownBy };
     return fields;
   }
 

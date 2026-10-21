@@ -48,6 +48,21 @@ describe('usageOf', () => {
   });
 });
 
+describe('a usage row with no figure', () => {
+  const none = eng({ type: 'usage', model: 'm1', window: 1_000_000 });
+  it('is an unknown context, not zero; a compaction after it still gives its lower bound', () => {
+    expect(usageOf([none])).toEqual({ model: 'm1', used: 0, unknown: true, window: 1_000_000, stale: false });
+    expect(contextWords(usageOf([none]), 200_000)).toEqual({ text: 'Context ? / 1M', title: 'The provider did not report the size of the last reply.' });
+    expect(contextWords(usageOf([eng({ type: 'usage', model: 'm1' })]))).toMatchObject({ text: 'Context ? / ?' });
+    expect(usageOf([none, eng({ type: 'compacted', trigger: 'manual', before: 9, after: 3 })])).toMatchObject({ used: 3, compressed: true });
+    expect(usageOf([none, eng({ type: 'compacted', trigger: 'manual', before: 9, after: 3 })])?.unknown).toBeUndefined();
+  });
+  it('a later known figure wins; no reply at all is still the empty conversation', () => {
+    expect(usageOf([none, usage(500)])?.unknown).toBeUndefined();
+    expect(contextWords(undefined).text).toBe('Context 0 / ?');
+  });
+});
+
 describe('contextWords', () => {
   it('reads fresh, unknown window, stale and none', () => {
     expect(contextWords({ model: 'm1', used: 30_550, window: 1_000_000, stale: false })).toEqual({

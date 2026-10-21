@@ -95,11 +95,32 @@ export function projectFolderWords(cwd: string, reinsDir: string, userHome: stri
  * touches the filesystem. A Windows-style path is judged by the Windows rules on any host.
  */
 export function rootFolderWords(cwd: string): string | undefined {
-  const win = /^([a-z]:|[\\/]{2})/i.test(cwd);
+  const plain = plainWin(cwd);
+  const win = /^([a-z]:|[\\/]{2})/i.test(plain);
   const P = win ? path.win32 : path;
-  const text = P.resolve(cwd);
+  const text = P.resolve(plain);
   // `\\server` and `\\server\share` (either slash): a server or a share root, judged on the text as given (Node resolves a bare `\\server` as a local name).
-  return P.relative(P.parse(text).root, text) === '' || /^[\\/]{2}[^\\/]*([\\/][^\\/]*)?[\\/]?$/.test(cwd) ? TOO_WIDE_WORDS : undefined;
+  return P.relative(P.parse(text).root, text) === '' || /^[\\/]{2}[^\\/]*([\\/][^\\/]*)?[\\/]?$/.test(plain) ? TOO_WIDE_WORDS : undefined;
+}
+
+/**
+ * A Windows path in its plain spelling, as text: `\\?\C:\` and `\\.\C:\` are `C:\`, `\\?\UNC\server\share\` is `\\server\share\`, and the trailing
+ * spaces and dots Win32 drops from a name are dropped (`C:\ `, `C:\. ` and `C:\..` are `C:\`). Any other text is returned as it is.
+ */
+function plainWin(cwd: string): string {
+  const ns = /^[\\/]{2}[?.][\\/]([^]*)$/.exec(cwd)?.[1];
+  let t = cwd;
+  if (ns !== undefined) {
+    if (/^unc[\\/]/i.test(ns)) t = `\\\\${ns.slice(4)}`;
+    else if (/^[a-z]:/i.test(ns)) t = ns;
+    else return cwd;
+  }
+  if (!/^([a-z]:|[\\/]{2})/i.test(t)) return cwd;
+  const name = (s: string) => {
+    const bare = s.replace(/ +$/, '');
+    return bare === '.' || bare === '..' ? bare : bare.replace(/\.+$/, '');
+  };
+  return t.split(/[\\/]/).map(name).join('\\');
 }
 const msg = (e: unknown) => String((e as Error)?.message ?? e);
 // Already in session_log as engine rows, or (cost) in turn_ended (plan 15d 3b.3, line 1405).
@@ -679,8 +700,10 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     } catch (e) {
       log('turn_failed', { error: msg(e) });
       // A compression that was paid and failed (an empty summary): its spend is in the chat's figures. (A reply's is logged where it failed.)
-      const paid = compact ? (e as { paid?: { cost?: number; unknownCost?: true } } | null)?.paid : undefined;
+      const paid = compact ? (e as { paid?: Paid } | null)?.paid : undefined;
       if (paid && (paid.cost !== undefined || paid.unknownCost)) log('turn_ended', { text: '', ...(paid.cost !== undefined ? { cost: paid.cost } : {}), ...(paid.unknownCost ? { unknown: true } : {}) });
+      // The spend is in the log now: it is also the counted baseline, so the next call is charged only for itself.
+      if (paid?.total !== undefined) store.putEngineTotal(lent.sessionId, paid.total, paid.totals);
       return false;
     }
     // No cost on the row already says "not known"; the flag is for a cost that leaves some of the spend out (a priced compaction, an unknown reply).

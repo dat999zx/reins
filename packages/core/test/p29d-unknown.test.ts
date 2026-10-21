@@ -78,6 +78,21 @@ describe('D3: unknown spend poisons the allowance of the run', () => {
     expect(again.snapshot().subagents!['a']!.unknown).toBe(true);
   });
 
+  it('the unknown state of a slice survives a snapshot round trip, and the restored run still refuses the next capped call of that slice', async () => {
+    const steps = [model('m-a', { model: 'x', usd: '0.40' }), subagent('a'), subagent('b')];
+    const first = rig(wf(steps, {}), [unknown('one')]);
+    await go(first.run);
+    expect(first.run.snapshot().usdUnknown).toEqual(['m-a']);
+    const snap = JSON.parse(JSON.stringify(first.run.snapshot()));
+    const second = rig(wf(steps, {}), [{ text: 'two', cost: 0.001 }]);
+    const again = Run.restore(snap, { engine: second.parent, openSubagent: async (open: SubagentOpen) => ({ session: await second.sub.open({ policy: open.policy }), model: open.model ?? 'm0', label: 'L' }), switchModel: switched });
+    expect(again.snapshot().usdUnknown).toEqual(['m-a']);
+    again.resume();
+    await go(again);
+    expect(second.sub.receivedTexts).toHaveLength(0);
+    expect(again.pauseReason).toMatchObject({ type: 'usd-budget-used', stepId: 'm-a', text: USD_UNKNOWN });
+  });
+
   it('a subagent of unknown cost keeps its conversation: Resume opens the same session, not a new one', async () => {
     const { run, opens } = rig(wf([subagent('a')], {}), [unknown('', { isError: true }), { text: 'done', cost: 0.001 }]);
     await go(run);

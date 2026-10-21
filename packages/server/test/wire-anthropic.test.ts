@@ -438,8 +438,25 @@ describe('usage', () => {
     expect(usageOf(await run())[0]!.unknown).toBeUndefined();
   });
 
+  it('the final output count is checked on its own: a good start does not cover a missing, string, negative, NaN or fractional final one', async () => {
+    const zero = { input_tokens: 0, output_tokens: 0 };
+    for (const bad of [{}, { output_tokens: '10' }, { output_tokens: -1 }, { output_tokens: Number.NaN }, { output_tokens: 0.5 }, { input_tokens: 3 }]) {
+      a.push(raw(start(zero), textBlock(0, 'x'), fin('end_turn', bad), stopFrame()));
+      expect(usageOf(await run())[0]!.unknown, JSON.stringify(bad)).toBe(true);
+    }
+    a.push(raw(start(zero), textBlock(0, 'x'), stopFrame())); // no final count at all
+    expect(usageOf(await run())[0]!.unknown).toBe(true);
+    a.push(raw(start(zero), textBlock(0, 'x'), fin('end_turn', { output_tokens: 0 }), stopFrame())); // explicit zeros are known
+    expect(usageOf(await run())[0]!.unknown).toBeUndefined();
+    a.push(raw(start({ input_tokens: 4 }), textBlock(0, 'x'), fin('end_turn', { output_tokens: 7 }), stopFrame()));
+    expect(usageOf(await run())[0]!.unknown).toBeUndefined();
+    // the LAST count wins: a good count followed by a malformed one is unknown, an earlier figure is only a lower bound
+    a.push(raw(start({ input_tokens: 4 }), textBlock(0, 'x'), fin('tool_use', { output_tokens: 5 }), fin('end_turn', { output_tokens: '9' }), stopFrame()));
+    expect(usageOf(await run())[0]!.unknown).toBe(true);
+  });
+
   it('counts are whole numbers: a fraction is cut down, negative, odd and unsafe values are 0', async () => {
-    expect(await usageFor({ input_tokens: 10.9, cache_read_input_tokens: 3.5, cache_creation_input_tokens: 0.9 }, { output_tokens: 2.2 }))
+    expect(await usageFor({ input_tokens: 10.9, cache_read_input_tokens: 3.5, cache_creation_input_tokens: 0.9 }, { output_tokens: 2 }))
       .toEqual({ input: 10, output: 2, cacheRead: 3, cacheWrite: 0, reasoning: 0 });
     expect(await usageFor({ input_tokens: -4, cache_read_input_tokens: -3, cache_creation_input_tokens: 1e300 }, { output_tokens: -1 }))
       .toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 });

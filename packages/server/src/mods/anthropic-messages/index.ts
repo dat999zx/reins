@@ -155,7 +155,7 @@ async function* call(req: ModelRequest, p: ProviderManifest, h: EngineHost, sign
         case 'message_start': {
           const m = isObj(j.message) && isObj(j.message.usage) ? j.message.usage : {};
           sawInput = given(m.input_tokens);
-          sawOutput = given(m.output_tokens);
+          sawOutput = false; // only the final count (message_delta) settles the output
           Object.assign(u, { input: count(m.input_tokens), output: count(m.output_tokens), cacheRead: count(m.cache_read_input_tokens), cacheWrite: count(m.cache_creation_input_tokens) });
           break;
         }
@@ -236,7 +236,9 @@ async function* call(req: ModelRequest, p: ProviderManifest, h: EngineHost, sign
         case 'message_delta': {
           if (isObj(j.delta) && typeof j.delta.stop_reason === 'string') stop = j.delta.stop_reason;
           if (isObj(j.usage)) {
-            if (given(j.usage.output_tokens)) { sawOutput = true; u.output = count(j.usage.output_tokens); } // cumulative: the last one counts
+            // cumulative: the last one counts, and it is checked on its own: a good start count does not cover a bad final one
+            sawOutput = given(j.usage.output_tokens);
+            if (sawOutput) u.output = count(j.usage.output_tokens);
             if (given(j.usage.input_tokens)) sawInput = true;
             u.input ||= count(j.usage.input_tokens); // only when the start gave none
             u.cacheRead ||= count(j.usage.cache_read_input_tokens);
