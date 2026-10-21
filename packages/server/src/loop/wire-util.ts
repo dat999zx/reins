@@ -63,6 +63,9 @@ export const count = (v: unknown) => {
   return Number.isSafeInteger(n) && n > 0 ? n : 0;
 };
 
+/** Whether a provider gave this counter at all: a number from 0 up (an explicit 0 is a real count; a missing, negative or odd value is not one). */
+export const given = (v: unknown): boolean => typeof v === 'number' && v >= 0 && Number.isSafeInteger(Math.floor(v));
+
 /** Most of a provider's error text that is shown, after redacting. */
 const MAX_ERROR_TEXT = 500;
 /** What an error says when the host's sanitizer fails: built without calling it again. */

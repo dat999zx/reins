@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { parseSse } from '../../loop/sse.js';
 import type { Extra, Msg, ModelRequest, Usage, WireEvent } from '../../loop/types.js';
-import { MAX_ARGS, MAX_CALLS, MAX_EXTRA, accumulate, count, failures, isObj, listModelIds, mergeBodies, setOwn, type Obj } from '../../loop/wire-util.js';
+import { MAX_ARGS, MAX_CALLS, MAX_EXTRA, accumulate, count, failures, given, isObj, listModelIds, mergeBodies, setOwn, type Obj } from '../../loop/wire-util.js';
 import type { EngineHost, ModApi, ProviderManifest, Wire } from '../types.js';
 
 const reasoningField = (p: ProviderManifest) => p.reasoning?.field ?? 'reasoning_content';
@@ -160,7 +160,9 @@ async function* call(req: ModelRequest, p: ProviderManifest, h: EngineHost, sign
     yield { type: 'tool_call', id: c.id ?? `call_${randomUUID().slice(0, 8)}`, name: c.name, args: c.args === '' ? '{}' : c.args, ...(Object.keys(extra).length ? { extra } : {}) };
   }
   // No usage chunk (a server that ignores stream_options, or `usage.streamOptions: false`): the cost is unknown, not 0.
-  yield { type: 'usage', usage: usageOf(usage), ...(usage === undefined ? { unknown: true as const } : {}) };
+  // A usage object without both counters (`{}` too) is not accounting either; an explicit 0 is.
+  const counted = usage !== undefined && (given(usage.prompt_tokens) || given(usage.input_tokens)) && (given(usage.completion_tokens) || given(usage.output_tokens));
+  yield { type: 'usage', usage: usageOf(usage), ...(counted ? {} : { unknown: true as const }) };
   yield { type: 'done', ...(stop ? { stop } : {}), ...(Object.keys(messageExtra).length ? { extra: messageExtra } : {}) };
 }
 

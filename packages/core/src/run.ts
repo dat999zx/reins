@@ -6,6 +6,7 @@ import { policyOf } from './nodes/turn.js';
 import { CARDS } from './cards/index.js';
 import { evalCond, evalCondSync, type EvalCtx } from './cond.js';
 import { usdText } from './format/print.js';
+import { USD_UNKNOWN } from './display.js';
 
 /** Document order, as validate.ts collects steps: a step, its kids, then its else. */
 const flatSteps = (steps: Step[]): Step[] =>
@@ -114,6 +115,8 @@ export interface SubagentRecord {
   cost: number;
   total?: number;
   totals?: Record<string, number>;
+  /** A reply on this subagent cost an amount that is not known: `cost` leaves it out. */
+  unknown?: true;
   done?: true;
 }
 
@@ -167,6 +170,9 @@ export interface RunSnapshot {
   usdSpent?: Record<string, number>;
   /** What an Allow added to a limit beyond its base; the key '' is the workflow's. */
   usdExtra?: Record<string, number>;
+  /** Some spend of the run is not known (`runCost` leaves it out); and the slices (step ids) with some that is not. */
+  runUnknown?: true;
+  usdUnknown?: string[];
   openSlice?: { step: string; usd: number };
   /** The engine's last raw running total and per-model totals, so a fresh engine process opens with what was already counted. */
   lastTotal?: number;
@@ -243,6 +249,10 @@ export class Run {
   // ponytail: spent is per slice step and is not reset when a loop passes the model step again
   private usdSpent: Record<string, number> = {};
   private usdExtra: Record<string, number> = {};
+  // Spend that is not known (a reply or a lost reply with no cost) is not 0: the numbers above leave it out, these say so, and a USD limit that
+  // it counts against cannot be held, so no further call is sent under it. The workflow's limit counts every spend; a slice's only its own.
+  private runUnknown = false;
+  private usdUnknown = new Set<string>();
   private openSlice?: { step: string; usd: number };
   private lastTotal?: number;
   private lastTotals?: Record<string, number>;
@@ -503,9 +513,10 @@ export class Run {
     const title = step.title || id;
     const slice = usd === undefined ? this.openSlice : { step: id, usd };
     if (this.usdOver(slice)) return false;   // checked where the work starts: a resumed subagent with its slice used up asks first
+    if (this.unknownStop(slice)) return false;   // and before its session is opened: some spend under the limit is not known
     const old = this.subagents[id];
-    // Resumable only once a reply was counted on it: before that the CLI has nothing saved to --resume.
-    const resumed = old && !old.done && (old.total !== undefined || old.cost > 0) ? old : undefined;
+    // Resumable only once a reply was counted on it: before that the CLI has nothing saved to --resume. A reply of unknown cost was counted too.
+    const resumed = old && !old.done && (old.total !== undefined || old.cost > 0 || old.unknown) ? old : undefined;
     const wf = this.workflow.budget.usd;   // not usdLeft(): it is already rounded by r6, which the cap must not inherit
     const room = [slice && slice.usd + (this.usdExtra[slice.step] ?? 0) - (this.usdSpent[slice.step] ?? 0), wf === undefined ? undefined : wf + (this.usdExtra[''] ?? 0) - this.runCost]
       .filter((x): x is number => x !== undefined);
@@ -566,7 +577,7 @@ export class Run {
     const quoted = handbackText(title, id, text);
     this.turnOutputs.set(id, quoted);   // a later verify against this subagent pastes it: quoted as data too
     this.handback.push(quoted);   // before the row: the snapshot it saves has the result
-    this.logEvent('subagent_result', { step: id, title, text, cost: rec.cost });
+    this.logEvent('subagent_result', { step: id, title, text, cost: rec.cost, ...(rec.unknown ? { unknown: true } : {}) });
     return true;
   }
 
@@ -595,7 +606,7 @@ export class Run {
    * USD is checked between steps, after the fact, so a reply can run past a limit. The workflow's
    * budget comes first: a slice pause then always has workflow money left, so its Allow is never a dead end.
    */
-  // ponytail: a reply with an unknown cost counts 0 here (the engine refuses its own next call under a limit); a `now` card's follow-up reply is part of its step and is not checked between replies; a subagent's follow-ups share its process's provider cap
+  // ponytail: a reply with an unknown cost counts 0 in the figures here and is noted (`runUnknown`, `usdUnknown`): the next call under a limit it counts against is refused; a `now` card's follow-up reply is part of its step and is not checked between replies; a subagent's follow-ups share its process's provider cap
   private usdOver(s: { step: string; usd: number } | undefined = this.openSlice): boolean {
     const hit = (stepId: string | undefined, limit: number, spent: number) => this.pauseUsd(stepId, limit, spent);
     const usd = this.workflow.budget.usd;
@@ -671,8 +682,10 @@ export class Run {
   /** What a turn spent counts against the run, the subagent's record or the engine totals, and the open slice (or the subagent's); returns that slice. */
   private countCost(result: TurnResult, sub?: { rec: SubagentRecord; slice: { step: string; usd: number } | undefined }): { step: string; usd: number } | undefined {
     this.runCost += result.cost ?? 0;
+    if (result.unknownCost) this.runUnknown = true;
     if (sub) {
       sub.rec.cost = r6(sub.rec.cost + (result.cost ?? 0));
+      if (result.unknownCost) sub.rec.unknown = true;
       if (result.total !== undefined) {
         sub.rec.total = result.total;
         if (result.totals) sub.rec.totals = result.totals; else delete sub.rec.totals;   // a total with no split: the next process has no split, never a wrong one (C S4)
@@ -682,8 +695,22 @@ export class Run {
       if (result.totals) this.lastTotals = result.totals;
     }
     const slice = sub ? sub.slice : this.openSlice;
-    if (slice) this.usdSpent[slice.step] = (this.usdSpent[slice.step] ?? 0) + (result.cost ?? 0);
+    if (slice) {
+      this.usdSpent[slice.step] = (this.usdSpent[slice.step] ?? 0) + (result.cost ?? 0);
+      if (result.unknownCost) this.usdUnknown.add(slice.step);
+    }
     return slice;
+  }
+
+  /**
+   * A call may not be sent when a USD limit it counts against cannot be held because some spend under it is not known (the workflow's limit: any
+   * spend of the run; a slice's: its own). Pauses on the USD card with the engine's words (the same ones its own refusal says) and says so.
+   */
+  private unknownStop(s: { step: string; usd: number } | undefined): boolean {
+    const wf = this.workflow.budget.usd;
+    if (wf !== undefined && this.runUnknown) return this.pauseUsd(undefined, wf + (this.usdExtra[''] ?? 0), this.runCost, USD_UNKNOWN);
+    if (s && this.usdUnknown.has(s.step)) return this.pauseUsd(s.step, s.usd + (this.usdExtra[s.step] ?? 0), this.usdSpent[s.step] ?? 0, USD_UNKNOWN);
+    return false;
   }
 
   private async runTurn(
@@ -692,6 +719,10 @@ export class Run {
   ): Promise<TurnResult | undefined> {
     let turnText = text;
     for (;;) {
+      if (this.unknownStop(sub ? sub.slice : this.openSlice)) {   // before the call, whatever engine it goes to: a new subagent has a total of its own
+        if (!sub) this.capped = true;
+        return undefined;
+      }
       this.logEvent('turn_started', { step: stepId });
       this.turnInFlight = true;
       this.turnSession = session;
@@ -701,9 +732,12 @@ export class Run {
       } catch (e) {
         // A turn that threw can still have spent money (an engine's paid compaction before the reply that failed): it rides on the error as
         // `paid`, and counts as spend of this step like the cost of a result. No turn_ended row: no turn was answered.
-        const paid = (e as { paid?: Pick<TurnResult, 'cost' | 'total' | 'totals' | 'models'> } | null)?.paid;
-        if (paid && typeof paid.cost === 'number' && Number.isFinite(paid.cost) && paid.cost > 0) {
+        const paid = (e as { paid?: Pick<TurnResult, 'cost' | 'total' | 'totals' | 'models' | 'unknownCost'> } | null)?.paid;
+        // Spend that is not known rides the same way (`unknownCost`): the Run notes it, and the receipt counts a reply with no price.
+        const spent = paid && typeof paid.cost === 'number' && Number.isFinite(paid.cost) && paid.cost > 0;
+        if (paid && (spent || paid.unknownCost)) {
           this.handleTurnResult({ text: '', ...paid });
+          if (paid.unknownCost) this.logEvent('engine_cost', { unknown: true, step: stepId });
           this.countCost({ text: '', ...paid }, sub);
         }
         throw e;
@@ -718,6 +752,7 @@ export class Run {
       const usage = result.events?.find((e): e is Extract<typeof e, { type: 'usage' }> => e.type === 'usage');
       this.logEvent('turn_ended', {
         step: stepId, text: result.text, cost: result.cost,
+        ...(result.unknownCost ? { unknown: true } : {}),
         ...(usage ? { model: usage.model } : {}),
         ...(slice ? { slice: { step: slice.step, spent: r6(this.usdSpent[slice.step]!), usd: r6(slice.usd + (this.usdExtra[slice.step] ?? 0)) } } : {}),
       });
@@ -919,6 +954,8 @@ export class Run {
       runCost: this.runCost,
       usdSpent: { ...this.usdSpent },
       usdExtra: { ...this.usdExtra },
+      ...(this.runUnknown ? { runUnknown: true as const } : {}),
+      ...(this.usdUnknown.size ? { usdUnknown: [...this.usdUnknown] } : {}),
       ...(this.openSlice ? { openSlice: { ...this.openSlice } } : {}),
       ...(this.lastTotal !== undefined ? { lastTotal: this.lastTotal } : {}),
       ...(this.lastTotals ? { lastTotals: { ...this.lastTotals } } : {}),
@@ -974,6 +1011,8 @@ export class Run {
     run.runCost = snapshot.runCost ?? snapshot.events.filter((e) => e.type === 'engine_cost').reduce((a, e) => a + Number(e.data?.usd || 0), 0);
     if (snapshot.usdSpent) run.usdSpent = { ...snapshot.usdSpent };
     if (snapshot.usdExtra) run.usdExtra = { ...snapshot.usdExtra };
+    run.runUnknown = snapshot.runUnknown === true;
+    run.usdUnknown = new Set(snapshot.usdUnknown ?? []);
     if (snapshot.openSlice) run.openSlice = { ...snapshot.openSlice };
     if (snapshot.lastTotal !== undefined) run.lastTotal = snapshot.lastTotal;
     if (snapshot.lastTotals) run.lastTotals = { ...snapshot.lastTotals };

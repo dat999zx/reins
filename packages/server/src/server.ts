@@ -16,7 +16,7 @@ import type { Mods, SendWithKey } from './mods/types.js';
 import type { ProviderStatus } from './run-checks.js';
 import { recover } from './recover.js';
 import { loadWorkflow } from './run-cli.js';
-import { openSession, projectFolderWords, under, type Ack, type DescribeEffort, type DescribeModel, type MakeEngine, type Session, type SessionDeps } from './session.js';
+import { openSession, projectFolderWords, rootFolderWords, under, type Ack, type DescribeEffort, type DescribeModel, type MakeEngine, type Session, type SessionDeps } from './session.js';
 import { contextSize, priceFor, readSetting, switchEstimate } from './settings.js';
 import { KEY_IN_IDENTITY, KeyInIdentity, type LogRow, type Store } from './store.js';
 import { tagCatalogue, type Tag } from './tags.js';
@@ -284,6 +284,10 @@ export async function startServer(o: ServerOptions): Promise<Server> {
 
   function create(b: Body): Reply {
     if (!str(b.cwd) || !path.isAbsolute(b.cwd)) return fail(400, 'cwd must be an absolute path.');
+    // A root (a drive, a share, `/`) is refused as text, before the filesystem is asked anything about it (a `stat` of a share root can hang).
+    // A root (a drive, a share, `/`) is refused as text, before the filesystem is asked anything about it (a `stat` of a share root can hang).
+    const root = rootFolderWords(b.cwd);
+    if (root) return fail(400, root);
     if (b.cwd.includes('\0') || !fs.statSync(b.cwd, { throwIfNoEntry: false })?.isDirectory()) return fail(400, 'cwd is not a folder.');
     if (b.engine !== undefined && !str(b.engine)) return fail(400, 'engine must be a string.');
     const provider = b.engine === undefined ? defaultProvider() : providers.find((p) => p.id === b.engine);

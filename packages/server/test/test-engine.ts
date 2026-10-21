@@ -21,7 +21,8 @@ export interface TestTurn {
   lateApprove?: boolean;                                                  // an approval request arrives after the turn has ended
   usage?: number;                                                         // emit a usage event with this context size after the text
   window?: number;                                                        // that usage event's window (default 1,000,000)
-  cost?: number | null;                                                   // the turn's cost (default 0.01); null = not known
+  cost?: number | null;                                                   // the turn's cost (default 0.01); null = not known (the result says so: `unknownCost`)
+  paid?: { cost?: number; unknownCost?: true };                           // with `reject`: what the failed turn spent, or not known, as the error's `paid`
   total?: number;                                                         // the provider's raw running total after the turn
   models?: Record<string, number>;                                        // the turn's cost per model, as the adapter splits it
   totals?: Record<string, number>;                                        // the provider's raw per-model running totals after the turn
@@ -76,7 +77,7 @@ export function testEngine(script: TestTurn[] = []) {
         turnDone = new Promise<void>((r) => { end = r; });
         try {
           const t = script.shift() ?? {};
-          if (t.reject) throw new Error(t.reject);
+          if (t.reject) throw Object.assign(new Error(t.reject), t.paid ? { paid: t.paid } : {});
           const events: EngineEvent[] = [];
           const emit = (e: EngineEvent) => { events.push(e); onLive(e); };
           if (t.thinking !== undefined) emit({ type: 'thinking', tokens: 50, text: t.thinking });
@@ -108,7 +109,7 @@ export function testEngine(script: TestTurn[] = []) {
           if (t.lateApprove) setTimeout(() => { void onApprove({ tool: 'Bash', input: { command: 'late' } }).then((d) => state.decisions.push(d)); }, 20);
           return {
             text: text2, events,
-            ...(t.cost === null ? {} : { cost: t.cost ?? 0.01 }),
+            ...(t.cost === null ? { unknownCost: true as const } : { cost: t.cost ?? 0.01 }),
             ...(t.total !== undefined ? { total: t.total } : {}),
             ...(t.models ? { models: t.models } : {}),
             ...(t.totals ? { totals: t.totals } : {}),

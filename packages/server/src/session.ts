@@ -78,16 +78,28 @@ export const TOO_WIDE_WORDS = 'Pick a project folder, not your whole home folder
  * root holds both) would make everything in it "inside the project": no question before a read of `.ssh` or a write to a shell profile.
  */
 export function projectFolderWords(cwd: string, reinsDir: string, userHome: string = os.homedir()): string | undefined {
-  // A filesystem root is refused on its own, as text, before the filesystem is touched: `C:\`, any `X:\`, `/`, a share root such as `\\server\share`.
-  // (Containment of the two homes below catches only the drive they are on.) A Windows-style path is judged by the Windows rules on any host.
+  // A filesystem root is refused on its own, as text, before the filesystem is touched (callers that stat the folder first call `rootFolderWords`).
+  const lexical = rootFolderWords(cwd);
+  if (lexical) return lexical;
+  const at = (p: string) => real(p) ?? path.resolve(p);
+  const folder = at(cwd);
+  // And again after the links are followed: an alias that resolves to a drive or share root is a root whatever the homes are (containment of the
+  // two homes below catches only the drive they are on).
+  const canonical = rootFolderWords(folder);
+  if (canonical) return canonical;
+  return [userHome, reinsDir].some((h) => isUnder(at(h), folder)) ? TOO_WIDE_WORDS : undefined;
+}
+
+/**
+ * The words that refuse `cwd` when, as text, it is a filesystem root: `C:\`, any `X:\`, `/`, a share root such as `\\server\share`. It never
+ * touches the filesystem. A Windows-style path is judged by the Windows rules on any host.
+ */
+export function rootFolderWords(cwd: string): string | undefined {
   const win = /^([a-z]:|[\\/]{2})/i.test(cwd);
   const P = win ? path.win32 : path;
   const text = P.resolve(cwd);
   // `\\server` and `\\server\share` (either slash): a server or a share root, judged on the text as given (Node resolves a bare `\\server` as a local name).
-  if (P.relative(P.parse(text).root, text) === '' || /^[\\/]{2}[^\\/]*([\\/][^\\/]*)?[\\/]?$/.test(cwd)) return TOO_WIDE_WORDS;
-  const at = (p: string) => real(p) ?? path.resolve(p);
-  const folder = at(cwd);
-  return [userHome, reinsDir].some((h) => isUnder(at(h), folder)) ? TOO_WIDE_WORDS : undefined;
+  return P.relative(P.parse(text).root, text) === '' || /^[\\/]{2}[^\\/]*([\\/][^\\/]*)?[\\/]?$/.test(cwd) ? TOO_WIDE_WORDS : undefined;
 }
 const msg = (e: unknown) => String((e as Error)?.message ?? e);
 // Already in session_log as engine rows, or (cost) in turn_ended (plan 15d 3b.3, line 1405).
@@ -170,7 +182,9 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     if (q.kind === 'tool' && !turnOpen) return Promise.resolve(null); // a late approval after its turn ended: deny, never leave it open
     // The one place a question reaches the app (and the stream): its words are shown with control, direction and zero-width characters as <U+XXXX>.
     // The detail of an approval is the whole input, never cut.
-    log('question', { ...q, prompt: showText(q.prompt, { lines: true }), ...(q.detail !== undefined ? { detail: showText(q.detail, { lines: true }) } : {}), ...(q.title !== undefined ? { title: showText(q.title, { lines: true }) } : {}) }, runId);
+    // Keys are hidden FIRST, on the original text; a hidden character inside a key would stop the redactor from finding it once escaped.
+    const show = (s: string) => showText(deps.redactor ? deps.redactor.redact(s) : s, { lines: true });
+    log('question', { ...q, prompt: show(q.prompt), ...(q.detail !== undefined ? { detail: show(q.detail) } : {}), ...(q.title !== undefined ? { title: show(q.title) } : {}) }, runId);
     if (q.kind === 'tool' && store.getSession(id)!.autoApprove) {
       log('answer', { questionId: q.id, answer: 'y' }, runId);
       return Promise.resolve('y');
@@ -186,6 +200,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   const outputRow = (chunk: string) => { if (chunk) log('command_output', { chunk }, runId); };
   const io: DriveIo = {
     ask,
+    ...(deps.redactor ? { redact: (s: string) => deps.redactor!.redact(s) } : {}),
     say: (text) => log('say', { text }, runId),
     write: (chunk) => outputRow(cmdOut ? cmdOut.push(chunk) : chunk),
     endOutput: () => { if (cmdOut) outputRow(cmdOut.end()); },
@@ -484,6 +499,9 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     try {
       res = await f(s);
     } catch (e) {
+      // The engine wrote something a reopen reads (a call that failed after the provider began to answer may have been paid): the session keeps
+      // the id, so the next message opens that conversation and consults its spend, never a fresh one.
+      if (s.holdsSpend?.() && !store.getSession(id)!.engineSessionId) store.updateSession(id, { engineSessionId: s.sessionId });
       markDead(msg(e));
       if (e instanceof ProviderChanged) dropEngine(); // its manifest is old: the next reply makes a new engine from the installed one
       undoSwitch(msg(e));
@@ -549,13 +567,18 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       res = await call((x) => x.turn(text));
     } catch (e) {
       debit = 0;
-      if (pre) {
-        // A reply that failed after a paid compaction: in a run the cost goes to the run with the error (core counts what a rejected turn paid);
-        // in plain chat there is no run, and its own row says it.
+      // What was spent before the reply failed: the compaction before it (when there was one) and what the engine's own error carries (a paid
+      // summary that came back empty, a call whose cost nobody knows).
+      const carried = (e as { paid?: Paid } | null)?.paid;
+      const paid = pre ? addPaid(paidOf(pre), carried) : carried;
+      if (paid) {
+        // In a run the cost goes to the run with the error (core counts what a rejected turn paid); in plain chat there is no run, and its own row says it.
         if (run) {
-          try { Object.assign(e as object, { paid: paidOf(pre) }); } catch { /* an error that cannot carry it: the row below is all there is */ }
-        } else if (pre.cost !== undefined) log('turn_ended', { text: '', cost: pre.cost });
-        if (pre.total !== undefined) store.putEngineTotal(s.sessionId, pre.total, pre.totals);
+          try { Object.assign(e as object, { paid }); } catch { /* an error that cannot carry it: the row below is all there is */ }
+        } else if (paid.cost !== undefined || paid.unknownCost) {
+          log('turn_ended', { text: '', ...(paid.cost !== undefined ? { cost: paid.cost } : {}), ...(paid.unknownCost ? { unknown: true } : {}) });
+        }
+        if (paid.total !== undefined) store.putEngineTotal(s.sessionId, paid.total, paid.totals);
       }
       throw e;
     }
@@ -563,13 +586,28 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     if (notSent && pre) return handOver(s, pre, res);
     // A reply on a NEW engine (the old one was retired in between) was charged the compaction already: its base was the stored total from before it.
     if (!pre || opened !== engines) return res;
+    // The compaction's cost joins the reply's; an unknown cost on either side stays unknown (`res.cost ?? 0` would show a fully priced receipt).
     const cost = pre.cost === undefined ? res.cost : (res.cost ?? 0) + pre.cost;
     const models = sumModels(pre.models, res.models);
-    return cost === undefined || cost === res.cost ? (models === res.models ? res : { ...res, ...(models ? { models } : {}) }) : { ...res, cost, ...(models ? { models } : {}) };
+    const unknownCost = res.unknownCost === true || pre.unknownCost === true;
+    if (cost === res.cost && models === res.models && unknownCost === (res.unknownCost === true)) return res;
+    return { ...res, ...(cost !== undefined ? { cost } : {}), ...(models ? { models } : {}), ...(unknownCost ? { unknownCost: true as const } : {}) };
   }
 
+  type Paid = Pick<TurnResult, 'cost' | 'total' | 'totals' | 'models' | 'unknownCost'>;
   /** What a compaction spent, as the fields a result and a rejected turn's `paid` carry. */
-  const paidOf = (r: TurnResult) => ({ ...(r.cost !== undefined ? { cost: r.cost } : {}), ...(r.total !== undefined ? { total: r.total } : {}), ...(r.totals ? { totals: r.totals } : {}), ...(r.models ? { models: r.models } : {}) });
+  const paidOf = (r: TurnResult): Paid => ({ ...(r.cost !== undefined ? { cost: r.cost } : {}), ...(r.total !== undefined ? { total: r.total } : {}), ...(r.totals ? { totals: r.totals } : {}), ...(r.models ? { models: r.models } : {}), ...(r.unknownCost ? { unknownCost: true as const } : {}) });
+  /** Two spends added: costs sum (one side unknown stays unknown), the later totals win. */
+  const addPaid = (a: Paid, b: Paid | undefined): Paid => {
+    if (!b) return a;
+    const models = sumModels(a.models, b.models);
+    return {
+      ...a, ...b,
+      ...(a.cost !== undefined || b.cost !== undefined ? { cost: (a.cost ?? 0) + (b.cost ?? 0) } : {}),
+      ...(models ? { models } : {}),
+      ...(a.unknownCost || b.unknownCost ? { unknownCost: true as const } : {}),
+    };
+  };
   /**
    * The turn ends with `res` (nothing was sent after the compaction): the compaction's spend is handed over inside it, which is the Run taking the
    * cost, so the stored total moves now. With no run (plain chat) the spend is logged by `plainTurn` from the result's cost as for any turn, except
@@ -640,9 +678,13 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       res = await (compact ? lent.compact!() : lent.turn(text));
     } catch (e) {
       log('turn_failed', { error: msg(e) });
+      // A compression that was paid and failed (an empty summary): its spend is in the chat's figures. (A reply's is logged where it failed.)
+      const paid = compact ? (e as { paid?: { cost?: number; unknownCost?: true } } | null)?.paid : undefined;
+      if (paid && (paid.cost !== undefined || paid.unknownCost)) log('turn_ended', { text: '', ...(paid.cost !== undefined ? { cost: paid.cost } : {}), ...(paid.unknownCost ? { unknown: true } : {}) });
       return false;
     }
-    if (!notSent) log('turn_ended', { text: res.text, cost: res.cost });
+    // No cost on the row already says "not known"; the flag is for a cost that leaves some of the spend out (a priced compaction, an unknown reply).
+    if (!notSent) log('turn_ended', { text: res.text, cost: res.cost, ...(res.unknownCost && res.cost !== undefined ? { unknown: true } : {}) });
     return true;
   }
 
@@ -679,7 +721,8 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   }
 
   const logRunEvent = (ev: RunEventRecord, rid: string) => {
-    if (SKIPPED.has(ev.type) || (ev.type === 'card_delivered' && ev.data?.channel === 'mid-turn')) return;
+    // A cost row is not logged (turn_ended has it), except the note of a spend nobody knows: the app marks its totals "at least".
+    if ((SKIPPED.has(ev.type) && !(ev.type === 'engine_cost' && ev.data?.unknown === true)) || (ev.type === 'card_delivered' && ev.data?.channel === 'mid-turn')) return;
     log(ev.type, ev.data, rid);
   };
 

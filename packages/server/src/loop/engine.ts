@@ -4,7 +4,7 @@
 // and the USD limits (`usdRoom`, `maxUsd`), held before every model call; and part 6 (compact.ts): compaction by hand, and once when an answer
 // says the conversation is too long.
 import { randomUUID } from 'node:crypto';
-import { checkTool, type Decision, type Engine, type EngineEvent, type EngineProbe, type EngineSession, type OpenOptions, type ToolRequest, type TurnResult } from '@reins/core';
+import { checkTool, USD_UNKNOWN, type Decision, type Engine, type EngineEvent, type EngineProbe, type EngineSession, type OpenOptions, type ToolRequest, type TurnResult } from '@reins/core';
 import { CARD_CONTEXT_LIMIT, noLoneSurrogate, nonceOf, wrapCard } from '../cards.js';
 import type { EngineHost, ProviderManifest, SendWithKey, Wire } from '../mods/types.js';
 import { SETTINGS } from '../settings.js';
@@ -29,8 +29,6 @@ const DENIED = 'Denied by the user in Reins.';
 const CARD_CUT = ' […cut]';
 const PATH_CHANGED = 'Blocked by Reins: the path changed while the question was open.';
 const USD_USED_UP = 'The USD budget is used up.';
-/** The pause card's words when the session's spend is not known: Allow adds room to a number the engine does not have. */
-export const USD_UNKNOWN = 'Reins cannot tell what this session has spent, so Allow cannot raise the dollar limit. Start a new session or remove the limit.';
 
 /** The clock and the dice of the retry back-off, and the platform and fs the tools see, for tests. */
 export interface LoopDeps {
@@ -201,11 +199,21 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
    * on. It is not an `error` event: the session treats that as a dead engine and drops it.
    */
   let lost = false;
+  // Something is in the file that a reopen reads (a reply, or the note of a call that may have been paid): the host keeps this session's id.
+  let kept = false;
+  // Calls whose cost was not known, counted since the session opened: a turn that ends in an error with a new one in it has an unknown spend to hand over.
+  let unknownCalls = 0;
+  /** `e` with the unknown spend of the calls made since `since` on it (`paid`), unless it already carries what was spent. */
+  const carryUnknown = (e: unknown, since: number): unknown => {
+    if (unknownCalls > since && e instanceof Error && !(e as { paid?: unknown }).paid) Object.assign(e, { paid: { unknownCost: true } });
+    return e;
+  };
   const save = (write: () => void) => {
     if (lost || closed || convo.failed) return;
     try {
       convo.lock();
       write();
+      kept = true;
     } catch (e) {
       lost = true;
       emit({ type: 'hook', event: 'conversation-save', decision: 'failed', reason: red(e instanceof Error ? e.message : String(e), 300) });
@@ -320,6 +328,7 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
     const cost = price && !unknownUsage ? callCost(price, usage) : undefined;
     // A cost that is not a number (a usage with a NaN in it) is no cost: the total becomes unknown, never a NaN that no comparison catches.
     const spent = cost !== undefined && Number.isFinite(cost) ? cost : undefined;
+    if (spent === undefined) unknownCalls++;
     if (total !== undefined) {
       if (spent === undefined) total = undefined;
       else {
@@ -341,9 +350,12 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
   }
 
   /** The money fields of a result: what was spent since the last one, the totals, the split by model. Moves the baseline up to now. */
-  function costFields(): Pick<TurnResult, 'cost' | 'total' | 'totals' | 'models'> {
+  function costFields(): Pick<TurnResult, 'cost' | 'total' | 'totals' | 'models' | 'unknownCost'> {
     const split = Object.fromEntries(Object.entries(totals).map(([m, t]) => [m, t - (baseBy[m] ?? 0)] as const).filter(([, c]) => c > 0));
-    const fields = total !== undefined ? { cost: total - base!, total, totals: { ...totals }, models: split } : {};
+    // An unknown total says so (`unknownCost`): the Run, the receipt and the app tell "not known" from "nothing spent".
+    const fields = total !== undefined
+      ? { cost: total - base!, total, totals: { ...totals }, models: split, ...(unknownTail ? { unknownCost: true as const } : {}) }
+      : { unknownCost: true as const };
     base = total;
     baseBy = { ...totals };
     return fields;
@@ -508,7 +520,11 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
     // The call finished: it is paid for and counted, whatever happens next.
     const spent = charge(reply.usage, reply.unknownUsage);
     const said = textOf(reply.blocks).trim();
-    if (said === '') throw new Error(`${p.label} sent an empty summary, so the conversation was not compressed.`);
+    if (said === '') {
+      // Paid, and nothing to put it on: its usage goes to the file BEFORE the text is judged, and the error carries what was spent to the Run.
+      save(() => convo.appendSpend({ model, ...reply.usage, ...(spent !== undefined ? { cost: spent } : {}) }));
+      throw Object.assign(new Error(`${p.label} sent an empty summary, so the conversation was not compressed.`), { paid: costFields() });
+    }
     const next = withSummary(said, paired.slice(cut));
     const before = tokensOf(history);
     const after = tokensOf(next);
@@ -535,6 +551,8 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
     let calls = 0;
     let finished = 0;
     let lastUsage: Usage | undefined;
+    let lastUnknown = false;
+    const unknownAtStart = unknownCalls;
     // Once per turn, not per model call: the project's AGENTS.md as the file tools would read it.
     const system = systemPrompt({
       cwd,
@@ -552,8 +570,9 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
       if (error) emit({ type: 'error', message: error });
       if (budget) emit({ type: 'hook', event: 'usd-stop', decision: 'stopped', reason: text });
       if (lastUsage) {
-        const used = lastUsage.input + lastUsage.cacheRead + lastUsage.cacheWrite + lastUsage.output;
-        emit({ type: 'usage', model, used, ...(info?.context !== undefined ? { window: info.context } : {}) });
+        // A reply with no usage has no size: the row says the model and leaves `used` out, so the context is unknown (a switch asks), never 0.
+        const used = lastUnknown ? undefined : lastUsage.input + lastUsage.cacheRead + lastUsage.cacheWrite + lastUsage.output;
+        emit({ type: 'usage', model, ...(used !== undefined ? { used } : {}), ...(info?.context !== undefined ? { window: info.context } : {}) });
       }
       return {
         text,
@@ -618,6 +637,7 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
         // The call finished: it is paid for and counted, whatever happens next.
         finished++;
         lastUsage = reply.usage;
+        lastUnknown = reply.unknownUsage === true;
         const spent = charge(reply.usage, reply.unknownUsage);
 
         // Tool-call arguments arrive as JSON text; a block keeps them parsed when they are, as the text when they are not.
@@ -781,7 +801,9 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
       stubUnanswered();
       // A turn that got no reply at all leaves no trace: its text is sent again by whoever retries it.
       if (finished === 0) history = history.slice(0, mark);
-      throw e;
+      // Spend nobody knows (a call that failed after the provider began to answer) rides on the error: a Run counts it, and a second engine
+      // (a subagent) does not start as if nothing was spent. A known sum is carried by the next turn's cost, as before.
+      throw carryUnknown(e, unknownAtStart);
     }
   }
 
@@ -795,6 +817,7 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
 
   return {
     sessionId,
+    holdsSpend: () => kept,
     async turn(text) {
       const ac = begin();
       try {
@@ -807,6 +830,7 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
     async compact() {
       const ac = begin();
       turnEvents = [];
+      const unknownAtStart = unknownCalls;
       try {
         const done = await compactNow(ac.signal, 'manual');
         if (typeof done === 'object' && 'stop' in done) {
@@ -814,6 +838,8 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
           return { text: done.stop, ...costFields(), isError: true, budgetStop: true, events: turnEvents };
         }
         return { text: done === 'none' ? 'Nothing to compress yet: the conversation is short.' : '', ...costFields(), events: turnEvents };
+      } catch (e) {
+        throw carryUnknown(e, unknownAtStart);
       } finally {
         turnAbort = undefined;
       }

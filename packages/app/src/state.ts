@@ -4,6 +4,8 @@ import type { SessionStatus } from '@reins/server/session.js';
 export interface Call { result?: unknown; refused?: string; ms?: number }
 export interface Sess {
   id: string; cwd: string; autoApprove: boolean; status: SessionStatus; rows: LogRow[]; lastSeq: number; lastTs: number; cost: number;
+  /** A reply cost something nobody knows (no cost on its row, or marked unknown): `cost` is at least this much, never the exact figure. */
+  costUnknown?: true;
   explicitTitle?: string; firstMessage?: string; engine?: string; model?: string; effort?: string;
   /** The server's words when the session's provider is not installed or is disabled (spec 9.4). */
   missing?: string;
@@ -91,8 +93,10 @@ function apply(s: Sess, row: LogRow, loadedAt: number): Sess {
       break;
     case 'turn_ended':
       if (typeof x.cost === 'number') n.cost = s.cost + x.cost;
+      if (x.unknown === true || typeof x.cost !== 'number') n.costUnknown = true;
       n.queue = [];
       break;
+    case 'engine_cost': if (x.unknown === true) n.costUnknown = true; break;   // a call that failed with a spend nobody knows
     case 'turn_failed': n.queue = []; break;
     case 'cards_unsent':
       if (row.ts >= loadedAt && Array.isArray(x.cards)) n.refill = x.cards.join('\n\n');

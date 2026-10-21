@@ -4,7 +4,7 @@ import readline from 'node:readline';
 import { randomBytes } from 'node:crypto';
 import type { Readable, Writable } from 'node:stream';
 import {
-  Run, NODES, parseWorkflow, showText, validate, receipt,
+  Run, NODES, parseWorkflow, showText, validate, receipt, UNKNOWN_MARK, unpricedWords,
   type Decision, type Diagnostic, type Engine, type EngineEvent, type Receipt,
   type RunEventRecord, type RunStatus, type SubagentOpen, type SubagentOpened, type ToolRequest, type Workflow,
 } from '@reins/core';
@@ -52,7 +52,8 @@ export interface RunCliResult {
 /** `reins run` in the terminal (plan 15b 2.6). */
 export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; sigint: () => void } {
   // The one place output leaves `reins run`: `say` and command output both end here, so both are redacted.
-  const sink = (s: string) => { o.output.write(o.redactor ? o.redactor.redact(s) : s); };
+  const hide = (s: string) => (o.redactor ? o.redactor.redact(s) : s);
+  const sink = (s: string) => { o.output.write(hide(s)); };
   // Command output comes in chunks that can cut a key in two. The stream redactor holds back only the end of a chunk that could be the
   // start of a key; what it lets through is redacted BEFORE `indent` (which would put spaces inside a multi-line key) and is
   // written in whole lines.
@@ -69,7 +70,7 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
   // a command's own output (`writeOutput`) is the user's program talking and is written as it is.
   const say = (s: string) => {
     flushLine();               // a partial line only; what the stream redactor holds (a possible key start) stays held
-    sink(showText(s, { lines: true }) + '\n');
+    sink(showText(hide(s), { lines: true }) + '\n');   // keys are hidden on the original text, then it is escaped
   };
   const writeOutput = (s: string) => {
     line += stream ? stream.push(s) : s;
@@ -121,6 +122,7 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
       return ask(q.prompt, q.kind === 'tool' && q.long && q.detail !== undefined ? q.detail : undefined);
     },
     say,
+    redact: hide,
     write: writeOutput,
     endOutput,
   };
@@ -257,19 +259,20 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
     else if (ev.type === 'loop_iteration') say(`↻ ${d.step}: attempt ${d.attempts}`);
     else if (ev.type === 'model_switched' && d.how === 'unsupported') say(`· ${d.step}: this runner cannot switch models; the steps run on the CLI's model`);
     else if (ev.type === 'subagent_started') say(`· ${d.step}: subagent ${d.title} ${d.resumed ? 'resumed' : 'started'} on ${d.label ?? d.model ?? "the CLI's model"}`);
-    else if (ev.type === 'subagent_result') say(`· ${d.step}: handed back its result ($${Number(d.cost ?? 0).toFixed(4)})`);
+    else if (ev.type === 'subagent_result') say(`· ${d.step}: handed back its result ($${Number(d.cost ?? 0).toFixed(4)}${d.unknown === true ? UNKNOWN_MARK : ''})`);
     else if (ev.type === 'budget_warning') say(`· ${d.text}`);
     else if (ev.type === 'run_stopped') say('⏹ run stopped');
   }
 
   function printReceipt(r: Receipt, runId: string) {
     say('\n── Receipt ──');
-    say(`workflow ${r.workflow} · ${r.status} · ${r.totalTurns} turns · ${Math.round(r.totalTimeMs / 1000)} s · $${r.totalCostUsd.toFixed(4)}${r.unpricedTurns ? ' + ?' : ''}`);
-    if (r.unpricedTurns) say(r.unpricedTurns === 1 ? '1 reply had no price; the total leaves it out' : `${r.unpricedTurns} replies had no price; the total leaves them out`);
+    say(`workflow ${r.workflow} · ${r.status} · ${r.totalTurns} turns · ${Math.round(r.totalTimeMs / 1000)} s · $${r.totalCostUsd.toFixed(4)}${r.unpricedTurns ? UNKNOWN_MARK : ''}`);
+    if (r.unpricedTurns) say(unpricedWords(r.unpricedTurns));
     if (r.models) {
-      const split = r.models.map((m) => `${m.model} $${m.usd.toFixed(4)} (${m.turns} turn${m.turns === 1 ? '' : 's'})`).join(' · ');
+      const split = r.models.map((m) => `${m.model} $${m.usd.toFixed(4)}${m.unknown ? UNKNOWN_MARK : ''} (${m.turns} turn${m.turns === 1 ? '' : 's'})`).join(' · ');
       say(`models ${split}${r.unsplitUsd ? ` · not split by model $${r.unsplitUsd.toFixed(4)}` : ''}`);
     }
+    if (r.subagents) say(`subagents ${r.subagents.map((s) => `${s.title} $${s.usd.toFixed(4)}${s.unknown ? UNKNOWN_MARK : ''} (${s.turns} turn${s.turns === 1 ? '' : 's'})`).join(' · ')}`);
     say(`gates held ${r.gatesHeld} · refusals ${r.totalRefusals} (guard ${r.guardRefusals}, read-only ${r.readOnlyRefusals}) · loop attempts ${r.loopAttempts}`);
     say(`cards: live delivered ${r.liveCardsDelivered}, auto fired ${r.autoCardsFired} · verify ${r.verifyResults.passed} pass / ${r.verifyResults.failed} fail · Knowl ${r.knowlRecalls} recalls, ${r.knowlStores} stores${r.knowlSkipped ? `, ${r.knowlSkipped} skipped` : ''}`);
     if (r.counts) say(Object.entries(r.counts).map(([k, n]) => `${k} ${n}`).join(' · '));

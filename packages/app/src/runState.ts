@@ -4,6 +4,7 @@ import { flatSteps } from './canvas.js';
 import type { LogRow } from '@reins/server/store.js';
 import { openQuestions, type Sess } from './state.js';
 import { runRows, stepStatus, type StepMap } from './stepStatus.js';
+import { dollars } from './unknown.js';
 
 // What the view of a step in the run says about its usage slice (see KindView.slice).
 const sliceOf = (v: RunView, id?: string) => KINDS[v.stepsAtStart?.find((s) => s.id === id)?.kind as StepKind]?.slice;
@@ -22,6 +23,7 @@ export interface RunView {
   cards: RunCard[];
   receipt?: Receipt; error?: string;
   turns: number; cost: number; startedAt?: number; endedTs?: number;
+  costUnknown?: true;                // a reply of the run cost something nobody knows: `cost` is at least this much
   last?: { seq: number; text: string };
   stepOf: Map<number, string>;
   thinking?: number;                 // tokens, while the newest engine row of the live run is a thinking row
@@ -40,7 +42,7 @@ const clock = (ms: number) => {
 const tail = (v: RunView) => [
   `${v.turns} turn${v.turns === 1 ? '' : 's'}`,
   ...(v.startedAt !== undefined && v.endedTs !== undefined ? [clock(v.endedTs - v.startedAt)] : []),
-  `$${v.cost.toFixed(4)}`,
+  dollars(v.cost, 4, v.costUnknown),
 ];
 export const thinkingWords = (tokens: number) => `thinking… ~${tokens.toLocaleString('en-US')} tokens`;
 const where = (word: string, v: RunView) => (v.endedAt ? `${word} at \`${v.endedAt}\`` : word);
@@ -107,11 +109,13 @@ const FOLD: Record<string, Fold> = {
     if (typeof x.step === 'string' && typeof x.title === 'string') v.sub = { step: x.step, title: x.title, ...(typeof x.label === 'string' ? { label: x.label } : {}) };
   },
   subagent_result: (_r, _x, v) => { delete v.sub; },
+  engine_cost: (_r, x, v) => { if (x.unknown === true) v.costUnknown = true; },   // a call that failed with a spend nobody knows
   say: (r, x, v) => { v.last = { seq: r.seq, text: String(x.text ?? '') }; },
   turn_failed: (r, x, v) => { v.last = { seq: r.seq, text: String(x.error ?? '') }; },
   turn_ended: (_r, x, v) => {
     v.turns += 1;
     if (typeof x.cost === 'number') v.cost += x.cost;
+    if (x.unknown === true || typeof x.cost !== 'number') v.costUnknown = true;
     const s = x.slice;
     if (s && typeof s.step === 'string' && typeof s.spent === 'number' && typeof s.usd === 'number') v.slice = { step: s.step, spent: s.spent, usd: s.usd };
     else delete v.slice;
@@ -239,7 +243,7 @@ export function meter(v: RunView, budget: Workflow['budget'], now: number): Mete
   const values: Array<{ key: MeterItem['key']; used: number; limit: number; text: string }> = [
     { key: 'turns', used: v.turns, limit: budget.turns, text: `${v.turns} / ${budget.turns} turns` },
     { key: 'minutes', used: ms / 60_000, limit: budget.minutes, text: `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s / ${budget.minutes}m` },
-    ...(budget.usd === undefined ? [] : [{ key: 'usd' as const, used: v.cost, limit: usd, text: `$${v.cost.toFixed(2)} / $${usd.toFixed(2)}` }]),
+    ...(budget.usd === undefined ? [] : [{ key: 'usd' as const, used: v.cost, limit: usd, text: `${dollars(v.cost, 2, v.costUnknown)} / $${usd.toFixed(2)}` }]),
     ...(v.slice ? [{ key: 'block' as const, used: v.slice.spent, limit: v.slice.usd, text: `${v.slice.step}: $${v.slice.spent.toFixed(2)} / $${v.slice.usd.toFixed(2)}` }] : []),
   ];
   return values.map(({ key, used, limit, text }) => {

@@ -67,11 +67,13 @@ export interface Conversation {
   /**
    * Reads the file (it must be there). `protocol` is the wire's now: thinking blocks and every `extra` of a line written on another one are dropped.
    * So are they for a line written by another PROVIDER (`Opts.provider`, recorded on every assistant line): the proofs and private fields of one
-   * provider are sent to that provider only. A line with no provider recorded (an older file) is kept as before.
+   * provider are sent to that provider only. A line with no provider recorded (an older file) is treated as another provider's: ownership cannot be shown.
    */
   load(protocol: string): Loaded;
   /** A call that may have been paid and left no reply (it failed after the provider began to answer): a usage line with no cost, so the total of the file is unknown. */
   appendUnknownSpend(model: string): void;
+  /** A call that was paid and left no reply to carry its usage (a summary that came back empty): its spend on a line of its own. */
+  appendSpend(usage: UsageLine): void;
   /** Appends one line (a reply carries its usage). Throws once on the first failure; after that it does nothing (`failed`). */
   appendMsg(msg: Msg, protocol: string, usage?: UsageLine): void;
   /**
@@ -403,7 +405,7 @@ export function openConversation(home: string, id: string, o: Opts = {}): Conver
             skipped++;
             continue;
           }
-          separate++;
+          if (line.alone !== true) separate++;   // a call that left no reply (`alone`) must not stand in for the usage of a reply that has none
           account(u);
           continue;
         }
@@ -441,9 +443,10 @@ export function openConversation(home: string, id: string, o: Opts = {}): Conver
         const lineProtocol = isStr(line.protocol) ? line.protocol : undefined;
         const lineProvider = isStr(line.provider) ? line.provider : undefined;
         if (role === 'assistant') last = lineProtocol;
-        if (role === 'assistant' && (lineProtocol !== protocol || (o.provider !== undefined && lineProvider !== undefined && lineProvider !== o.provider))) {
-          // Written for another protocol, or by another provider: its proofs and unknown fields mean nothing to this one (spec 4.6) and are not
-          // its to read. They stay in the file, so the provider that wrote them gets them back when the session returns to it.
+        if (role === 'assistant' && (lineProtocol !== protocol || (o.provider !== undefined && lineProvider !== o.provider))) {
+          // Written for another protocol, or by another provider, or by one nobody can name (no `provider` on the line): its proofs and unknown
+          // fields mean nothing to this one (spec 4.6) and are not its to read. They stay in the file, so the provider that wrote them gets them
+          // back when the session returns to it.
           msgs.push({ role, blocks: mapped.flatMap((b): Block[] => (b.type === 'thinking' ? [] : b.type === 'tool_call' ? [{ type: 'tool_call', id: b.id, name: b.name, args: b.args }] : [b])) });
         } else msgs.push({ role, blocks: mapped, ...(isObj(line.extra) ? { extra: line.extra } : {}) });
       }
@@ -463,7 +466,10 @@ export function openConversation(home: string, id: string, o: Opts = {}): Conver
       });
     },
     appendUnknownSpend(model) {
-      write({ t: 'usage', model, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
+      write({ t: 'usage', alone: true, model, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
+    },
+    appendSpend(usage) {
+      write({ t: 'usage', alone: true, ...usageOut(usage) });
     },
     appendSummary(msg, protocol, usage) {
       const [first, ...rest] = msg.blocks;

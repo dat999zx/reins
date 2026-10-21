@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { TagEntry } from '@reins/server/tags.js';
 import { post } from './api.js';
+import { dollars, UNKNOWN_TITLE } from './unknown.js';
 import { Composer } from './Composer.js';
 import type { EditorState, Tab } from './editorState.js';
 import { Feed } from './FeedView.js';
@@ -131,7 +132,7 @@ export function Chat({ sess, catalogue, providers, engines = [], takeRefill, tab
         <span className="sx-ctx" title={ctx.title}>{ctx.text}</span>
         <button className="sx-compress" disabled={cb !== undefined} title={cb ?? 'Summarise the conversation so far to free context. It costs one model call.'}
           onClick={() => post(`${base}/compress`).catch((e) => onError(e.message))}>Compress</button>
-        <span className="faint" aria-label="Session cost">${sess.cost.toFixed(4)}</span>
+        <span className="faint" aria-label="Session cost" title={sess.costUnknown ? UNKNOWN_TITLE : undefined}>{dollars(sess.cost, 4, sess.costUnknown)}</span>
         <label className="switch">
           <input type="checkbox" checked={sess.autoApprove} onChange={(e) => post(`${base}/settings`, { autoApprove: e.target.checked }).catch((e) => onError(e.message))} />
           Auto-approve

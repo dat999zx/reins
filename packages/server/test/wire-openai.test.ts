@@ -416,8 +416,13 @@ describe('usage', () => {
     // include_usage off: the fake sends none either
     a.push({ text: 'x' });
     expect(usageOf(await run(req(), manifest({ usage: { streamOptions: false } })))[0]).toMatchObject({ unknown: true });
-    // a usage chunk, even an empty one, is a usage the server gave
+    // an empty usage chunk, or one without the prompt or the completion counter, is still unknown
     a.push(raw(delta({ content: 'x' }), delta({}, 'stop'), usageFrame({}), data('[DONE]')));
+    expect(usageOf(await run())[0]!.unknown).toBe(true);
+    a.push(raw(delta({ content: 'x' }), delta({}, 'stop'), usageFrame({ prompt_tokens: 5 }), data('[DONE]')));
+    expect(usageOf(await run())[0]!.unknown).toBe(true);
+    // both counters, an explicit zero included, are known accounting
+    a.push(raw(delta({ content: 'x' }), delta({}, 'stop'), usageFrame({ prompt_tokens: 0, completion_tokens: 0 }), data('[DONE]')));
     expect(usageOf(await run())[0]!.unknown).toBeUndefined();
   });
 

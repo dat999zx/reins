@@ -81,8 +81,9 @@ export async function main(argv: string[], io: Io): Promise<number> {
 async function dispatch(argv: string[], io: Io, c: { home: string; dir: string; mods: Mods; redactor: Redactor }): Promise<number> {
   const { home, dir, mods, redactor } = c;
   // What the CLI says shows control, direction and zero-width characters written out (a path or a message can hold them), then hides keys.
-  const out = (s: string) => io.stdout.write(redactor.redact(showText(s, { lines: true })) + '\n');
-  const err = (s: string) => io.stderr.write(redactor.redact(showText(s, { lines: true })) + '\n');
+  // Keys are hidden FIRST, on the original text: an escape inside a key (a soft hyphen) would otherwise stop the redactor from seeing it.
+  const out = (s: string) => io.stdout.write(showText(redactor.redact(s), { lines: true }) + '\n');
+  const err = (s: string) => io.stderr.write(showText(redactor.redact(s), { lines: true }) + '\n');
   const [cmd, ...rest] = argv;
   const { pos, flags } = parseArgs(rest, ['yes', 'write', 'no-probe']);
   // The one scrubbed env of every child this command starts, worked out when the child starts.

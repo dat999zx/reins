@@ -16,6 +16,8 @@ export interface DriveIo {
   ask(q: Question): Promise<string | null>; say(line: string): void; write(chunk: string): void;
   /** A command's output is over: whatever `write` was holding back (the start of a possible key) can go out. */
   endOutput?(): void;
+  /** Hides the keys Reins knows. Text that is cut or escaped for a card goes through it first: a hidden character inside a key would defeat it afterwards. */
+  redact?(s: string): string;
 }
 
 export type Answer =
@@ -156,13 +158,14 @@ const PROMPT_CHARS = 200;
 /** `full`: the terminal prints the whole detail under this question even when the line shows all of it (an engine Reins runs: a short path hides the content). */
 export async function askTool(io: DriveIo, req: ToolRequest, title?: string, full?: boolean): Promise<Decision> {
   const i = req.input ?? {};
-  const chars = [...String(i.command ?? i.file_path ?? i.path ?? JSON.stringify(i))];
+  const hide = io.redact ?? ((s: string) => s);
+  const chars = [...hide(String(i.command ?? i.file_path ?? i.path ?? JSON.stringify(i)))];
   // What is shown is escaped (control, direction and zero-width characters become <U+XXXX>); what runs is `req.input`, untouched.
   const head = chars.slice(0, PROMPT_CHARS).join('');
   const what = showText(head);
   const long = full === true || chars.length > PROMPT_CHARS || what !== head;
   const more = chars.length > PROMPT_CHARS ? ` (${i.command !== undefined ? 'command' : 'text'} continues, ${chars.length - PROMPT_CHARS} more characters, all shown below)` : '';
-  const a = await io.ask({ id: questionId(), kind: 'tool', prompt: `? Allow ${showText(req.tool)}${req.reason ? ` (${showText(req.reason)})` : ''}: ${what}${more}  [y / n <reason>]`, detail: JSON.stringify(req.input ?? {}), ...(title ? { title } : {}), ...(long ? { long: true as const } : {}) });
+  const a = await io.ask({ id: questionId(), kind: 'tool', prompt: `? Allow ${showText(hide(req.tool))}${req.reason ? ` (${showText(hide(req.reason))})` : ''}: ${what}${more}  [y / n <reason>]`, detail: JSON.stringify(req.input ?? {}), ...(title ? { title } : {}), ...(long ? { long: true as const } : {}) });
   if (a !== null && /^(y|yes)$/i.test(a)) return { behavior: 'allow' };
   const reason = a?.replace(/^(n|no)\b\s*/i, '').trim();
   return { behavior: 'deny', message: reason ? `The user said no: ${reason}` : 'The user said no.' };

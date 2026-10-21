@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { parseSse } from '../../loop/sse.js';
 import type { Msg, ModelRequest, WireEvent } from '../../loop/types.js';
-import { MAX_ARGS, MAX_CALLS, MAX_EXTRA, accumulate, count, failures, isObj, listModelIds, merge, mergeBodies, setOwn, type Obj } from '../../loop/wire-util.js';
+import { MAX_ARGS, MAX_CALLS, MAX_EXTRA, accumulate, count, failures, given, isObj, listModelIds, merge, mergeBodies, setOwn, type Obj } from '../../loop/wire-util.js';
 import type { EngineHost, ModApi, ProviderManifest, Wire } from '../types.js';
 
 /** [needs key]: confirm against the real API in Task 29. Thinking blocks go back only within the turn being continued (after a tool result). */
@@ -118,7 +118,10 @@ async function* call(req: ModelRequest, p: ProviderManifest, h: EngineHost, sign
   const open = new Map<number, Open>(); // the blocks that are not tool calls, until they stop
   const unknown = new Map<number, Obj>();
   const u = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-  let sawUsage = false; // a usage object came in message_start or message_delta
+  // Known accounting needs BOTH counters, each as a real number: the input from message_start (or the delta), the output from the start or the final delta.
+  // An empty usage object, or one without either, leaves the cost unknown.
+  let sawInput = false;
+  let sawOutput = false;
   let extraSize = 0;
   const charge = (n: number) => {
     extraSize += n;
@@ -151,7 +154,8 @@ async function* call(req: ModelRequest, p: ProviderManifest, h: EngineHost, sign
       switch (typeof j.type === 'string' ? j.type : ev.event) {
         case 'message_start': {
           const m = isObj(j.message) && isObj(j.message.usage) ? j.message.usage : {};
-          if (isObj(j.message) && isObj(j.message.usage)) sawUsage = true;
+          sawInput = given(m.input_tokens);
+          sawOutput = given(m.output_tokens);
           Object.assign(u, { input: count(m.input_tokens), output: count(m.output_tokens), cacheRead: count(m.cache_read_input_tokens), cacheWrite: count(m.cache_creation_input_tokens) });
           break;
         }
@@ -232,8 +236,8 @@ async function* call(req: ModelRequest, p: ProviderManifest, h: EngineHost, sign
         case 'message_delta': {
           if (isObj(j.delta) && typeof j.delta.stop_reason === 'string') stop = j.delta.stop_reason;
           if (isObj(j.usage)) {
-            sawUsage = true;
-            if (typeof j.usage.output_tokens === 'number') u.output = count(j.usage.output_tokens); // cumulative: the last one counts
+            if (given(j.usage.output_tokens)) { sawOutput = true; u.output = count(j.usage.output_tokens); } // cumulative: the last one counts
+            if (given(j.usage.input_tokens)) sawInput = true;
             u.input ||= count(j.usage.input_tokens); // only when the start gave none
             u.cacheRead ||= count(j.usage.cache_read_input_tokens);
             u.cacheWrite ||= count(j.usage.cache_creation_input_tokens);
@@ -265,8 +269,8 @@ async function* call(req: ModelRequest, p: ProviderManifest, h: EngineHost, sign
   for (const [, c] of [...calls].sort((a, b) => a[0] - b[0])) {
     yield { type: 'tool_call', id: c.id ?? `toolu_${randomUUID().slice(0, 8)}`, name: c.name, args: c.args !== '' ? c.args : c.input ?? '{}', ...(Object.keys(c.extra).length ? { extra: c.extra } : {}) };
   }
-  // A stream that carried no usage at all has an unknown cost, not 0.
-  yield { type: 'usage', usage: { ...u, reasoning: 0 }, ...(sawUsage ? {} : { unknown: true as const }) };
+  // A stream that carried no usable input and output counters has an unknown cost, not 0.
+  yield { type: 'usage', usage: { ...u, reasoning: 0 }, ...(sawInput && sawOutput ? {} : { unknown: true as const }) };
   const unknownBlocks = [...unknown].sort((a, b) => a[0] - b[0]).map(([, b]) => b);
   yield { type: 'done', ...(stop ? { stop } : {}), ...(unknownBlocks.length ? { extra: { [UNKNOWN]: unknownBlocks } } : {}) };
 }

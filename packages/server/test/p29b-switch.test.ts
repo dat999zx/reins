@@ -73,7 +73,7 @@ describe.each(WIRES)('B4: extras are sent only to the provider they came from (%
     expect(lines.filter((l) => l.role === 'assistant').map((l) => l.provider)).toEqual(['p', 'q']);
   });
 
-  it('a line from before the provider was recorded is read as it was (nothing is dropped from an older file)', async () => {
+  it('a line with no provider recorded (an older file) keeps none of its private extras: who wrote them cannot be shown', async () => {
     const { r } = await twoProviders();
     r.push(callWithExtra(), { text: 'done' });
     const a = await r.open();
@@ -86,6 +86,24 @@ describe.each(WIRES)('B4: extras are sent only to the provider they came from (%
     r.push({ text: 'again' });
     const again = await r.open({ sessionId: sid, costBase: 0 });
     await again.turn('two');
-    expect(lastBody(r)).toContain('SIG-TOOL');
+    expect(lastBody(r)).not.toContain('SIG-TOOL');
+    expect(lastBody(r)).toContain('reins-no-such-file.txt'); // the call itself is still in the history
+  });
+
+  it('D7: a legacy line (no provider recorded) never reaches another provider either: its private tool-call field stays out of the request', async () => {
+    const { r, other } = await twoProviders();
+    r.push(callWithExtra(), wire === 'openai-chat' ? withMessageExtra('SIG-MSG') : { text: 'done' });
+    const a = await r.open();
+    await a.turn('one');
+    const sid = a.sessionId;
+    await a.close();
+    const file = path.join(r.host.home, 'conversations', `${sid}.jsonl`);
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => { const o = JSON.parse(l); delete o.provider; return JSON.stringify(o); }).join('\n') + '\n');
+    r.push({ text: 'from the other' });
+    const b = await other.open({ sessionId: sid, policy, costBase: 0 });
+    await b.turn('two');
+    expect(lastBody(r)).not.toContain('SIG-TOOL');
+    expect(lastBody(r)).not.toContain('SIG-MSG');
+    await b.close();
   });
 });

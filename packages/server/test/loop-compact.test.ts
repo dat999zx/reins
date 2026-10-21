@@ -495,7 +495,12 @@ describe.each(WIRES)('an empty summary (%s)', (wire) => {
     const before = raw(r, s.sessionId);
     r.push({ text: '   ' });
     await expect(s.compact!()).rejects.toThrow('empty summary');
-    expect(raw(r, s.sessionId)).toBe(before);
+    // The conversation is as it was; the one thing added is the paid call's usage, on a line of its own (it was billed).
+    const after = raw(r, s.sessionId);
+    expect(after.startsWith(before)).toBe(true);
+    const added = after.slice(before.length).split('\n').filter((l) => l.trim() !== '');
+    expect(added).toHaveLength(1);
+    expect(JSON.parse(added[0]!)).toMatchObject({ t: 'usage', alone: true });
     r.push({ text: 'still here' });
     await s.turn('Q5');
     const all = wireText(r.fake.requests.at(-1)!.body);

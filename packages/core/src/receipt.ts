@@ -22,11 +22,11 @@ export interface Receipt {
   /** recall or store steps that did nothing because no Knowl function was wired in */
   knowlSkipped: number;
   /** Turns and dollars per model (first seen first); absent when no reply named a model or carried a split. */
-  models?: Array<{ model: string; usd: number; turns: number; label?: string }>;
+  models?: Array<{ model: string; usd: number; turns: number; label?: string; unknown?: true }>;
   /** The part of totalCostUsd no model's figure covers (a reply with no per-model split); absent when none. */
   unsplitUsd?: number;
   /** Dollars and turns per subagent step, first started first; absent when no subagent ran. */
-  subagents?: Array<{ step: string; title: string; usd: number; turns: number }>;
+  subagents?: Array<{ step: string; title: string; usd: number; turns: number; unknown?: true }>;
   /** What the kinds count in their own events (name to number); absent when nothing was counted. */
   counts?: Record<string, number>;
 }
@@ -48,10 +48,10 @@ export function receipt(events: RunEventRecord[]): Receipt {
   let knowlRecalls = 0;
   let knowlStores = 0;
   let knowlSkipped = 0;
-  const byModel = new Map<string, { usd: number; turns: number }>();
+  const byModel = new Map<string, { usd: number; turns: number; unknown?: true }>();
   const seen = (m: string) => byModel.get(m) ?? (byModel.set(m, { usd: 0, turns: 0 }), byModel.get(m)!);
 
-  const subs = new Map<string, { title: string; usd: number; turns: number }>();
+  const subs = new Map<string, { title: string; usd: number; turns: number; unknown?: true }>();
   const counts: Record<string, number> = {};
 
   const firstTimestamp = events[0]?.timestamp ?? 0;
@@ -80,11 +80,17 @@ export function receipt(events: RunEventRecord[]): Receipt {
         // A reply that ran on a model and still has no cost (the loop always names its model). Known limit: a turn that names no model is not
         // counted, so a CLI turn killed before its usage row (real spend, unknown cost) shows no "unpriced" mark; counting it would also count
         // the scripted turns of the golden fixtures, which carry neither a model nor a cost.
-        if (typeof ev.data?.model === 'string' && (ev.data.cost === undefined || ev.data.cost === null)) unpricedTurns++;
-        if (typeof ev.data?.model === 'string') seen(ev.data.model).turns++;
+        // A reply the engine marked unknown (`unknown`) counts the same, whether or not it named a model; its model's and its subagent's subtotals say so.
         {
+          const marked = ev.data?.unknown === true;
+          if (marked || (typeof ev.data?.model === 'string' && (ev.data.cost === undefined || ev.data.cost === null))) unpricedTurns++;
+          if (typeof ev.data?.model === 'string') {
+            const m = seen(ev.data.model);
+            m.turns++;
+            if (marked) m.unknown = true;
+          }
           const sub = subs.get(ev.data?.step);
-          if (sub) { sub.turns++; sub.usd += Number(ev.data?.cost || 0); }
+          if (sub) { sub.turns++; sub.usd += Number(ev.data?.cost || 0); if (marked) sub.unknown = true; }
         }
         break;
       case 'subagent_started':
@@ -127,6 +133,12 @@ export function receipt(events: RunEventRecord[]): Receipt {
         else knowlStores++;
         break;
       case 'engine_cost':
+        // A call that failed and left a spend nobody knows (no reply came back to price): a reply with no price, on its step if it was a subagent's.
+        if (ev.data?.unknown === true) {
+          unpricedTurns++;
+          const sub = subs.get(ev.data?.step);
+          if (sub) sub.unknown = true;
+        }
         totalCostUsd += Number(ev.data?.usd || 0);
         for (const [m, usd] of Object.entries((ev.data?.models ?? {}) as Record<string, number>)) seen(m).usd += Number(usd) || 0;
         break;
@@ -139,7 +151,7 @@ export function receipt(events: RunEventRecord[]): Receipt {
 
   const totalTimeMs = Math.max(0, lastTimestamp - firstTimestamp);
   const r6 = (x: number) => Math.round(x * 1e6) / 1e6;
-  const models = [...byModel].map(([model, v]) => ({ model, usd: r6(v.usd), turns: v.turns }));
+  const models = [...byModel].map(([model, v]) => ({ model, usd: r6(v.usd), turns: v.turns, ...(v.unknown ? { unknown: true as const } : {}) }));
   const unsplit = totalCostUsd - models.reduce((a, m) => a + m.usd, 0);
 
   return {
@@ -161,7 +173,7 @@ export function receipt(events: RunEventRecord[]): Receipt {
     knowlSkipped,
     ...(models.length ? { models } : {}),
     ...(models.length && unsplit > 0.00005 ? { unsplitUsd: r6(unsplit) } : {}),
-    ...(subs.size ? { subagents: [...subs].map(([step, v]) => ({ step, title: v.title, usd: r6(v.usd), turns: v.turns })) } : {}),
+    ...(subs.size ? { subagents: [...subs].map(([step, v]) => ({ step, title: v.title, usd: r6(v.usd), turns: v.turns, ...(v.unknown ? { unknown: true as const } : {}) })) } : {}),
     ...(Object.keys(counts).length ? { counts } : {}),
     ...(unpricedTurns ? { unpricedTurns } : {}),
   };

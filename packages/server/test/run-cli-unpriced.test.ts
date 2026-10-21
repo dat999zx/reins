@@ -42,10 +42,43 @@ describe('the receipt of reins run, unpriced replies', () => {
     expect(text).toContain('1 reply had no price; the total leaves it out');
   });
 
+  it('D4 (f): a reply the engine marked unknown marks its model, and the known part of the total stays', async () => {
+    const { text } = await runWith([{ text: 'REINS: done', unknownCost: true, events: [usage] }, { text: 'REINS: done', cost: 0.01, events: [usage] }]);
+    expect(text).toContain('models m $0.0000 + ? (2 turns) · not split by model $0.0100');
+    expect(text).toContain('$0.0100 + ?');
+  });
+
   it('every reply priced: no "?" and no line', async () => {
     const { text } = await runWith([{ text: 'REINS: done', cost: 0.01, events: [usage] }, { text: 'REINS: done', cost: 0.02, events: [usage] }]);
     expect(text).toContain('$0.0300');
     expect(text).not.toContain('+ ?');
     expect(text).not.toContain('had no price');
+  });
+});
+
+describe('D4 (f): a subagent of unknown cost, in the line it hands back and in the receipt', () => {
+  it('shows "$0.0000 + ?" on both, and a priced one does not', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reins-cli-unpriced-sub-'));
+    try {
+      const file = path.join(dir, 'w.reins.md');
+      fs.writeFileSync(file, '---\nreins: 1\nname: s\nbudget: { turns: 9, minutes: 9 }\nalways: []\n---\n\n## subagent research\nmodel: m1\n> Look.\n\n## subagent other\nmodel: m1\n> Look again.\n');
+      const output = new PassThrough();
+      let text = '';
+      output.setEncoding('utf8');
+      output.on('data', (d: string) => { text += d; });
+      const store = openStore(':memory:');
+      const subs = new FakeEngine([{ text: 'found', unknownCost: true, events: [usage] }, { text: 'again', cost: 0.01, events: [usage] }]);
+      const h = startRunCli({
+        file, cwd: dir, store, input: new PassThrough(), output, makeEngine: () => new FakeEngine([]), yes: true,
+        subagentEngine: () => ({ engine: subs, model: 'm1' }),
+      });
+      await h.done;
+      store.close();
+      expect(text).toContain('· subagent-1: handed back its result ($0.0000 + ?)');
+      expect(text).toContain('· subagent-2: handed back its result ($0.0100)');
+      expect(text).toMatch(/subagents research \$0\.0000 \+ \? \(1 turn\) · other \$0\.0100 \(1 turn\)/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    }
   });
 });

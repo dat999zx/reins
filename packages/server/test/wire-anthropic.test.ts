@@ -426,8 +426,15 @@ describe('usage', () => {
   it('no usage at all gives one usage event marked unknown (zeros that mean nothing), never a known 0', async () => {
     a.push(raw(textBlock(0, 'x'), stopFrame()));
     expect(usageOf(await run())).toEqual([{ type: 'usage', usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 }, unknown: true }]);
-    // a usage object in message_start or in message_delta is a usage the server gave
+    // an empty usage object, or one without the input or the output counter, is still unknown
     a.push(raw(start({}), textBlock(0, 'x'), stopFrame()));
+    expect(usageOf(await run())[0]!.unknown).toBe(true);
+    a.push(raw(start({ input_tokens: 10 }), textBlock(0, 'x'), fin('end_turn', {}), stopFrame()));
+    expect(usageOf(await run())[0]!.unknown).toBe(true);
+    a.push(raw(start({}), textBlock(0, 'x'), fin('end_turn', { output_tokens: 5 }), stopFrame()));
+    expect(usageOf(await run())[0]!.unknown).toBe(true);
+    // both counters, an explicit zero included, are known accounting
+    a.push(raw(start({ input_tokens: 0 }), textBlock(0, 'x'), fin('end_turn', { output_tokens: 0 }), stopFrame()));
     expect(usageOf(await run())[0]!.unknown).toBeUndefined();
   });
 
