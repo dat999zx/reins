@@ -8,7 +8,7 @@ import { sameToken } from './token.js';
 import { releaseLock, runningLock, takeLock } from './lock.js';
 import type { Catalog, CatalogModel } from './catalog.js';
 import { CATALOG_DIR, checkEnvFrom, consentFrom, defaultProviderOf, folderTrustFrom, hostSend, liveListSource, providerGeneration, providerOrigin, providerViews, shellEnvFrom, startMods, type ProviderView } from './engines.js';
-import { addCustom, deleteKey, editMod, exportMod, firstRunDone, importApply, importPreview, installMods, listMods, providerStatus, putKey, reinstallMod, removeMod, revokeConsent, setConsent, setEnabled, testConnection, type ConsentStore } from './mods/actions.js';
+import { addCustom, deleteKey, editMod, exportMod, firstRunDone, importApply, importPreview, installMods, listMods, providerStatus, putKey, reinstallMod, removeMod, revokeConsent, setConsent, setEnabled, testConnection, trustMod, type ConsentStore } from './mods/actions.js';
 import type { Redactor } from './secrets.js';
 import { createLiveModels } from './live-models.js';
 import { ID_SHAPE, listModels, parseModel, type PickerModel } from './models.js';
@@ -356,6 +356,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     else if (req.method === 'PUT' && id !== undefined && !action) reply = (await given((b) => editMod(env, id, b))) as Reply;
     else if (req.method === 'DELETE' && id !== undefined && !action) reply = await removeMod(env, id);
     else if (req.method === 'POST' && id !== undefined && (action === 'enable' || action === 'disable')) reply = await setEnabled(env, id, action === 'enable');
+    else if (req.method === 'POST' && id !== undefined && action === 'trust') reply = (await given((b) => trustMod(env, id, b))) as Reply;
     else if (req.method === 'POST' && id !== undefined && action === 'reinstall') reply = await reinstallMod(env, id);
     else if (req.method === 'PUT' && id !== undefined && action === 'key') reply = (await given((b) => putKey(env, id, b))) as Reply;
     else if (req.method === 'DELETE' && id !== undefined && action === 'key') reply = await deleteKey(env, id);

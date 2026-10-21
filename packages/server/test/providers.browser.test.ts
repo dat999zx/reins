@@ -21,7 +21,8 @@ const T = 120_000;
 const W = 15_000;
 const KEY = 'sk-form-0123456789abcdef';
 const KEY2 = 'sk-shown-fedcba9876543210';
-const KEYS_LINE = 'Keys are stored in plain text in <home>/secrets.json, readable by programs running as you. An environment variable always works instead.';
+// The page names the real file (phase C, nit): no "<home>" placeholder.
+const keysLine = (secretsPath: string) => `Keys are stored in plain text in ${secretsPath}, readable by programs running as you. An environment variable always works instead.`;
 const AGENTS_LINE = 'Sessions on API providers do not read CLAUDE.md; put shared rules in AGENTS.md.';
 
 describe.skipIf(skip)('Settings > Providers (spec 7.4 to 7.6)', () => {
@@ -78,7 +79,7 @@ describe.skipIf(skip)('Settings > Providers (spec 7.4 to 7.6)', () => {
     await page.getByRole('button', { name: 'Settings: Providers' }).click();
     const main = page.getByRole('main', { name: 'Providers' });
     await main.waitFor();
-    await main.getByText(KEYS_LINE, { exact: true }).waitFor();
+    await main.getByText(keysLine(path.join(dir, 'secrets.json')), { exact: true }).waitFor();
     await main.getByText(AGENTS_LINE, { exact: true }).waitFor();
 
     // 2. a manifest with `untested: true` shows the badge and the key-missing words; the built-in program provider has no key or test buttons

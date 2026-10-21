@@ -4,6 +4,8 @@ export interface PreviewSummary {
   id: string; label: string; kind: string; protocol: string | null;
   replaces: 'your' | 'builtin' | null;
   replacesLine?: string;
+  /** Where prompts go, a key already saved for the id, key variables set now. From the server; absent in an older reply. */
+  reach?: string[];
   keys: Array<{ name: string; host: string; plainHttp: boolean; line: string }>;
   headers: string[];
   hasCode: boolean;
@@ -21,6 +23,7 @@ export function summaryLines(s: PreviewSummary): string[] {
     `Kind: ${s.kind}`,
     ...(s.protocol ? [`Protocol: ${s.protocol}`] : []),
     ...(s.replaces ? [s.replacesLine ?? (s.replaces === 'your' ? `replaces your ${s.id}` : `replaces the built-in ${s.id}`)] : []),
+    ...(s.reach ?? []),
     ...s.keys.map((k) => k.line),
     ...(s.headers.length ? [`Adds headers: ${s.headers.join(', ')}`] : []),
     `Files: ${s.files.map((f) => `${f.name} (${f.bytes} bytes)`).join(', ')}`,

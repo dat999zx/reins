@@ -54,8 +54,6 @@ export interface EngineHost {
   settings?: { maxCallsPerTurn: number };
   /** Whether the provider's key is set, missing, or not needed. Never the key. None: the loop does not check before a request. */
   key?(p: ProviderManifest): KeyStatus;
-  /** USD per million tokens for a model the manifest does not price (the catalog arrives in a later task). */
-  catalogPrice?(modelId: string): { input: number; output: number; cacheRead?: number; cacheWrite?: number } | undefined;
   /** The wire calls this for every chunk it receives (`parseSse`'s third argument): the loop's stall timer. The loop sets it per call. */
   heartbeat?: () => void;
 }
@@ -193,7 +191,7 @@ export interface LoadedMod {
 /** A kind's own checks, run after the loader's common ones. `ctx.registry` holds the kinds loaded before this one. */
 export interface ModKind {
   id: string;
-  validate(raw: Record<string, unknown>, ctx: { id: string; registry: Registry }): Problem[];
+  validate(raw: Record<string, unknown>, ctx: { id: string; registry: Registry; source?: ModSource }): Problem[];
   /** Records the mod; returns what undoes it. */
   activate(mod: LoadedMod, host: ModHost): (() => void) | undefined;
   /** Kinds whose mods load before this kind's (a provider after protocol). */

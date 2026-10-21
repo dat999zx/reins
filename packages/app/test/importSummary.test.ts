@@ -41,6 +41,16 @@ describe('summaryLines', () => {
     expect(lines).toContain('also holds files the manifest does not name: notes.txt. They are part of the code you would trust.');
   });
 
+  it('shows the server reach lines (host, saved key, key variables) before the key lines, in order, and none when the server sent none', () => {
+    const reach = ['sends your prompts and files to api.acme.test over plain http', 'uses the key saved for acme', 'reads ACME_API_KEY'];
+    const lines = summaryLines(base({ reach, keys: [{ name: 'ACME_API_KEY', host: 'api.acme.test', plainHttp: true, line: 'sends the value of ACME_API_KEY to api.acme.test over plain http' }] }));
+    const at = (l: string) => lines.indexOf(l);
+    expect(reach.every((l) => at(l) > 0)).toBe(true);
+    expect(at(reach[0]!)).toBeLessThan(at(reach[1]!));
+    expect(at(reach[2]!)).toBeLessThan(at('sends the value of ACME_API_KEY to api.acme.test over plain http'));
+    expect(summaryLines(base()).join('\n')).not.toMatch(/prompts and files/);
+  });
+
   it('returns text with markup characters as plain strings, unchanged', () => {
     const evil = '<img src=x onerror=alert(1)> & "q"';
     const lines = summaryLines(base({ label: evil, files: [{ name: '<b>x</b>.json', bytes: 1 }], warnings: ['<script>x</script>'] }));

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { receipt, type EngineEvent, type Policy, type RunEventRecord } from '@reins/core';
 import { HOME_WORDS, confine, type FsLike } from '../src/loop/paths.js';
 import {
-  CUT_NOTE, READ_NOTE, RESULT_CAP, TOOLS, classOf, cutText, findTool, shellToolName, toolSpecs, type ToolCtx, type ToolOut,
+  CUT_NOTE, READ_NOTE, RESULT_CAP, TOOLS, cutText, findTool, shellToolName, toolSpecs, type ToolCtx, type ToolOut,
 } from '../src/loop/tools.js';
 import { KEY, WIRES, rig, toolResults, types, type Rig, type WireId } from './loop-harness.js';
 
@@ -74,10 +74,7 @@ describe('the tool table (4.2)', () => {
     for (const s of toolSpecs('linux')) expect(s.schema).toMatchObject({ type: 'object', additionalProperties: false });
   });
 
-  it('an unknown name is classed as a write (S11) and is not found', () => {
-    expect(classOf('Patch')).toBe('write');
-    expect(classOf('Read')).toBe('read');
-    expect(classOf('Bash')).toBe('shell');
+  it('an unknown name is not found', () => {
     expect(findTool('Patch')).toBeUndefined();
     expect(findTool('__proto__')).toBeUndefined();
     expect(findTool('constructor')).toBeUndefined();

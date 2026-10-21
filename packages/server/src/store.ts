@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { RunEventRecord, RunSnapshot } from '@reins/core';
+import { renamedProviders } from './mods/retired.js';
 import type { Redactor } from './secrets.js';
 
 export const defaultStorePath = () => path.join(os.homedir(), '.reins', 'reins.db');
@@ -154,6 +155,17 @@ export function openStore(file: string) {
   // C: the per-model running totals beside the total (a database made before C has no column).
   if (!(db.prepare('pragma table_info(engine_costs)').all() as Array<{ name: string }>).some((c) => c.name === 'by_model')) {
     db.exec('alter table engine_costs add column by_model text');
+  }
+  // P: a provider whose id changed keeps its sessions (their CLI session ids resume as before). `sessions.engine` is the only column that holds a
+  // provider id. One transaction for all renames; a second open finds nothing to change.
+  const rename = db.prepare('update sessions set engine = ? where engine = ?');
+  db.exec('begin');
+  try {
+    for (const [from, to] of Object.entries(renamedProviders)) rename.run(to, from);
+    db.exec('commit');
+  } catch (e) {
+    db.exec('rollback');
+    throw e;
   }
   const insRun = db.prepare('insert into runs (id, workflow_path, cwd, created_at) values (?, ?, ?, ?)');
   const insEvent = db.prepare('insert into events (run_id, id, ts, type, data) values (?, ?, ?, ?, ?)');

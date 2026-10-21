@@ -23,6 +23,8 @@ afterEach(async () => {
 });
 
 const USED_UP = 'The USD budget is used up.';
+// When the spend is not known the pause card says so, and that Allow cannot help (phase C).
+const UNKNOWN_SPEND = 'Reins cannot tell what this session has spent, so Allow cannot raise the dollar limit. Start a new session or remove the limit.';
 /** 1000 USD per million tokens: one input token is 0.001 USD, so a call of 8 tokens costs 0.008 and one of 700 costs 0.7. */
 const TOKEN_PRICE = { input: 1000, output: 1000 };
 const priced = { manifest: { models: [{ id: 'm', context: 1_000_000, maxOutput: 100, price: TOKEN_PRICE }] } };
@@ -168,7 +170,7 @@ describe.each(WIRES)('unknown is not zero (%s)', (wire) => {
     const s = await r.open({ sessionId: lostReply(r), usdRoom: () => 100 });
     const res = await s.turn('go');
     expect(res.isError).toBe(true);
-    expect(res.text).toBe(USED_UP);
+    expect(res.text).toBe(UNKNOWN_SPEND);
     expect(sent(r)).toBe(0);
     expect(res.total).toBeUndefined();
   });
@@ -176,7 +178,7 @@ describe.each(WIRES)('unknown is not zero (%s)', (wire) => {
   it('the same with maxUsd', async () => {
     const r = await make(wire, priced);
     const s = await r.open({ sessionId: lostReply(r), maxUsd: 100 });
-    expect((await s.turn('go')).text).toBe(USED_UP);
+    expect((await s.turn('go')).text).toBe(UNKNOWN_SPEND);
     expect(sent(r)).toBe(0);
   });
 
@@ -196,10 +198,10 @@ describe.each(WIRES)('unknown is not zero (%s)', (wire) => {
     const res = await s.turn('go');
     expect(res.isError).toBe(true);
     expect(res.budgetStop).toBe(true);
-    expect(res.text).toBe(USED_UP);
+    expect(res.text).toBe(UNKNOWN_SPEND);
     expect(sent(r)).toBe(0);
     const capped = await (await r.open({ sessionId: lostReply(r), costBase: 1, maxUsd: 100 })).turn('go');
-    expect(capped.text).toBe(USED_UP);
+    expect(capped.text).toBe(UNKNOWN_SPEND);
   });
 
   it('a costBase with a file that lost a line and NO limit works as before: the base is kept and counted from', async () => {
@@ -212,18 +214,17 @@ describe.each(WIRES)('unknown is not zero (%s)', (wire) => {
   });
 
   it('an unpriced call makes the total unknown, and the next call under a limit is refused (never counted as 0)', async () => {
-    // The catalog knows a price only from the second reply on: the first reply is unpriced, the model is priced when the limit arrives.
-    let known = false;
-    const r = await make(wire, { manifest: { models: [{ id: 'm', context: 1_000_000, maxOutput: 100 }] }, host: { catalogPrice: () => (known ? TOKEN_PRICE : undefined) } });
+    // The model gets a price only from the second reply on (the manifest is edited in between): the first reply is unpriced, the model is priced when the limit arrives.
+    const r = await make(wire, { manifest: { models: [{ id: 'm', context: 1_000_000, maxOutput: 100 }] } });
     r.push(text(wire, 8), text(wire, 8));
     const run: { limit?: number } = {};
     const s = await r.open({ usdRoom: () => run.limit });
     const one = await s.turn('1');   // no limit yet: the unpriced reply is allowed, and its cost is unknown
     expect(one.isError).toBeUndefined();
     expect(one.cost).toBeUndefined();
-    known = true;
+    r.p.models[0]!.price = TOKEN_PRICE;
     run.limit = 100;
-    expect((await s.turn('2')).text).toBe(USED_UP);
+    expect((await s.turn('2')).text).toBe(UNKNOWN_SPEND);
     expect(sent(r)).toBe(1);
   });
 
@@ -388,7 +389,7 @@ describe('through the HTTP server: the Run pauses on the USD card when the loop 
       w.store.updateSession(w.id, { engineSessionId: sid });
       await w.run(5);
       const q = await askedQuestion(w.store, w.id, 'usd');
-      expect((q as { detail?: string }).detail).toContain(USED_UP);
+      expect((q as { detail?: string }).detail).toContain(UNKNOWN_SPEND);
       expect(sent(w.r)).toBe(0);
       expect(rowsOf(w.store, w.id, 'run_finished')).toEqual([]);
       expect(rowsOf(w.store, w.id, 'run_stopped')).toEqual([]);
@@ -542,8 +543,8 @@ describe.each(WIRES)('maxUsd counts from the total the session was opened with, 
 describe.each(WIRES)('prices that are not numbers cannot slip past the guard (fix round, blocker 2) (%s)', (wire) => {
   const bare = { models: [{ id: 'm', context: 1_000_000, maxOutput: 100 }] };
 
-  it('a catalog price with a NaN output is no price: with a limit the call is not sent, with the no-price words', async () => {
-    const r = await make(wire, { manifest: bare, host: { catalogPrice: () => ({ input: 1, output: Number.NaN }) } });
+  it('a provider default price with a NaN output is no price: with a limit the call is not sent, with the no-price words', async () => {
+    const r = await make(wire, { manifest: { ...bare, price: { input: 1, output: Number.NaN } } });
     const res = await (await r.open({ usdRoom: () => 1 })).turn('go');
     expect(res.text).toBe('m has no price, so Reins cannot hold the $1 budget. Add a price in Settings > Providers, or remove the budget.');
     expect(res.budgetStop).toBe(true);
@@ -551,7 +552,7 @@ describe.each(WIRES)('prices that are not numbers cannot slip past the guard (fi
   });
 
   it('the same price with no limit: the call goes and its cost is unknown (not NaN)', async () => {
-    const r = await make(wire, { manifest: bare, host: { catalogPrice: () => ({ input: 1, output: Number.NaN }) } });
+    const r = await make(wire, { manifest: { ...bare, price: { input: 1, output: Number.NaN } } });
     r.push(text(wire, 8));
     const res = await (await r.open()).turn('go');
     expect(res.isError).toBeUndefined();
@@ -580,7 +581,7 @@ describe.each(WIRES)('prices that are not numbers cannot slip past the guard (fi
     expect(one.cost).toBeUndefined();
     run.limit = 1e6;
     const two = await s.turn('2');
-    expect(two.text).toBe(USED_UP);
+    expect(two.text).toBe(UNKNOWN_SPEND);
     expect(sent(r)).toBe(1);
   });
 

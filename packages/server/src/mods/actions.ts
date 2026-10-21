@@ -5,14 +5,14 @@ import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { hasHiddenChars } from '@reins/core';
-import { MIN_SECRET, clearKey, keyStatus, readSecrets, setKey, type KeyStatus } from '../secrets.js';
+import { MIN_SECRET, clearKey, envGet, keyStatus, readSecrets, secretsFile, setKey, type KeyStatus } from '../secrets.js';
 import { ConsentNeeded, ProviderChanged, ProviderError } from '../send.js';
 import { readBounded } from '../loop/bounded.js';
 import { classify, WORDS } from '../loop/retry.js';
 import { modelIdsFrom } from '../loop/wire-util.js';
 import { cleanIds } from '../live-models.js';
 import { cap, show } from './kinds.js';
-import { canonMain, caseAlias, hashFiles, isModId, parseManifest, validateMod } from './loader.js';
+import { canonMain, caseAlias, hashFiles, isModId, parseManifest, readFolder, validateMod } from './loader.js';
 import type { LoadedMod, Mods, Protocol, ProviderManifest, SendWithKey } from './types.js';
 
 export type Reply = { status: number; body: unknown; headers?: Record<string, string> };
@@ -283,6 +283,8 @@ function summary(env: ModEnv, m: LoadedMod) {
   const trust = m.source === 'bundled' ? undefined : trustOf(env, m);
   return {
     ...(trust ? { trust } : {}),
+    // A user mod with code: the hash the Trust button must name and the prompt that is shown first (see `trustMod`).
+    ...(trust && trust !== 'none' && m.hash !== undefined ? { hash: m.hash, codePrompt: CODE_PROMPT } : {}),
     ...(m.kind === 'provider' ? providerStatus(env, m.id) : {}),
     // The manifest holds env var NAMES, never a key value (keys live in secrets.json); the settings page reads protocol, auth, models and untested from it.
     ...(m.kind === 'provider' && m.manifest !== undefined ? { manifest: m.manifest } : {}),
@@ -336,7 +338,7 @@ async function chooser(env: ModEnv, probe: boolean) {
 export async function listMods(env: ModEnv): Promise<Reply> {
   // First run: the marker was never written and no provider besides the built-in ones was installed.
   const firstRun = !there(firstRunFile(env.home)) && !env.mods.mods.some((m) => m.kind === 'provider' && m.source === 'user');
-  return { status: 200, body: { mods: env.mods.mods.map((m) => summary(env, m)), firstRun, chooser: await chooser(env, firstRun), problems: env.mods.problems } };
+  return { status: 200, body: { mods: env.mods.mods.map((m) => summary(env, m)), firstRun, chooser: await chooser(env, firstRun), problems: env.mods.problems, secretsPath: secretsFile(env.home) } };
 }
 
 // ---- POST /api/mods/first-run/done
@@ -527,6 +529,40 @@ export function removeMod(env: ModEnv, id: unknown): Promise<Reply> {
     const off = readDisabled(env.home);
     if (off.delete(id)) writeWhole(env.home, disabledFile(env.home), JSON.stringify([...off].sort(), null, 2) + '\n');
     return reloaded(env, { id });
+  });
+}
+
+// ---- POST /api/mods/:id/trust
+
+/**
+ * Trusts the code of an INSTALLED user mod. The body names the hash the user was shown (the list carries it); the folder on disk is read and
+ * hashed again now, and only when it is exactly that hash is trust recorded for it. So bytes that changed since the list was read are never trusted.
+ * The code runs at once (as "Trust and import" does), or after a restart when other code of this id already ran.
+ */
+export function trustMod(env: ModEnv, id: unknown, b: Record<string, unknown>): Promise<Reply> {
+  if (!isModId(id)) return Promise.resolve(fail(400, BAD_ID));
+  if (typeof b.hash !== 'string' || b.hash === '') return Promise.resolve(fail(400, '`hash` must be the hash the code prompt showed.'));
+  return serial(env.home, async () => {
+    const mod = env.mods.mods.find((m) => m.id === id);
+    if (!mod) return fail(404, `No mod ${id$(id)} is installed.`);
+    if (mod.source === 'bundled') return fail(409, `${id$(id)} is built in; there is nothing to trust.`);
+    if (!mod.hasCode) return fail(409, `${id$(id)} has no code, so there is nothing to trust.`);
+    let now: string;
+    try {
+      now = hashFiles(readFolder(path.join(modsDir(env.home), id), id));
+    } catch {
+      return fail(409, `${id$(id)} could not be read, so it was not trusted.`);
+    }
+    if (now !== b.hash) return fail(409, `${id$(id)} changed since you looked at it. Nothing was trusted; look at it again.`);
+    try {
+      setTrust(env.home, id, now);
+    } catch {
+      return fail(500, 'The trust could not be saved.');
+    }
+    const r = await reloaded(env, { id });
+    const after = env.mods.mods.find((m) => m.id === id);
+    (r.body as Record<string, unknown>).trust = after ? trustOf(env, after) : 'none';
+    return r;
   });
 }
 
@@ -795,6 +831,8 @@ export interface ImportSummary {
   /** 'your': a copy the user installed is there and is replaced. 'builtin': the mod shadows a bundled one. */
   replaces: 'your' | 'builtin' | null;
   replacesLine?: string;
+  /** Where a provider's prompts go, a key Reins already holds for the id, and key variables that are set now. Lines, in reading order. */
+  reach: string[];
   keys: Array<{ name: string; host: string; plainHttp: boolean; line: string }>;
   /** Header names only; the values stay in the file. */
   headers: string[];
@@ -862,12 +900,21 @@ function checkImport(env: ModEnv, input: unknown): Checked {
   } catch { /* a mod with no address sends nothing */ }
   const names = auth && auth.style !== 'none' && Array.isArray(auth.keyEnv) ? auth.keyEnv.filter((n): n is string => typeof n === 'string') : [];
   const hasCode = raw.main !== undefined;
+  const sendsKey = !!auth && auth.style !== 'none';
+  // Where it goes and with what: the host (also for a keyless provider: prompts and files go there), a key Reins already holds for this id
+  // (the value is never read into the answer, only whether one exists), and each key variable that is set right now.
+  const reach = raw.kind === 'provider' && host ? [
+    `sends your prompts and files to ${host}${plain ? ' over plain http' : ''}`,
+    ...(sendsKey && readSecrets(env.home).has(id) ? [`uses the key saved for ${id}`] : []),
+    ...names.filter((n) => envGet(env.env, n)?.trim()).map((n) => `reads ${n}`),
+  ] : [];
   const others = files.map((f) => f.rel).filter((n) => n !== 'mod.json' && n !== main).sort();
   const hash = hasCode ? hashFiles(files) : undefined;
   const summary: ImportSummary = {
     id, label: String(raw.label), kind: String(raw.kind), protocol: typeof raw.protocol === 'string' ? raw.protocol : null,
     replaces: yours ? 'your' : builtin ? 'builtin' : null,
     ...(yours || builtin ? { replacesLine: yours ? `replaces your ${id}` : `replaces the built-in ${id}` } : {}),
+    reach,
     keys: names.map((name) => ({ name, host, plainHttp: plain, line: `sends the value of ${name} to ${host}${plain ? ' over plain http' : ''}` })),
     headers: isObj(raw.headers) ? Object.keys(raw.headers) : [],
     hasCode,

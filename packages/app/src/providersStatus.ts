@@ -10,9 +10,13 @@ export interface ModRow {
   host?: string;
   key?: { state: 'set' | 'missing' | 'none'; source?: string };
   manifest?: Record<string, any>;
+  /** A user mod with code: the hash the Trust button names, and the prompt shown before it. */
+  hash?: string;
+  codePrompt?: string;
 }
 
-export const KEYS_LINE = 'Keys are stored in plain text in <home>/secrets.json, readable by programs running as you. An environment variable always works instead.';
+/** `secretsPath` is the real file, from the list reply. */
+export const keysLine = (secretsPath: string) => `Keys are stored in plain text in ${secretsPath}, readable by programs running as you. An environment variable always works instead.`;
 export const AGENTS_LINE = 'Sessions on API providers do not read CLAUDE.md; put shared rules in AGENTS.md.';
 
 const keyNames = (r: ModRow): string[] => (Array.isArray(r.manifest?.auth?.keyEnv) ? r.manifest!.auth.keyEnv.filter((n: unknown) => typeof n === 'string') : []);
@@ -45,16 +49,28 @@ export function rowInfo(r: ModRow) {
     untested: m.untested === true,
     replaces: r.replaces === 'bundled' ? `replaces the built-in ${r.id}` : undefined,
     /** Shown instead of a value: the key itself is never in the list. */
-    keyShown: key ? (r.key?.state === 'set' ? 'key set' : 'no key') : undefined,
+    // Spec 8.1: the source after it when a variable supplies the key; the Reins file is the default and says nothing more.
+    keyShown: key ? (r.key?.state === 'set' ? (r.key.source && r.key.source !== 'Reins' ? `key set (${r.key.source})` : 'key set') : 'no key') : undefined,
     canSetKey: key,
     canClearKey: key && r.key?.state === 'set' && r.key.source === 'Reins',
     // Only a provider Reins sends to has a host from the server, and only a working one can be asked.
     canTest: r.host !== undefined && r.enabled && r.problems.length === 0,
-    canEdit: !r.bundled,
+    canEdit: !r.bundled && r.kind === 'provider',
     canRemove: !r.bundled,
     canReinstall: r.source === 'installed',
+    /** A code mod that waits for a yes, and has the hash and the prompt the yes needs. */
+    canTrust: r.trust === 'needs-trust' && typeof r.hash === 'string' && typeof r.codePrompt === 'string',
   };
 }
+
+/** The labels of the providers that use the protocol `id` (from their manifests). */
+export const usedBy = (rows: ModRow[], id: string): string[] => rows.filter((r) => r.kind === 'provider' && r.manifest?.protocol === id).map((r) => r.label);
+
+/** The confirm line for switching off or removing something providers use (spec: disabled protocols are not silent). */
+export const stopsLine = (labels: string[]) => `Providers that use it will stop working: ${labels.join(', ')}`;
+
+/** The second line of a row in "Protocols and other mods": kind, bundled or user, and who uses it. */
+export const otherMeta = (r: ModRow, users: string[]) => [r.kind, r.bundled ? 'bundled' : 'user', users.length ? `used by ${users.join(', ')}` : ''].filter(Boolean).join(' · ');
 
 /** The providers a custom endpoint can use: protocols that are on and well, except those a built-in provider uses (they run a program, not an API). */
 export function apiProtocols(rows: ModRow[]): Array<{ id: string; label: string }> {

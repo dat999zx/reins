@@ -3,7 +3,7 @@ import { ApiError, del, get, post, put } from './api.js';
 import { cx } from './generic.js';
 import { ImportPanel } from './ImportSummary.js';
 import { editBody, emptyForm, emptyModel, errorsByField, formToManifest, manifestToForm, type AuthStyle, type ProviderForm } from './providerForm.js';
-import { AGENTS_LINE, KEYS_LINE, apiProtocols, rowInfo, type ModRow } from './providersStatus.js';
+import { AGENTS_LINE, apiProtocols, keysLine, otherMeta, rowInfo, stopsLine, usedBy, type ModRow } from './providersStatus.js';
 
 const url = (id: string, tail = '') => `/api/mods/${encodeURIComponent(id)}${tail}`;
 const sayErr = (e: unknown) => (e instanceof ApiError ? e.message : (e as Error).message);
@@ -125,15 +125,18 @@ function FormView({ initial, editing, protocols, original, onDone, onCancel }: {
 
 interface TestReply { result: string; message: string; host?: string; origin?: string }
 
-function Row({ row, reload, edit }: { row: ModRow; reload: () => Promise<void>; edit: (r: ModRow) => void }) {
+/** One row of either list: a provider, or a protocol and other mods. `used` = labels of the providers that use this mod. */
+function Row({ row, used, reload, edit }: { row: ModRow; used: string[]; reload: () => Promise<void>; edit: (r: ModRow) => void }) {
   const info = rowInfo(row);
+  const provider = row.kind === 'provider';
   const [msg, setMsg] = useState('');
   const [bad, setBad] = useState(false);
   // What the dialog is about: the host it shows and the exact origin the server asked about, which the Allow button sends back.
   const [ask, setAsk] = useState<{ host: string; origin: string } | undefined>();
   const [draft, setDraft] = useState('');
   const [keying, setKeying] = useState(false);
-  const [sure, setSure] = useState(false);
+  const [sure, setSure] = useState<'remove' | 'disable' | undefined>();
+  const [trusting, setTrusting] = useState(false);
   const run = async (what: () => Promise<unknown>, after?: () => void) => {
     setBad(false);
     try {
@@ -173,22 +176,31 @@ function Row({ row, reload, edit }: { row: ModRow; reload: () => Promise<void>; 
         <span className="pstatus">{info.status}</span>
       </div>
       <div className="pmeta">
-        {[info.host, `${info.models} ${info.models === 1 ? 'model' : 'models'}`, info.replaces, info.keyShown].filter(Boolean).join(' · ')}
+        {provider ? [info.host, `${info.models} ${info.models === 1 ? 'model' : 'models'}`, info.replaces, info.keyShown].filter(Boolean).join(' · ') : otherMeta(row, used)}
       </div>
       <div className="pactions">
         {info.canTest && <button onClick={() => void test()}>Test connection</button>}
         {info.canSetKey && <button onClick={() => setKeying(!keying)}>Set key</button>}
         {info.canClearKey && <button onClick={() => void run(() => del(url(row.id, '/key')))}>Clear key</button>}
         {info.canEdit && <button onClick={() => edit(row)}>Edit</button>}
-        <button onClick={() => void run(() => post(url(row.id, row.enabled ? '/disable' : '/enable')))}>{row.enabled ? 'Disable' : 'Enable'}</button>
-        {row.kind === 'provider' && !row.bundled && <button onClick={() => void exportIt()}>Export</button>}
+        {info.canTrust && <button onClick={() => setTrusting(true)}>Trust</button>}
+        <button onClick={() => (row.enabled && used.length ? setSure('disable') : void run(() => post(url(row.id, row.enabled ? '/disable' : '/enable'))))}>{row.enabled ? 'Disable' : 'Enable'}</button>
+        {!row.bundled && <button onClick={() => void exportIt()}>Export</button>}
         {info.canReinstall && <button onClick={() => void run(() => post(url(row.id, '/reinstall')))}>Re-install</button>}
-        {info.canRemove && !sure && <button className="danger" onClick={() => setSure(true)}>Remove</button>}
+        {info.canRemove && !sure && <button className="danger" onClick={() => setSure('remove')}>Remove</button>}
       </div>
       {sure && (
-        <div className="pconfirm" role="alert">Remove {row.label}? Its saved key stays.
-          <button className="danger" onClick={() => void run(() => del(url(row.id)))}>Remove {row.id}</button>
-          <button onClick={() => setSure(false)}>Keep</button>
+        <div className="pconfirm" role="alert">
+          {sure === 'remove' ? `Remove ${row.label}?${provider ? ' Its saved key stays.' : ''}` : `Disable ${row.label}?`}{used.length > 0 && ` ${stopsLine(used)}`}
+          <button className="danger" onClick={() => void run(() => (sure === 'remove' ? del(url(row.id)) : post(url(row.id, '/disable'))), () => setSure(undefined))}>{sure === 'remove' ? `Remove ${row.id}` : `Disable ${row.id}`}</button>
+          <button onClick={() => setSure(undefined)}>Keep</button>
+        </div>
+      )}
+      {trusting && (
+        <div className="pconfirm" role="dialog" aria-label="Trust this code">
+          <p>{row.codePrompt}</p>
+          <button className="danger" onClick={() => void run(() => post(url(row.id, '/trust'), { hash: row.hash }), () => setTrusting(false))}>Trust and run {row.id}</button>
+          <button onClick={() => setTrusting(false)}>Cancel</button>
         </div>
       )}
       {keying && (
@@ -212,13 +224,16 @@ function Row({ row, reload, edit }: { row: ModRow; reload: () => Promise<void>; 
 export function Providers({ onClose }: { onClose: () => void }) {
   const [rows, setRows] = useState<ModRow[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [secretsPath, setSecretsPath] = useState('');
   const [problem, setProblem] = useState('');
   const [importing, setImporting] = useState(false);
   const [said, setSaid] = useState('');
   const [form, setForm] = useState<{ initial: ProviderForm; editing: boolean; original?: unknown } | undefined>();
   const reload = async () => {
     try {
-      setRows((await get<{ mods: ModRow[] }>('/api/mods')).mods);
+      const r = await get<{ mods: ModRow[]; secretsPath?: string }>('/api/mods');
+      setRows(r.mods);
+      setSecretsPath(r.secretsPath ?? '');
       setProblem('');
     } catch (e) {
       setProblem(sayErr(e));
@@ -231,7 +246,7 @@ export function Providers({ onClose }: { onClose: () => void }) {
     <main className="providers" aria-label="Providers">
       <header className="phead2"><h2>Settings: Providers</h2><button onClick={onClose}>Close</button></header>
       {problem && <p className="ferr" role="alert">{problem}</p>}
-      <p className="hint">{KEYS_LINE}</p>
+      {secretsPath && <p className="hint">{keysLine(secretsPath)}</p>}
       <p className="hint">{AGENTS_LINE}</p>
       <div className="pactions">
         <button className="primary" onClick={() => setForm({ initial: emptyForm(protocols[0]?.id ?? ''), editing: false })}>Add custom endpoint</button>
@@ -243,11 +258,21 @@ export function Providers({ onClose }: { onClose: () => void }) {
         <FormView key={form.initial.id || 'new'} {...form} protocols={protocols} onCancel={() => setForm(undefined)} onDone={() => { setForm(undefined); void reload(); }} />
       )}
       {!loaded ? <p className="hint">Loading...</p> : (
-        <ul className="plist">
-          {rows.filter((r) => r.kind === 'provider').map((r) => (
-            <Row key={r.id} row={r} reload={reload} edit={(x) => setForm({ initial: manifestToForm(x.manifest), editing: true, original: x.manifest })} />
-          ))}
-        </ul>
+        <>
+          <ul className="plist" aria-label="Providers">
+            {rows.filter((r) => r.kind === 'provider').map((r) => (
+              <Row key={r.id} row={r} used={[]} reload={reload} edit={(x) => setForm({ initial: manifestToForm(x.manifest), editing: true, original: x.manifest })} />
+            ))}
+          </ul>
+          {rows.some((r) => r.kind !== 'provider') && (
+            <>
+              <h3>Protocols and other mods</h3>
+              <ul className="plist" aria-label="Protocols and other mods">
+                {rows.filter((r) => r.kind !== 'provider').map((r) => <Row key={r.id} row={r} used={usedBy(rows, r.id)} reload={reload} edit={() => {}} />)}
+              </ul>
+            </>
+          )}
+        </>
       )}
     </main>
   );

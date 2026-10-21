@@ -86,7 +86,7 @@ registerKind({
   id: 'provider',
   after: ['protocol'],
   activate: record,
-  validate(raw, { id, registry }) {
+  validate(raw, { id, registry, source }) {
     const out: Problem[] = [];
     const bad = (msg: string) => {
       if (out.length < MAX_PROBLEMS) out.push(`\`${id}\`: ${msg}`);
@@ -102,6 +102,7 @@ registerKind({
     const base = typeof raw.baseUrl === 'string' ? origin(raw.baseUrl) : undefined;
     if (base === undefined) bad(`\`baseUrl\` must be an http or https address (got ${show(raw.baseUrl ?? null)}).`);
     if (raw.default !== undefined && typeof raw.default !== 'boolean') bad('`default` must be true or false.');
+    else if (raw.default === true && source !== 'bundled') bad('A mod cannot make itself the default provider. Choose the default in Settings.');
     if (raw.modelsUrl !== undefined) {
       const m = typeof raw.modelsUrl === 'string' ? origin(raw.modelsUrl) : undefined;
       if (m === undefined) bad(`\`modelsUrl\` must be an http or https address (got ${show(raw.modelsUrl)}).`);

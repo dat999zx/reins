@@ -8,7 +8,6 @@ export interface ChooserEntry {
 export interface InstallResult { id: string; ok: boolean; error?: string }
 
 export const BUILT_IN_LINE = 'Claude Code is built in and ready if it is installed.';
-export const NO_CATALOG_LINE = 'No providers to offer in this copy of Reins.';
 
 /** The cards to show. A built-in provider is already there and is never a card, whatever the server sent. */
 export const cardsOf = (chooser: ChooserEntry[], builtIn: string[]): ChooserEntry[] => chooser.filter((c) => !builtIn.includes(c.id));

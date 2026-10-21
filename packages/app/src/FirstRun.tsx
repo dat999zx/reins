@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ApiError, post } from './api.js';
-import { BUILT_IN_LINE, NO_CATALOG_LINE, installIds, needsLine, preTicked, resultLine, type ChooserEntry, type InstallResult } from './firstRunCards.js';
+import { BUILT_IN_LINE, installIds, needsLine, preTicked, resultLine, type ChooserEntry, type InstallResult } from './firstRunCards.js';
 import { cx } from './generic.js';
 
 /** The first screen of a new Reins home (spec 7.3): pick providers to install, or skip. Skip always works. */
@@ -38,7 +38,6 @@ export function FirstRun({ cards, onLeave }: { cards: ChooserEntry[]; onLeave: (
     <main className="firstrun" aria-label="First run">
       <h2>Choose your providers</h2>
       <p className="hint">{BUILT_IN_LINE}</p>
-      {!cards.length && <p className="hint">{NO_CATALOG_LINE}</p>}
       <ul className="plist">
         {cards.map((c) => (
           <li key={c.id} className={cx('prow', 'card', ticked.includes(c.id) && 'on')} data-id={c.id}>

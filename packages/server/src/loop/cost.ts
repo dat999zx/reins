@@ -1,14 +1,17 @@
 // Spec 6.1 and 6.2: what one model call cost, in USD. Unknown is not zero.
-import type { EngineHost, ProviderManifest } from '../mods/types.js';
+import type { ProviderManifest } from '../mods/types.js';
 import type { Usage } from './types.js';
 
 export interface Price { input: number; output: number; cacheRead?: number; cacheWrite?: number }
 
-/** The model's own price, else the catalog's, else the provider's default; undefined = unknown. */
-export function priceOf(p: ProviderManifest, h: Pick<EngineHost, 'catalogPrice'>, modelId: string): Price | undefined {
+/**
+ * The model's own price in the manifest, else the provider's default price; undefined = unknown. This is the one price source of the loop's billing,
+ * and of the header's switch estimate for an API provider (`priceFor` reads the same manifest fields).
+ */
+export function priceOf(p: ProviderManifest, modelId: string): Price | undefined {
   const m = p.models.find((x) => x.id === modelId)?.price;
   // A model price without `output` is a table of a provider that reports its own cost: not a price for this loop.
-  const found: Price | undefined = m && m.output !== undefined ? { ...m, output: m.output } : h.catalogPrice?.(modelId) ?? p.price;
+  const found: Price | undefined = m && m.output !== undefined ? { ...m, output: m.output } : p.price;
   // A price with a field that is not a number of 0 or more (NaN would slip past every comparison of the money guard) is no price.
   return found && [found.input, found.output, found.cacheRead ?? 0, found.cacheWrite ?? 0].every((x) => Number.isFinite(x) && x >= 0) ? found : undefined;
 }

@@ -144,9 +144,18 @@ await fake.close();
 
 - **Export** (Settings > Providers > Export) gives one JSON file with the mod's text files. It never holds a key, `secrets.json` or any file of the home. Reins refuses to export a file that holds a key it knows.
 - **Import** shows a preview first: the id, the kind, the files, and whether it replaces a built-in. Then you import.
-- A mod with code is imported but **does not run**. It waits as "needs trust". The prompt says: "This mod runs its own code inside Reins, with your rights: it can read your files and your keys, and use the network. Reins cannot limit what it does. Trust it only if you trust its author." Say yes only to code you have read or whose author you trust.
+- A mod with code has two import buttons. **Trust and import** runs the code at once. **Import without running its code** installs it but does not run it: it waits as "needs trust" until you press Trust on its row under "Protocols and other mods" in Settings > Providers. Trust asks the same question first. The prompt says: "This mod runs its own code inside Reins, with your rights: it can read your files and your keys, and use the network. Reins cannot limit what it does. Trust it only if you trust its author." Say yes only to code you have read or whose author you trust.
 - Trust is by hash of every file. If one byte of one file changes, Reins asks again, and the new code does not run until you do. Removing a mod removes its trust, so the same files imported again ask again.
 - A data mod has no prompt, because it runs nothing. It still never carries a key: export it, send it, import it, and the new home has to set its own key and give its own consent.
+
+- Switching off or removing a protocol that providers use asks first and names those providers: "Providers that use it will stop working: ...". The server itself does not refuse it.
+- Before you import a provider, the preview says where it sends your prompts and files ("sends your prompts and files to <host>", with "over plain http" when it applies), whether Reins already holds a key saved for that id ("uses the key saved for <id>"), and which key variables are set now ("reads <NAME>"). A mod file cannot make itself the default provider; choose that in Settings.
+
+## Money limits you should know
+
+- A USD budget is held only when Reins knows what the session has spent. A reply with no usage, a call that failed after the provider began to answer, or a session whose file lost a line makes the spend **unknown**, and Reins does not guess zero.
+- When the spend is unknown and a dollar limit is set, the next call is not sent and the pause says: "Reins cannot tell what this session has spent, so Allow cannot raise the dollar limit. Start a new session or remove the limit."
+- Stop in the middle of a reply may leave a partly billed call uncounted: the provider bills what it generated, but Reins only counts a call whose usage it received.
 
 ## Where keys live
 

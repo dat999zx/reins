@@ -17,6 +17,8 @@ for (const f of src) {
   fs.mkdirSync(path.dirname(path.join(to, f)), { recursive: true });
   fs.copyFileSync(path.join(from, f), path.join(to, f));
 }
+// The mods guide ships in the package (it is under dist, which `files` lists), next to the bundled mods.
+fs.copyFileSync(path.join(from, 'README.md'), path.join(to, 'README.md'));
 const built = manifests(to);
 if (built.length !== src.length) {
   console.error(`copy-mods: src/mods has ${src.length} mod.json files but dist/mods has ${built.length}. A mod is missing from the build.`);

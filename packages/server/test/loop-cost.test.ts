@@ -90,14 +90,12 @@ describe('unknown is not zero (6.2)', () => {
 describe('priceOf and callCost', () => {
   const usage = { input: 1_000_000, output: 1_000_000, cacheRead: 1_000_000, cacheWrite: 1_000_000, reasoning: 0 };
   const p = (over: object = {}) => ({ models: [{ id: 'm' }], ...over }) as never;
-  it('model, then the catalog seam, then the provider, then unknown', () => {
-    const cat = { catalogPrice: () => ({ input: 7, output: 8 }) };
-    expect(priceOf(p({ models: [{ id: 'm', price: PRICE }] }), cat, 'm')).toEqual(PRICE);
-    expect(priceOf(p({ price: { input: 1, output: 1 } }), cat, 'm')).toEqual({ input: 7, output: 8 });
-    expect(priceOf(p({ price: { input: 1, output: 1 } }), {}, 'm')).toEqual({ input: 1, output: 1 });
-    expect(priceOf(p(), {}, 'm')).toBeUndefined();
+  it('model, then the provider default, then unknown', () => {
+    expect(priceOf(p({ models: [{ id: 'm', price: PRICE }], price: { input: 1, output: 1 } }), 'm')).toEqual(PRICE);
+    expect(priceOf(p({ price: { input: 1, output: 1 } }), 'm')).toEqual({ input: 1, output: 1 });
+    expect(priceOf(p(), 'm')).toBeUndefined();
     // a model price with no output is the CLI's table, not a price for this loop
-    expect(priceOf(p({ models: [{ id: 'm', price: { input: 3 } }] }), {}, 'm')).toBeUndefined();
+    expect(priceOf(p({ models: [{ id: 'm', price: { input: 3 } }] }), 'm')).toBeUndefined();
   });
   it('adds the four parts, unrounded', () => {
     expect(callCost(PRICE, usage)).toBeCloseTo(1 + 2 + 0.5 + 1.25, 12);

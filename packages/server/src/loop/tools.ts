@@ -554,9 +554,6 @@ export const offered = (platform: NodeJS.Platform): Tool[] => TOOLS.filter((t) =
 
 export const toolSpecs = (platform: NodeJS.Platform): ToolSpec[] => offered(platform).map((t) => ({ name: t.name, description: t.description, schema: t.schema }));
 
-/** The class of a tool name; a name the table does not have is treated as a write (S11). */
-export const classOf = (name: string): ToolClass => findTool(name)?.class ?? 'write';
-
 export const noTool = (name: string, platform: NodeJS.Platform, hasTools: boolean) =>
   hasTools
     ? `Reins has no tool ${name.slice(0, 100)}; use one of: ${offered(platform).map((t) => t.name).join(', ')}.`

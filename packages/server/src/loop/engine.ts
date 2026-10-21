@@ -29,6 +29,8 @@ const DENIED = 'Denied by the user in Reins.';
 const CARD_CUT = ' […cut]';
 const PATH_CHANGED = 'Blocked by Reins: the path changed while the question was open.';
 const USD_USED_UP = 'The USD budget is used up.';
+/** The pause card's words when the session's spend is not known: Allow adds room to a number the engine does not have. */
+export const USD_UNKNOWN = 'Reins cannot tell what this session has spent, so Allow cannot raise the dollar limit. Start a new session or remove the limit.';
 
 /** The clock and the dice of the retry back-off, and the platform and fs the tools see, for tests. */
 export interface LoopDeps {
@@ -314,7 +316,7 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
    * unknown for good. `unknownUsage`: the call carried no usage (or it failed after the provider began to answer), so its cost is not known.
    */
   function charge(usage: Usage, unknownUsage = false): number | undefined {
-    const price = priceOf(p, h, model);
+    const price = priceOf(p, model);
     const cost = price && !unknownUsage ? callCost(price, usage) : undefined;
     // A cost that is not a number (a usage with a NaN in it) is no cost: the total becomes unknown, never a NaN that no comparison catches.
     const spent = cost !== undefined && Number.isFinite(cost) ? cost : undefined;
@@ -468,8 +470,8 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
     // A figure that is not a number (a NaN room from the host, an infinite cap) cannot be held either: every comparison with it would be false.
     if ([room, cap, total, base, openTotal].some((x) => x !== undefined && !Number.isFinite(x))) return USD_USED_UP;
     const limit = Math.round(Math.min(room ?? Infinity, cap ?? Infinity) * 1e6) / 1e6;
-    if (!priceOf(p, h, model)) return `${model} has no price, so Reins cannot hold the $${limit} budget. Add a price in Settings > Providers, or remove the budget.`;
-    if (total === undefined || base === undefined || openTotal === undefined || unknownTail) return USD_USED_UP;
+    if (!priceOf(p, model)) return `${model} has no price, so Reins cannot hold the $${limit} budget. Add a price in Settings > Providers, or remove the budget.`;
+    if (total === undefined || base === undefined || openTotal === undefined || unknownTail) return USD_UNKNOWN;
     if (room !== undefined && room - (total - base) <= USD_EPSILON) return USD_USED_UP;
     if (cap !== undefined && total - openTotal >= cap - USD_EPSILON) return USD_USED_UP;
     return undefined;

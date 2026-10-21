@@ -18,7 +18,7 @@ afterEach(async () => {
   for (const r of rigs.splice(0)) await r.cleanup();
 });
 
-const USED_UP = 'The USD budget is used up.';
+const UNKNOWN_SPEND = 'Reins cannot tell what this session has spent, so Allow cannot raise the dollar limit. Start a new session or remove the limit.';
 /** 1000 USD per million tokens: a call of 8 tokens costs 0.008. */
 const TOKEN_PRICE = { input: 1000, output: 1000 };
 const priced = { manifest: { models: [{ id: 'm', context: 1_000_000, maxOutput: 100, price: TOKEN_PRICE }] } };
@@ -57,7 +57,7 @@ describe.each(WIRES)('B1: a reply with no usage is an unknown cost, never 0 (%s)
     expect(first.total).toBeUndefined();
     const second = await s.turn('again');
     expect(second.budgetStop).toBe(true);
-    expect(second.text).toBe(USED_UP);
+    expect(second.text).toBe(UNKNOWN_SPEND);
     expect(sent(r)).toBe(1);
   });
 
@@ -140,7 +140,7 @@ describe.each(WIRES)('B2: a call that failed after the 200 began has an unknown 
     const res = await s.turn('go');
     expect(sent(r)).toBe(1);
     expect(res.budgetStop).toBe(true);
-    expect(res.text).toBe(USED_UP);
+    expect(res.text).toBe(UNKNOWN_SPEND);
     expect(res.cost).toBeUndefined();
     expect(res.total).toBeUndefined();
   });

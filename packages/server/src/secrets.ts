@@ -12,7 +12,7 @@ export type Key = { kind: 'key'; key: string; source: string } | { kind: 'none' 
 /** The only shape a status or API may carry: no value. */
 export interface KeyStatus { state: 'set' | 'missing' | 'none'; source?: string }
 
-const secretsFile = (home: string) => path.join(home, 'secrets.json');
+export const secretsFile = (home: string) => path.join(home, 'secrets.json');
 
 /** An env var name as the OS compares it: upper-cased on Windows, exact elsewhere. The one helper keyFor, knownSecrets and childEnv share. */
 export const envName = (name: string, platform: string = process.platform) => (platform === 'win32' ? name.toUpperCase() : name);

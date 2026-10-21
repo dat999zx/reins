@@ -153,7 +153,7 @@ function scan(dir: string, source: ModSource, home: string): { found: Found[]; p
  * directory and file are checked with lstat when they are read, not only by the entry list read before. A top-level
  * mod.json is read with the manifest ceiling.
  */
-function readFolder(dir: string, id: string, base = ''): Bytes[] {
+export function readFolder(dir: string, id: string, base = ''): Bytes[] {
   const here = path.join(dir, base);
   if (fs.lstatSync(here).isSymbolicLink()) throw new ModError(linkMsg(id, base || path.basename(dir)));
   const out: Bytes[] = [];
@@ -290,7 +290,7 @@ export const isModId = (id: unknown): id is string => typeof id === 'string' && 
 export function validateMod(raw: Record<string, unknown>, f: { folder: string; source: ModSource }, id: string, bundledKinds: Map<string, string>, registry: Registry): Problem[] {
   const common = commonProblems(raw, f, id, bundledKinds);
   if (common.length) return common;
-  return kindOf(raw.kind as string)!.validate(raw, { id, registry }).slice(0, 20); // a hostile file cannot flood the list
+  return kindOf(raw.kind as string)!.validate(raw, { id, registry, source: f.source }).slice(0, 20); // a hostile file cannot flood the list
 }
 
 /** Everything one mod must undo: its registry entries and whatever else a kind handed back. */
