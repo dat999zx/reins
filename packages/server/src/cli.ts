@@ -5,13 +5,13 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Readable, Writable } from 'node:stream';
-import { printWorkflow } from '@reins/core';
+import { printWorkflow, showText } from '@reins/core';
 import { doctor, doctorMods } from './doctor.js';
-import { checkEnvFrom, defaultProviderOf, keyEnvNames, makeEngineFrom, probeFrom, providerViews, redactEnvNames, startMods } from './engines.js';
+import { checkEnvFrom, defaultProviderOf, makeEngineFrom, probeFrom, providerViews, redactEnvNames, sendsFromReins, shellEnvFrom, startMods } from './engines.js';
 import { parseModel } from './models.js';
 import type { Mods } from './mods/types.js';
 import { missingProviderWords, resolveSubagent, runChecks } from './run-checks.js';
-import { childEnv, KEY_IN_WORKFLOW, Redactor } from './secrets.js';
+import { KEY_IN_WORKFLOW, Redactor } from './secrets.js';
 import { openUrl } from './opener.js';
 import { pickFolder } from './picker.js';
 import { runServe } from './serve.js';
@@ -80,11 +80,13 @@ export async function main(argv: string[], io: Io): Promise<number> {
 
 async function dispatch(argv: string[], io: Io, c: { home: string; dir: string; mods: Mods; redactor: Redactor }): Promise<number> {
   const { home, dir, mods, redactor } = c;
-  const out = (s: string) => io.stdout.write(redactor.redact(s) + '\n');
-  const err = (s: string) => io.stderr.write(redactor.redact(s) + '\n');
+  // What the CLI says shows control, direction and zero-width characters written out (a path or a message can hold them), then hides keys.
+  const out = (s: string) => io.stdout.write(redactor.redact(showText(s, { lines: true })) + '\n');
+  const err = (s: string) => io.stderr.write(redactor.redact(showText(s, { lines: true })) + '\n');
   const [cmd, ...rest] = argv;
   const { pos, flags } = parseArgs(rest, ['yes', 'write', 'no-probe']);
-  const children = () => childEnv(io.env, keyEnvNames(mods));
+  // The one scrubbed env of every child this command starts, worked out when the child starts.
+  const children = shellEnvFrom(mods, io.env, redactor.has);
 
   if (cmd === 'check' && pos[0]) {
     const file = path.resolve(pos[0]);
@@ -115,7 +117,7 @@ async function dispatch(argv: string[], io: Io, c: { home: string; dir: string; 
 
   if (cmd === 'doctor' && flags['no-probe']) return doctorMods(out, mods) ? 0 : 1;
 
-  if (cmd === 'doctor') return (await doctor(out, mods, { env: io.env, home: dir })) ? 0 : 1;
+  if (cmd === 'doctor') return (await doctor(out, mods, { env: io.env, home: dir, holdsSecret: redactor.has }, redactor)) ? 0 : 1;
 
   if (cmd === 'serve' || cmd === undefined) {
     const raw = flags.port === undefined ? undefined : String(flags.port);
@@ -137,15 +139,15 @@ async function dispatch(argv: string[], io: Io, c: { home: string; dir: string; 
     });
     const host = { env: io.env, home: dir };
     return await runServe({
-      home, mods,
+      home, mods, redactor,
       ...(raw !== undefined ? { port: Number(raw) } : {}),
       ...(appDir ? { appDir } : {}),
       pickFolder: (signal) => pickFolder(signal, { env: children() }),
       ...(io.fetch ? { fetch: io.fetch } : {}),
       env: io.env,
       ...(bare ? { open } : {}),
-      makeEngine: (consent) => makeEngineFrom(mods, host, consent),
-      probe: (provider) => probeFrom(mods, provider, host),
+      makeEngine: (consent) => makeEngineFrom(mods, host, consent, redactor),
+      probe: (provider) => probeFrom(mods, provider, host, redactor),
       out, err,
       stop: io.stop ?? new Promise<void>((resolve) => {
         process.once('SIGINT', () => resolve());
@@ -193,7 +195,7 @@ async function dispatch(argv: string[], io: Io, c: { home: string; dir: string; 
     }
     const effort = typeof flags.effort === 'string' ? flags.effort : undefined;
     // `reins run` asks no consent question: a provider answers only where the app already recorded the user's yes for its address.
-    const engineOf = makeEngineFrom(mods, { env: io.env, home: dir }, (id, origin) => store.hasConsent(id, origin));
+    const engineOf = makeEngineFrom(mods, { env: io.env, home: dir }, (id, origin) => store.hasConsent(id, origin), redactor);
     const settings = { get maxCallsPerTurn() { return readSetting(store, 'maxCallsPerTurn'); } };
     const h = startRunCli({
       ...(pos[0] ? { file: pos[0] } : {}),
@@ -203,14 +205,15 @@ async function dispatch(argv: string[], io: Io, c: { home: string; dir: string; 
       output: io.stdout,
       store,
       redactor,
-      env: children(),
+      env: children,
       yes: flags.yes === true,
+      fullDetail: sendsFromReins(mods, provider),
       refuse: (w, resolveBlock) => runChecks(env, { provider, model }, w, resolveBlock),
       makeEngine: (cb) => engineOf({ provider, ...(model ? { model } : {}), ...(effort ? { effort } : {}), settings, ...cb }),
       subagentEngine: (s, cb) => {
         const r = resolveSubagent(env, { provider, model, effort }, s);
         if ('error' in r) return r;
-        return { engine: engineOf({ provider: r.provider, ...(r.model ? { model: r.model } : {}), ...(r.effort ? { effort: r.effort } : {}), settings, ...cb }), ...(r.model ? { model: r.model } : {}) };
+        return { engine: engineOf({ provider: r.provider, ...(r.model ? { model: r.model } : {}), ...(r.effort ? { effort: r.effort } : {}), settings, ...cb }), ...(r.model ? { model: r.model } : {}), fullDetail: sendsFromReins(mods, r.provider) };
       },
     });
     const onSigint = () => h.sigint();

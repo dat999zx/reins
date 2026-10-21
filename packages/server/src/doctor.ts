@@ -1,10 +1,10 @@
 import { spawnSync } from 'node:child_process';
-import { keyEnvNames, probeFrom, providerViews } from './engines.js';
-import { childEnv } from './secrets.js';
+import { probeFrom, providerViews, shellEnvFrom } from './engines.js';
 import type { EngineHost, Mods } from './mods/types.js';
+import type { Redactor } from './secrets.js';
 
 /** `reins doctor` (plan 15b 2.7). Prints one line per check; returns false if Reins cannot run. */
-export async function doctor(say: (s: string) => void, mods: Mods, host: Pick<EngineHost, 'env' | 'home'>): Promise<boolean> {
+export async function doctor(say: (s: string) => void, mods: Mods, host: Pick<EngineHost, 'env' | 'home' | 'holdsSecret'>, redactor?: Redactor): Promise<boolean> {
   let ok = true;
   const major = Number(process.versions.node.split('.')[0]);
   say(`node       v${process.versions.node}${major >= 22 ? '' : '  ✗ Reins needs Node 22 or newer'}`);
@@ -26,7 +26,7 @@ export async function doctor(say: (s: string) => void, mods: Mods, host: Pick<En
   for (const p of providers) {
     say(`provider   ${p.id}`);
     try {
-      const r = await probeFrom(mods, p.id, host);
+      const r = await probeFrom(mods, p.id, host, redactor); // the process's one Redactor, never a second
       say(`  version  ${r.version ?? '?'}`);
       say(`  login    ${r.loggedIn === true ? 'logged in' : r.loggedIn === false ? 'not logged in' : 'unknown'}`);
       for (const pr of r.problems) say(`  ✗ ${pr}`);
@@ -37,7 +37,7 @@ export async function doctor(say: (s: string) => void, mods: Mods, host: Pick<En
     }
   }
 
-  const knowl = run('knowl', ['--version'], childEnv(host.env, keyEnvNames(mods)));
+  const knowl = run('knowl', ['--version'], shellEnvFrom(mods, host.env, host.holdsSecret ?? (() => false))());
   say(`knowl      ${knowl ?? 'not found: recall and store steps do nothing'}`);
   return ok;
 }

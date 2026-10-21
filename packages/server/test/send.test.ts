@@ -198,7 +198,7 @@ describe('sendWithKey: consent (2)', () => {
     const gate = new Promise<boolean>((r) => { release = r; });
     const send = makeSend({
       secrets: () => { reads++; return new Map([['p', KEY]]); }, env: {},
-      redactor: new Redactor({ home: home.home, env: {}, keyEnvNames: () => ['P_API_KEY'] }), consent: () => gate,
+      redactor: new Redactor({ home: home.home, env: {}, keyEnvNames: () => ['P_API_KEY'] }), consent: () => gate, consentNow: () => true, // an asynchronous callback needs the synchronous check too (p29a fix round, item 3)
     });
     a.push({ text: 'x' });
     const pending = send(manifest(), chat(), post(chat()));

@@ -18,6 +18,7 @@ export default function activate(api: ModApi): void {
     engine: (_p, host) => claudeEngine({
       bin: findClaude(host.env)?.path ?? '',
       ...(host.helperEnv ? { helperEnv: host.helperEnv } : {}),
+      home: host.home,
       ...(host.model ? { model: host.model } : {}), ...(host.effort ? { effort: host.effort } : {}),
       onApprove: host.onApprove, onLive: host.onLive,
     }),

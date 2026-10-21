@@ -39,7 +39,7 @@ beforeEach(() => { calls.length = 0; });
 describe('spawn sites get the cleaned env', () => {
   it('drive.ts: the git calls', async () => {
     const o = runOptions({ ask: async () => null, say() {}, write() {} }, {
-      workflow: {} as Workflow, engine: new FakeEngine(), cwd: process.cwd(), resolveBlock: () => undefined, onEvent() {}, env: clean,
+      workflow: {} as Workflow, engine: new FakeEngine(), cwd: process.cwd(), resolveBlock: () => undefined, onEvent() {}, env: () => clean,
     });
     await o.diffLines?.();
     const git = calls.filter((c) => c.command === 'git');
@@ -77,7 +77,7 @@ describe('spawn sites get the cleaned env', () => {
     const f = fakeSetup([{ fixture: 'claude-2.1.281-card-marker-hook.jsonl', ignoreInterrupt: true }], 400);
     const live: Array<{ type: string }> = [];
     const s = await claudeEngine({
-      bin: FAKE_CLAUDE, helperEnv: clean, interruptTimeoutMs: 500,
+      bin: FAKE_CLAUDE, helperEnv: () => clean, interruptTimeoutMs: 500,
       onApprove: async () => ({ behavior: 'allow' }), onLive: (e) => live.push(e),
     }).open({ cwd: f.dir, policy: () => ({ mode: 'write', guards: [], allowShell: true }) });
     const turn = s.turn('slow');

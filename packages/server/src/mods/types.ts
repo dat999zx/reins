@@ -22,8 +22,8 @@ export interface EngineHost {
   onLive(e: EngineEvent): void;
   /** The injected env (cli.ts `io.env`), never `process.env` directly (spec S2). */
   env: NodeJS.ProcessEnv;
-  /** `env` without the installed key names and REINS_* (childEnv): what helper processes (taskkill) run with. The provider's own process keeps `env`. */
-  helperEnv?: NodeJS.ProcessEnv;
+  /** The same scrubbed env as `shellEnv`, worked out when a helper process (taskkill, a probe's `--version`) starts. The provider's own process keeps `env`. */
+  helperEnv?: () => NodeJS.ProcessEnv;
   /**
    * The env a shell command gets, worked out on EVERY call: `env` without the key names of the providers installed now, every REINS_* var,
    * and every var whose value holds a known secret. None: the loop's shell tool refuses to run.

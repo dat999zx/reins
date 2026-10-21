@@ -534,8 +534,10 @@ describe('the server names no provider: the default, an unknown one, one probe e
     if (setting !== undefined) store.putSetting('defaultProvider', setting);
     const probed: string[] = [];
     const srv = await startServer({ store, dir: home.home, probe: async (id) => { probed.push(id); return PROBE; }, makeEngine: () => { throw new Error('never opened'); } });
-    const create = (body: Record<string, unknown>) => request(srv, 'POST', '/api/sessions', { body: { cwd: home.home, ...body } });
-    return { srv, store, probed, create, done: async () => { await srv.close(); store.close(); home.cleanup(); } };
+    // A folder of its own: the Reins folder itself is not a session folder (p29a A10).
+    const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'reins-proj-'));
+    const create = (body: Record<string, unknown>) => request(srv, 'POST', '/api/sessions', { body: { cwd: proj, ...body } });
+    return { srv, store, probed, create, done: async () => { await srv.close(); store.close(); home.cleanup(); fs.rmSync(proj, { recursive: true, force: true }); } };
   };
 
   it('a request with no engine uses the provider whose manifest says default', async () => {

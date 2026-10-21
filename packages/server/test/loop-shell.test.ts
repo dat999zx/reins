@@ -660,9 +660,9 @@ describe('redaction of the output: redacted first, per stream, then collected (s
     expect(res.text).toBe('a[key Reins]b\nexit 0');
   }, 60_000);
 
-  it('output is not held back for ever: it ends with the held-back start of a key, flushed at the end', async () => {
+  it('output is not held back for ever: it ends with the held-back start of a key, which is hidden at the end (p29a A11: it used to be written as it was)', async () => {
     const res = await runShell({ command: node('pre.js') }, withKey(KEY43));
-    expect(res.text).toBe(`abc${KEY43.slice(0, 20)}\nexit 0`);
+    expect(res.text).toBe('abc[hidden: text that looked like a key]\nexit 0');
   }, 60_000);
 });
 

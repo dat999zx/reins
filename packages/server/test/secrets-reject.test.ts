@@ -58,7 +58,7 @@ describe('a command that rejects', () => {
     const first = out[0]!.runId;
     const mine = out.filter((r) => r.runId === first).map((r) => (r.data as { chunk: string }).chunk).join('');
     const later = out.filter((r) => r.runId !== first).map((r) => (r.data as { chunk: string }).chunk).join('');
-    expect(mine).toBe('visible sk-t');                      // not lost, and written under the run that had it
+    expect(mine).toBe('visible [hidden: text that looked like a key]'); // not lost, and written under the run that had it (p29a A11: the key start is hidden, not written)
     expect(later).toBe('next\n');                           // not 'sk-tnext'
   }, 60_000);
 });

@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import {
-  printCond, usdText,
+  printCond, showText, usdText,
   type Cond, type Decision, type Engine, type EngineSession, type Run, type RunEventRecord,
   type RunOptions, type ToolRequest, type Workflow,
 } from '@reins/core';
@@ -9,7 +9,9 @@ import { runCommand } from './commands.js';
 
 export interface Question { id: string; kind: 'gate' | 'budget' | 'resume' | 'tool' | 'judge' | 'trust' | 'switch' | 'usd'; prompt: string; detail?: string;
   /** Who asks, when not the run's own agent (a subagent, D); the card shows it. */
-  title?: string }
+  title?: string;
+  /** The prompt line is not the whole of what is asked (it was cut, or characters in it are shown as escapes): a terminal prints the whole detail under it. */
+  long?: true }
 export interface DriveIo {
   ask(q: Question): Promise<string | null>; say(line: string): void; write(chunk: string): void;
   /** A command's output is over: whatever `write` was holding back (the start of a possible key) can go out. */
@@ -148,10 +150,19 @@ async function onPause(run: Run, io: DriveIo): Promise<boolean> {
   return true;
 }
 
-export async function askTool(io: DriveIo, req: ToolRequest, title?: string): Promise<Decision> {
+/** The most of a command the one-line question shows; the rest is in the detail, always in full. */
+const PROMPT_CHARS = 200;
+
+/** `full`: the terminal prints the whole detail under this question even when the line shows all of it (an engine Reins runs: a short path hides the content). */
+export async function askTool(io: DriveIo, req: ToolRequest, title?: string, full?: boolean): Promise<Decision> {
   const i = req.input ?? {};
-  const what = String(i.command ?? i.file_path ?? i.path ?? JSON.stringify(i)).slice(0, 200);
-  const a = await io.ask({ id: questionId(), kind: 'tool', prompt: `? Allow ${req.tool}${req.reason ? ` (${req.reason})` : ''}: ${what}  [y / n <reason>]`, detail: JSON.stringify(req.input ?? {}), ...(title ? { title } : {}) });
+  const chars = [...String(i.command ?? i.file_path ?? i.path ?? JSON.stringify(i))];
+  // What is shown is escaped (control, direction and zero-width characters become <U+XXXX>); what runs is `req.input`, untouched.
+  const head = chars.slice(0, PROMPT_CHARS).join('');
+  const what = showText(head);
+  const long = full === true || chars.length > PROMPT_CHARS || what !== head;
+  const more = chars.length > PROMPT_CHARS ? ` (${i.command !== undefined ? 'command' : 'text'} continues, ${chars.length - PROMPT_CHARS} more characters, all shown below)` : '';
+  const a = await io.ask({ id: questionId(), kind: 'tool', prompt: `? Allow ${showText(req.tool)}${req.reason ? ` (${showText(req.reason)})` : ''}: ${what}${more}  [y / n <reason>]`, detail: JSON.stringify(req.input ?? {}), ...(title ? { title } : {}), ...(long ? { long: true as const } : {}) });
   if (a !== null && /^(y|yes)$/i.test(a)) return { behavior: 'allow' };
   const reason = a?.replace(/^(n|no)\b\s*/i, '').trim();
   return { behavior: 'deny', message: reason ? `The user said no: ${reason}` : 'The user said no.' };
@@ -172,8 +183,8 @@ export function runOptions(io: DriveIo, o: {
   switchModel?: RunOptions['switchModel'];
   setReasoning?: RunOptions['setReasoning'];
   openSubagent?: RunOptions['openSubagent'];
-  /** What workflow commands run with: the callers pass `childEnv(...)`, so no key and no REINS_* var reaches them. */
-  env?: NodeJS.ProcessEnv;
+  /** What workflow commands and the git calls run with: the callers pass `shellEnvFrom(...)`, asked at each start, so no key and no REINS_* var reaches them. */
+  env?: () => NodeJS.ProcessEnv;
 }): RunOptions {
   const { cwd } = o;
   const startCommit = git(cwd, ['rev-parse', 'HEAD'], o.env).trim();
@@ -203,13 +214,14 @@ export function runOptions(io: DriveIo, o: {
   };
 }
 
-function git(cwd: string, args: string[], env?: NodeJS.ProcessEnv): string {
-  const r = spawnSync('git', args, { cwd, encoding: 'utf8', windowsHide: true, ...(env ? { env } : {}) });
+function git(cwd: string, args: string[], env?: () => NodeJS.ProcessEnv): string {
+  const e = env?.();
+  const r = spawnSync('git', args, { cwd, encoding: 'utf8', windowsHide: true, ...(e ? { env: e } : {}) });
   return r.status === 0 ? r.stdout : '';
 }
 
 /** `git diff --numstat` against the run's start commit: added plus removed lines. */
-function diffLines(cwd: string, base: string, env?: NodeJS.ProcessEnv): number {
+function diffLines(cwd: string, base: string, env?: () => NodeJS.ProcessEnv): number {
   // ponytail: untracked new files are not counted; add `git add -N` if that matters.
   return git(cwd, ['diff', '--numstat', base], env).split('\n').reduce((n, l) => {
     const [a, r] = l.split('\t');

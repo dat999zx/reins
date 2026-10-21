@@ -134,6 +134,8 @@ describe.skipIf(skip)('Settings > Providers (spec 7.4 to 7.6)', () => {
     const dlg = fm.getByRole('dialog', { name: 'Allow sending' });
     await dlg.waitFor();
     await dlg.getByText(host).waitFor();
+    // The yes covers sessions too (the same record a chat reply checks), and the dialog says so.
+    expect(await dlg.innerText()).toContain(`Allow Reins to send your key, and your prompts and files in sessions on this provider, to ${host}?`);
     await dlg.getByRole('button', { name: 'Cancel' }).click();
     await dlg.waitFor({ state: 'detached' });
     await fm.getByText('Not tested. Nothing was sent.').waitFor();

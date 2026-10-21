@@ -3,10 +3,14 @@
 import nodeFs, { type Stats } from 'node:fs';
 import path from 'node:path';
 
-/** The two fs calls confinement makes. Tests pass a spy or a fake. */
+/**
+ * The fs calls confinement makes. Tests pass a spy or a fake. `readlinkSync`: where a link points, read WITHOUT following it; a fake without it
+ * is not asked (the result of `realpathSync` is still checked).
+ */
 export interface FsLike {
   realpathSync: { native(p: string): string };
   lstatSync(p: string): unknown;
+  readlinkSync?(p: string): string;
 }
 
 export interface ConfineCtx {
@@ -54,6 +58,61 @@ export function lexicalRefusal(raw: string): string | undefined {
 }
 
 class Unresolved extends Error {}
+
+/** A network, device or namespace path as the text of a resolved path or a link target: `\\host\share`, `\\?\UNC\...`, `\\.\Device`. */
+const isNetworkForm = (p: string) => /^[\\/]{2}/.test(p);
+
+/**
+ * Where a link points, as a path the lexical rules can judge: a Windows junction or link may be stored as an extended-length LOCAL path
+ * (`\\?\C:\dir`, `\??\C:\dir`), which is ordinary; every other `\\` form stays as it is and is refused.
+ */
+const targetText = (t: string) => t.replace(/^[\\/]{2}\?[\\/](?=[a-z]:[\\/])/i, '').replace(/^\\\?\?\\(?=[a-z]:[\\/])/i, '');
+
+/**
+ * Looks at every link on the way to `abs` WITHOUT following it: each part below `from` is `lstat`ed, and a link's target text is read and judged
+ * by the lexical rules (a network, device or namespace path, a drive-relative or alternate-stream form) BEFORE anything is resolved through it, since
+ * resolving a path that leads to `\\server\share` can itself make the machine talk to that server. A link's target replaces the link and the walk
+ * goes on (a link that leads to another link). Returns true when a target is refused. A part that is not there ends the walk: nothing past it is followed.
+ * ponytail: a link swapped in after this look and before the file is opened is not seen (same limit as the folder swap noted in `confine`).
+ */
+function leadsToForbidden(fs: FsLike, P: path.PlatformPath, abs: string, from: string): boolean {
+  if (!fs.readlinkSync) return false;
+  const rest = (p: string) => P.relative(from, p).split(P.sep).filter((s) => s !== '');
+  let cur = from;
+  let segs = rest(abs);
+  for (let hops = 0, i = 0; i < segs.length; ) {
+    const next = P.join(cur, segs[i]!);
+    let isLink: boolean;
+    try {
+      isLink = (fs.lstatSync(next) as { isSymbolicLink(): boolean }).isSymbolicLink();
+    } catch (e) {
+      if (missing(e)) return false;
+      throw wrap(e);
+    }
+    if (!isLink) {
+      cur = next;
+      i++;
+      continue;
+    }
+    if (++hops > MAX_HOPS) throw new Unresolved();
+    let target: string;
+    try {
+      target = fs.readlinkSync(next);
+    } catch (e) {
+      throw wrap(e);
+    }
+    if (lexicalRefusal(targetText(target))) return true;
+    const resolved = P.resolve(P.dirname(next), targetText(target));
+    const below = segs.slice(i + 1);
+    // Continue from the filesystem root of the target: the walk is over a path with the link replaced by what it points to.
+    const root = P.parse(resolved).root;
+    cur = root;
+    segs = [...resolved.slice(root.length).split(P.sep).filter((s) => s !== ''), ...below];
+    i = 0;
+  }
+  return false;
+}
+const MAX_HOPS = 40;
 
 /** The real path of `abs`, or of its nearest existing parent plus the rest. A link that leads nowhere, or any other fs trouble, is Unresolved. */
 function realOf(fs: FsLike, P: path.PlatformPath, abs: string): string {
@@ -109,8 +168,15 @@ export function confine(raw: string, ctx: ConfineCtx): Confined {
   const bad = lexicalRefusal(raw);
   if (bad) return { ok: false, reason: bad };
   try {
-    const root = realOf(fs, P, P.resolve(ctx.cwd));
+    // Nothing is resolved yet. The cwd and the home are checked as text, then walked link by link from the root of their drive, so a link on the way
+    // (the folder itself, or any folder above it) whose target is a network, device or namespace path is refused before anything follows it.
+    const lexCwd = P.resolve(ctx.cwd);
     const lexHome = P.resolve(ctx.home);
+    if (isNetworkForm(lexCwd)) return { ok: false, reason: LEXICAL_WORDS(raw) };
+    for (const start of [lexCwd, lexHome]) {
+      if (!isNetworkForm(start) && leadsToForbidden(fs, P, start, P.parse(start).root)) return { ok: false, reason: LEXICAL_WORDS(raw) };
+    }
+    const root = realOf(fs, P, lexCwd);
     const homes = new Set([lexHome, realOf(fs, P, lexHome)]);
     // Before any component is followed: a name that lies under the home as written (or as the cwd spells it) is refused, so a link inside the
     // home that leads back into the project cannot make it allowed.
@@ -121,7 +187,13 @@ export function confine(raw: string, ctx: ConfineCtx): Confined {
     // ponytail: a folder on the way swapped for a link after this check and before the tool opens the file is not seen (Node has no open anchored
     // to a folder); closing it needs a native helper. Case is folded for the whole OS (win32, darwin), so `proj` and `PROJ` are one folder here even
     // on a case-sensitive volume (a manual platform check); the binary check of the tools looks at the first 8 KB only.
-    const abs = realOf(fs, P, P.resolve(root, raw));
+    const wanted = P.resolve(root, raw);
+    // Before the path is resolved (and so before anything is followed): the part below the cwd is walked link by link when it is inside it,
+    // else the whole path is. A link to a network, device or namespace target is refused here, with no further call that names the target.
+    if (leadsToForbidden(fs, P, wanted, under(P, ci, wanted, root) ? root : P.parse(wanted).root)) return { ok: false, reason: LEXICAL_WORDS(raw) };
+    const abs = targetText(realOf(fs, P, wanted));
+    // The second layer, for a link the walk could not read: what the path resolves to must not be a network or namespace form either.
+    if (isNetworkForm(abs)) return { ok: false, reason: LEXICAL_WORDS(raw) };
     for (const home of homes) if (under(P, ci, abs, home)) return { ok: false, reason: HOME_WORDS };
     return { ok: true, abs, inside: under(P, ci, abs, root), root };
   } catch (e) {

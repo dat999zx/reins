@@ -1,3 +1,4 @@
+import { hasHiddenChars } from '@reins/core';
 import { Registry } from './registry.js';
 import type { LoadedMod, ModHost, ModKind, Problem } from './types.js';
 
@@ -146,6 +147,20 @@ registerKind({
     if (raw.price !== undefined) checkPrice('price', raw.price, true);
     if (raw.cacheWritePerInput !== undefined && !money(raw.cacheWritePerInput)) bad(`\`cacheWritePerInput\` must be a number of 0 or more (got ${show(raw.cacheWritePerInput)}).`);
 
+    // Names the picker and the cards show must read as they are: no control, line-break, direction or zero-width character (the same check
+    // every shown text gets: `hasHiddenChars`). The value is written in \u form so the line says what it really holds.
+    const shown = (where: string, v: unknown) => {
+      if (typeof v === 'string' && hasHiddenChars(v)) bad(`${where} must not hold a control, line-break or direction-changing character (a zero-width one too); it holds "${plain(v)}".`);
+    };
+    shown('label', raw.label);
+    shown('defaultModel', raw.defaultModel);
+    if (Array.isArray(raw.efforts)) {
+      for (const e of raw.efforts) {
+        if (full()) break;
+        if (isObj(e)) { shown('efforts.id', e.id); shown('efforts.label', e.label); }
+      }
+    }
+
     const ids = new Set<string>();
     if (!Array.isArray(raw.models)) bad('`models` must be a list.');
     else {
@@ -155,6 +170,8 @@ registerKind({
         else if (ids.has(m.id)) bad(`\`models\` lists \`${cap(m.id)}\` twice.`);
         else {
           ids.add(m.id);
+          shown('models.id', m.id);
+          shown('models.label', m.label);
           if (m.price !== undefined) checkPrice(`models.${cap(m.id)}.price`, m.price, false);
         }
       }

@@ -1,3 +1,4 @@
+import { hasHiddenChars, showText } from '@reins/core';
 import type { CatalogModel } from './catalog.js';
 
 export interface PickerModel { id: string; label: string; window?: number }
@@ -5,7 +6,7 @@ export interface PickerModel { id: string; label: string; window?: number }
 export type ParsedModel = { provider: string; model: string };
 
 // What a provider id looks like (the loader's rule), in either case: a word before a colon that has this shape was meant as a provider.
-const ID_SHAPE = /^[A-Za-z0-9][A-Za-z0-9-]{0,39}$/;
+export const ID_SHAPE = /^[A-Za-z0-9][A-Za-z0-9-]{0,39}$/;
 
 /**
  * A model name in a file, a switch or `reins run --model` (spec 9.2): split at the FIRST `:`. The part before it counts only when it is an
@@ -35,10 +36,13 @@ export function parseModel(name: string, sessionProvider: string, installed: (id
  * ponytail: the picker can list an id the CLI rejects; a switch whose first reply fails is undone (session.ts).
  */
 export function listModels(provider: { models: Array<{ id: string; label?: string }> }, catalog: CatalogModel[], limit: number, live: readonly string[] = []): PickerModel[] {
+  // A catalog entry whose id holds a hidden character is not listed; every label shown is written out (the one escape, `showText`).
+  catalog = catalog.filter((m) => !hasHiddenChars(m.id));
   const known = new Map(catalog.map((m) => [m.id, m]));
   const withWindow = (id: string, label: string): PickerModel => {
     const window = known.get(id)?.context;
-    return window === undefined ? { id, label } : { id, label, window };
+    const shown = showText(label);
+    return window === undefined ? { id, label: shown } : { id, label: shown, window };
   };
   const have = new Set(provider.models.map((m) => m.id));
   const fromLive = live.filter((id) => !have.has(id)).slice(0, Math.max(0, limit - provider.models.length));

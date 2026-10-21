@@ -5,8 +5,8 @@ import type { LockInfo } from './lock.js';
 import type { Mods } from './mods/types.js';
 import { startServer } from './server.js';
 import type { MakeEngine } from './session.js';
-import { Redactor } from './secrets.js';
-import { redactEnvNames, type ConsentCheck } from './engines.js';
+import type { Redactor } from './secrets.js';
+import type { ConsentCheck } from './engines.js';
 import { openStore, redactingStore } from './store.js';
 
 export interface ServeOptions {
@@ -27,13 +27,15 @@ export interface ServeOptions {
   fetch?: typeof fetch;
   /** The injected env (cli.ts `io.env`): the source of env keys to hide, and of what workflow commands get. None: this process's. */
   env?: NodeJS.ProcessEnv;
+  /** The process's one Redactor (cli.ts makes it); serving makes no other. */
+  redactor: Redactor;
 }
 
 /** `reins serve`: one server per machine (serve.lock), until `stop`. Returns the exit code. */
 export async function runServe(o: ServeOptions): Promise<number> {
   const dir = path.join(o.home, '.reins');
   const env = o.env ?? process.env;
-  const redactor = new Redactor({ home: dir, env, keyEnvNames: () => redactEnvNames(o.mods) });
+  const { redactor } = o;
   const store = redactingStore(openStore(path.join(dir, 'reins.db')), redactor);
   try {
     const server = await startServer({

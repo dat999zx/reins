@@ -146,7 +146,7 @@ describe('3. print --write', () => {
 });
 
 describe('8. the end of the terminal output', () => {
-  it('the start of a key that never completes is written when the output ends, and a clean line before it is not lost', async () => {
+  it('the start of a key that never completes is hidden when the output ends (p29a A11: it used to be written), and a clean line before it is not lost', async () => {
     const t = tempHome();
     try {
       setKey(t.home, 'p', KEY);
@@ -164,7 +164,8 @@ describe('8. the end of the terminal output', () => {
       const r = await startRunCli({ file, cwd, input: new PassThrough(), output, store: redactingStore(openStore(':memory:'), redactor), redactor, makeEngine: () => new FakeEngine() }).done;
       expect(r.exitCode, text).toBe(0);
       expect(text).toContain('    line one\n');
-      expect(text).toContain(`    tail ${KEY.slice(0, 10)}`);       // held back while it could still become the key, written at the end
+      expect(text).toContain('    tail [hidden: text that looked like a key]'); // held back while it could still become the key, hidden at the end
+      expect(text).not.toContain(KEY.slice(0, 10));
     } finally {
       t.cleanup();
     }

@@ -6,8 +6,8 @@ export interface CommandOptions {
   cwd: string;
   timeoutMs?: number;
   onOutput?: (chunk: string) => void;
-  /** The child's environment (callers pass `childEnv(...)`); none = this process's. */
-  env?: NodeJS.ProcessEnv;
+  /** The child's environment, worked out when it starts (callers pass `shellEnvFrom(...)`); none = this process's. */
+  env?: () => NodeJS.ProcessEnv;
 }
 
 const KEEP_LINES = 200;
@@ -21,9 +21,11 @@ const KEEP_CHARS = 256 * 1024;
 export function runCommand(cmd: string, o: CommandOptions): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const timeoutMs = o.timeoutMs ?? 10 * 60_000;
   return new Promise((resolve) => {
+    // Asked here, at the start of THIS command: a provider installed or switched off since the workflow began is seen.
+    const env = o.env?.();
     const child = spawn(cmd, {
       cwd: o.cwd,
-      ...(o.env ? { env: o.env } : {}),
+      ...(env ? { env } : {}),
       shell: true,
       windowsHide: true,
       detached: process.platform !== 'win32',
@@ -44,7 +46,7 @@ export function runCommand(cmd: string, o: CommandOptions): Promise<{ exitCode: 
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
-      killTree(child.pid, o.env);
+      killTree(child.pid, o.env?.() ?? env); // the kill helper is a new process: its env is worked out now, not when the command started
     }, timeoutMs);
 
     const finish = (code: number) => {

@@ -238,14 +238,15 @@ describe('fix 5 and 7: redaction of a clipped line and of the public tool input'
     expect(JSON.stringify(r.fake.requests[1]!.body)).not.toContain(KEY.slice(0, 8));
   });
 
-  it('a Write whose content holds the key shows [key Reins] in onLive and the events; the file has the real content', async () => {
+  it('a Write whose content holds the key shows [key Reins] in onLive and the events; the file is NOT written (p29a A1: it used to be written with the real content)', async () => {
     const r = await make();
     r.push(calls(call('a', 'Write', { file_path: 'k.txt', content: `token=${KEY}\n` })), { text: 'ok' });
     const res = await (await open(r)).turn('go');
     expect(JSON.stringify(res.events)).not.toContain(KEY);
     expect(JSON.stringify(r.live)).not.toContain(KEY);
     expect(res.events).toContainEqual({ type: 'tool_call', tool: 'Write', input: { file_path: 'k.txt', content: 'token=[key Reins]\n' } });
-    expect(fs.readFileSync(path.join(cwd, 'k.txt'), 'utf8')).toBe(`token=${KEY}\n`);
+    expect(fs.existsSync(path.join(cwd, 'k.txt'))).toBe(false);
+    expect(res.events).toContainEqual({ type: 'tool_result', tool: 'Write', output: 'That content holds a saved key, so it was not written.' });
   });
 });
 

@@ -5,7 +5,7 @@
 // says the conversation is too long.
 import { randomUUID } from 'node:crypto';
 import { checkTool, type Decision, type Engine, type EngineEvent, type EngineProbe, type EngineSession, type OpenOptions, type ToolRequest, type TurnResult } from '@reins/core';
-import { CARD_CONTEXT_LIMIT, newNonce, noLoneSurrogate, wrapCard } from '../cards.js';
+import { CARD_CONTEXT_LIMIT, noLoneSurrogate, nonceOf, wrapCard } from '../cards.js';
 import type { EngineHost, ProviderManifest, Wire } from '../mods/types.js';
 import { SETTINGS } from '../settings.js';
 import { chooseCut, stubOldResults, SUMMARY_SYSTEM, tokensOf, transcript, withSummary } from './compact.js';
@@ -119,7 +119,7 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
   const toolsOn = info?.tools !== false;
   const keyEnv = p.auth?.keyEnv[0] ?? 'a key';
   // The card marker of this session: in its system prompt (trust note) and on every card it is sent.
-  const nonce = newNonce();
+  const nonce = nonceOf(h.home, sessionId);
   const onApprove = opts.onApprove ?? h.onApprove;
   const red = (t: string, max?: number) => (h.redact ? h.redact(t, max) : max === undefined ? t : t.slice(0, max));
   /** A whole text redacted, with no trim of an ending that could be the start of a key. */
@@ -213,6 +213,7 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
     const status = (e as { status?: number }).status;
     let what = '';
     if (cls === 'network') what = `Cannot reach ${new URL(p.baseUrl).host}: ${red(err.message, 500).replace(/\.$/, '')}.`;
+    else if (cls === 'refused') what = red(err.message, 500);
     else if (cls === 'auth') what = keyEnv;
     else if (cls === 'notFound') what = model;
     else if (cls === 'context') return new Error(`${WORDS.context.say(p.label, status, model)} The provider said: ${red(bodyOf(err.message), 500)}`);
@@ -601,7 +602,7 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
           stubUnanswered();
           return finish('');
         }
-        const ctx: ToolCtx = { cwd, home: h.home, policy: opts.policy, signal, redact: red, redactAll: redAll, platform, env: h.shellEnv, redactStream: h.redactStream, ...(deps.fs ? { fs: deps.fs } : {}) };
+        const ctx: ToolCtx = { cwd, home: h.home, policy: opts.policy, signal, redact: red, redactAll: redAll, platform, holdsSecret: h.holdsSecret, env: h.shellEnv, redactStream: h.redactStream, ...(deps.fs ? { fs: deps.fs } : {}) };
         // Settles when the turn is aborted: a tool that does not look at the signal (a stuck read) is no longer waited for, and its late answer is dropped.
         const aborted = new Promise<'aborted'>((ok) => {
           if (signal.aborted) ok('aborted');

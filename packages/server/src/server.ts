@@ -7,18 +7,18 @@ import { printWorkflow, type EngineProbe, type Workflow } from '@reins/core';
 import { sameToken } from './token.js';
 import { releaseLock, runningLock, takeLock } from './lock.js';
 import type { Catalog, CatalogModel } from './catalog.js';
-import { CATALOG_DIR, checkEnvFrom, consentFrom, defaultProviderOf, folderTrustFrom, hostSend, keyEnvNames, liveListSource, providerOrigin, providerViews, startMods, type ProviderView } from './engines.js';
+import { CATALOG_DIR, checkEnvFrom, consentFrom, defaultProviderOf, folderTrustFrom, hostSend, liveListSource, providerOrigin, providerViews, shellEnvFrom, startMods, type ProviderView } from './engines.js';
 import { addCustom, deleteKey, editMod, exportMod, firstRunDone, importApply, importPreview, installMods, listMods, providerStatus, putKey, reinstallMod, removeMod, revokeConsent, setConsent, setEnabled, testConnection, type ConsentStore } from './mods/actions.js';
-import { childEnv, type Redactor } from './secrets.js';
+import type { Redactor } from './secrets.js';
 import { createLiveModels } from './live-models.js';
-import { listModels, parseModel, type PickerModel } from './models.js';
+import { ID_SHAPE, listModels, parseModel, type PickerModel } from './models.js';
 import type { Mods, SendWithKey } from './mods/types.js';
 import type { ProviderStatus } from './run-checks.js';
 import { recover } from './recover.js';
 import { loadWorkflow } from './run-cli.js';
-import { openSession, under, type Ack, type DescribeEffort, type DescribeModel, type MakeEngine, type Session, type SessionDeps } from './session.js';
+import { openSession, projectFolderWords, under, type Ack, type DescribeEffort, type DescribeModel, type MakeEngine, type Session, type SessionDeps } from './session.js';
 import { contextSize, priceFor, readSetting, switchEstimate } from './settings.js';
-import type { LogRow, Store } from './store.js';
+import { KEY_IN_IDENTITY, KeyInIdentity, type LogRow, type Store } from './store.js';
 import { tagCatalogue, type Tag } from './tags.js';
 import { previewWorkflow, readWorkflow, writeWorkflow } from './workflow-files.js';
 
@@ -48,6 +48,8 @@ export interface ServerOptions {
   consent?: SessionDeps['consent'];
   /** How long Test connection waits for the provider, in ms. None: 8 seconds. */
   testTimeoutMs?: number;
+  /** The user's home folder, which no session folder may be or hold. None: this machine's (a test moves it). */
+  userHome?: string;
 }
 export interface Server { port: number; token: string; url: string; close(): Promise<void> }
 
@@ -174,18 +176,18 @@ const SECURITY_HEADERS = {
 function serveStatic(appDir: string, pathname: string, res: http.ServerResponse) {
   try {
     const p = decodeURIComponent(pathname === '/' ? '/index.html' : pathname);
-    if (p.includes('\0')) return send(res, fail(404, 'Not found.'));
+    if (p.includes('\0')) return sendJson(res, fail(404, 'Not found.'));
     const file = path.resolve(appDir, '.' + p);
-    if (!under(file, path.resolve(appDir)) || !fs.statSync(file).isFile()) return send(res, fail(404, 'Not found.'));
+    if (!under(file, path.resolve(appDir)) || !fs.statSync(file).isFile()) return sendJson(res, fail(404, 'Not found.'));
     const body = fs.readFileSync(file);
     res.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream' });
     res.end(body);
   } catch {
-    send(res, fail(404, 'Not found.'));
+    sendJson(res, fail(404, 'Not found.'));
   }
 }
 
-function send(res: http.ServerResponse, r: Reply) {
+function sendJson(res: http.ServerResponse, r: Reply) {
   res.writeHead(r.status, { 'content-type': 'application/json', ...r.headers });
   res.end(JSON.stringify(r.body));
 }
@@ -200,7 +202,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
   // The live lists (spec 7.2) go through the host's `send` only, and a keyed provider's only once its consent is recorded.
   // Consent is the store's: (provider id, origin of its base address), kept like folder trust. A test may inject a seam instead.
   const consentStore: ConsentStore = { has: (id, origin) => o.store.hasConsent(id, origin), grant: (id, origin) => o.store.grantConsent(id, origin), revoke: (id) => o.store.revokeConsent(id) };
-  const sender = hostSend(mods, { env: o.env ?? process.env, home: o.dir }, consentStore.has);
+  const sender = hostSend(mods, { env: o.env ?? process.env, home: o.dir }, consentStore.has, o.redactor);
   const asks = o.consent ?? consentFrom(mods, o.store);
   const live = createLiveModels({
     ...liveListSource(mods, { env: o.env ?? process.env, home: o.dir, send: o.send ?? sender.send!, ...(sender.redact ? { redact: sender.redact } : {}) }),
@@ -231,7 +233,9 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     holdsSecret: (t: string) => !!sender.holdsSecret?.(t) || !!o.redactor?.has(t),
     ...(o.testTimeoutMs !== undefined ? { testTimeoutMs: o.testTimeoutMs } : {}),
   });
-  const deps: SessionDeps = { store: o.store, makeEngine: (a) => o.makeEngine({ ...a, settings }), dir: o.dir, env: childEnv(o.env ?? process.env, keyEnvNames(mods)), ...(o.redactor ? { redactor: o.redactor } : {}), describeModel, describeEffort, folderTrust: folderTrustFrom(mods), providers: checkEnvFrom(mods, { env: o.env ?? process.env, home: o.dir }), consent: asks, origin: (provider) => providerOrigin(mods, provider), onRow: (row) => { for (const f of subs) f(row); } };
+  // The one env of workflow commands and helpers, worked out at each start: it reads the providers and keys as they are THEN.
+  const children = shellEnvFrom(mods, o.env ?? process.env, (t) => !!sender.holdsSecret?.(t) || !!o.redactor?.has(t));
+  const deps: SessionDeps = { store: o.store, makeEngine: (a) => o.makeEngine({ ...a, settings }), dir: o.dir, env: children, ...(o.redactor ? { redactor: o.redactor } : {}), describeModel, describeEffort, folderTrust: folderTrustFrom(mods), providers: checkEnvFrom(mods, { env: o.env ?? process.env, home: o.dir }), consent: asks, origin: (provider) => providerOrigin(mods, provider), onRow: (row) => { for (const f of subs) f(row); } };
   let engines: Array<{ id: string } & EngineProbe> = [];
   let host = '';
   let origin = '';
@@ -283,7 +287,10 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     if (b.cwd.includes('\0') || !fs.statSync(b.cwd, { throwIfNoEntry: false })?.isDirectory()) return fail(400, 'cwd is not a folder.');
     if (b.engine !== undefined && !str(b.engine)) return fail(400, 'engine must be a string.');
     const provider = b.engine === undefined ? defaultProvider() : providers.find((p) => p.id === b.engine);
-    if (!provider) return fail(400, b.engine === undefined ? 'No provider is installed.' : `No provider \`${b.engine}\` is installed.`);
+    // What the caller typed is quoted only when it has the shape of an id; any other text is never repeated.
+    if (!provider) return fail(400, b.engine === undefined ? 'No provider is installed.' : ID_SHAPE.test(b.engine as string) ? `No provider \`${b.engine}\` is installed.` : 'That provider is not installed.');
+    const tooWide = projectFolderWords(b.cwd, o.dir, o.userHome);
+    if (tooWide) return fail(400, tooWide);
     for (const k of ['model', 'effort', 'title'] as const) if (b[k] !== undefined && !str(b[k])) return fail(400, `${k} must be a string.`);
     const row = o.store.createSession({
       id: randomBytes(6).toString('hex'), cwd: b.cwd, engine: provider.id,
@@ -325,7 +332,6 @@ export async function startServer(o: ServerOptions): Promise<Server> {
   // Settings > Providers (spec 7.3 to 7.5). The loader has already swapped its registry inside `mods`; what the server copied from it is read again here.
   const afterModChange = () => {
     providers = providerViews(mods);
-    deps.env = childEnv(o.env ?? process.env, keyEnvNames(mods));
     o.redactor?.refresh();
   };
   async function modsApi(req: http.IncomingMessage, sub: string | undefined, action: string | undefined): Promise<Reply> {
@@ -466,6 +472,10 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     req.on('close', () => { clearInterval(beat); subs.delete(write); });
   }
 
+  // The one place a JSON reply leaves: whatever a route built (a workflow's text, a thrown error's words, a file name) is run through the
+  // redactor here, once. Header values (a download's name) keep the check of their own route.
+  const send = (res: http.ServerResponse, r: Reply) => sendJson(res, { ...r, body: hide(r.body) });
+
   async function handle(req: http.IncomingMessage, res: http.ServerResponse) {
     for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
     try {
@@ -485,9 +495,10 @@ export async function startServer(o: ServerOptions): Promise<Server> {
       if (given === null || given === undefined || !sameToken(given, token)) return send(res, fail(401, 'A valid token is required.'));
       if (req.method === 'GET' && url.pathname === '/api/stream') return stream(req, res, url);
       send(res, await dispatch(req, res, url));
-    } catch {
+    } catch (e) {
       // A fixed message: the text of an error can carry paths. ponytail: nothing is logged; add a logger when there is one.
       if (res.headersSent) res.end();
+      else if (e instanceof KeyInIdentity) send(res, fail(400, KEY_IN_IDENTITY)); // the caller's own text, refused: a plain answer, never repeated
       else send(res, fail(500, 'Internal error.'));
     }
   }

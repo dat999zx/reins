@@ -190,8 +190,12 @@ export function runShell(input: { command: string; timeout?: number }, ctx: Shel
       const n = exit?.code ?? exit?.signal ?? 'unknown';
       resolve({ text: withLine(body, `exit ${n}`), ...(exit?.code === 0 ? {} : { isError: true }) });
     };
+    // A kill helper is a new process: its env is worked out when it starts (a provider installed since the command began is seen), never reused.
+    const helperEnv = (): NodeJS.ProcessEnv => {
+      try { return ctx.env!(); } catch { return env; }
+    };
     const onAbort = () => {
-      killTree(child?.pid, env);
+      killTree(child?.pid, helperEnv());
       done(fail('Interrupted.'));
     };
 
@@ -216,7 +220,7 @@ export function runShell(input: { command: string; timeout?: number }, ctx: Shel
       // A pipe that breaks ends the call with a plain result; what the command is still doing cannot be seen any more, so its tree is stopped.
       stream?.on('error', (e) => {
         if (finished) return;
-        killTree(child.pid, env);
+        killTree(child.pid, helperEnv());
         done(fail(`The output of the command could not be read: ${ctx.redactAll(e.message)}`));
       });
     }
@@ -233,7 +237,7 @@ export function runShell(input: { command: string; timeout?: number }, ctx: Shel
     timers.push(
       setTimeout(() => {
         timedOut = true;
-        killTree(child.pid, env);
+        killTree(child.pid, helperEnv());
         // The tree is gone; if the exit event still does not come, do not wait for it for ever.
         timers.push(setTimeout(() => done(), KILL_WAIT_MS));
       }, secs * 1000),

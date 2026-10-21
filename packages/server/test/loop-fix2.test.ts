@@ -310,7 +310,7 @@ describe('fix 6: a big tool input is shown as a preview', () => {
     expect(fs.statSync(path.join(cwd, 'big.txt')).size).toBe(20_000_000);
   }, 60_000);
 
-  it('a key at the cut of a preview is not shown, and the file has the real content', async () => {
+  it('a key at the cut of a preview is not shown, and the file is not written (p29a A1: it used to be written with the real content)', async () => {
     const content = `${'x'.repeat(4090)}${KEY}${'y'.repeat(1_200_000)}`;
     const r = await make();
     r.push(calls(call('a', 'Write', { file_path: 'k.txt', content })), { text: 'ok' });
@@ -319,6 +319,6 @@ describe('fix 6: a big tool input is shown as a preview', () => {
     expect(shown.length).toBeLessThan(4200);
     expect(shown).not.toContain('sk-test-');
     expect(shown).toContain('[key');
-    expect(fs.readFileSync(path.join(cwd, 'k.txt'), 'utf8')).toBe(content);
+    expect(fs.existsSync(path.join(cwd, 'k.txt'))).toBe(false);
   }, 30_000);
 });

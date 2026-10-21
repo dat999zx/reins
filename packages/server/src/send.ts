@@ -2,6 +2,8 @@ import { readBounded } from './loop/bounded.js';
 import { keyFor, redactCut, type Redactor, type Secrets } from './secrets.js';
 import type { ProviderManifest, SendWithKey } from './mods/types.js';
 
+const isThenable = (v: unknown): v is PromiseLike<unknown> => typeof (v as { then?: unknown } | null | undefined)?.then === 'function';
+
 /** The consent question has no "yes" yet for this provider and address. Nothing was sent. `message` is optional: the default names the address. */
 export class ConsentNeeded extends Error {
   constructor(public modId: string, public origin: string, message?: string) {
@@ -20,6 +22,14 @@ export class ProviderChanged extends Error {
     this.name = 'ProviderChanged';
   }
 }
+
+/**
+ * `send` itself said no before any request: no key, an address that holds a saved key, too many keys, an address that is not the provider's.
+ * Nothing was sent. It is not a network failure: it is never tried again, and its words are shown as they are. The error stays a plain `Error`
+ * (no subclass, no extra property: nothing of the call is carried); it is remembered here, by identity, so only this file can mark one.
+ */
+const refusals = new WeakSet<object>();
+export const isSendRefusal = (e: unknown): boolean => typeof e === 'object' && e !== null && refusals.has(e);
 
 /** The provider answered with an error status. `message` holds the status and the redacted body. */
 export class ProviderError extends Error {
@@ -105,6 +115,8 @@ export function makeSend(o: {
   env: NodeJS.ProcessEnv;
   redactor: Pick<Redactor, 'redact' | 'has' | 'safeLength'> & Partial<Pick<Redactor, 'learn' | 'hold'>>;
   consent(modId: string, origin: string): boolean | Promise<boolean>;
+  /** The consent as it is at this very moment, answered at once (the store's `hasConsent`); asked right before the request starts. A promise is "no". */
+  consentNow?(modId: string, origin: string): boolean;
   /**
    * The provider's CURRENT installed manifest (the live registry), asked at every send. An engine keeps the manifest it was opened with; when the
    * current base address has another origin, or the provider is gone, nothing is sent. None: the manifest of the call is trusted (tests).
@@ -142,7 +154,9 @@ export function makeSend(o: {
         }
         if (r.kind === 'changed') return new ProviderChanged(sanitize(r.message));
         if (r.kind === 'provider') return new ProviderError(sanitize(r.message, r.cap), r.status, r.retryAfter);
-        return new Error(sanitize(r.message));
+        const refused = new Error(sanitize(r.message));
+        refusals.add(refused);
+        return refused;
       }
       return clean(e);
     } catch {
@@ -231,7 +245,20 @@ export function makeSend(o: {
     // The exact address of the list, its fixed query included, and nothing else.
     const listing = purpose === 'models' && keyless && modelList !== '' && target.href === modelList
       && (method === undefined || method.toUpperCase() === 'GET') && (body === undefined || body === null);
-    if (!listing && (await o.consent(m.id, base.origin)) !== true) throw new Local(token, { kind: 'consent', modId: m.id, origin: base.origin });
+    // A synchronous answer (the production store's) is NOT awaited: from this check to the request below there is no await, so no revocation can
+    // land in between (an `await` of a plain boolean still gives other tasks a turn). A callback that answers with a promise has to be awaited, and
+    // then its answer is old: the last step before the request asks `consentNow` again (see below), and without one it is not consent.
+    let heardInTime = false;
+    if (!listing) {
+      const asked = o.consent(m.id, base.origin);
+      let granted: boolean;
+      if (isThenable(asked)) granted = (await asked) === true;
+      else {
+        granted = asked === true;
+        heardInTime = granted;
+      }
+      if (!granted) throw new Local(token, { kind: 'consent', modId: m.id, origin: base.origin });
+    }
 
     const manifestHeaders = typeof m.headers === 'object' && m.headers !== null ? m.headers : {};
     try {
@@ -268,6 +295,13 @@ export function makeSend(o: {
       // Every await is behind us. The installed provider is looked at once more, and the request starts in the same synchronous step: nothing
       // can change the installed address between this check and the call that sends.
       checkCurrent();
+      // The consent as it is NOW, asked synchronously, in the same step as the request: an answer given before an await is never reused. An answer
+      // that is a promise is not an answer. Without `consentNow`, an answer that arrived with no await since (a synchronous callback) still stands,
+      // because nothing could run between it and here; an asynchronous callback with no `consentNow` is therefore never consent.
+      if (!listing) {
+        const now = o.consentNow ? o.consentNow(m.id, base.origin) : heardInTime;
+        if (now !== true) throw new Local(token, { kind: 'consent', modId: m.id, origin: base.origin });
+      }
       const started = (o.fetch ?? fetch)(target.href, {
         ...(method !== undefined ? { method } : {}),
         ...(body !== undefined && body !== null ? { body } : {}),

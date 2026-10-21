@@ -171,7 +171,12 @@ const notes = (w: World, id: string) => w.store.readLog(id).filter((r) => r.type
 const asks = (w: World, host: string, keyed = true) => keyed
   ? `This session sends your prompts, the files the agent reads, and your key to ${host}. Go on? [y / n]`
   : `This session sends your prompts and the files the agent reads to ${host}. Go on? [y / n]`;
-const grant = async (w: World, id: string) => expect((await w.call('POST', `/api/mods/${id}/consent`, { body: {} })).status).toBe(200);
+// A yes names the origin it is for (A4): this one reads the provider's own, as the dialog gets it from the Test connection challenge.
+const grant = async (w: World, id: string) => {
+  const row = (await w.call('GET', '/api/mods')).json.mods.find((m: { id: string }) => m.id === id);
+  const origin = new URL(row.manifest.baseUrl).origin;
+  expect((await w.call('POST', `/api/mods/${id}/consent`, { body: { origin } })).status).toBe(200);
+};
 
 // ---- 1. no response holds the key
 
@@ -515,11 +520,11 @@ describe('(g) the consent route takes the origin from the manifest only (spec 7.
   it('refuses an origin that is not the provider\'s own, records nothing, and accepts its own', async () => {
     const w = await boot();
     const foreign = await w.call('POST', '/api/mods/kp/consent', { body: { origin: originOf(w.b) } });
-    expect(foreign.status).toBe(400);
+    expect(foreign.status).toBe(409);
     expect(w.store.hasConsent('kp', originOf(w.b))).toBe(false);
     expect(w.store.hasConsent('kp', originOf(w.a))).toBe(false);
     const evil = await w.call('POST', '/api/mods/kp/consent', { body: { origin: 'https://evil.test' } });
-    expect(evil.status).toBe(400);
+    expect(evil.status).toBe(409);
     expect(w.store.hasConsent('kp', 'https://evil.test')).toBe(false);
     expect((await w.call('POST', '/api/mods/kp/consent', { body: { origin: 7 } })).status).toBe(400);
     const ok = await w.call('POST', '/api/mods/kp/consent', { body: { origin: originOf(w.a) } });
@@ -528,9 +533,11 @@ describe('(g) the consent route takes the origin from the manifest only (spec 7.
     expect(w.store.hasConsent('kp', originOf(w.b))).toBe(false);
   });
 
-  it('grants for the current address when the body names none, refuses a provider Reins does not send to, and DELETE revokes', async () => {
+  it('refuses a body that names no origin (A4), refuses a provider Reins does not send to, and DELETE revokes', async () => {
     const w = await boot();
-    expect((await w.call('POST', '/api/mods/kp/consent')).json).toMatchObject({ consent: 'granted' });
+    expect((await w.call('POST', '/api/mods/kp/consent')).status).toBe(409);
+    expect(w.store.hasConsent('kp', originOf(w.a))).toBe(false);
+    expect((await w.call('POST', '/api/mods/kp/consent', { body: { origin: originOf(w.a) } })).json).toMatchObject({ consent: 'granted' });
     expect((await w.call('POST', '/api/mods/claude-code/consent')).status).toBe(404);
     expect((await w.call('POST', '/api/mods/nope/consent')).status).toBe(404);
     expect((await w.call('POST', '/api/mods/..%2Fx/consent')).status).toBe(400);

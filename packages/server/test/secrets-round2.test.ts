@@ -57,13 +57,13 @@ describe('A. StreamRedactor', () => {
     }
   });
 
-  it('holds back only a possible key start: ordinary output is not delayed, a half key is written at the end', () => {
+  it('holds back only a possible key start: ordinary output is not delayed, a half key is hidden at the end (p29a A11: it used to be written as it was)', () => {
     const { t, r } = withKey();
     try {
       const s = new StreamRedactor(r);
       expect(s.push('hello world, plain output\n')).toBe('hello world, plain output\n');
       expect(s.push('abc sk-te')).toBe('abc ');
-      expect(s.end()).toBe('sk-te');
+      expect(s.end()).toBe('[hidden: text that looked like a key]');
       const s2 = new StreamRedactor(r);
       expect(s2.push('sk-test-0123456789abcde')).toBe('');          // one character short
       expect(s2.push('f!')).toBe('[key Reins]!');

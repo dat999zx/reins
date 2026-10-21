@@ -4,7 +4,7 @@ import readline from 'node:readline';
 import { randomBytes } from 'node:crypto';
 import type { Readable, Writable } from 'node:stream';
 import {
-  Run, NODES, parseWorkflow, validate, receipt,
+  Run, NODES, parseWorkflow, showText, validate, receipt,
   type Decision, type Diagnostic, type Engine, type EngineEvent, type Receipt,
   type RunEventRecord, type RunStatus, type SubagentOpen, type SubagentOpened, type ToolRequest, type Workflow,
 } from '@reins/core';
@@ -25,13 +25,18 @@ export interface RunCliOptions {
   refuse?: (w: Workflow, resolveBlock: (name: string) => Workflow | undefined) => string | undefined;
   /** A subagent's own engine on the provider its step names (spec 10.3), or the words it cannot start with. None: the run's own engine opens it. */
   subagentEngine?: (s: SubagentOpen, io: { onApprove: (r: ToolRequest) => Promise<Decision>; onLive: (e: EngineEvent) => void }) =>
-    { engine: Engine; model?: string } | { error: string };
+    { engine: Engine; model?: string; /** Same meaning as `fullDetail`, for this subagent's provider. */ fullDetail?: boolean } | { error: string };
   /** Approve gates and terminal judge questions without asking. Never touches guards or tool approvals. */
   yes?: boolean;
   /** Everything written to `output` passes through this (the secrets redactor). None = written as given. */
   redactor?: Pick<Redactor, 'redact' | 'safeLength'>;
-  /** What workflow commands run with (`childEnv(...)`); none = this process's. */
-  env?: NodeJS.ProcessEnv;
+  /**
+   * The engine is one Reins runs itself (the API agent loop): every tool approval prints its COMPLETE detail under the question, even a short path
+   * (its content is in the detail). The CLI provider's approvals keep the recorded transcript (the detail only when the line was cut or escaped).
+   */
+  fullDetail?: boolean;
+  /** What workflow commands run with (`shellEnvFrom(...)`), worked out when each starts; none = this process's. */
+  env?: () => NodeJS.ProcessEnv;
 }
 
 // A partial line that has not seen its newline is written once it is this long. It is already redacted by then, so the cut is safe.
@@ -60,9 +65,11 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
   };
   // ponytail: a held key start is written after a `say` that came in between, and a physical line over 64 KB gets a second indent for its
   // continuation (cosmetic); the sink redacts already-redacted output again (a key whose value looks like a `[key NAME]` marker would be wrapped twice).
+  // Everything that is SAID (diagnostics, the agent's events, errors, questions) shows control, direction and zero-width characters as <U+XXXX>;
+  // a command's own output (`writeOutput`) is the user's program talking and is written as it is.
   const say = (s: string) => {
     flushLine();               // a partial line only; what the stream redactor holds (a possible key start) stays held
-    sink(s + '\n');
+    sink(showText(s, { lines: true }) + '\n');
   };
   const writeOutput = (s: string) => {
     line += stream ? stream.push(s) : s;
@@ -93,14 +100,17 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
     eof = true;
     for (const a of asks.splice(0)) a(null);
   });
-  const ask = (q: string): Promise<string | null> => {
+  // `below`: the whole of what the question is about, under it (a command the prompt line had to cut or escape).
+  const ask = (q: string, below?: string): Promise<string | null> => {
     if (eof) {
       say(q);
+      if (below !== undefined) say(indent(below));
       return Promise.resolve(null);
     }
     // Wait for the answer before printing the question: piped input can answer within the write.
     const answer = new Promise<string | null>((resolve) => asks.push(resolve));
     say(q);
+    if (below !== undefined) say(indent(below));
     return answer;
   };
 
@@ -108,7 +118,7 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
     ask: (q) => {
       if (o.yes && q.kind === 'gate') { say('  approved (--yes)'); return Promise.resolve('approve'); }
       if (o.yes && q.kind === 'judge') { say('  yes (--yes)'); return Promise.resolve('y'); }
-      return ask(q.prompt);
+      return ask(q.prompt, q.kind === 'tool' && q.long && q.detail !== undefined ? q.detail : undefined);
     },
     say,
     write: writeOutput,
@@ -176,9 +186,11 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
     }
 
     const cwd = o.cwd;
-    const engine = o.makeEngine({ onApprove: (r) => askTool(io, r), onLive: printLive });
+    const engine = o.makeEngine({ onApprove: (r) => askTool(io, r, undefined, o.fullDetail), onLive: printLive });
     const openSubagent = o.subagentEngine && (async (s: SubagentOpen): Promise<SubagentOpened> => {
-      const made = o.subagentEngine!(s, { onApprove: (r) => askTool(io, r, `Subagent ${s.title} (\`${s.step}\`)`), onLive: printLive });
+      let subFull: boolean | undefined; // known once the subagent's engine is made, before it can ask anything
+      const made = o.subagentEngine!(s, { onApprove: (r) => askTool(io, r, `Subagent ${s.title} (\`${s.step}\`)`, subFull), onLive: printLive });
+      if (!('error' in made)) subFull = made.fullDetail;
       if ('error' in made) throw new Error(made.error);
       const { step: _s, title: _t, reasoning, model: _m, ...open } = s;
       const session = await made.engine.open({ ...open, ...(made.model && s.model ? { model: made.model } : {}), ...(reasoning ? { effort: reasoning } : {}), pendingCards: () => [] });

@@ -34,6 +34,13 @@ const toLog = (r: any): LogRow => ({
 const sessionColumns = { autoApprove: 'auto_approve', title: 'title', engine: 'engine', engineSessionId: 'engine_session_id', model: 'model', effort: 'effort' } as const;
 
 export const KEY_IN_IDENTITY = 'That value contains a saved key, so it was not saved.';
+/** A write whose identity field (an id, a folder, a path) holds a known key. A route answers it with a plain 400, never a 500. */
+export class KeyInIdentity extends Error {
+  constructor() {
+    super(KEY_IN_IDENTITY);
+    this.name = 'KeyInIdentity';
+  }
+}
 
 /**
  * The same store with a known secret kept out of everything it writes and everything it returns (spec 8.3).
@@ -54,7 +61,7 @@ export const KEY_IN_IDENTITY = 'That value contains a saved key, so it was not s
 export function redactingStore(store: Store, redactor: Pick<Redactor, 'redactJson' | 'has'>): Store {
   const { redactJson: r, has } = redactor;
   const holds = (...v: unknown[]) => v.some((x) => typeof x === 'string' && has(x));
-  const refuse = (...v: unknown[]) => { if (holds(...v)) throw new Error(KEY_IN_IDENTITY); };
+  const refuse = (...v: unknown[]) => { if (holds(...v)) throw new KeyInIdentity(); };
   const session = (row: SessionRow | undefined) => (row && !holds(row.id, row.cwd, row.engine, row.engineSessionId) ? r(row) : undefined);
   return {
     ...store,

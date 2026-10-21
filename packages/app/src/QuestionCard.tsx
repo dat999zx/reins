@@ -5,6 +5,8 @@ import { ApiError } from './api.js';
 import { actionsFor, detailFor, type Action } from './questions.js';
 import type { Sess } from './state.js';
 
+// The whole detail is shown (the box scrolls). The server wrote the question's text with control, direction and zero-width characters already
+// shown as <U+XXXX> (`showText`, at the one place a question is logged), so what is drawn here cannot hide or reorder anything.
 const detailOf = (q: Question) => {
   if (q.detail === undefined) return null;
   if (detailFor(q.kind) !== 'json') return q.detail;

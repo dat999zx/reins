@@ -1,18 +1,20 @@
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {
-  Run, receipt,
+  Run, receipt, showText,
   type Decision, type Diagnostic, type Engine, type EngineEvent, type EngineSession, type Policy,
   type Receipt, type RunEventRecord, type RunOptions, type SubagentOpen, type SubagentOpened, type SwitchOutcome, type ToolRequest, type TurnResult, type Workflow,
 } from '@reins/core';
 import { askTool, driveRun, questionId, runOptions, type DriveIo, type Question } from './drive.js';
 import { contextSize, contextWindow, detachedRuns, modelWithoutWindow, readSetting, stillOverAfterCompaction, switchCheck, type SwitchCheck } from './settings.js';
-import type { LogRow, SessionRow, Store } from './store.js';
+import { KEY_IN_IDENTITY, KeyInIdentity, type LogRow, type SessionRow, type Store } from './store.js';
 import { KEY_IN_WORKFLOW, StreamRedactor, type Redactor } from './secrets.js';
 import { ProviderChanged } from './send.js';
 import { taggedWorkflow, type Tag, type Tagged } from './tags.js';
 import { loadWorkflow } from './run-cli.js';
+import { isUnder } from './loop/paths.js';
 import type { FolderTrust } from './mods/types.js';
 import { parseModel } from './models.js';
 import { crossWords, missingProviderWords, noKeyWords, providerStatus, resolveSubagent, runChecks, type CheckEnv } from './run-checks.js';
@@ -34,8 +36,8 @@ export type DescribeModel = (engine: string, model: string, used: number | undef
 export type DescribeEffort = (engine: string, id: string) => { listed: boolean; label: string };
 export interface SessionDeps {
   store: Store; makeEngine: MakeEngine; dir: string; onRow?: (row: LogRow) => void; describeModel?: DescribeModel; describeEffort?: DescribeEffort;
-  /** What workflow commands run with: `childEnv(...)`, no key and no REINS_* var. None = this process's (tests). */
-  env?: NodeJS.ProcessEnv;
+  /** What workflow commands run with: `shellEnvFrom(...)`, worked out when each command starts; no key and no REINS_* var. None = this process's (tests). */
+  env?: () => NodeJS.ProcessEnv;
   /** Hides secrets in streamed command output and refuses to save a workflow that holds one. None = nothing is hidden (tests). */
   redactor?: Redactor;
   /** The folder question of a provider's protocol, if it has one (spec S4: asked for the engine being opened). */
@@ -68,6 +70,23 @@ export const under = (file: string, root: string) => {
 const real = (p: string) => {
   try { return fs.realpathSync(p); } catch { return undefined; }
 };
+export const TOO_WIDE_WORDS = 'Pick a project folder, not your whole home folder or a drive.';
+/**
+ * The words that refuse `cwd` as a session folder, or undefined. A folder that is, or holds, the user's home folder or the Reins folder (a drive
+ * root holds both) would make everything in it "inside the project": no question before a read of `.ssh` or a write to a shell profile.
+ */
+export function projectFolderWords(cwd: string, reinsDir: string, userHome: string = os.homedir()): string | undefined {
+  // A filesystem root is refused on its own, as text, before the filesystem is touched: `C:\`, any `X:\`, `/`, a share root such as `\\server\share`.
+  // (Containment of the two homes below catches only the drive they are on.) A Windows-style path is judged by the Windows rules on any host.
+  const win = /^([a-z]:|[\\/]{2})/i.test(cwd);
+  const P = win ? path.win32 : path;
+  const text = P.resolve(cwd);
+  // `\\server` and `\\server\share` (either slash): a server or a share root, judged on the text as given (Node resolves a bare `\\server` as a local name).
+  if (P.relative(P.parse(text).root, text) === '' || /^[\\/]{2}[^\\/]*([\\/][^\\/]*)?[\\/]?$/.test(cwd)) return TOO_WIDE_WORDS;
+  const at = (p: string) => real(p) ?? path.resolve(p);
+  const folder = at(cwd);
+  return [userHome, reinsDir].some((h) => isUnder(at(h), folder)) ? TOO_WIDE_WORDS : undefined;
+}
 const msg = (e: unknown) => String((e as Error)?.message ?? e);
 // Already in session_log as engine rows, or (cost) in turn_ended (plan 15d 3b.3, line 1405).
 /** The engine events of a subagent that are kept in the log (with its step). */
@@ -110,6 +129,8 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   const pending = new Map<string, { q: Question; rid?: string; resolve: (a: string | null) => void }>();
   let status: SessionStatus = (store.readLog(id).reverse().find((r) => r.type === 'status')?.data as { status: SessionStatus } | undefined)?.status ?? 'idle';
 
+  /** Whether any of these identity values (a path, a folder, an id) holds a key Reins knows. */
+  const holdsKey = (...v: string[]) => !!deps.redactor && v.some((x) => deps.redactor!.has(x));
   const log = (type: string, data?: unknown, rid?: string) => {
     const r = store.appendLog(id, { type, ...(rid ? { runId: rid } : {}), ...(data !== undefined ? { data } : {}) });
     deps.onRow?.(r);
@@ -138,7 +159,9 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   const ask = (q: Question): Promise<string | null> => {
     if (stopping) return Promise.resolve(null);
     if (q.kind === 'tool' && !turnOpen) return Promise.resolve(null); // a late approval after its turn ended: deny, never leave it open
-    log('question', q, runId);
+    // The one place a question reaches the app (and the stream): its words are shown with control, direction and zero-width characters as <U+XXXX>.
+    // The detail of an approval is the whole input, never cut.
+    log('question', { ...q, prompt: showText(q.prompt, { lines: true }), ...(q.detail !== undefined ? { detail: showText(q.detail, { lines: true }) } : {}), ...(q.title !== undefined ? { title: showText(q.title, { lines: true }) } : {}) }, runId);
     if (q.kind === 'tool' && store.getSession(id)!.autoApprove) {
       log('answer', { questionId: q.id, answer: 'y' }, runId);
       return Promise.resolve('y');
@@ -697,6 +720,8 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     if (!roots.some((r) => r && under(file, r))) return bad('The workflow must be under the session folder or ~/.reins/workflows.');
     const runs = real(path.join(dir, 'runs'));
     if (runs && under(file, runs)) return bad('~/.reins/runs holds generated files; run a workflow from your folder or ~/.reins/workflows.'); // /resume skips trust for these
+    // The run row will name this file and this folder: a known key in either is answered now, in plain words, not after OK in the worker.
+    if (holdsKey(file, cwd, id)) return bad(KEY_IN_IDENTITY);
     const loaded = loadWorkflow(file);
     const w = loaded.workflow;
     if (!w) return bad(loaded.diagnostics.filter((d) => d.severity === 'error').map((d) => d.message).join('; ') || 'Invalid workflow.', loaded.diagnostics);
@@ -759,7 +784,8 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   }
   function start(work: () => Promise<void>) {
     worker = work()
-      .catch((e) => { log('note', { text: `Internal error: ${msg(e)}` }); unsent(); })
+      // A refused identity write is plain words (its text is never repeated); anything else keeps the old note.
+      .catch((e) => { log('note', { text: e instanceof KeyInIdentity ? KEY_IN_IDENTITY : `Internal error: ${msg(e)}` }); unsent(); })
       .finally(() => {
         busy = false;
         run = undefined;

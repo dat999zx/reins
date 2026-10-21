@@ -32,7 +32,7 @@ There are two kinds you need here:
 2. Fill in the label, the id, the protocol, the base URL and how the key is sent (bearer, a named header, or none).
 3. Add at least one model: its id, its window, and its prices if you know them.
 4. Save. Reins writes the same `mod.json` as above. A mistake is shown next to the field.
-5. Set the key (or set the variable in your environment), then press **Test connection**. Reins asks first whether it may send your prompts and the key to that address. Say yes only for an address you trust.
+5. Set the key (or set the variable in your environment), then press **Test connection**. Reins asks first: "Allow Reins to send your key, and your prompts and files in sessions on this provider, to <host>?" The yes is for that address and for sessions as well as the test, so a session on this provider does not ask again. Say yes only for an address you trust.
 
 ## A custom wire (a protocol mod)
 

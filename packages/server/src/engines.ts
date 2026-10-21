@@ -91,8 +91,10 @@ export type ConsentCheck = (modId: string, origin: string) => boolean;
  * The `send` a production host carries. `consent` is the store's check; the default says no, so a host built without one sends nothing.
  * Built on first use: a session that never sends reads no secrets.
  */
-export function hostSend(mods: Mods, base: Pick<EngineHost, 'env' | 'home'>, consent: ConsentCheck = () => false): Pick<EngineHost, 'send' | 'redact' | 'redactAll' | 'redactStream' | 'holdsSecret' | 'key'> {
-  let redactor: Redactor | undefined;
+export function hostSend(mods: Mods, base: Pick<EngineHost, 'env' | 'home'>, consent: ConsentCheck = () => false, shared?: Redactor): Pick<EngineHost, 'send' | 'redact' | 'redactAll' | 'redactStream' | 'holdsSecret' | 'key'> {
+  // `shared`: the process's own Redactor (the store's). One per process, so a key retired in it stays masked in every engine's files and tool results;
+  // without one (a test that builds a host by hand) this host makes its own.
+  let redactor: Redactor | undefined = shared;
   let seen = '';
   // The key names and the env values they hold, as one string compared on every call (cheap): a key set or changed in the env after the
   // start, or a provider installed later, makes the Redactor read the env and the names again. The secrets file it already watches itself.
@@ -117,7 +119,7 @@ export function hostSend(mods: Mods, base: Pick<EngineHost, 'env' | 'home'>, con
     redactStream: () => new StreamRedactor(lazy),
     holdsSecret: (t) => lazy.has(t),
     send: (m, url, init, purpose) => {
-      send ??= makeSend({ secrets: () => readSecrets(base.home), env: base.env, redactor: lazy, consent,
+      send ??= makeSend({ secrets: () => readSecrets(base.home), env: base.env, redactor: lazy, consent, consentNow: consent,
         // The registry is read at every send: an engine opened before a reload keeps its old manifest, but never sends by it.
         current: (id) => manifestOf(mods, id),
         listUrl: (m) => resolve(mods, m.id)?.protocol.wire?.listRequest?.(m).url,
@@ -127,25 +129,38 @@ export function hostSend(mods: Mods, base: Pick<EngineHost, 'env' | 'home'>, con
   };
 }
 
+/** The key variable names of every provider that loaded, switched off ones too: a provider that is off can be switched on again, and its variable is still its key. */
+const knownKeyEnvNames = (mods: Mods): string[] => {
+  const names = new Set(keyEnvNames(mods));
+  for (const m of mods.mods) {
+    if (m.kind !== 'provider' || m.problems.length) continue;
+    const list = (m.manifest as { auth?: { keyEnv?: unknown } } | undefined)?.auth?.keyEnv;
+    if (Array.isArray(list)) for (const n of list) if (typeof n === 'string' && n !== '') names.add(n);
+  }
+  return [...names];
+};
+
 /**
- * The env of a shell command, worked out on every call: `childEnv` for the providers installed NOW, and no variable whose value holds a known
- * secret (an alias of a key, or a key inside a longer value).
+ * THE env of every child Reins starts for the user's work or for itself (the shell tool, workflow commands, git, the folder dialog, the browser
+ * launcher, kill helpers), worked out when the child starts, never before: `childEnv` for every provider known NOW (a switched-off one too), no
+ * REINS_* variable, and no variable whose value holds a known secret (an alias of a key, or a key inside a longer value such as a Path).
  * ponytail: nothing else is taken out. BASH_ENV, NODE_OPTIONS and PSModulePath are the user's own and stay: a shell is not a sandbox, and the real
  * guard is the approval.
  */
 export const shellEnvFrom = (mods: Mods, env: NodeJS.ProcessEnv, holdsSecret: (t: string) => boolean) => (): NodeJS.ProcessEnv => {
-  const clean = childEnv(env, keyEnvNames(mods));
+  const clean = childEnv(env, knownKeyEnvNames(mods));
   for (const [k, v] of Object.entries(clean)) if (v !== undefined && holdsSecret(v)) delete clean[k];
   return clean;
 };
 
 /** The engine factory sessions use. Synchronous: a session's microtask order depends on it. */
-export function makeEngineFrom(mods: Mods, base: Pick<EngineHost, 'env' | 'home' | 'send' | 'redact'>, consent?: ConsentCheck): MakeEngine {
+export function makeEngineFrom(mods: Mods, base: Pick<EngineHost, 'env' | 'home' | 'send' | 'redact'>, consent?: ConsentCheck, redactor?: Redactor): MakeEngine {
   return ({ provider, ...rest }) => {
     const found = resolve(mods, provider);
     if (!found) throw new Error(`The provider "${provider}" is not installed.`);
-    const sent = hostSend(mods, base, consent);
-    const host = { ...sent, ...base, helperEnv: childEnv(base.env, keyEnvNames(mods)), shellEnv: shellEnvFrom(mods, base.env, sent.holdsSecret!), ...rest };
+    const sent = hostSend(mods, base, consent, redactor);
+    const children = shellEnvFrom(mods, base.env, sent.holdsSecret!);
+    const host = { ...sent, ...base, helperEnv: children, shellEnv: children, ...rest };
     // A 'reins' protocol is a wire: Reins owns the conversation and runs it in the API agent loop.
     if (found.protocol.conversation === 'reins') return loopEngine(found.manifest, found.protocol.wire, host);
     return found.protocol.engine(found.manifest, host);
@@ -169,14 +184,15 @@ export const liveListSource = (mods: Mods, host: Pick<EngineHost, 'env' | 'home'
   },
 });
 
-export async function probeFrom(mods: Mods, provider: string, base: Pick<EngineHost, 'env' | 'home'>): Promise<EngineProbe> {
+export async function probeFrom(mods: Mods, provider: string, base: Pick<EngineHost, 'env' | 'home'>, redactor?: Redactor): Promise<EngineProbe> {
   const found = resolve(mods, provider);
+  const sent = hostSend(mods, base, undefined, redactor);
   if (found?.protocol.conversation === 'reins') {
-    const host = { ...hostSend(mods, base), ...base, onApprove: async () => ({ behavior: 'deny' as const }), onLive: () => {} };
+    const host = { ...sent, ...base, onApprove: async () => ({ behavior: 'deny' as const }), onLive: () => {} };
     return loopEngine(found.manifest, found.protocol.wire, host).probe();
   }
   if (!found?.protocol.probe) throw new Error(`The provider "${provider}" cannot be probed.`);
-  return found.protocol.probe(found.manifest, { ...base, helperEnv: childEnv(base.env, keyEnvNames(mods)) });
+  return found.protocol.probe(found.manifest, { ...base, helperEnv: shellEnvFrom(mods, base.env, sent.holdsSecret!) });
 }
 
 /**

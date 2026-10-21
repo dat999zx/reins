@@ -150,7 +150,7 @@ describe('a provider is one folder: a toy wire and a toy provider go through eve
 
     expect((await a.call('PUT', '/api/mods/toy/key', { key: KEY })).status).toBe(200);
     expect(fs.readFileSync(path.join(a.dir, 'secrets.json'), 'utf8')).toContain(KEY); // plain text in the home, as the guide says
-    const c = await a.call('POST', '/api/mods/toy/consent', {});
+    const c = await a.call('POST', '/api/mods/toy/consent', { origin: a.fake.url });
     expect([c.status, c.json.consent, c.json.origin]).toEqual([200, 'granted', a.fake.url]);
 
     expect(await modOf(a, 'toy')).toMatchObject({ key: { state: 'set' }, consent: 'granted', host: `127.0.0.1:${portOf(a)}` });

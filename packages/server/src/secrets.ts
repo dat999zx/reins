@@ -111,7 +111,7 @@ export const MAX_CURRENT = 10_000;
 
 /** The most text a StreamRedactor holds back while it cannot tell whether the end of it is the start of a key. */
 export const MAX_HOLDBACK = 64 * 1024;
-/** What replaces held text that grew past MAX_HOLDBACK. */
+/** What replaces held text that grew past MAX_HOLDBACK, or a start of a key that the stream ended on. */
 export const HELD_MARKER = '[hidden: text that looked like a key]';
 
 export interface KnownSecret { value: string; name: string }
@@ -393,9 +393,10 @@ export function redactCut(r: Pick<Redactor, 'redact' | 'safeLength'>, text: stri
 /**
  * Redacts a stream that arrives in pieces (command output): a key split across any number of chunks is still found. `push` returns the
  * text that is safe to write now; only the end of the pending text that could be the start of a known secret is held back, so ordinary
- * output is not delayed. `end` writes what is left (a half key that never completed is written as it is). What is held never exceeds
- * MAX_HOLDBACK characters (see `push`).
- * The API agent loop does not use this: it joins a reply's deltas into whole messages first and redacts each whole message (the host's `redactAll`).
+ * output is not delayed. `end` writes what is left, except an end that is the start of a known key, however short
+ * (a half key that never completed): that is replaced by HELD_MARKER. What is held never exceeds MAX_HOLDBACK characters (see `push`).
+ * Used for command output: the loop's shell tool (`host.redactStream`) and workflow commands. The API agent loop's text, thinking and tool inputs do
+ * not use it: it joins a reply's deltas into whole messages first and redacts each whole message (the host's `redactAll`).
  */
 export class StreamRedactor {
   private pending = '';
@@ -417,9 +418,12 @@ export class StreamRedactor {
   }
 
   end(): string {
-    const out = this.r.redact(this.pending);
+    const red = this.r.redact(this.pending);
     this.pending = '';
-    return out;
+    const at = this.r.safeLength(red);
+    // Every nonempty held end is hidden, however short: it is the start of a known key. (An output that ends exactly on such a start, with no
+    // newline after it, shows the marker in its place; a line ends with a newline in ordinary output, which is never held.)
+    return at < red.length ? red.slice(0, at) + HELD_MARKER : red;
   }
 }
 

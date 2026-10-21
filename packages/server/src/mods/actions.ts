@@ -4,6 +4,7 @@
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { hasHiddenChars } from '@reins/core';
 import { MIN_SECRET, clearKey, keyStatus, readSecrets, setKey, type KeyStatus } from '../secrets.js';
 import { ConsentNeeded, ProviderChanged, ProviderError } from '../send.js';
 import { readBounded } from '../loop/bounded.js';
@@ -212,6 +213,20 @@ function addressProblems(raw: Record<string, unknown>, id: string): string[] {
   return [];
 }
 const refusal = (problems: string[]): Reply => ({ status: 400, body: { error: problems.join(' '), problems } });
+/** Text a user wrote for a mod (a manifest, an import file) that holds a key Reins knows. The words never repeat it. */
+const KEY_IN_MOD = 'That text holds a key Reins knows, so nothing was installed. Keys go in Settings > Providers, never in a mod file.';
+/**
+ * Whether any string VALUE or property NAME inside `v` holds a key Reins knows. Every string is looked at as it is, decoded, never inside the
+ * JSON text of the container that holds it: a key with a backslash or a quote is written differently there (escaped again for every level) and a
+ * search of that text would miss it. A structure nested deeper than a mod can be is refused.
+ */
+function holdsDeep(env: Pick<ModEnv, 'holdsSecret'>, v: unknown, depth = 0): boolean {
+  if (typeof v === 'string') return env.holdsSecret(v);
+  if (v === null || typeof v !== 'object') return false;
+  if (depth > 100) return true;
+  if (Array.isArray(v)) return v.some((x) => holdsDeep(env, x, depth + 1));
+  return Object.entries(v).some(([k, x]) => env.holdsSecret(k) || holdsDeep(env, x, depth + 1));
+}
 
 /** Asks the loader to read again. A read that fails as a whole keeps what ran before; the words say so. */
 async function reloaded(env: ModEnv, extra: Record<string, unknown> = {}): Promise<Reply> {
@@ -405,6 +420,8 @@ export function addCustom(env: ModEnv, b: Record<string, unknown>): Promise<Repl
   raw.auth = auth.auth;
   if (models !== undefined) raw.models = models;
   return serial(env.home, async () => {
+    // Before any check that could repeat a value, and before anything is written.
+    if (holdsDeep(env, raw)) return fail(400, KEY_IN_MOD);
     if (exists(env, id) || catalogIds(env).includes(id)) return fail(409, `${id$(id)} already exists. Pick another id.`);
     const problems = problemsOf(env, raw, id);
     if (problems.length) return refusal(problems);
@@ -456,6 +473,7 @@ export function editMod(env: ModEnv, id: unknown, b: Record<string, unknown>): P
       if (v === null) delete raw[k];
       else raw[k] = v;
     }
+    if (holdsDeep(env, raw)) return fail(400, KEY_IN_MOD);
     const problems = problemsOf(env, raw, id);
     if (problems.length) return refusal(problems);
     const text = JSON.stringify(raw, null, 2) + '\n';
@@ -598,7 +616,9 @@ export function deleteKey(env: ModEnv, id: unknown): Promise<Reply> {
 
 /**
  * Spec 7.8: records the user's yes for this provider and the origin of ITS base address. The origin is read from the manifest, never taken from
- * the body: a body `origin` is only checked against it. `revoke: true` forgets every origin of the id.
+ * the body; the body MUST name the origin the user was shown (the Test connection challenge returns it) and it must still be the manifest's:
+ * a missing or different one is a 409 and nothing is recorded (the provider may have been edited or replaced while the dialog was open).
+ * `revoke: true` forgets every origin of the id and needs no origin.
  */
 export function setConsent(env: ModEnv, id: unknown, b: Record<string, unknown>): Promise<Reply> {
   if (!isModId(id)) return Promise.resolve(fail(400, BAD_ID));
@@ -613,7 +633,8 @@ export function setConsent(env: ModEnv, id: unknown, b: Record<string, unknown>)
     if (!found) return fail(404, `No provider ${id$(id)} that Reins sends to is installed.`);
     const origin = originOf(found.manifest.baseUrl);
     if (!origin) return fail(409, `The base address of ${id$(id)} is not a web address.`);
-    if (b.origin !== undefined && b.origin !== origin) return fail(400, `That is not the address of ${id$(id)}. A yes is recorded only for ${origin}.`);
+    if (b.origin === undefined) return fail(409, `Say which address the yes is for: ${id$(id)} sends to ${origin}. Nothing was allowed.`);
+    if (b.origin !== origin) return fail(409, `${id$(id)} no longer sends to the address you were shown; it sends to ${origin}. Nothing was allowed; ask again.`);
     env.consent.grant(id, origin);
     return { status: 200, body: { ok: true, consent: 'granted', origin } };
   });
@@ -648,8 +669,9 @@ export async function testConnection(env: ModEnv, id: unknown): Promise<Reply> {
   const keyNames = manifest.auth?.keyEnv ?? [];
   const needsKey = !!manifest.auth && manifest.auth.style !== 'none';
   // A provider with a key is asked about FIRST, with no request made. A keyless one sends no prompt and no key to its model list (7.8), so it is not.
+  // The challenge carries the canonical origin it asked about: the dialog posts exactly that back, and a different one is refused.
   if (needsKey && !env.consent.has(id, origin)) {
-    return done('needs-consent', `Reins has not been allowed to send your key to ${host} yet.`, { host });
+    return done('needs-consent', `Reins has not been allowed to send your key to ${host} yet.`, { host, origin });
   }
   if (needsKey && keyStatus(manifest, readSecrets(env.home), env.env).state === 'missing') {
     return done('bad-key', `${label} has no key. ${keyNames.length ? `Set ${keyNames.join(' or ')}, or add` : 'Add'} a key in Settings > Providers.`, { host });
@@ -673,7 +695,7 @@ export async function testConnection(env: ModEnv, id: unknown): Promise<Reply> {
   } catch (e) {
     if (e instanceof ProviderChanged) return done('unreachable', e.message, { host });
     const cls = e instanceof ConsentNeeded ? 'consent' : classify(e);
-    if (cls === 'consent') return done('needs-consent', `Reins has not been allowed to send your key to ${host} yet.`, { host });
+    if (cls === 'consent') return done('needs-consent', `Reins has not been allowed to send your key to ${host} yet.`, { host, origin });
     if (cls === 'auth') return done('bad-key', 'The key was refused.', { host });
     if (cls === 'notFound') return done('not-found', `Reached ${host}; it has no model list, so the first reply will tell.`, { host });
     if (cls === 'redirect') return done('redirected', WORDS.redirect.say(label, undefined, ''), { host });
@@ -716,16 +738,6 @@ function binaryLike(text: string): boolean {
   for (let i = 0; i < text.length; i++) {
     const k = text.charCodeAt(i);
     if (k < 0x20 && k !== 9 && k !== 10 && k !== 13) return true;
-  }
-  return false;
-}
-
-/** C0, DEL, C1, line and paragraph separators and the direction controls: characters that change how a line of text reads. */
-function oddChar(text: string): boolean {
-  for (let i = 0; i < text.length; i++) {
-    const k = text.charCodeAt(i);
-    if (k < 0x20 || (k >= 0x7f && k <= 0x9f) || k === 0x2028 || k === 0x2029 || k === 0x200e || k === 0x200f || k === 0x061c
-      || (k >= 0x202a && k <= 0x202e) || (k >= 0x2066 && k <= 0x2069)) return true;
   }
   return false;
 }
@@ -803,12 +815,22 @@ type Checked = { ok: { id: string; files: FileBytes[]; summary: ImportSummary } 
  * relies on an earlier preview. The id is checked with `isModId` before it is used as a path, then the loader's own `validateMod` runs.
  */
 function checkImport(env: ModEnv, input: unknown): Checked {
+  // First of all, before a name, a hash or a trust line is made from it: a key in any part of the file refuses it. The decoded envelope is looked at
+  // (every name, every text, every property name), not its JSON text; a file that arrives as text is parsed here only to be looked at.
+  let decoded: unknown = input;
+  if (typeof input === 'string') {
+    if (env.holdsSecret(input)) return { reply: fail(400, KEY_IN_MOD) };
+    try { decoded = JSON.parse(input); } catch { decoded = undefined; }
+  }
+  if (holdsDeep(env, decoded)) return { reply: fail(400, KEY_IN_MOD) };
   const parsed = parseModFile(input);
   if ('problems' in parsed) return { reply: refusal(parsed.problems) };
   const { files } = parsed;
   const p = parseManifest(files.find((f) => f.rel === 'mod.json')!.bytes, 'mod.json');
   if ('error' in p) return { reply: refusal([p.error]) };
   const raw = p.raw;
+  // The parsed manifest too (its decoded values and property names), before validation words anything about it.
+  if (holdsDeep(env, raw)) return { reply: fail(400, KEY_IN_MOD) };
   if (!isModId(raw.id)) return { reply: refusal(['The id must be lowercase letters, digits and dashes, start with a letter or digit, be at most 40 long, and not be a name Windows reserves.']) };
   const id = raw.id;
   const problems = [
@@ -825,7 +847,7 @@ function checkImport(env: ModEnv, input: unknown): Checked {
   if (isObj(raw.headers)) for (const h of Object.keys(raw.headers)) shown.push(['a header name', h]);
   if (isObj(raw.auth) && Array.isArray(raw.auth.keyEnv)) for (const k of raw.auth.keyEnv) shown.push(['a key name', k]);
   for (const [field, v] of shown) {
-    if (typeof v === 'string' && oddChar(v)) return { reply: refusal([`${id$(id)}: ${field} must not hold a control, line-break or direction-changing character.`]) };
+    if (typeof v === 'string' && hasHiddenChars(v)) return { reply: refusal([`${id$(id)}: ${field} must not hold a control, line-break or direction-changing character.`]) };
   }
 
   const yours = there(path.join(modsDir(env.home), id));

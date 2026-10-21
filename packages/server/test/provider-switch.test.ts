@@ -499,7 +499,10 @@ describe('the live model list (spec 7.2)', () => {
   });
 
   it('a live id is a listed model for a switch, and a typed id on top of it is accepted', async () => {
-    const made = await api(r.srv).post('/api/sessions', { cwd: os.tmpdir(), engine: 'kl' });
+    // A folder of its own: the temp folder itself holds the Reins folder of this test, and a session folder may not (p29a A10).
+    const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'reins-proj-'));
+    const made = await api(r.srv).post('/api/sessions', { cwd: proj, engine: 'kl' });
+    fs.rmSync(proj, { recursive: true, force: true });
     expect(made.status, made.text).toBe(200);
     const id = made.json.id as string;
     expect((await api(r.srv).post(`/api/sessions/${id}/settings`, { model: 'kl-live-2' })).status).toBe(200);

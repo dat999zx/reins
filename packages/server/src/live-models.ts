@@ -1,4 +1,5 @@
 // The live model lists (spec 7.2, 9.1): each provider's own list, fetched through `send`, kept in memory, read without I/O.
+import { hasHiddenChars } from '@reins/core';
 
 /** The most ids kept of one list, and the longest id. */
 export const MAX_LIVE_IDS = 2000;
@@ -20,12 +21,12 @@ export interface LiveModelsOptions {
   now?: () => number;
 }
 
-/** What a list holds after the checks: strings only, 1 to 200 characters, no control characters, no secret, no repeat, at most 2000. */
+/** What a list holds after the checks: strings only, 1 to 200 characters, no control, direction or zero-width character, no secret, no repeat, at most 2000. */
 export function cleanIds(raw: unknown, holdsSecret?: (text: string) => boolean): string[] {
   if (!Array.isArray(raw)) return [];
   const out = new Set<string>();
   for (const id of raw) {
-    if (typeof id !== 'string' || id === '' || id.length > MAX_LIVE_ID || [...id].some((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f) || holdsSecret?.(id)) continue;
+    if (typeof id !== 'string' || id === '' || id.length > MAX_LIVE_ID || hasHiddenChars(id) || holdsSecret?.(id)) continue;
     out.add(id);
     if (out.size >= MAX_LIVE_IDS) break;
   }

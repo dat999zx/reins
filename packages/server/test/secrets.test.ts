@@ -393,12 +393,12 @@ describe('6. childEnv', () => {
   it('a workflow command through the real runCommand does not see the key or a REINS_ var', async () => {
     const cwd = tmpDir();
     const node = JSON.stringify(process.execPath);
-    const print = (name: string) => runCommand(`${node} -e "console.log(process.env.${name} ?? 'none')"`, { cwd, env: childEnv(env, ['X_API_KEY']) });
+    const print = (name: string) => runCommand(`${node} -e "console.log(process.env.${name} ?? 'none')"`, { cwd, env: () => childEnv(env, ['X_API_KEY']) });
     expect((await print('X_API_KEY')).stdout.trim()).toBe('none');
     expect((await print('REINS_HOME')).stdout.trim()).toBe('none');
     expect((await print('KEEP')).stdout.trim()).toBe('yes');
     // the control: with the env as given the same command prints the key, so the test can fail
-    const raw = await runCommand(`${node} -e "console.log(process.env.X_API_KEY ?? 'none')"`, { cwd, env });
+    const raw = await runCommand(`${node} -e "console.log(process.env.X_API_KEY ?? 'none')"`, { cwd, env: () => env });
     expect(raw.stdout.trim()).toBe(KEY);
   });
 });

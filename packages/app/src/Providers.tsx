@@ -123,13 +123,14 @@ function FormView({ initial, editing, protocols, original, onDone, onCancel }: {
   );
 }
 
-interface TestReply { result: string; message: string; host?: string }
+interface TestReply { result: string; message: string; host?: string; origin?: string }
 
 function Row({ row, reload, edit }: { row: ModRow; reload: () => Promise<void>; edit: (r: ModRow) => void }) {
   const info = rowInfo(row);
   const [msg, setMsg] = useState('');
   const [bad, setBad] = useState(false);
-  const [ask, setAsk] = useState<string | undefined>();
+  // What the dialog is about: the host it shows and the exact origin the server asked about, which the Allow button sends back.
+  const [ask, setAsk] = useState<{ host: string; origin: string } | undefined>();
   const [draft, setDraft] = useState('');
   const [keying, setKeying] = useState(false);
   const [sure, setSure] = useState(false);
@@ -147,10 +148,11 @@ function Row({ row, reload, edit }: { row: ModRow; reload: () => Promise<void>; 
   const test = () => run(async () => {
     setMsg('Testing...');
     const r = await post<TestReply>(url(row.id, '/test'));
-    if (r.result === 'needs-consent') { setAsk(r.host ?? info.host ?? ''); setMsg(''); } else setMsg(r.message);
+    if (r.result === 'needs-consent' && r.origin) { setAsk({ host: r.host ?? info.host ?? '', origin: r.origin }); setMsg(''); } else setMsg(r.message);
   });
   const allow = () => run(async () => {
-    await post(url(row.id, '/consent'), {});
+    // The yes is for the address that was shown; the server refuses it if the provider has another address now.
+    await post(url(row.id, '/consent'), { origin: ask!.origin });
     setAsk(undefined);
     const r = await post<TestReply>(url(row.id, '/test'));
     setMsg(r.message);
@@ -197,7 +199,7 @@ function Row({ row, reload, edit }: { row: ModRow; reload: () => Promise<void>; 
       )}
       {ask !== undefined && (
         <div className="pconfirm" role="dialog" aria-label="Allow sending">
-          <p>Reins will send your key to <b>{ask}</b> to ask for its list of models. Your prompts and files are not part of this test.</p>
+          <p>Allow Reins to send your key, and your prompts and files in sessions on this provider, to <b>{ask.host}</b>?</p>
           <button className="primary" onClick={() => void allow()}>Allow</button>
           <button onClick={() => { setAsk(undefined); setMsg('Not tested. Nothing was sent.'); }}>Cancel</button>
         </div>

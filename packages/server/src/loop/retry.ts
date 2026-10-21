@@ -1,7 +1,7 @@
 // Spec 4.9: which failures are tried again, how long to wait, and the words of the final error.
-import { ConsentNeeded, ProviderChanged, ProviderError } from '../send.js';
+import { ConsentNeeded, isSendRefusal, ProviderChanged, ProviderError } from '../send.js';
 
-export type ErrorClass = 'rate' | 'server' | 'network' | 'stall' | 'auth' | 'notFound' | 'bad' | 'unpaired' | 'context' | 'redirect' | 'consent';
+export type ErrorClass = 'rate' | 'server' | 'network' | 'stall' | 'auth' | 'notFound' | 'bad' | 'unpaired' | 'context' | 'redirect' | 'consent' | 'refused';
 
 /** Calls made in all for a rate limit, a server error or a network failure. */
 export const TRIES = 4;
@@ -25,6 +25,8 @@ export const WORDS: Record<ErrorClass, { retry: boolean; say(who: string, code: 
   context: { retry: false, say: (_who, _code, model) => `The conversation is too long for ${model} even after compressing.` },
   redirect: { retry: false, say: (who) => `${who} answered with a redirect to another address; Reins does not follow it with your key.` },
   consent: { retry: false, say: (_who, _code, what) => what },
+  // send said no itself, before any request (no key, a saved key in the address, too many keys, another origin): nothing to try again, the words as they are.
+  refused: { retry: false, say: (_who, _code, what) => what },
 };
 
 /** The class of an HTTP status. */
@@ -74,6 +76,7 @@ export const isContextTooLong = (body: string): boolean => {
 /** The class of a thrown error: a ProviderError by its status; the redirect and consent refusals by what send.ts makes of them; anything else is a network failure. */
 export function classify(err: unknown): ErrorClass {
   if (err instanceof ConsentNeeded || err instanceof ProviderChanged) return 'consent'; // refused before sending: not tried again
+  if (isSendRefusal(err)) return 'refused';
   if (err instanceof ProviderError) {
     if (err.status === 400) {
       const body = bodyOf(err.message);
@@ -84,7 +87,7 @@ export function classify(err: unknown): ErrorClass {
   }
   // send.ts rewrites a refused redirect to this one sentence.
   if (err instanceof Error && /answered with a redirect/.test(err.message)) return 'redirect';
-  // ponytail: every other error (a refused address, a wire's own failure) counts as the network and is tried again; split them when a wire marks its errors.
+  // ponytail: every other error (a wire's own failure) counts as the network and is tried again; split them when a wire marks its errors.
   return 'network';
 }
 

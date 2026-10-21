@@ -22,6 +22,8 @@ export interface ToolCtx {
   /** Redacts a whole text: no trim of an ending that could be the start of a key. */
   redactAll: (text: string) => string;
   platform: NodeJS.Platform;
+  /** The host's `holdsSecret`: Write and Edit refuse a file that would hold a known key. Undefined: nothing is checked (a host with no redactor). */
+  holdsSecret?: ((text: string) => boolean) | undefined;
   /** Works out the key-free env a shell command gets, once per command (the host's `shellEnv`). Undefined: the shell refuses to run. */
   env?: (() => NodeJS.ProcessEnv) | undefined;
   /** A new redactor for one output stream (the host's `redactStream`). Undefined: the shell refuses to run. */
@@ -91,6 +93,11 @@ export const HARD_LINK_WORDS = 'Blocked by Reins: this file has other names (har
 
 const ok = (text: string): ToolOut => ({ text });
 const fail = (text: string): ToolOut => ({ text, isError: true });
+/** A file is code and data: it is not silently redacted, it is not written. The words never repeat the text. */
+export const KEY_IN_FILE_WORDS = 'That content holds a saved key, so it was not written.';
+/** A key in the path the model gave, or in the path it resolves to: a file name is text that reaches the disk too. Checked before any folder or file is made. */
+const nameHoldsSecret = (ctx: ToolCtx, input: Record<string, unknown>, t: Target): boolean =>
+  !!ctx.holdsSecret && (ctx.holdsSecret(String(input.file_path)) || ctx.holdsSecret(t.abs));
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 // ponytail: only the first 8 KB is looked at, so a NUL later in a file is not seen; a full scan costs a pass over every file.
 const isBinary = (buf: Buffer) => buf.subarray(0, BINARY_PEEK).includes(0);
@@ -188,6 +195,7 @@ const write: Tool = {
   run(input, ctx, t) {
     const shown = rel(t, ctx);
     if (Buffer.byteLength(input.content as string) > MAX_FILE) return fail(`The content is over ${MAX_FILE / 1024 / 1024} MB, too big to write.`);
+    if (ctx.holdsSecret?.(input.content as string) || nameHoldsSecret(ctx, input, t)) return fail(KEY_IN_FILE_WORDS);
     try {
       const st = (() => {
         try {
@@ -234,6 +242,7 @@ const edit: Tool = {
     const shown = rel(t, ctx);
     let old = input.old_string as string;
     let now = input.new_string as string;
+    if (nameHoldsSecret(ctx, input, t)) return fail(KEY_IN_FILE_WORDS);
     if (old === '') return fail('old_string is empty. To make a new file use Write.');
     if (old === now) return fail('old_string and new_string are the same, so there is nothing to change.');
     try {
@@ -265,6 +274,8 @@ const edit: Tool = {
       if (grown > MAX_FILE) return fail(`The result would be over ${MAX_FILE / 1024 / 1024} MB, too big to edit. Change less at once.`);
       // split/join, not replace(): a $ in new_string is text.
       const next = all ? text.split(old).join(now) : text.slice(0, text.indexOf(old)) + now + text.slice(text.indexOf(old) + old.length);
+      // The whole candidate: a key can be made by the join of the old text, the new text and what is around them.
+      if (ctx.holdsSecret?.(next)) return fail(KEY_IN_FILE_WORDS);
       replaceFile(t.abs, next);
       return ok(`Edited ${shown}: replaced ${all ? n : 1} ${(all ? n : 1) === 1 ? 'occurrence' : 'occurrences'}.`);
     } catch (e) {
