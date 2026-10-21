@@ -14,6 +14,27 @@ const flatSteps = (steps: Step[]): Step[] =>
 
 export type RunStatus = 'running' | 'paused' | 'done' | 'stopped';
 
+/** One program counter with its own pause, in-flight turn, handback, last reply and session. The main line's fields ARE the Run's own. */
+export interface Track {
+  key: string;
+  title: string;
+  pc: number;
+  /** Non-main: its own status. Main: always 'running' (the run's status is the Run's own). */
+  state: 'running' | 'paused' | 'ended';
+  pause?: PauseReason;
+  inflight?: Promise<void>;
+  session?: EngineSession;
+  turnInFlight: boolean;
+  turnSession?: EngineSession;
+  interruptCard?: { text: string; kind: 'now' | 'stop' };
+  capped: boolean;
+  handback: string[];
+  lastTurnText?: string;
+  lastStepId?: string;
+  policy: Policy;
+  recall: string[];
+}
+
 export interface PauseReason {
   type:
     | 'gate'
@@ -260,6 +281,31 @@ export class Run {
   private subagents: Record<string, SubagentRecord> = {};
   /** The session whose turn is in flight: the run's own or a subagent's; interrupts go there. */
   private turnSession?: EngineSession;
+  /** The main line as a track: every field forwards to the Run's own, so snapshot, restore and every direct write read what they always read. */
+  readonly main: Track = Run.mainTrack(this);
+  private static mainTrack(r: Run): Track {
+    return {
+      key: '', title: '', state: 'running' as const,
+      get pc() { return r.programCounter; }, set pc(v) { r.programCounter = v; },
+      get pause() { return r.pauseReason; }, set pause(v) { r.pauseReason = v; },
+      get session() { return r.engineSession; }, set session(v) { r.engineSession = v; },
+      get turnInFlight() { return r.turnInFlight; }, set turnInFlight(v) { r.turnInFlight = v; },
+      get turnSession() { return r.turnSession; }, set turnSession(v) { r.turnSession = v; },
+      get interruptCard() { return r.interruptCard; }, set interruptCard(v) { r.interruptCard = v; },
+      get capped() { return r.capped; }, set capped(v) { r.capped = v; },
+      get handback() { return r.handback; }, set handback(v) { r.handback = v; },
+      get lastTurnText() { return r.lastTurnText; }, set lastTurnText(v) { r.lastTurnText = v; },
+      get lastStepId() { return r.lastStepId; }, set lastStepId(v) { r.lastStepId = v; },
+      get policy() { return r.currentPolicy; }, set policy(v) { r.currentPolicy = v; },
+      get recall() { return r.lastRecallContext; }, set recall(v) { r.lastRecallContext = v; },
+      inflight: undefined as Promise<void> | undefined,
+    } as Track;
+  }
+  /** The live tracks other than the main line, in start order (empty until the scheduler task). */
+  readonly tracks = new Map<string, Track>();
+  /** The ended tracks' results, in end order. */
+  readonly ended: Array<{ key: string; text: string }> = [];
+  private closing = false;
 
   constructor(opts: RunOptions) {
     this.workflow = opts.workflow;
