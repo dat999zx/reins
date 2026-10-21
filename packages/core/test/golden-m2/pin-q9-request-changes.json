@@ -1,0 +1,65 @@
+{
+  "afterBuild": {
+    "allowShell": true,
+    "guards": [],
+    "mode": "write"
+  },
+  "before": {
+    "allowShell": true,
+    "guards": [],
+    "mode": "write"
+  },
+  "delivered": [
+    {
+      "card": "use fewer files",
+      "channel": "next-turn",
+      "source": "gate-changes"
+    }
+  ],
+  "during": {
+    "allowShell": true,
+    "guards": [],
+    "mode": "write",
+    "pendingGate": "gate-1"
+  },
+  "opened": [
+    "Q9-main-1"
+  ],
+  "outputs": {
+    "plan": "plan v2\nREINS: done"
+  },
+  "pausedAgain": {
+    "pauseReason": {
+      "cond": {
+        "t": "approve"
+      },
+      "stepId": "gate-1",
+      "type": "gate"
+    },
+    "status": "paused"
+  },
+  "policyChecks": [
+    {
+      "allowShell": true,
+      "guards": [],
+      "mode": "write",
+      "pendingGate": "gate-1"
+    }
+  ],
+  "refusals": [
+    {
+      "reason": "Blocked by Reins: waiting for gate \"gate-1\". Edits unlock after it passes."
+    }
+  ],
+  "stats": {
+    "closed": 0,
+    "interrupts": 0,
+    "opened": 1,
+    "texts": [
+      "[Reins · workflow \"t\" · step 1 of 3: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · workflow \"t\" · the user asked for changes before approving]\n\nuse fewer files\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · workflow \"t\" · step 3 of 3: build]\n\nbuild\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    ]
+  },
+  "status": "done"
+}

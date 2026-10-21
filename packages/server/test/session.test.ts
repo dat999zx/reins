@@ -9,6 +9,7 @@ import { contextSize } from '../src/settings.js';
 import { openStore, type LogRow } from '../src/store.js';
 import { folderHash } from '../src/mods/claude-code-cli/folder.js';
 import { hashCommands } from '../src/trust.js';
+import type { Decision, ToolRequest } from '@reins/core';
 import { testEngine, type TestTurn } from './test-engine.js';
 
 const tmps: string[] = [];
@@ -2438,5 +2439,39 @@ describe('subagent (D): what it inherits and how it ends', () => {
     const subId = x.t.turnsBy.find((t) => t.text.includes('Look.'))!.session;
     expect(x.t.closedIds).toContain(subId);
     expect(x.t.closedIds.filter((i) => i === subId)).toHaveLength(1);
+  });
+});
+
+describe('M2 pins (task 3)', () => {
+  it('Q13 a Stop card settles only the oldest open question; the other stays open and is answered on its own', async () => {
+    const store = openStore(':memory:');
+    const t = testEngine([{ hold: true }]);
+    let approve!: (r: ToolRequest) => Promise<Decision>;
+    const makeEngine: MakeEngine = (e) => { approve = e.onApprove; return t.makeEngine(e); };
+    const row = store.createSession({ id: 's1', cwd: tmp(), engine: 'claude-code' });
+    const s = openSession({ store, makeEngine, folderTrust: t.folderTrust, dir: tmp() }, row, true);
+    const open = () => {
+      const l = store.readLog('s1');
+      return l.filter((r) => r.type === 'question').map((r) => r.data as Question)
+        .filter((q) => !l.some((x) => (x.type === 'answer' || x.type === 'question_closed') && (x.data as any).questionId === q.id));
+    };
+    s.message('go');
+    await until(() => t.turns.length === 1);
+    const first = approve({ tool: 'Bash', input: { command: 'ls' } });
+    const second = approve({ tool: 'Bash', input: { command: 'pwd' } });
+    await until(() => open().length === 2);
+    const [q1, q2] = open() as [Question, Question];
+    expect(s.card('halt', 'stop')).toEqual({ ok: true });
+    // at once, before anything else runs: the oldest is answered stop, the newer one is still open
+    expect(store.readLog('s1').filter((r) => r.type === 'answer').map((r) => r.data)).toEqual([{ questionId: q1.id, answer: 'stop' }]);
+    expect(open().map((q) => q.id)).toEqual([q2.id]);
+    expect(s.status()).toBe('waiting');
+    expect(await first).toEqual({ behavior: 'deny', message: 'The user said no: stop' });
+    // the newer question is not answered by the card: only the end of the interrupted turn closes it
+    await s.idle();
+    expect(store.readLog('s1').filter((r) => r.type === 'answer').map((r) => r.data)).toEqual([{ questionId: q1.id, answer: 'stop' }]);
+    expect(store.readLog('s1').filter((r) => r.type === 'question_closed').map((r) => r.data)).toEqual([{ questionId: q2.id, why: expect.any(String) }]);
+    expect((await second).behavior).toBe('deny');
+    expect(t.interrupts).toBe(1);
   });
 });

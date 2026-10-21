@@ -1,0 +1,54 @@
+{
+  "afterAllow": {
+    "reason": {
+      "limit": 3,
+      "spent": 0,
+      "text": "Reins cannot tell what this session has spent, so Allow cannot raise the dollar limit. Start a new session or remove the limit.",
+      "type": "usd-budget-used"
+    },
+    "status": "paused",
+    "texts": 1
+  },
+  "afterReply": {
+    "ended": {
+      "step": "a",
+      "text": "a\nREINS: done",
+      "unknown": true
+    },
+    "runCost": 0,
+    "runUnknown": true,
+    "status": "running"
+  },
+  "refused": {
+    "pc": 1,
+    "reached": [
+      {
+        "spent": 0,
+        "text": "Reins cannot tell what this session has spent, so Allow cannot raise the dollar limit. Start a new session or remove the limit.",
+        "usd": 2
+      }
+    ],
+    "reason": {
+      "limit": 2,
+      "spent": 0,
+      "text": "Reins cannot tell what this session has spent, so Allow cannot raise the dollar limit. Start a new session or remove the limit.",
+      "type": "usd-budget-used"
+    },
+    "status": "paused",
+    "texts": 1
+  },
+  "restored": {
+    "opened": [
+      "Q15-main-1"
+    ],
+    "reason": {
+      "limit": 2.5,
+      "spent": 0,
+      "text": "Reins cannot tell what this session has spent, so Allow cannot raise the dollar limit. Start a new session or remove the limit.",
+      "type": "usd-budget-used"
+    },
+    "runUnknown": true,
+    "status": "paused",
+    "texts": []
+  }
+}

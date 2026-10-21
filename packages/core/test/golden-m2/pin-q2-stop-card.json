@@ -1,0 +1,77 @@
+{
+  "counts": {
+    "main": {
+      "closed": 0,
+      "interrupts": 0,
+      "opened": 1,
+      "texts": [
+        "[Reins · workflow \"t\" · step 1 of 3: a]\n\na\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+      ]
+    },
+    "sub": {
+      "closed": 1,
+      "interrupts": 1,
+      "opened": 1,
+      "texts": [
+        "[Reins · workflow \"t\" · step 2 of 3: research]\n\nLook.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+      ]
+    }
+  },
+  "events": [
+    {
+      "data": {
+        "model": "m1",
+        "step": "subagent-1",
+        "title": "research"
+      },
+      "type": "subagent_started"
+    },
+    {
+      "data": {
+        "step": "subagent-1"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "card": "halt",
+        "kind": "stop",
+        "source": "live"
+      },
+      "type": "card_queued"
+    },
+    {
+      "data": {
+        "step": "subagent-1",
+        "text": ""
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "card": "halt",
+        "channel": "interrupt",
+        "kind": "stop"
+      },
+      "type": "card_delivered"
+    },
+    {
+      "data": {
+        "reason": "stop",
+        "text": "halt"
+      },
+      "type": "run_paused"
+    }
+  ],
+  "pauseReason": {
+    "text": "halt",
+    "type": "stop"
+  },
+  "status": "paused",
+  "subagents": {
+    "subagent-1": {
+      "cost": 0,
+      "sessionId": "Q2-sub-subagent-1"
+    }
+  }
+}

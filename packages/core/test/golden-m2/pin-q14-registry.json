@@ -1,0 +1,89 @@
+{
+  "cards": [
+    "guard",
+    "now",
+    "stop"
+  ],
+  "conds": [
+    "approve",
+    "tests",
+    "cmd",
+    "llm",
+    "review",
+    "done",
+    "diff",
+    "touches",
+    "attempts",
+    "same",
+    "drift"
+  ],
+  "nodes": [
+    {
+      "kind": "phase",
+      "ops": []
+    },
+    {
+      "kind": "say",
+      "ops": []
+    },
+    {
+      "kind": "run",
+      "ops": [
+        "RUN"
+      ]
+    },
+    {
+      "kind": "gate",
+      "ops": [
+        "GATE"
+      ]
+    },
+    {
+      "kind": "repeat",
+      "ops": [
+        "LOOP_IN",
+        "LOOP_BK"
+      ]
+    },
+    {
+      "kind": "if",
+      "ops": [
+        "IF"
+      ]
+    },
+    {
+      "kind": "verify",
+      "ops": [
+        "VERIFY"
+      ]
+    },
+    {
+      "kind": "use",
+      "ops": []
+    },
+    {
+      "kind": "recall",
+      "ops": [
+        "RECALL"
+      ]
+    },
+    {
+      "kind": "store",
+      "ops": [
+        "STORE"
+      ]
+    },
+    {
+      "kind": "model",
+      "ops": []
+    },
+    {
+      "kind": "subagent",
+      "ops": []
+    },
+    {
+      "kind": "end",
+      "ops": []
+    }
+  ]
+}
