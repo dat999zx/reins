@@ -616,6 +616,14 @@ describe('listModels', () => {
     expect(a.requests[0].headers.authorization).toBeUndefined();
   });
 
+  it('the list request carries the API version header, as the chat call does (the real API answers 400 without it)', async () => {
+    await listed();
+    expect(a.requests[0].headers['anthropic-version']).toBe('2023-06-01');
+    await listed(manifest({ modelsUrl: `${a.url}/v1/models?limit=5` }));
+    expect(a.requests[1].headers['anthropic-version']).toBe('2023-06-01');
+    expect(wire.listRequest!(manifest()).headers['anthropic-version']).toBe('2023-06-01');
+  });
+
   it('a base address with /v1 is not given a second one', async () => {
     expect(await listed(manifest({ baseUrl: `${a.url}/v1/` }))).toEqual(['fake-model-1', 'fake-model-2']);
     expect(a.requests[0].path).toBe('/v1/models');

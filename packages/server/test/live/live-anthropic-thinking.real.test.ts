@@ -6,7 +6,10 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import { LONG, blocksOf, call, chatRequests, conversationLines, liveSuite, startWorld, tokens, toolCalls, twice, type World } from './live-harness.js';
 
 const MODEL = 'claude-sonnet-5-5';
-const BUDGET_TOKENS = 1024;
+// This model refuses `type: enabled` with a budget (a real 400). Adaptive thinking only thinks when the model decides to, and `display: summarized`
+// is what makes the thinking text arrive; an easy prompt gets no thinking at all, so the prompt is a small puzzle (found by trying the API).
+const THINK_BODY = { thinking: { type: 'adaptive', display: 'summarized' }, output_config: { effort: 'medium' } };
+const FILE = '125.txt'; // the answer of the puzzle: the smallest n over 100 whose square ends in 625
 
 liveSuite('row 4: thinking, a tool call, and the signature (Anthropic wire)', { key: 'anthropic' }, () => {
   let w: World;
@@ -15,25 +18,25 @@ liveSuite('row 4: thinking, a tool call, and the signature (Anthropic wire)', { 
       provider: 'anthropic', model: MODEL, settings: { maxCallsPerTurn: 8 },
       // Test-local: an effort level that sets the thinking body.
       edit: (m) => {
-        m.efforts = [{ id: 'think', label: 'Think', body: { thinking: { type: 'enabled', budget_tokens: BUDGET_TOKENS } } }];
+        m.efforts = [{ id: 'think', label: 'Think', body: THINK_BODY }];
         m.defaultEffort = 'think';
       },
     });
     await w.consent();
-    fs.writeFileSync(path.join(w.proj, 'hello.txt'), 'hello from the file\n');
+    fs.writeFileSync(path.join(w.proj, FILE), 'hello from the file\n');
   }, LONG);
   afterAll(async () => { await w?.close(); }, LONG);
 
   it('a turn that thinks, calls a tool and continues is accepted, and the stored conversation keeps the signed thinking block', async () => {
     const attempt = (strict: boolean) => async () => {
       w.script(
-        { thinking: { text: 'I should read hello.txt first.', signature: 'sig-thinking-0001-abcdefghijklmnop' }, ...call('Read', { file_path: 'hello.txt' }), usage: tokens(1400, 220) },
+        { thinking: { text: 'I should read hello.txt first.', signature: 'sig-thinking-0001-abcdefghijklmnop' }, ...call('Read', { file_path: FILE }), usage: tokens(1400, 220) },
         { text: 'The file says: hello from the file.', usage: tokens(1700, 40) },
       );
       const s = await w.session({ effort: 'think' });
       const prompt = strict
-        ? 'First think it through. Then you MUST call the Read tool on hello.txt in the project folder before you answer. After the result, say in one sentence what the file says.'
-        : 'Think about it, then use the Read tool to read hello.txt in the project folder, and tell me in one sentence what it says.';
+        ? 'A file in the project folder is named after the smallest integer n greater than 100 whose square ends in the digits 625, with .txt appended. Think the answer through carefully, then you MUST call the Read tool on that file before you answer. After the result, say in one sentence what the file says.'
+        : 'A file in the project folder is named after the smallest integer n greater than 100 whose square ends in the digits 625, with .txt appended. Work it out by careful reasoning, then use the Read tool on that file and tell me in one sentence what it says.';
       const out = await w.say(s, prompt);
       const lines = conversationLines(w.dir, w.store.getSession(s)!.engineSessionId!);
       const thinking = blocksOf(lines, 'reasoning');
@@ -55,7 +58,7 @@ liveSuite('row 4: thinking, a tool call, and the signature (Anthropic wire)', { 
     expect(usage).toBeGreaterThanOrEqual(2);
     if (w.fake) {
       const [first, second] = chatRequests(w);
-      expect(first!.body.thinking).toEqual({ type: 'enabled', budget_tokens: BUDGET_TOKENS });
+      expect(first!.body.thinking).toEqual(THINK_BODY.thinking);
       const back = second!.body.messages.flatMap((m: any) => (m.role === 'assistant' ? m.content : [])).filter((b: any) => b.type === 'thinking');
       expect(back).toHaveLength(1);
       expect(back[0].signature).toBe('sig-thinking-0001-abcdefghijklmnop');
@@ -64,7 +67,7 @@ liveSuite('row 4: thinking, a tool call, and the signature (Anthropic wire)', { 
     w.evidence({
       row: '4', pass: true,
       counts: { tries: r.tries, thinkingBlocks: thinking.length, thinkingBlocksWithSignature: signed.length, signatureChars: signed[0].signature.length, assistantRepliesWithUsage: usage, turnEnded: out.ended, turnFailed: false },
-      notes: [`budget_tokens ${BUDGET_TOKENS} through a test-local effort level of the manifest`, 'the second request was accepted (no 400)'],
+      notes: ['adaptive thinking, effort low, through a test-local effort level of the manifest', 'the second request was accepted (no 400)'],
     });
     expect(w.sweepAll().hits).toEqual([]);
   }, LONG);

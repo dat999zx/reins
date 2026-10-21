@@ -6,6 +6,8 @@ import type { EngineHost, ModApi, ProviderManifest, Wire } from '../types.js';
 
 /** [needs key]: confirm against the real API in Task 29. Thinking blocks go back only within the turn being continued (after a tool result). */
 const THINKING_ONLY_IN_THE_TURN = true;
+/** The API refuses any request without this header (the model list too: a 400 "header is required"), so every request carries it. */
+const API_VERSION = '2023-06-01';
 /** The API requires `max_tokens`; this is what a model that names none gets. */
 const DEFAULT_MAX_TOKENS = 4096;
 
@@ -107,7 +109,7 @@ async function* call(req: ModelRequest, p: ProviderManifest, h: EngineHost, sign
   if (!h.send) throw new Error('This host cannot send requests to a provider.');
   const res = await h.send(withKeyHeader(p), endpoint(p.baseUrl, 'messages'), {
     method: 'POST',
-    headers: { 'anthropic-version': '2023-06-01', 'content-type': 'application/json', accept: 'text/event-stream' },
+    headers: { 'anthropic-version': API_VERSION, 'content-type': 'application/json', accept: 'text/event-stream' },
     body: JSON.stringify(requestBody(req, p)),
     signal,
   }, 'chat');
@@ -278,7 +280,7 @@ async function* call(req: ModelRequest, p: ProviderManifest, h: EngineHost, sign
 }
 
 /** `modelsUrl`, or `{baseUrl}/v1/models`; the provider's own page size is raised so one request lists them all. */
-const listRequest = (p: ProviderManifest) => ({ manifest: withKeyHeader(p), url: p.modelsUrl ?? `${endpoint(p.baseUrl, 'models')}?limit=1000`, headers: { accept: 'application/json' } });
+const listRequest = (p: ProviderManifest) => ({ manifest: withKeyHeader(p), url: p.modelsUrl ?? `${endpoint(p.baseUrl, 'models')}?limit=1000`, headers: { 'anthropic-version': API_VERSION, accept: 'application/json' } });
 const listModels = (p: ProviderManifest, h: EngineHost, signal: AbortSignal) => listModelIds(listRequest(p), h, signal);
 
 const wire: Wire = { call, listRequest, listModels };
