@@ -48,6 +48,8 @@ export interface SessionDeps {
   consent?: (provider: string) => Consent | undefined;
   /** The origin of the provider's address as installed NOW (undefined: gone, off, or Reins sends nothing to it). A running engine opened for another origin is dropped. */
   origin?: (provider: string) => string | undefined;
+  /** The generation of the provider's validated manifest as installed NOW (`generationOf`): an engine opened for another one is dropped, so a changed price, path, header or body is used from the next reply. */
+  generation?: (provider: string) => string | undefined;
 }
 /** A provider's consent question: the words, and what a yes records. */
 export interface Consent {
@@ -119,6 +121,13 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   let retiring: Promise<unknown> = Promise.resolve();
   // The open that is live had no stored cost total to count from, so its first reply's cost is unknown.
   let baseUnknown = false;
+  // The cost of an auto-compaction that the Run has not counted yet. It is held from the end of the compaction until the reply that follows it is
+  // handed to the Run (or fails, and the error carries it), and the room the engine is given is less by it, so that reply is judged with the room
+  // that is really left. The stored total moves only when the Run takes the cost: a restart in between finds the compaction in the conversation
+  // file and not in the stored total, and the engine charges the difference to the next turn.
+  let debit = 0;
+  // Counts the engines opened: a reply after a compaction on a NEW engine already holds the compaction's cost (its base is the old stored total).
+  let opened = 0;
   // A model switch no reply has proved yet: where to go back to (model, provider, reasoning) if the first reply fails.
   let pendingSwitch: { from: string | undefined; to: string; fromEngine: string; fromEffort: string | undefined } | undefined;
   let run: Run | undefined;
@@ -184,10 +193,13 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
 
   // The origin of the provider's address when `engine` was made. A reload that changes it (or removes the provider) retires the engine before its next use.
   let openedFor: string | undefined;
+  // The same for the generation of its manifest: a change of the settings on the same address retires it as well.
+  let openedGen: string | undefined;
   const getEngine = () => {
     if (engine) return engine;
     const cur = store.getSession(id)!; // the model can change after the session was opened
     openedFor = deps.origin?.(cur.engine);
+    openedGen = deps.generation?.(cur.engine);
     return (engine = deps.makeEngine({
       provider: cur.engine,
       ...(cur.model ? { model: cur.model } : {}),
@@ -396,14 +408,20 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       policy: () => run?.policy() ?? PLAIN,
       pendingCards: () => (run ? run.takeCards() : queue.splice(0)),
       // The run borrows this session, so its USD room is read here live; with no run (plain chat) there is no limit.
-      usdRoom: () => run?.usdRoom(),
+      usdRoom: () => {
+        const room = run?.usdRoom();
+        return room === undefined ? undefined : room - debit;
+      },
     });
     live = s;
+    opened++;
     return cancelOpen || stopping ? undefined : s;
   }
   /** Retires an engine that was made for another address than the provider has now; the next use opens a new one, which asks first. */
   function dropIfStale() {
-    if (engine && !opening && deps.origin && deps.origin(store.getSession(id)!.engine) !== openedFor) dropEngine();
+    if (!engine || opening) return;
+    const provider = store.getSession(id)!.engine;
+    if ((deps.origin && deps.origin(provider) !== openedFor) || (deps.generation && deps.generation(provider) !== openedGen)) dropEngine();
   }
   const ensureEngine = (): Promise<EngineSession | undefined> => {
     dropIfStale();
@@ -453,7 +471,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   }
 
   /** One engine call (a reply or a compaction): the process, the cost total, the unknown-cost note, a failed switch. */
-  async function call(f: (s: EngineSession) => Promise<TurnResult>): Promise<TurnResult> {
+  async function call(f: (s: EngineSession) => Promise<TurnResult>, holdTotal = false): Promise<TurnResult> {
     notSent = false;
     // A running engine was opened under an earlier yes: the yes is looked up again for the CURRENT address on every call (a revoke, or a
     // changed address, asks again). A closed engine asks when it opens.
@@ -474,7 +492,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       turnOpen = false;
       closeQuestions('the turn ended', 'tool');
     }
-    if (res.total !== undefined) store.putEngineTotal(s.sessionId, res.total, res.totals);
+    if (res.total !== undefined && !holdTotal) store.putEngineTotal(s.sessionId, res.total, res.totals);
     // ponytail: a session from before the cost table shows its first reply's cost as unknown; a switch to Default has no price, so with a context it asks with the switch card.
     if (baseUnknown && res.total !== undefined) {
       baseUnknown = false;
@@ -498,6 +516,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     const s = await ensureEngine(); // the check needs s.compact
     if (!s) { notSent = true; return { text: '', events: [] }; } // a Stop landed while the engine opened
     let pre: TurnResult | undefined;
+    let engines = opened; // the engine the compaction ran on
     if (s.compact) {
       const rows = store.readLog(id);
       const used = contextSize(rows);
@@ -509,10 +528,11 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
           log('note', { text: `The context is still at or over ${pct}% of the window after compressing, so Reins does not compress again before this reply.` }, runId);
         } else {
           log('note', { text: `The context, ${used.toLocaleString('en-US')} tokens, is at or over ${pct}% of the ${w.toLocaleString('en-US')}-token window: compressing before the next reply.` }, runId);
-          pre = await call(compactCall);
+          pre = await call(compactCall, true);
+          engines = opened;
           // A Stop during the compaction interrupted it: do not send the reply. A now card still gets its turn.
           if (stopping || intent?.kind === 'stop' || run?.stopHeld) {
-            return { text: '', events: [], ...(pre.cost !== undefined ? { cost: pre.cost } : {}), ...(pre.total !== undefined ? { total: pre.total } : {}), ...(pre.models ? { models: pre.models } : {}) };
+            return handOver(s, pre, { text: '', events: [] });
           }
         }
       } else if (at < 1 && w === undefined) {
@@ -522,19 +542,43 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
         if (unknown !== undefined && !rows.some((r) => r.type === 'note' && (r.data as { text?: unknown } | null)?.text === text)) log('note', { text }, runId);
       }
     }
-    // The compaction's cost reaches the log even when the reply does not: its own row has no runId, so it is no turn of a run.
-    const lost = () => { if (pre?.cost !== undefined) log('turn_ended', { text: '', cost: pre.cost }); };
+    // The reply is judged with the room that is really left: the compaction's cost is a debit until the Run has it.
+    debit = pre?.cost ?? 0;
     let res: TurnResult;
     try {
       res = await call((x) => x.turn(text));
     } catch (e) {
-      lost();
+      debit = 0;
+      if (pre) {
+        // A reply that failed after a paid compaction: in a run the cost goes to the run with the error (core counts what a rejected turn paid);
+        // in plain chat there is no run, and its own row says it.
+        if (run) {
+          try { Object.assign(e as object, { paid: paidOf(pre) }); } catch { /* an error that cannot carry it: the row below is all there is */ }
+        } else if (pre.cost !== undefined) log('turn_ended', { text: '', cost: pre.cost });
+        if (pre.total !== undefined) store.putEngineTotal(s.sessionId, pre.total, pre.totals);
+      }
       throw e;
     }
-    if (notSent && pre) { lost(); return res; }
-    const cost = pre?.cost === undefined ? res.cost : (res.cost ?? 0) + pre.cost;
-    const models = sumModels(pre?.models, res.models);
+    debit = 0;
+    if (notSent && pre) return handOver(s, pre, res);
+    // A reply on a NEW engine (the old one was retired in between) was charged the compaction already: its base was the stored total from before it.
+    if (!pre || opened !== engines) return res;
+    const cost = pre.cost === undefined ? res.cost : (res.cost ?? 0) + pre.cost;
+    const models = sumModels(pre.models, res.models);
     return cost === undefined || cost === res.cost ? (models === res.models ? res : { ...res, ...(models ? { models } : {}) }) : { ...res, cost, ...(models ? { models } : {}) };
+  }
+
+  /** What a compaction spent, as the fields a result and a rejected turn's `paid` carry. */
+  const paidOf = (r: TurnResult) => ({ ...(r.cost !== undefined ? { cost: r.cost } : {}), ...(r.total !== undefined ? { total: r.total } : {}), ...(r.totals ? { totals: r.totals } : {}), ...(r.models ? { models: r.models } : {}) });
+  /**
+   * The turn ends with `res` (nothing was sent after the compaction): the compaction's spend is handed over inside it, which is the Run taking the
+   * cost, so the stored total moves now. With no run (plain chat) the spend is logged by `plainTurn` from the result's cost as for any turn, except
+   * when `notSent` (that logs nothing), where the row is written here.
+   */
+  function handOver(s: EngineSession, pre: TurnResult, res: TurnResult): TurnResult {
+    if (pre.total !== undefined) store.putEngineTotal(s.sessionId, pre.total, pre.totals);
+    if (notSent && !run && pre.cost !== undefined) log('turn_ended', { text: '', cost: pre.cost });
+    return { ...res, ...paidOf(pre) };
   }
 
   const lent: EngineSession = {

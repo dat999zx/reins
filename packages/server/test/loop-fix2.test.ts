@@ -300,7 +300,8 @@ describe('fix 6: a big tool input is shown as a preview', () => {
         yield { type: 'done' };
       },
     };
-    const r = await make({ wire });
+    // This hand-made wire hands over 20 MB in one call, which no real wire keeps (4 MiB of arguments): the reply cap is raised for it.
+    const r = await make({ wire, deps: { limits: { replyBytes: 64 * 1024 * 1024 } } });
     const res = await (await r.open({ cwd, policy: () => WRITE_MODE })).turn('go');
     const call = ofType(res.events!, 'tool_call')[0]!;
     expect(JSON.stringify(call).length).toBeLessThan(20_000);

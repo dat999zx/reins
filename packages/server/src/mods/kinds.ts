@@ -1,4 +1,5 @@
 import { hasHiddenChars } from '@reins/core';
+import { RESERVED_BODY } from '../loop/wire-util.js';
 import { Registry } from './registry.js';
 import type { LoadedMod, ModHost, ModKind, Problem } from './types.js';
 
@@ -133,6 +134,16 @@ registerKind({
       }
     }
 
+    // A `body` is merged into every request. It may not name what Reins writes itself: a body that changed the model would bill a model other than
+    // the one that was priced, and one that replaced the messages or the tools would change what is sent. (`mergeBodies` enforces it again.)
+    const checkBody = (where: string, body: unknown) => {
+      if (body === undefined) return;
+      if (!isObj(body)) return bad(`\`${where}\` must be an object.`);
+      const named = RESERVED_BODY.filter((k) => Object.hasOwn(body, k));
+      if (named.length) bad(`\`${where}\` names ${named.map((k) => `\`${k}\``).join(', ')}, which Reins sets itself. A body cannot change the model, the messages, the tools or the stream settings.`);
+    };
+    checkBody('body', raw.body);
+
     // A price is USD per million tokens: a number that is not negative and not NaN or infinite, or the money guard would compare against NaN.
     const money = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
     const checkPrice = (where: string, price: unknown, needOutput: boolean) => {
@@ -157,7 +168,7 @@ registerKind({
     if (Array.isArray(raw.efforts)) {
       for (const e of raw.efforts) {
         if (full()) break;
-        if (isObj(e)) { shown('efforts.id', e.id); shown('efforts.label', e.label); }
+        if (isObj(e)) { shown('efforts.id', e.id); shown('efforts.label', e.label); checkBody(`efforts.${typeof e.id === 'string' ? cap(e.id) : '?'}.body`, e.body); }
       }
     }
 
@@ -172,6 +183,7 @@ registerKind({
           ids.add(m.id);
           shown('models.id', m.id);
           shown('models.label', m.label);
+          checkBody(`models.${cap(m.id)}.body`, m.body);
           if (m.price !== undefined) checkPrice(`models.${cap(m.id)}.price`, m.price, false);
         }
       }

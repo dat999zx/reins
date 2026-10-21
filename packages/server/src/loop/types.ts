@@ -47,6 +47,7 @@ export type WireEvent =
   | { type: 'thinking'; text: string; signature?: string }
   /** Once, complete. `args` is the raw JSON text; the loop parses it. */
   | { type: 'tool_call'; id: string; name: string; args: string; extra?: Extra }
-  | { type: 'usage'; usage: Usage }
+  /** `unknown`: the stream carried no usage at all, so `usage` is zeros that mean nothing and the cost of the call is unknown, never 0. */
+  | { type: 'usage'; usage: Usage; unknown?: true }
   /** The last event. `extra`: unknown fields of the whole message. */
   | { type: 'done'; stop?: string; extra?: Extra };

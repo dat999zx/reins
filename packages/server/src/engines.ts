@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { EngineProbe } from '@reins/core';
@@ -59,6 +60,32 @@ export async function startMods(o: { dir: string; env: NodeJS.ProcessEnv }): Pro
 
 const manifestOf = (mods: Mods, provider: string) => mods.registry.get<LoadedMod>('provider', provider)?.manifest as ProviderManifest | undefined;
 
+/** The same JSON with the keys of every object in order, so the order a file happens to list them in is not a change. */
+const canon = (v: unknown): unknown =>
+  Array.isArray(v) ? v.map(canon)
+    : typeof v === 'object' && v !== null ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([k, x]) => [k, canon(x)]))
+      : v;
+const generations = new WeakMap<object, string>();
+/**
+ * The generation of a provider's validated manifest: a hash of its JSON. An engine keeps the generation it was opened with; a send or a session
+ * whose provider now has another one refuses and opens a new engine (a changed path, price, header, body, model or reasoning level). A reload that
+ * changes nothing gives the same generation.
+ */
+export function generationOf(m: ProviderManifest): string {
+  let g = generations.get(m);
+  if (g === undefined) {
+    g = createHash('sha256').update(JSON.stringify(canon(m))).digest('hex');
+    generations.set(m, g);
+  }
+  return g;
+}
+
+/** The generation of the provider as installed NOW; undefined when it is gone or Reins does not send for it (the CLI provider). */
+export const providerGeneration = (mods: Mods, provider: string): string | undefined => {
+  const found = resolve(mods, provider);
+  return found?.protocol.conversation === 'reins' ? generationOf(found.manifest) : undefined;
+};
+
 /** The provider's manifest and its protocol, or undefined when either is not installed. */
 function resolve(mods: Mods, provider: string): { manifest: ProviderManifest; protocol: Protocol } | undefined {
   const manifest = manifestOf(mods, provider);
@@ -91,7 +118,7 @@ export type ConsentCheck = (modId: string, origin: string) => boolean;
  * The `send` a production host carries. `consent` is the store's check; the default says no, so a host built without one sends nothing.
  * Built on first use: a session that never sends reads no secrets.
  */
-export function hostSend(mods: Mods, base: Pick<EngineHost, 'env' | 'home'>, consent: ConsentCheck = () => false, shared?: Redactor): Pick<EngineHost, 'send' | 'redact' | 'redactAll' | 'redactStream' | 'holdsSecret' | 'key'> {
+export function hostSend(mods: Mods, base: Pick<EngineHost, 'env' | 'home'>, consent: ConsentCheck = () => false, shared?: Redactor, generation?: string): Pick<EngineHost, 'send' | 'redact' | 'redactAll' | 'redactStream' | 'holdsSecret' | 'key'> {
   // `shared`: the process's own Redactor (the store's). One per process, so a key retired in it stays masked in every engine's files and tool results;
   // without one (a test that builds a host by hand) this host makes its own.
   let redactor: Redactor | undefined = shared;
@@ -120,8 +147,10 @@ export function hostSend(mods: Mods, base: Pick<EngineHost, 'env' | 'home'>, con
     holdsSecret: (t) => lazy.has(t),
     send: (m, url, init, purpose) => {
       send ??= makeSend({ secrets: () => readSecrets(base.home), env: base.env, redactor: lazy, consent, consentNow: consent,
-        // The registry is read at every send: an engine opened before a reload keeps its old manifest, but never sends by it.
-        current: (id) => manifestOf(mods, id),
+        // The registry is read at every send: an engine opened before a reload keeps its old manifest, but never sends by it. A change of the
+        // settings on the same address is a new generation: this engine's manifest is old, so it sends nothing more.
+        current: (id) => { const m = manifestOf(mods, id); return m && { id: m.id, kind: m.kind, baseUrl: m.baseUrl, label: m.label, generation: generationOf(m) }; },
+        ...(generation !== undefined ? { generation } : {}),
         listUrl: (m) => resolve(mods, m.id)?.protocol.wire?.listRequest?.(m).url,
       });
       return send(m, url, init, purpose);
@@ -158,7 +187,7 @@ export function makeEngineFrom(mods: Mods, base: Pick<EngineHost, 'env' | 'home'
   return ({ provider, ...rest }) => {
     const found = resolve(mods, provider);
     if (!found) throw new Error(`The provider "${provider}" is not installed.`);
-    const sent = hostSend(mods, base, consent, redactor);
+    const sent = hostSend(mods, base, consent, redactor, generationOf(found.manifest));
     const children = shellEnvFrom(mods, base.env, sent.holdsSecret!);
     const host = { ...sent, ...base, helperEnv: children, shellEnv: children, ...rest };
     // A 'reins' protocol is a wire: Reins owns the conversation and runs it in the API agent loop.
@@ -181,6 +210,11 @@ export const liveListSource = (mods: Mods, host: Pick<EngineHost, 'env' | 'home'
   keyless: (provider: string): boolean => {
     const auth = manifestOf(mods, provider)?.auth;
     return !auth || auth.style === 'none';
+  },
+  /** What a cached list belongs to: the address and the generation of the manifest as installed now ('' when it is gone). */
+  version: (provider: string): string => {
+    const m = manifestOf(mods, provider);
+    return m ? `${m.baseUrl}\n${generationOf(m)}` : '';
   },
 });
 

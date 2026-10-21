@@ -423,9 +423,12 @@ describe('usage', () => {
     expect(usageOf(await run())[0].usage.output).toBe(4);
   });
 
-  it('no usage at all gives zeros and one usage event', async () => {
+  it('no usage at all gives one usage event marked unknown (zeros that mean nothing), never a known 0', async () => {
     a.push(raw(textBlock(0, 'x'), stopFrame()));
-    expect(usageOf(await run())).toEqual([{ type: 'usage', usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 } }]);
+    expect(usageOf(await run())).toEqual([{ type: 'usage', usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 }, unknown: true }]);
+    // a usage object in message_start or in message_delta is a usage the server gave
+    a.push(raw(start({}), textBlock(0, 'x'), stopFrame()));
+    expect(usageOf(await run())[0]!.unknown).toBeUndefined();
   });
 
   it('counts are whole numbers: a fraction is cut down, negative, odd and unsafe values are 0', async () => {

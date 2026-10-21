@@ -121,7 +121,13 @@ export function makeSend(o: {
    * The provider's CURRENT installed manifest (the live registry), asked at every send. An engine keeps the manifest it was opened with; when the
    * current base address has another origin, or the provider is gone, nothing is sent. None: the manifest of the call is trusted (tests).
    */
-  current?(modId: string): { id: string; kind: string; baseUrl: string; label?: string } | undefined;
+  current?(modId: string): { id: string; kind: string; baseUrl: string; label?: string; generation?: string } | undefined;
+  /**
+   * The generation of the manifest this sender's engine was opened with (a hash of the validated manifest, `generationOf`). When the installed
+   * provider's generation is another one, its settings changed (a path, the auth, a price, a header, the body): nothing is sent, and the next
+   * reply opens a new engine. Consent does not depend on it: that is per (id, origin). None: only the origin is compared.
+   */
+  generation?: string;
   /** The address of the provider's model list as its wire defines it (query included), for the keyless exemption. None: `modelsUrl` or `<baseUrl>/models`. */
   listUrl?(mod: ProviderManifest): string | undefined;
   fetch?: typeof fetch;
@@ -217,15 +223,18 @@ export function makeSend(o: {
     const checkCurrent = () => {
       if (!o.current) return;
       let now: string | undefined;
+      let generation: unknown;
       try {
         const cur = o.current(m.id);
         // Only a provider of this very id counts; any other shape (another kind, another id, a value that is not a manifest) is "not installed".
         now = cur && typeof cur === 'object' && cur.id === m.id && cur.kind === 'provider' ? new URL(cur.baseUrl).origin : undefined;
+        generation = cur?.generation;
       } catch {
         now = undefined; // a lookup that throws is no answer: nothing is sent
       }
       if (now === undefined) throw new Local(token, { kind: 'changed', message: `${label} is no longer installed or is switched off, so nothing was sent.` });
       if (now !== base.origin) throw new Local(token, { kind: 'changed', message: `The address of ${label} changed. The next reply asks again.` });
+      if (o.generation !== undefined && generation !== o.generation) throw new Local(token, { kind: 'changed', message: `The settings of ${label} changed. The next reply starts a fresh connection.` });
     };
     checkCurrent();
     const target = originOf(token, 'The request address', String(url));

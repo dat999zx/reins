@@ -1945,7 +1945,8 @@ describe('per-model cost (C)', () => {
       addsUp(r);
     });
 
-    it("when the reply fails, the compaction's dollars go to its own turn_ended with no split and none to the run", async () => {
+    // Phase B3 (b): this used to say the dollars were an unassociated turn_ended row and none went to the run; that row was display only, not accounting.
+    it("when the reply fails, the compaction's dollars and split go to the run (its engine_cost), and no row outside the run says them", async () => {
       const x = setup([{ usage: 600_000 }, { cost: 0.02, models: { a: 0.02 } }, { reject: 'x' }]);
       x.store.putSetting('autoCompressAt', 0.5);
       x.s.message('one');
@@ -1956,8 +1957,8 @@ describe('per-model cost (C)', () => {
       await x.s.idle();
       const rid = x.rows('run_started')[0]!.runId!;
       expect(x.rows('run_detached')).toHaveLength(1);
-      expect(x.data('turn_ended')).toEqual([{ text: 'ok', cost: 0.01 }, { text: '', cost: 0.02 }]);
-      expect(runEvents(x, rid, 'engine_cost')).toEqual([]);
+      expect(x.data('turn_ended')).toEqual([{ text: 'ok', cost: 0.01 }]);
+      expect(runEvents(x, rid, 'engine_cost')).toEqual([{ usd: 0.02, models: { a: 0.02 } }]);
     });
 
     it('a Stop during the compaction still hands the run its cost and split', async () => {

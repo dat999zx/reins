@@ -595,7 +595,7 @@ export class Run {
    * USD is checked between steps, after the fact, so a reply can run past a limit. The workflow's
    * budget comes first: a slice pause then always has workflow money left, so its Allow is never a dead end.
    */
-  // ponytail: a reply with an unknown cost counts 0; an auto-compaction whose reply failed is logged outside the run and not counted; a `now` card's follow-up reply is part of its step and is not checked between replies; a subagent's follow-ups share its process's provider cap
+  // ponytail: a reply with an unknown cost counts 0 here (the engine refuses its own next call under a limit); a `now` card's follow-up reply is part of its step and is not checked between replies; a subagent's follow-ups share its process's provider cap
   private usdOver(s: { step: string; usd: number } | undefined = this.openSlice): boolean {
     const hit = (stepId: string | undefined, limit: number, spent: number) => this.pauseUsd(stepId, limit, spent);
     const usd = this.workflow.budget.usd;
@@ -668,6 +668,24 @@ export class Run {
     return result;
   }
 
+  /** What a turn spent counts against the run, the subagent's record or the engine totals, and the open slice (or the subagent's); returns that slice. */
+  private countCost(result: TurnResult, sub?: { rec: SubagentRecord; slice: { step: string; usd: number } | undefined }): { step: string; usd: number } | undefined {
+    this.runCost += result.cost ?? 0;
+    if (sub) {
+      sub.rec.cost = r6(sub.rec.cost + (result.cost ?? 0));
+      if (result.total !== undefined) {
+        sub.rec.total = result.total;
+        if (result.totals) sub.rec.totals = result.totals; else delete sub.rec.totals;   // a total with no split: the next process has no split, never a wrong one (C S4)
+      }
+    } else {
+      if (result.total !== undefined) this.lastTotal = result.total;
+      if (result.totals) this.lastTotals = result.totals;
+    }
+    const slice = sub ? sub.slice : this.openSlice;
+    if (slice) this.usdSpent[slice.step] = (this.usdSpent[slice.step] ?? 0) + (result.cost ?? 0);
+    return slice;
+  }
+
   private async runTurn(
     session: EngineSession, stepId: string, text: string,
     sub?: { rec: SubagentRecord; slice: { step: string; usd: number } | undefined },
@@ -680,6 +698,15 @@ export class Run {
       let result: TurnResult;
       try {
         result = await session.turn(turnText);
+      } catch (e) {
+        // A turn that threw can still have spent money (an engine's paid compaction before the reply that failed): it rides on the error as
+        // `paid`, and counts as spend of this step like the cost of a result. No turn_ended row: no turn was answered.
+        const paid = (e as { paid?: Pick<TurnResult, 'cost' | 'total' | 'totals' | 'models'> } | null)?.paid;
+        if (paid && typeof paid.cost === 'number' && Number.isFinite(paid.cost) && paid.cost > 0) {
+          this.handleTurnResult({ text: '', ...paid });
+          this.countCost({ text: '', ...paid }, sub);
+        }
+        throw e;
       } finally {
         this.turnInFlight = false;
         this.turnSession = undefined;
@@ -687,19 +714,7 @@ export class Run {
       this.totalTurns++;
       this.lastTurnText = result.text;
       this.handleTurnResult(result);
-      this.runCost += result.cost ?? 0;
-      if (sub) {
-        sub.rec.cost = r6(sub.rec.cost + (result.cost ?? 0));
-        if (result.total !== undefined) {
-          sub.rec.total = result.total;
-          if (result.totals) sub.rec.totals = result.totals; else delete sub.rec.totals;   // a total with no split: the next process has no split, never a wrong one (C S4)
-        }
-      } else {
-        if (result.total !== undefined) this.lastTotal = result.total;
-        if (result.totals) this.lastTotals = result.totals;
-      }
-      const slice = sub ? sub.slice : this.openSlice;
-      if (slice) this.usdSpent[slice.step] = (this.usdSpent[slice.step] ?? 0) + (result.cost ?? 0);
+      const slice = this.countCost(result, sub);
       const usage = result.events?.find((e): e is Extract<typeof e, { type: 'usage' }> => e.type === 'usage');
       this.logEvent('turn_ended', {
         step: stepId, text: result.text, cost: result.cost,

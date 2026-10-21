@@ -7,7 +7,7 @@ import { printWorkflow, type EngineProbe, type Workflow } from '@reins/core';
 import { sameToken } from './token.js';
 import { releaseLock, runningLock, takeLock } from './lock.js';
 import type { Catalog, CatalogModel } from './catalog.js';
-import { CATALOG_DIR, checkEnvFrom, consentFrom, defaultProviderOf, folderTrustFrom, hostSend, liveListSource, providerOrigin, providerViews, shellEnvFrom, startMods, type ProviderView } from './engines.js';
+import { CATALOG_DIR, checkEnvFrom, consentFrom, defaultProviderOf, folderTrustFrom, hostSend, liveListSource, providerGeneration, providerOrigin, providerViews, shellEnvFrom, startMods, type ProviderView } from './engines.js';
 import { addCustom, deleteKey, editMod, exportMod, firstRunDone, importApply, importPreview, installMods, listMods, providerStatus, putKey, reinstallMod, removeMod, revokeConsent, setConsent, setEnabled, testConnection, type ConsentStore } from './mods/actions.js';
 import type { Redactor } from './secrets.js';
 import { createLiveModels } from './live-models.js';
@@ -235,7 +235,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
   });
   // The one env of workflow commands and helpers, worked out at each start: it reads the providers and keys as they are THEN.
   const children = shellEnvFrom(mods, o.env ?? process.env, (t) => !!sender.holdsSecret?.(t) || !!o.redactor?.has(t));
-  const deps: SessionDeps = { store: o.store, makeEngine: (a) => o.makeEngine({ ...a, settings }), dir: o.dir, env: children, ...(o.redactor ? { redactor: o.redactor } : {}), describeModel, describeEffort, folderTrust: folderTrustFrom(mods), providers: checkEnvFrom(mods, { env: o.env ?? process.env, home: o.dir }), consent: asks, origin: (provider) => providerOrigin(mods, provider), onRow: (row) => { for (const f of subs) f(row); } };
+  const deps: SessionDeps = { store: o.store, makeEngine: (a) => o.makeEngine({ ...a, settings }), dir: o.dir, env: children, ...(o.redactor ? { redactor: o.redactor } : {}), describeModel, describeEffort, folderTrust: folderTrustFrom(mods), providers: checkEnvFrom(mods, { env: o.env ?? process.env, home: o.dir }), consent: asks, origin: (provider) => providerOrigin(mods, provider), generation: (provider) => providerGeneration(mods, provider), onRow: (row) => { for (const f of subs) f(row); } };
   let engines: Array<{ id: string } & EngineProbe> = [];
   let host = '';
   let origin = '';

@@ -91,11 +91,15 @@ async function* call(req: ModelRequest, p: ProviderManifest, h: EngineHost, sign
   };
   let usage: Obj | undefined;
   let stop: string | undefined;
+  let finished = false; // [DONE] was seen
   let last = -1; // the call the latest delta without an index belongs to
 
   try {
     for await (const ev of parseSse(res.body, signal, h.heartbeat)) {
-      if (ev.data.trim() === '[DONE]') break;
+      if (ev.data.trim() === '[DONE]') {
+        finished = true;
+        break;
+      }
       let j: unknown;
       try {
         j = JSON.parse(ev.data);
@@ -148,12 +152,15 @@ async function* call(req: ModelRequest, p: ProviderManifest, h: EngineHost, sign
     throw foreign(e);
   }
   if (signal.aborted) return; // the caller stopped it: no half calls, no done
+  // Neither [DONE] nor a finish_reason: a cut connection or a proxy, not a reply (the other wire needs message_stop for the same reason).
+  if (!finished && stop === undefined) throw fail(() => 'The reply ended before it was complete.');
 
   for (const [, c] of [...calls].sort((a, b) => a[0] - b[0])) {
     const extra: Extra = c.extra;
     yield { type: 'tool_call', id: c.id ?? `call_${randomUUID().slice(0, 8)}`, name: c.name, args: c.args === '' ? '{}' : c.args, ...(Object.keys(extra).length ? { extra } : {}) };
   }
-  yield { type: 'usage', usage: usageOf(usage) };
+  // No usage chunk (a server that ignores stream_options, or `usage.streamOptions: false`): the cost is unknown, not 0.
+  yield { type: 'usage', usage: usageOf(usage), ...(usage === undefined ? { unknown: true as const } : {}) };
   yield { type: 'done', ...(stop ? { stop } : {}), ...(Object.keys(messageExtra).length ? { extra: messageExtra } : {}) };
 }
 

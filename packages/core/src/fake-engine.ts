@@ -84,6 +84,7 @@ export interface TurnResult {
 
 export interface EngineSession {
   readonly sessionId: string;
+  /** A rejection may carry `paid` (`cost`, `total`, `totals`, `models`: what was spent before it failed, e.g. a paid compaction); the Run counts it. */
   turn(text: string): Promise<TurnResult>;
   /** Compress the conversation in place, as one turn; a provider without one cannot compress. */
   compact?(): Promise<TurnResult>;

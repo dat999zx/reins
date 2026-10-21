@@ -2,11 +2,14 @@
 import type { EngineHost, ProviderManifest } from '../mods/types.js';
 import { readBounded } from './bounded.js';
 
-/** What one reply may hold, in characters (text and thinking are streamed on and not counted), and the model list in bytes. */
+/** What a wire keeps of one reply, in characters (the loop bounds the whole reply, see MAX_REPLY), and the model list in bytes. */
 export const MAX_ARGS = 4 * 1024 * 1024;
 export const MAX_CALLS = 128;
 export const MAX_EXTRA = 256 * 1024;
 export const MAX_LIST = 1024 * 1024;
+/** What the loop accepts of one reply (text, thinking and tool arguments together, in bytes), and how long one call may take from start to end. */
+export const MAX_REPLY = 4 * 1024 * 1024;
+export const MAX_CALL_MS = 30 * 60_000;
 
 export type Obj = Record<string, unknown>;
 export const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -33,10 +36,25 @@ export function accumulate(into: Obj, k: string, v: unknown) {
   else setOwn(into, k, v);
 }
 
-/** The manifest body, then the model's, then the chosen effort's, merged over `base` (later wins). */
+/**
+ * The keys of a request that Reins writes and no manifest `body` may set: the model that is billed (a body that changed it would defeat the price
+ * the user was shown), the conversation, the tools, and the stream settings. The validator refuses a manifest that names them; `mergeBodies`
+ * keeps them from Reins as the second layer.
+ */
+export const RESERVED_BODY = ['model', 'messages', 'tools', 'stream', 'stream_options'] as const;
+
+/**
+ * The manifest body, then the model's, then the chosen effort's, merged over `base` (later wins). The RESERVED_BODY keys are Reins's: they come
+ * out as `base` has them, and a key `base` does not have (no tools in this request) is not added by a body.
+ */
 export function mergeBodies(base: Obj, p: ProviderManifest, model: string, effort: string | undefined): Obj {
   const layers = [p.body, p.models.find((x) => x.id === model)?.body, p.efforts?.find((e) => e.id === effort)?.body];
-  return layers.reduce<Obj>((acc, l) => (l ? merge(acc, l) : acc), base);
+  const merged = layers.reduce<Obj>((acc, l) => (isObj(l) ? merge(acc, l) : acc), base);
+  for (const k of RESERVED_BODY) {
+    if (Object.hasOwn(base, k)) setOwn(merged, k, base[k]);
+    else delete merged[k];
+  }
+  return merged;
 }
 
 /** A count from a provider: a whole number from 0 up. A fraction is cut down; a negative, odd or unsafe value is 0. */

@@ -64,8 +64,14 @@ export interface Conversation {
   /** Takes the lock of this conversation for the life of the session (once); refuses when another session holds it. Released by `release`. */
   lock(): void;
   release(): void;
-  /** Reads the file (it must be there). `protocol` is the wire's now: thinking blocks and every `extra` of a line written on another one are dropped. */
+  /**
+   * Reads the file (it must be there). `protocol` is the wire's now: thinking blocks and every `extra` of a line written on another one are dropped.
+   * So are they for a line written by another PROVIDER (`Opts.provider`, recorded on every assistant line): the proofs and private fields of one
+   * provider are sent to that provider only. A line with no provider recorded (an older file) is kept as before.
+   */
   load(protocol: string): Loaded;
+  /** A call that may have been paid and left no reply (it failed after the provider began to answer): a usage line with no cost, so the total of the file is unknown. */
+  appendUnknownSpend(model: string): void;
   /** Appends one line (a reply carries its usage). Throws once on the first failure; after that it does nothing (`failed`). */
   appendMsg(msg: Msg, protocol: string, usage?: UsageLine): void;
   /**
@@ -78,6 +84,8 @@ export interface Conversation {
 
 interface Opts {
   fs?: StoreFs;
+  /** The id of the provider this session talks to: written on every assistant line, and what a line is compared with when the file is read. */
+  provider?: string;
   /** The host's whole-text redaction; none writes as it is. */
   redactAll?: (t: string) => string;
   /** The host's check that a text holds a known secret. */
@@ -431,9 +439,11 @@ export function openConversation(home: string, id: string, o: Opts = {}): Conver
         // The last summary is where the conversation starts again (a compaction writes it).
         if (boundary) msgs = [];
         const lineProtocol = isStr(line.protocol) ? line.protocol : undefined;
+        const lineProvider = isStr(line.provider) ? line.provider : undefined;
         if (role === 'assistant') last = lineProtocol;
-        if (role === 'assistant' && lineProtocol !== protocol) {
-          // Written for another protocol: its proofs and unknown fields mean nothing to this one (spec 4.6).
+        if (role === 'assistant' && (lineProtocol !== protocol || (o.provider !== undefined && lineProvider !== undefined && lineProvider !== o.provider))) {
+          // Written for another protocol, or by another provider: its proofs and unknown fields mean nothing to this one (spec 4.6) and are not
+          // its to read. They stay in the file, so the provider that wrote them gets them back when the session returns to it.
           msgs.push({ role, blocks: mapped.flatMap((b): Block[] => (b.type === 'thinking' ? [] : b.type === 'tool_call' ? [{ type: 'tool_call', id: b.id, name: b.name, args: b.args }] : [b])) });
         } else msgs.push({ role, blocks: mapped, ...(isObj(line.extra) ? { extra: line.extra } : {}) });
       }
@@ -447,10 +457,13 @@ export function openConversation(home: string, id: string, o: Opts = {}): Conver
     appendMsg(msg, protocol, usage) {
       write({
         t: 'msg', role: msg.role, blocks: msg.blocks.map(toFile),
-        ...(msg.role === 'assistant' ? { protocol } : {}),
+        ...(msg.role === 'assistant' ? { protocol, ...(o.provider !== undefined ? { provider: o.provider } : {}) } : {}),
         ...(msg.extra ? { extra: msg.extra } : {}),
         ...(usage ? { usage: usageOut(usage) } : {}),
       });
+    },
+    appendUnknownSpend(model) {
+      write({ t: 'usage', model, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
     },
     appendSummary(msg, protocol, usage) {
       const [first, ...rest] = msg.blocks;

@@ -19,6 +19,12 @@ export interface LiveModelsOptions {
   /** Whether a text holds a known secret; such an id is dropped. None: nothing is checked. */
   holdsSecret?: (text: string) => boolean;
   now?: () => number;
+  /**
+   * What a cached list belongs to: the provider's address and the generation of its manifest, as one text. A list is read and kept only while this
+   * is the same, so an edited address shows the new list at once (not the old origin's for ten minutes) and any change of the settings starts over.
+   * None: the provider id alone.
+   */
+  version?(provider: string): string;
 }
 
 /** What a list holds after the checks: strings only, 1 to 200 characters, no control, direction or zero-width character, no secret, no repeat, at most 2000. */
@@ -40,32 +46,44 @@ export function cleanIds(raw: unknown, holdsSecret?: (text: string) => boolean):
  */
 export function createLiveModels(o: LiveModelsOptions) {
   const now = o.now ?? Date.now;
-  const cache = new Map<string, { at: number; ok: boolean; ids: string[] }>();
-  const inflight = new Map<string, Promise<void>>();
+  const cache = new Map<string, { version: string; at: number; ok: boolean; ids: string[] }>();
+  const inflight = new Map<string, { version: string; done: Promise<void> }>();
+  const versionOf = (provider: string) => o.version?.(provider) ?? '';
+  /** The cache entry of the provider as it is NOW; one made for another address or another manifest is gone. */
+  const current = (provider: string) => {
+    const c = cache.get(provider);
+    if (c && c.version !== versionOf(provider)) {
+      cache.delete(provider);
+      return undefined;
+    }
+    return c;
+  };
 
-  async function run(provider: string) {
+  async function run(provider: string, version: string) {
     let ids: string[] | undefined;
     try {
       ids = await o.fetchIds(provider, AbortSignal.timeout(TIMEOUT_MS));
     } catch {
       ids = undefined;
     }
+    // The address or the manifest changed while the request was out: that answer is for the old one and fills nothing.
+    if (version !== versionOf(provider)) return;
     const old = cache.get(provider);
-    cache.set(provider, { at: now(), ok: ids !== undefined, ids: ids !== undefined ? cleanIds(ids, o.holdsSecret) : old?.ids ?? [] });
+    cache.set(provider, { version, at: now(), ok: ids !== undefined, ids: ids !== undefined ? cleanIds(ids, o.holdsSecret) : old?.ids ?? [] });
   }
 
   return {
-    ids: (provider: string): readonly string[] => cache.get(provider)?.ids ?? [],
+    ids: (provider: string): readonly string[] => current(provider)?.ids ?? [],
     refresh(provider: string): Promise<void> {
       if (!o.keyless(provider) && !o.consented(provider)) return Promise.resolve();
-      const c = cache.get(provider);
+      const c = current(provider);
       if (c && now() - c.at < (c.ok ? TTL_MS : FAIL_MS)) return Promise.resolve();
-      let p = inflight.get(provider);
-      if (!p) {
-        p = run(provider).finally(() => { inflight.delete(provider); });
-        inflight.set(provider, p);
-      }
-      return p;
+      const version = versionOf(provider);
+      const running = inflight.get(provider);
+      if (running && running.version === version) return running.done;
+      const done: Promise<void> = run(provider, version).finally(() => { if (inflight.get(provider)?.done === done) inflight.delete(provider); });
+      inflight.set(provider, { version, done });
+      return done;
     },
   };
 }

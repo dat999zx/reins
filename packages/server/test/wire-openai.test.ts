@@ -409,13 +409,29 @@ describe('usage', () => {
     expect(await usageFor({ prompt_tokens: 10, completion_tokens: 30, completion_tokens_details: { reasoning_tokens: 12 } })).toEqual({ input: 10, output: 30, cacheRead: 0, cacheWrite: 0, reasoning: 12 });
   });
 
-  it('no usage at all gives zeros, and one usage event', async () => {
+  it('no usage at all gives one usage event marked unknown (zeros that mean nothing), never a known 0', async () => {
     a.push(raw(delta({ content: 'x' }), delta({}, 'stop'), data('[DONE]')));
     const ev = await run();
-    expect(usageOf(ev)).toEqual([{ type: 'usage', usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 } }]);
+    expect(usageOf(ev)).toEqual([{ type: 'usage', usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 }, unknown: true }]);
     // include_usage off: the fake sends none either
     a.push({ text: 'x' });
-    expect(usageOf(await run(req(), manifest({ usage: { streamOptions: false } })))[0].usage).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 });
+    expect(usageOf(await run(req(), manifest({ usage: { streamOptions: false } })))[0]).toMatchObject({ unknown: true });
+    // a usage chunk, even an empty one, is a usage the server gave
+    a.push(raw(delta({ content: 'x' }), delta({}, 'stop'), usageFrame({}), data('[DONE]')));
+    expect(usageOf(await run())[0]!.unknown).toBeUndefined();
+  });
+
+  it('a stream with neither [DONE] nor a finish_reason is an error, not a reply; the text before it is not kept', async () => {
+    a.push(raw(delta({ content: 'part' })));
+    const got: WireEvent[] = [];
+    const e = await (async () => { for await (const x of wire.call(req(), manifest(), host(), new AbortController().signal)) got.push(x); })().then(() => undefined, (x: Error) => x);
+    expect(e?.message).toBe('The reply ended before it was complete.');
+    expect(types(got)).toEqual(['text']); // streamed on, but no usage and no done: the loop keeps nothing of it
+    a.push(raw(''));
+    await expect(run()).rejects.toThrow('ended before it was complete');
+    // a finish_reason with no [DONE] is an end
+    a.push(raw(delta({ content: 'x' }), delta({}, 'stop')));
+    expect(types(await run())).toEqual(['text', 'usage', 'done']);
   });
 
   it('never negative: a cache count above the prompt count, and negative or odd numbers', async () => {

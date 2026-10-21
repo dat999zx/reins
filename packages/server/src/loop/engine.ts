@@ -6,7 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { checkTool, type Decision, type Engine, type EngineEvent, type EngineProbe, type EngineSession, type OpenOptions, type ToolRequest, type TurnResult } from '@reins/core';
 import { CARD_CONTEXT_LIMIT, noLoneSurrogate, nonceOf, wrapCard } from '../cards.js';
-import type { EngineHost, ProviderManifest, Wire } from '../mods/types.js';
+import type { EngineHost, ProviderManifest, SendWithKey, Wire } from '../mods/types.js';
 import { SETTINGS } from '../settings.js';
 import { chooseCut, stubOldResults, SUMMARY_SYSTEM, tokensOf, transcript, withSummary } from './compact.js';
 import { callCost, priceOf, USD_EPSILON } from './cost.js';
@@ -17,10 +17,14 @@ import { openConversation, type StoreFs } from './store.js';
 import { readAgents, systemPrompt } from './system.js';
 import { checkInput, cutText, noTool, offered, toolSpecs, type Target, type ToolCtx, type ToolOut } from './tools.js';
 import type { Block, Extra, ModelRequest, Msg, Usage, WireEvent } from './types.js';
+import { MAX_CALL_MS, MAX_REPLY } from './wire-util.js';
 
 // The pairing rules moved to pairs.ts; callers and tests still import `pairUp` from here.
 export { pairUp };
 
+const REPLY_TOO_LONG = 'The reply was longer than Reins accepts and was cut off.';
+const REPLY_TOO_SLOW = 'The reply took longer than Reins waits and was cut off.';
+const NO_USAGE: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 };
 const DENIED = 'Denied by the user in Reins.';
 const CARD_CUT = ' […cut]';
 const PATH_CHANGED = 'Blocked by Reins: the path changed while the question was open.';
@@ -34,6 +38,8 @@ export interface LoopDeps {
   fs?: FsLike;
   /** The fs the conversation file is written and read with. */
   convFs?: StoreFs;
+  /** What one reply may come to before it is cut off: bytes of text, thinking and tool arguments, and milliseconds from start to end of one call (tests make them small). */
+  limits?: { replyBytes?: number; callMs?: number };
 }
 
 /** A tool input larger than this (in characters, strings and keys together) is shown in the public event as a preview. */
@@ -88,7 +94,11 @@ function preview(v: unknown, red: (t: string, max?: number) => string, redAll: (
 type Prep = { text: string; isError: true; denied: boolean } | { run: () => Promise<ToolOut>; parallel: boolean; ask?: ToolRequest; same?: string };
 const plain = (text: string, denied = false): Prep => ({ text, isError: true, denied });
 
-type Reply = { blocks: Block[]; usage: Usage; extra?: Extra };
+/**
+ * `unknownUsage`: the stream carried no usage, so the cost of the call is unknown. `cutOff`: the call was ended by Reins for its size or its time;
+ * `blocks` then hold only that notice (never the partial), and the cost is unknown.
+ */
+type Reply = { blocks: Block[]; usage: Usage; extra?: Extra; unknownUsage?: boolean; cutOff?: string };
 
 const textOf = (blocks: Block[]) => blocks.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('');
 
@@ -137,7 +147,7 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
   };
 
   // A session id that is not one Reins made throws here, before the disk is touched. A fresh session writes no file until its first reply.
-  const convo = openConversation(h.home, sessionId, { fs: deps.convFs, redactAll: redAll, holdsSecret: h.holdsSecret });
+  const convo = openConversation(h.home, sessionId, { fs: deps.convFs, redactAll: redAll, holdsSecret: h.holdsSecret, provider: p.id });
   let loaded: ReturnType<typeof convo.load> | undefined;
   if (opts.sessionId) {
     // One session owns a conversation at a time: the lock is taken before the file is read and kept until `close`.
@@ -221,24 +231,49 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
     return new Error(WORDS[cls].say(p.label, status, what));
   };
 
-  /** One try of one model call. 'stalled' and 'cancelled' are not errors. A drop mid-reply throws: nothing of the partial reply is kept. */
-  async function callOnce(req: ModelRequest, outer: AbortSignal): Promise<Reply | 'stalled' | 'cancelled'> {
+  /**
+   * One try of one model call. 'stalled' and 'cancelled' are not errors. A drop mid-reply throws: nothing of the partial reply is kept.
+   * `seen.started` is set once the provider has answered 200 (the body began): from then on a failure may have been billed.
+   * A reply over the byte cap, or a call over the time cap (which a stream of comments does not extend: only the stall timer is re-armed by bytes),
+   * ends as a `cutOff` reply: the notice stands for it, never the partial text.
+   */
+  async function callOnce(req: ModelRequest, outer: AbortSignal, seen: { started: boolean }): Promise<Reply | 'stalled' | 'cancelled'> {
     const ac = new AbortController();
     const stop = () => ac.abort();
     outer.addEventListener('abort', stop, { once: true });
     if (outer.aborted) ac.abort();
     let stalled = false;
+    let cut: string | undefined;
+    const cutOff = (words: string) => {
+      cut ??= words;
+      ac.abort();
+    };
     let timer: ReturnType<typeof setTimeout> | undefined;
     const arm = () => {
       clearTimeout(timer);
       timer = setTimeout(() => { stalled = true; ac.abort(); }, STALL_MS);
     };
     arm();
+    const clock = setTimeout(() => cutOff(REPLY_TOO_SLOW), deps.limits?.callMs ?? MAX_CALL_MS);
+    const maxBytes = deps.limits?.replyBytes ?? MAX_REPLY;
+    let bytes = 0;
+    const count = (t: string) => {
+      bytes += Buffer.byteLength(t);
+      if (bytes > maxBytes) cutOff(REPLY_TOO_LONG);
+    };
+    const notice = (): Reply => ({ blocks: [{ type: 'text', text: cut! }], usage: NO_USAGE, unknownUsage: true, cutOff: cut! });
+    const send = h.send;
+    const watched = send ? { send: (async (...a: Parameters<SendWithKey>) => { const res = await send(...a); seen.started = true; return res; }) as SendWithKey } : {};
     try {
       const blocks: Block[] = [];
       let usage: Usage | undefined;
+      let unknownUsage = false;
       let done: Extract<WireEvent, { type: 'done' }> | undefined;
-      for await (const ev of wire.call(req, p, { ...h, heartbeat: () => { h.heartbeat?.(); arm(); } }, ac.signal)) {
+      for await (const ev of wire.call(req, p, { ...h, ...watched, heartbeat: () => { h.heartbeat?.(); arm(); } }, ac.signal)) {
+        if (cut) break;
+        if (ev.type === 'text' || ev.type === 'thinking') count(ev.text);
+        else if (ev.type === 'tool_call') count(ev.args);
+        if (cut) break;
         const last = blocks.at(-1);
         if (ev.type === 'text') {
           if (last?.type === 'text') last.text += ev.text;
@@ -252,30 +287,35 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
           } else blocks.push({ type: 'thinking', text: ev.text, ...(ev.signature !== undefined ? { signature: ev.signature } : {}) });
         } else if (ev.type === 'tool_call') {
           blocks.push({ type: 'tool_call', id: ev.id, name: ev.name, args: ev.args, ...(ev.extra ? { extra: ev.extra } : {}) });
-        } else if (ev.type === 'usage') usage = ev.usage;
-        else done = ev;
+        } else if (ev.type === 'usage') {
+          usage = ev.usage;
+          unknownUsage = ev.unknown === true;
+        } else done = ev;
       }
       if (outer.aborted) return 'cancelled';
+      if (cut) return notice();
       if (stalled) return 'stalled';
       if (!done || !usage) throw new Error('the reply ended before it was complete');
-      return { blocks, usage, ...(done.extra ? { extra: done.extra } : {}) };
+      return { blocks, usage, ...(unknownUsage ? { unknownUsage } : {}), ...(done.extra ? { extra: done.extra } : {}) };
     } catch (e) {
       if (outer.aborted) return 'cancelled';
+      if (cut) return notice();
       if (stalled) return 'stalled';
       throw e;
     } finally {
       clearTimeout(timer);
+      clearTimeout(clock);
       outer.removeEventListener('abort', stop);
     }
   }
 
   /**
    * A finished call is paid for and counted, whatever happens next. Returns what it cost; undefined when that is not known, and the total is then
-   * unknown for good.
+   * unknown for good. `unknownUsage`: the call carried no usage (or it failed after the provider began to answer), so its cost is not known.
    */
-  function charge(usage: Usage): number | undefined {
+  function charge(usage: Usage, unknownUsage = false): number | undefined {
     const price = priceOf(p, h, model);
-    const cost = price ? callCost(price, usage) : undefined;
+    const cost = price && !unknownUsage ? callCost(price, usage) : undefined;
     // A cost that is not a number (a usage with a NaN in it) is no cost: the total becomes unknown, never a NaN that no comparison catches.
     const spent = cost !== undefined && Number.isFinite(cost) ? cost : undefined;
     if (total !== undefined) {
@@ -286,6 +326,16 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
       }
     }
     return spent;
+  }
+
+  /**
+   * A call that failed after the provider began to answer (a drop, a stall, a protocol error) may have been billed for its input at least: its cost
+   * is unknown, not 0. The total becomes unknown now (so a retry under a USD limit is not sent), and the file says so (so a reopened session knows).
+   * A failure before any 200 (a refused connection, a 4xx, a 5xx) is not this: nothing was billed.
+   */
+  function loseSpend() {
+    charge(NO_USAGE, true);
+    save(() => convo.appendUnknownSpend(model));
   }
 
   /** The money fields of a result: what was spent since the last one, the totals, the split by model. Moves the baseline up to now. */
@@ -321,9 +371,11 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
       }
       sent = true;
       let out: Reply | 'stalled' | 'cancelled';
+      const seen = { started: false };
       try {
-        out = await callOnce(req, signal);
+        out = await callOnce(req, signal, seen);
       } catch (e) {
+        if (seen.started) loseSpend();
         const cls = classify(e);
         if (cls === 'consent') throw e; // the session asks the user; not rewritten
         if (cls === 'unpaired') {
@@ -348,6 +400,7 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
         continue;
       }
       if (out === 'stalled') {
+        if (seen.started) loseSpend();
         if (stalls++ >= 1) throw new Error(WORDS.stall.say(p.label, undefined, ''));
         continue;
       }
@@ -446,8 +499,12 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
     };
     const reply = await callWithRetry(req, signal, usdStop);
     if (reply === 'cancelled' || 'stop' in reply) return reply;
+    if (reply.cutOff) {
+      loseSpend();
+      throw new Error(reply.cutOff);
+    }
     // The call finished: it is paid for and counted, whatever happens next.
-    const spent = charge(reply.usage);
+    const spent = charge(reply.usage, reply.unknownUsage);
     const said = textOf(reply.blocks).trim();
     if (said === '') throw new Error(`${p.label} sent an empty summary, so the conversation was not compressed.`);
     const next = withSummary(said, paired.slice(cut));
@@ -559,7 +616,7 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
         // The call finished: it is paid for and counted, whatever happens next.
         finished++;
         lastUsage = reply.usage;
-        const spent = charge(reply.usage);
+        const spent = charge(reply.usage, reply.unknownUsage);
 
         // Tool-call arguments arrive as JSON text; a block keeps them parsed when they are, as the text when they are not.
         // Keyed by the block itself: two calls with the same id (a broken provider) never share an input.
@@ -586,6 +643,8 @@ function openSession(p: ProviderManifest, wire: Wire, h: EngineHost, opts: OpenO
           // The reply and its spend are one line.
           convo.appendMsg(assistant, p.protocol, { model, ...reply.usage, ...(spent !== undefined ? { cost: spent } : {}) });
         });
+        // Cut off by Reins: the notice is the reply (in the history and the file), its cost is unknown, and the turn ends as an error.
+        if (reply.cutOff) return finish(reply.cutOff, reply.cutOff);
 
         // The loop has already joined the stream's deltas into whole messages, so a key split across deltas is whole here and one redaction finds it.
         // History keeps the raw text: the next request goes to the provider that wrote it.
