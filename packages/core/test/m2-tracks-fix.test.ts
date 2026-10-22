@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { parseWorkflow } from '../src/format/parse.js';
 import { validate } from '../src/validate.js';
-import { Run, type RunOptions, type SubagentOpen } from '../src/run.js';
+import { Run, type RunOptions, type SubagentOpen, type Track } from '../src/run.js';
 import { register } from '../src/nodes/index.js';
 import type { Workflow } from '../src/model.js';
 import { m2harness } from './m2-harness.js';
@@ -122,7 +122,7 @@ describe('fix round: Stop, close and throw on tracks', () => {
     const run = mk(h, ONE);
     const driven = drive(run);
     await hA.started;
-    run.queueCard('pause', 'stop');   // the parked main line pauses on a stop card
+    (run as unknown as { pauseForStop(t: Track, text: string): void }).pauseForStop(run.main, 'pause');   // the parked main line is paused (not by a stop card: that card now interrupts the track turns too, Task 11)
     expect(run.status).toBe('paused');
     hA.fail(new Error('boom'));
     await until(() => run.tracks.get('a')?.state === 'paused');

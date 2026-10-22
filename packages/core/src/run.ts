@@ -44,6 +44,10 @@ export interface Track {
   spendKey?: string;
   /** What this track's turns cost, and the totals of its own session (not a subagent's); absent until a turn is counted. */
   money?: TrackMoney;
+  /** A change request at this track's gate that a USD pause cut off: sent again by its next `step`. The main line's is the Run's own. */
+  changeRequest?: { note: string; gate: PauseReason };
+  /** Notes typed with Resume for this track: its next TURN (or a resumed subagent) carries them. The main line's wait in `pendingCards`. */
+  notes?: string[];
 }
 
 /** A track's money record, like `SubagentRecord`: its totals open its session again, never the main line's. */
@@ -74,6 +78,10 @@ export interface PauseReason {
   /** link-budget-used: the jump that was interrupted, and its counter key. */
   to?: number;
   linkKey?: string;
+  /** Set by `pauses()` when the pause belongs to a track other than the main line; absent for the run's own pause. */
+  track?: string;
+  /** The card title of that track. */
+  title?: string;
 }
 
 /** steer: slipped in mid-turn. now: interrupt, then sent as the next turn. stop: interrupt and pause. */
@@ -215,6 +223,8 @@ export interface TrackSnap {
   openSlice?: { step: string; usd: number };
   spendKey?: string;
   money?: TrackMoney;
+  changeRequest?: { note: string; gate: PauseReason };
+  notes?: string[];
 }
 
 /** A group an op started and has not taken. */
@@ -402,6 +412,7 @@ export class Run {
       get policy() { return r.currentPolicy; }, set policy(v) { r.currentPolicy = v; },
       get recall() { return r.lastRecallContext; }, set recall(v) { r.lastRecallContext = v; },
       get openSlice() { return r.openSlice; }, set openSlice(v) { r.openSlice = v; },
+      get changeRequest() { return r.changeRequest; }, set changeRequest(v) { r.changeRequest = v; },
       inflight: undefined as Promise<void> | undefined,
     } as Track;
   }
@@ -619,6 +630,8 @@ export class Run {
     this.logEvent('card_queued', { card: cardText, kind, source }, this.main);
     if (kind === 'steer') {
       this.pendingCards.push(cardText);
+    } else if (kind === 'stop' && this.tracks.size) {
+      this.stopCard(cardText);
     } else if (this.turnInFlight && this.turnSession) {
       const held = this.interruptCard;
       if (kind === 'now' && held) {
@@ -637,9 +650,46 @@ export class Run {
     }
   }
 
-  /** A stop is held for the turn in flight, or has already ended the run. */
+  /** A stop card while tracks are live: every turn in flight, on any track, is interrupted and holds the card; with none in flight the run pauses at once. The pause itself is written once, by the first turn that returns (`runTurn`). */
+  private stopCard(text: string) {
+    let any = false;
+    for (const t of [this.main, ...this.tracks.values()]) {
+      if (!t.turnInFlight || !t.turnSession) continue;
+      any = true;
+      const held = t.interruptCard;
+      if (held?.kind === 'stop') continue;   // already stopping: its interrupt is in flight
+      if (held?.kind === 'now') this.pendingCards.push(held.text);   // only the main line holds a now card
+      t.interruptCard = { text, kind: 'stop' };
+      if (!held) t.turnSession.interrupt().catch(() => {});
+    }
+    if (!any && this.status === 'running') this.pauseForStop(this.main, text);
+  }
+
+  /** A stop is held for the turn in flight (on any track), or has already ended the run. */
   get stopHeld(): boolean {
-    return this.interruptCard?.kind === 'stop' || this.status === 'stopped';
+    return this.interruptCard?.kind === 'stop' || this.status === 'stopped' || [...this.tracks.values()].some((t) => t.interruptCard?.kind === 'stop');
+  }
+
+  /** Every open pause: the run's own first, then each paused track in start order, as plain objects with the track's key and card title on a track's. */
+  pauses(): PauseReason[] {
+    return [
+      ...(this.status === 'paused' && this.pauseReason ? [{ ...this.pauseReason }] : []),
+      ...[...this.tracks.values()].flatMap((t) => (t.state === 'paused' && t.pause ? [{ track: t.key, title: t.title, ...t.pause }] : [])),
+    ];
+  }
+
+  /** The pause an answer is meant for: the run's own (no key, or the main line's key), else the track's. Undefined when nothing of that type waits. */
+  private awaiting(track: string | undefined, ...types: PauseReason['type'][]): { t: Track; p: PauseReason } | undefined {
+    const t = track === undefined || track === '' ? this.main : this.tracks.get(track);
+    const p = t === this.main ? (this.status === 'paused' ? this.pauseReason : undefined) : t?.state === 'paused' ? t.pause : undefined;
+    return t && p && types.includes(p.type) ? { t, p } : undefined;
+  }
+
+  /** The pause is answered: the track goes on, and a `step()` asleep on the others wakes. */
+  private unpause(t: Track) {
+    if (t === this.main) this.status = 'running'; else t.state = 'running';
+    t.pause = undefined;
+    this.notify();
   }
 
   /** `stepId` marks a step's own pause (a model step), said apart from a stop card. */
@@ -805,7 +855,7 @@ export class Run {
     this.subagents[id] = rec;   // before the row below: its snapshot holds the session id, so a crash resumes it
     this.logEvent('subagent_started', { step: id, title, ...(opened.model ? { model: opened.model } : {}), ...(opened.label ? { label: opened.label } : {}), ...(resumed ? { resumed: true } : {}) }, t);
     // A note typed with Resume (drive.ts queues it as a steer card) was meant for the subagent.
-    const notes = resumed && t === this.main ? this.pendingCards.splice(0) : [];   // another track's notes arrive with the per-track answers (Task 11)
+    const notes = resumed ? (t === this.main ? this.pendingCards.splice(0) : t.notes?.splice(0) ?? []) : [];
     for (const n of notes) this.logEvent('card_delivered', { card: n, channel: 'next-turn' }, t);   // the run panel marks a card delivered only on this row
     let result: TurnResult | undefined;
     try {
@@ -884,10 +934,11 @@ export class Run {
    * "Request changes" at a gate (plan 7): send the note as a turn with every write locked
    * (Policy.pendingGate), then stay paused so the gate asks again.
    */
-  async requestChanges(note: string) {
-    if (this.status !== 'paused' || this.pauseReason?.type !== 'gate') return;
-    this.logEvent('card_delivered', { card: note, channel: 'next-turn', source: 'gate-changes' }, this.main);
-    await this.sendChanges(this.main, note, this.pauseReason);
+  async requestChanges(note: string, track?: string) {
+    const f = this.awaiting(track, 'gate');
+    if (!f) return;
+    this.logEvent('card_delivered', { card: note, channel: 'next-turn', source: 'gate-changes' }, f.t);
+    await this.sendChanges(f.t, note, f.p);
   }
 
   /**
@@ -895,7 +946,7 @@ export class Run {
    * the gate asks: the user cannot approve a plan whose changes never finished. A stop card, or Stop, drops it.
    */
   private async sendChanges(t: Track, note: string, gate: PauseReason) {
-    this.changeRequest = undefined;
+    t.changeRequest = undefined;
     const session = await this.ensureSession(t);
     t.policy = { ...t.policy, pendingGate: gate.stepId ?? 'gate' };
     t.capped = false;
@@ -910,16 +961,23 @@ export class Run {
       // The revised reply replaces the step's output, so verify quotes the plan as approved.
       if (t.lastStepId) this.turnOutputs.set(t.lastStepId, result.text);
       this.pauseTrack(t, gate);
-    } else if (t.capped) this.changeRequest = { note, gate };
+    } else if (t.capped) {
+      t.changeRequest = { note, gate };
+      // The USD card is run-wide, so a track's own gate pause gives way to it: the track runs again after Allow, sends this, and asks again.
+      if (t !== this.main) { t.state = 'running'; t.pause = undefined; }
+    }
   }
 
-  /** Go on after a stop card or an agent's `REINS: blocked`: the paused step runs again. */
-  resume() {
-    if (this.status === 'paused' && (this.pauseReason?.type === 'stop' || this.pauseReason?.type === 'agent-blocked')) {
-      this.status = 'running';
-      this.pauseReason = undefined;
-      this.logEvent('run_resumed', {}, this.main);
-    }
+  /**
+   * Go on after a stop card or an agent's `REINS: blocked`: the paused step runs again. With a key, that track's; `note` is carried in its next turn
+   * (never a steer card). On the main line the note is queued as a steer card, as the driver always did.
+   */
+  resume(track?: string, note?: string) {
+    const f = this.awaiting(track, 'stop', 'agent-blocked');
+    if (!f) return;
+    if (note) { if (f.t === this.main) this.queueCard(note, 'steer'); else (f.t.notes ??= []).push(note); }
+    this.unpause(f.t);
+    this.logEvent('run_resumed', {}, f.t);
   }
 
   /**
@@ -1047,7 +1105,9 @@ export class Run {
       t.interruptCard = undefined;
       this.logEvent('card_delivered', { card: card.text, kind: card.kind, channel: 'interrupt' }, t);
       if (card.kind === 'stop') {
-        this.pauseForStop(t, card.text);
+        // One run-wide pause, one `run_paused`: with tracks live, every interrupted turn lands here and the first one writes it. The tracks stay `running`.
+        const written = this.status === 'paused' && this.pauseReason?.type === 'stop' && this.pauseReason.text === card.text;
+        if (!written) this.pauseForStop(this.main, card.text);
         return undefined;
       }
       const statusAt = text.lastIndexOf('When you finish this step');
@@ -1058,39 +1118,39 @@ export class Run {
     }
   }
 
-  approve() {
-    if (this.status === 'paused' && this.pauseReason?.type === 'gate') {
-      this.status = 'running';
-      this.pauseReason = undefined;
-      this.logEvent('gate_approved', {}, this.main);
-      this.programCounter++;
-    }
+  /** Approve a gate: the run's own, or with a key that track's. */
+  approve(track?: string) {
+    const f = this.awaiting(track, 'gate');
+    if (!f) return;
+    this.unpause(f.t);
+    this.logEvent('gate_approved', {}, f.t);
+    f.t.pc++;
   }
 
-  allowMore(n: number) {
-    if (this.status === 'paused' && this.pauseReason?.type === 'budget-used') {
-      const stepId = this.pauseReason.stepId!;
+  /** Allow `n` more at a loop or link budget pause: the run's own, or with a key that track's. */
+  allowMore(n: number, track?: string) {
+    const f = this.awaiting(track, 'budget-used', 'link-budget-used');
+    if (!f) return;
+    const { t, p } = f;
+    if (p.type === 'budget-used') {
+      const stepId = p.stepId!;
       const extra = this.loopLimitExtensions.get(stepId) || 0;
       this.loopLimitExtensions.set(stepId, extra + n);
       // The attempt that used up the budget is already counted: go straight back into the loop
       // body, or allowMore(1) would count it again and pause at once.
-      const instr = this.program[this.programCounter];
+      const instr = this.program[t.pc];
       const to = instr ? opOf(instr.op)?.allowMore?.(instr) : undefined;
-      if (to !== undefined) this.programCounter = to;
-      this.status = 'running';
-      this.pauseReason = undefined;
-      this.logEvent('run_resumed', { allowMore: n }, this.main);
-    } else if (this.status === 'paused' && this.pauseReason?.type === 'link-budget-used') {
-      const { linkKey, to } = this.pauseReason;
+      if (to !== undefined) t.pc = to;
+    } else {
+      const { linkKey, to } = p;
       if (linkKey !== undefined) {
         this.linkLimitExtensions.set(linkKey, (this.linkLimitExtensions.get(linkKey) ?? 0) + n);
       }
       // The interrupted jump is already counted: take it.
-      if (to !== undefined) this.programCounter = to;
-      this.status = 'running';
-      this.pauseReason = undefined;
-      this.logEvent('run_resumed', { allowMore: n }, this.main);
+      if (to !== undefined) t.pc = to;
     }
+    this.unpause(t);
+    this.logEvent('run_resumed', { allowMore: n }, t);
   }
 
   /** Count a link jump. Returns false (and pauses, remembering the jump) when its budget is used up. */
@@ -1265,6 +1325,8 @@ export class Run {
       ...(t.openSlice ? { openSlice: { ...t.openSlice } } : {}),
       ...(t.spendKey !== undefined ? { spendKey: t.spendKey } : {}),
       ...(t.money ? { money: structuredClone(t.money) } : {}),
+      ...(t.changeRequest ? { changeRequest: structuredClone(t.changeRequest) } : {}),
+      ...(t.notes?.length ? { notes: [...t.notes] } : {}),
     };
   }
 
@@ -1280,6 +1342,8 @@ export class Run {
       ...(s.openSlice ? { openSlice: { ...s.openSlice } } : {}),
       ...(s.spendKey !== undefined ? { spendKey: s.spendKey } : {}),
       ...(s.money ? { money: structuredClone(s.money) } : {}),
+      ...(s.changeRequest ? { changeRequest: structuredClone(s.changeRequest) } : {}),
+      ...(s.notes?.length ? { notes: [...s.notes] } : {}),
     };
   }
 
@@ -1321,6 +1385,9 @@ export class Run {
       const num = (x: unknown) => typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= MONEY_MAX;
       if (mo !== undefined && (!isObj(mo) || !num(mo.cost) || (mo.total !== undefined && !num(mo.total)) ||
         (mo.totals !== undefined && (!isObj(mo.totals) || Object.values(mo.totals as object).some((v) => !num(v)))))) bad(`track "${t.key}" has a money record that is not a cost and totals`);
+      const cr = t.changeRequest as { note?: unknown; gate?: unknown } | undefined;
+      if (cr !== undefined && (!isObj(cr) || typeof cr.note !== 'string' || !isObj(cr.gate))) bad(`track "${t.key}" has a change request that is not a note and a gate`);
+      if (t.notes !== undefined && (!Array.isArray(t.notes) || t.notes.some((n) => typeof n !== 'string'))) bad(`track "${t.key}" has notes that are not texts`);
     }
     const byName = new Map<string, NonNullable<RunSnapshot['groups']>[number]>();
     for (const g of groups) {
@@ -1420,6 +1487,7 @@ export class Run {
     // Stopped before the interrupt is awaited, so a second stop() meanwhile is a no-op.
     this.status = 'stopped';
     this.changeRequest = undefined;
+    for (const t of this.tracks.values()) t.changeRequest = undefined;
     this.logEvent('run_stopped', {}, this.main);
     this.notify();
     // Every track's turn in flight is interrupted; with no track this is the one awaited interrupt it always was.
@@ -1537,8 +1605,8 @@ export class Run {
     }
 
     // After Allow on a capped change request: it is sent again first, and the gate asks again after it.
-    if (t === this.main && this.changeRequest) {
-      await this.sendChanges(t, this.changeRequest.note, this.changeRequest.gate);
+    if (t.changeRequest) {
+      await this.sendChanges(t, t.changeRequest.note, t.changeRequest.gate);
       return this.status;
     }
 
@@ -1581,8 +1649,9 @@ export class Run {
         // Plan 6.5: everything queued before the turn goes into its text, exactly once.
         // Cards queued while the turn runs are drained by the engine at its next tool event.
         // Cards reach only the main session: a track's turn takes none, and they wait for the turn under the split.
-        const textCards = t === this.main ? [...this.pendingCards] : [];
-        if (t === this.main) this.pendingCards = [];
+        // A track's own notes (typed with its Resume) go the same way.
+        const textCards = t === this.main ? [...this.pendingCards] : [...(t.notes ?? [])];
+        if (t === this.main) this.pendingCards = []; else t.notes = undefined;
 
         for (const card of textCards) {
           this.logEvent('card_delivered', { card, channel: 'next-turn' }, t);

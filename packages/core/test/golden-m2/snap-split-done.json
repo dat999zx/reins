@@ -1,0 +1,348 @@
+{
+  "autoArmed": {},
+  "commandResults": [],
+  "ended": [
+    {
+      "key": "a",
+      "text": "alpha"
+    },
+    {
+      "key": "b",
+      "text": "beta"
+    }
+  ],
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "split-1",
+            "kind": "split"
+          },
+          {
+            "id": "main",
+            "kind": "phase",
+            "title": "main"
+          },
+          {
+            "id": "end-1",
+            "kind": "end"
+          },
+          {
+            "id": "a",
+            "kind": "phase",
+            "title": "a"
+          },
+          {
+            "id": "end-2",
+            "kind": "end"
+          },
+          {
+            "id": "b",
+            "kind": "phase",
+            "title": "b"
+          },
+          {
+            "id": "end-3",
+            "kind": "end"
+          }
+        ],
+        "workflow": "t"
+      },
+      "id": "ev-1",
+      "timestamp": 1000,
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "split-1"
+      },
+      "id": "ev-2",
+      "timestamp": 2000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "group": "split-1",
+        "parent": "",
+        "title": "Split split-1",
+        "track": "a"
+      },
+      "id": "ev-3",
+      "timestamp": 3000,
+      "type": "track_started"
+    },
+    {
+      "data": {
+        "group": "split-1",
+        "parent": "",
+        "title": "Split split-1",
+        "track": "b"
+      },
+      "id": "ev-4",
+      "timestamp": 4000,
+      "type": "track_started"
+    },
+    {
+      "data": {
+        "step": "split-1"
+      },
+      "id": "ev-5",
+      "timestamp": 5000,
+      "type": "split_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "a",
+        "track": "a"
+      },
+      "id": "ev-6",
+      "timestamp": 6000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "b",
+        "track": "b"
+      },
+      "id": "ev-7",
+      "timestamp": 7000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "a",
+        "track": "a"
+      },
+      "id": "ev-8",
+      "timestamp": 8000,
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "b",
+        "track": "b"
+      },
+      "id": "ev-9",
+      "timestamp": 9000,
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "a",
+        "text": "alpha\nREINS: done",
+        "track": "a"
+      },
+      "id": "ev-10",
+      "timestamp": 10000,
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "step": "b",
+        "text": "beta\nREINS: done",
+        "track": "b"
+      },
+      "id": "ev-11",
+      "timestamp": 11000,
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "end-2",
+        "track": "a"
+      },
+      "id": "ev-12",
+      "timestamp": 12000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "cost": 0,
+        "group": "split-1",
+        "text": "alpha",
+        "title": "Split split-1",
+        "track": "a"
+      },
+      "id": "ev-13",
+      "timestamp": 13000,
+      "type": "track_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "end-3",
+        "track": "b"
+      },
+      "id": "ev-14",
+      "timestamp": 14000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "cost": 0,
+        "group": "split-1",
+        "text": "beta",
+        "title": "Split split-1",
+        "track": "b"
+      },
+      "id": "ev-15",
+      "timestamp": 15000,
+      "type": "track_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "split-1"
+      },
+      "id": "ev-16",
+      "timestamp": 16000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "split-1"
+      },
+      "id": "ev-17",
+      "timestamp": 17000,
+      "type": "split_done"
+    }
+  ],
+  "handback": [
+    "Result of a: alpha",
+    "Result of b: beta"
+  ],
+  "lastRecallContext": [],
+  "linkCounters": {},
+  "linkLimitExtensions": {},
+  "loopCounters": {},
+  "loopLimitExtensions": {},
+  "pendingCards": [],
+  "programCounter": 0,
+  "programHash": "1d45d43afb9ad4",
+  "runCost": 0,
+  "status": "running",
+  "totalTurns": 2,
+  "turnOutputs": {
+    "a": "alpha\nREINS: done",
+    "b": "beta\nREINS: done"
+  },
+  "usdExtra": {},
+  "usdSpent": {},
+  "workflow": {
+    "always": [],
+    "autos": [],
+    "budget": {
+      "minutes": 60,
+      "turns": 40
+    },
+    "name": "t",
+    "steps": [
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "split-1",
+        "kind": "split",
+        "links": [
+          {
+            "kind": "next",
+            "pos": {
+              "col": 6,
+              "line": 9
+            },
+            "to": "a"
+          },
+          {
+            "kind": "next",
+            "pos": {
+              "col": 6,
+              "line": 10
+            },
+            "to": "b"
+          }
+        ],
+        "pos": {
+          "col": 1,
+          "line": 8
+        }
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "main",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 12
+        },
+        "prompt": "m",
+        "title": "main"
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "end-1",
+        "kind": "end",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 15
+        }
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "a",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 17
+        },
+        "prompt": "a",
+        "title": "a"
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "end-2",
+        "kind": "end",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 20
+        }
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "b",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 22
+        },
+        "prompt": "b",
+        "title": "b"
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "end-3",
+        "kind": "end",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 25
+        }
+      }
+    ],
+    "version": 1
+  }
+}

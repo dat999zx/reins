@@ -1,0 +1,155 @@
+{
+  "ended": [
+    {
+      "key": "g1",
+      "text": ""
+    }
+  ],
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "split-1",
+            "kind": "split"
+          },
+          {
+            "id": "end-1",
+            "kind": "end"
+          },
+          {
+            "id": "g1",
+            "kind": "gate"
+          },
+          {
+            "id": "end-2",
+            "kind": "end"
+          },
+          {
+            "id": "g2",
+            "kind": "gate"
+          },
+          {
+            "id": "end-3",
+            "kind": "end"
+          }
+        ],
+        "workflow": "t"
+      },
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "split-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "group": "split-1",
+        "parent": "",
+        "title": "Split split-1",
+        "track": "g1"
+      },
+      "type": "track_started"
+    },
+    {
+      "data": {
+        "group": "split-1",
+        "parent": "",
+        "title": "Split split-1",
+        "track": "g2"
+      },
+      "type": "track_started"
+    },
+    {
+      "data": {
+        "step": "split-1"
+      },
+      "type": "split_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "g1",
+        "track": "g1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "cond": {
+          "t": "approve"
+        },
+        "step": "g1",
+        "track": "g1"
+      },
+      "type": "gate_paused"
+    },
+    {
+      "data": {
+        "track": "g1"
+      },
+      "type": "gate_approved"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "end-2",
+        "track": "g1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "cost": 0,
+        "group": "split-1",
+        "text": "",
+        "title": "Split split-1",
+        "track": "g1"
+      },
+      "type": "track_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "g2",
+        "track": "g2"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "cond": {
+          "t": "approve"
+        },
+        "step": "g2",
+        "track": "g2"
+      },
+      "type": "gate_paused"
+    }
+  ],
+  "opens": [],
+  "pauses": [
+    {
+      "cond": {
+        "t": "approve"
+      },
+      "stepId": "g2",
+      "title": "Split split-1",
+      "track": "g2",
+      "type": "gate"
+    }
+  ],
+  "programCounter": 0,
+  "status": "running",
+  "texts": {},
+  "tracks": [
+    {
+      "key": "g2",
+      "pc": 4,
+      "state": "paused"
+    }
+  ]
+}

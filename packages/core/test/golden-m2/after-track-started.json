@@ -1,0 +1,218 @@
+{
+  "ended": [
+    {
+      "key": "a",
+      "text": "alpha"
+    },
+    {
+      "key": "b",
+      "text": "beta"
+    }
+  ],
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "split-1",
+            "kind": "split"
+          },
+          {
+            "id": "main",
+            "kind": "phase",
+            "title": "main"
+          },
+          {
+            "id": "end-1",
+            "kind": "end"
+          },
+          {
+            "id": "a",
+            "kind": "phase",
+            "title": "a"
+          },
+          {
+            "id": "end-2",
+            "kind": "end"
+          },
+          {
+            "id": "b",
+            "kind": "phase",
+            "title": "b"
+          },
+          {
+            "id": "end-3",
+            "kind": "end"
+          }
+        ],
+        "workflow": "t"
+      },
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "split-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "group": "split-1",
+        "parent": "",
+        "title": "Split split-1",
+        "track": "a"
+      },
+      "type": "track_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "a",
+        "track": "a"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "b",
+        "track": "b"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "a",
+        "track": "a"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "b",
+        "track": "b"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "a",
+        "text": "alpha\nREINS: done",
+        "track": "a"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "step": "b",
+        "text": "beta\nREINS: done",
+        "track": "b"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "end-2",
+        "track": "a"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "cost": 0,
+        "group": "split-1",
+        "text": "alpha",
+        "title": "Split split-1",
+        "track": "a"
+      },
+      "type": "track_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "end-3",
+        "track": "b"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "cost": 0,
+        "group": "split-1",
+        "text": "beta",
+        "title": "Split split-1",
+        "track": "b"
+      },
+      "type": "track_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "split-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "split-1"
+      },
+      "type": "split_done"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "main"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "main"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "main",
+        "text": "REINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "end-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {},
+      "type": "run_finished"
+    }
+  ],
+  "opens": [
+    {
+      "step": "a"
+    },
+    {
+      "step": "b"
+    }
+  ],
+  "pauses": [],
+  "programCounter": 2,
+  "status": "done",
+  "texts": {
+    "track-started-main-1": [
+      "[Reins · workflow \"t\" · step 2 of 7: main]\n\nm\n\nFor this step:\n- Result of a: alpha\n- Result of b: beta\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    ],
+    "track-started-sub-a": [
+      "[Reins · workflow \"t\" · step 4 of 7: a]\n\na\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    ],
+    "track-started-sub-b": [
+      "[Reins · workflow \"t\" · step 6 of 7: b]\n\nb\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    ]
+  },
+  "tracks": []
+}
