@@ -194,3 +194,98 @@ registerKind({
     return out;
   },
 });
+
+// Block, condition and card mods put a thing in core. They are code mods, and `provides` is the list of what the api will let them register.
+const NAME = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
+const MAX_NAMES = 50;
+const MAX_VIEW = 32 * 1024;
+const MAX_VIEW_LIST = 50;
+
+/** The checks the three kinds share: code, a finite `order`, and a `provides` of known keys holding lists of names (`need` must be non-empty). */
+function providesProblems(raw: Record<string, unknown>, id: string, keys: string[], need: string): Problem[] {
+  const out: Problem[] = [];
+  const bad = (msg: string) => out.push(`\`${id}\`: ${msg}`);
+  if (typeof raw.main !== 'string') bad(`a ${String(raw.kind)} mod needs code (\`main\`).`);
+  if (typeof raw.order !== 'number' || !Number.isFinite(raw.order)) bad(`\`order\` must be a number (got ${show(raw.order)}).`);
+  const p = raw.provides;
+  if (!isObj(p)) {
+    bad('`provides` must be an object listing what the mod adds.');
+    return out;
+  }
+  for (const k of Object.keys(p)) if (!keys.includes(k)) bad(`\`provides.${cap(k)}\` is not something a ${String(raw.kind)} mod can add. It can add: ${keys.join(', ')}.`);
+  for (const k of keys) {
+    const v = p[k];
+    if (v === undefined) continue;
+    if (!Array.isArray(v) || v.length > MAX_NAMES || !v.every((x) => typeof x === 'string' && NAME.test(x))) bad(`\`provides.${k}\` must be a list of at most ${MAX_NAMES} names (letters, digits, dash and underscore, starting with a letter).`);
+    else if (new Set(v).size !== v.length) bad(`\`provides.${k}\` lists a name twice.`);
+  }
+  if (!out.length && !(p[need] as string[] | undefined)?.length) bad(`\`provides.${need}\` lists nothing.`);
+  return out.slice(0, MAX_PROBLEMS);
+}
+
+/** Every string in a JSON value, keys included, to a depth the manifest check already bounded. */
+function strings(v: unknown, out: string[] = []): string[] {
+  if (typeof v === 'string') out.push(v);
+  else if (Array.isArray(v)) for (const x of v) strings(x, out);
+  else if (isObj(v)) for (const [k, x] of Object.entries(v)) strings(x, strings(k, out));
+  return out;
+}
+
+/** The view of a block: an object whose `kind` the mod provides, with `fields` and `line`, small, and no shown text with a hidden character. */
+function viewProblems(raw: Record<string, unknown>, id: string): Problem[] {
+  const bad = (msg: string): Problem[] => [`\`${id}\`: ${msg}`];
+  const v = raw.view;
+  if (!isObj(v)) return bad('`view` must be an object.');
+  if (JSON.stringify(v).length > MAX_VIEW) return bad(`\`view\` is larger than ${MAX_VIEW / 1024} KB.`);
+  const kinds = (raw.provides as { kinds?: string[] }).kinds ?? [];
+  if (typeof v.kind !== 'string' || !kinds.includes(v.kind)) return bad('`view.kind` must be one of `provides.kinds`.');
+  if (!Array.isArray(v.fields) || !Array.isArray(v.line)) return bad('`view` needs `fields` and `line`.');
+  if (v.fields.length > MAX_VIEW_LIST || v.line.length > MAX_VIEW_LIST) return bad(`\`view.fields\` and \`view.line\` hold at most ${MAX_VIEW_LIST} entries.`);
+  if (v.fresh !== undefined && !isObj(v.fresh)) return bad('`view.fresh` must be an object.');
+  if (v.order !== undefined && (typeof v.order !== 'number' || !Number.isFinite(v.order))) return bad('`view.order` must be a number.');
+  if (strings(v).some(hasHiddenChars)) return bad('a text in `view` holds a control, line-break or direction-changing character (a zero-width one too).');
+  return [];
+}
+
+/** The block's view, from the manifest, recorded under its kind. Nothing is run to get it. */
+const recordView = (mod: LoadedMod, host: ModHost) => {
+  const view = (mod.manifest as { view: { kind: string } }).view;
+  return host.registry.register('block-view', view.kind, view);
+};
+
+registerKind({
+  id: 'condition',
+  startOnly: true,
+  validate: (raw, { id }) => providesProblems(raw, id, ['conditions'], 'conditions'),
+  activate: record,
+});
+
+registerKind({
+  id: 'card',
+  startOnly: true,
+  validate: (raw, { id }) => providesProblems(raw, id, ['cards'], 'cards'),
+  activate: record,
+});
+
+registerKind({
+  id: 'block',
+  after: ['condition', 'card'],
+  startOnly: true,
+  validate(raw, { id }) {
+    const out = providesProblems(raw, id, ['kinds', 'ops', 'attrs', 'events'], 'kinds');
+    return out.length ? out : viewProblems(raw, id);
+  },
+  // The view is known before the code runs and before trust, so the server can show it and the import summary can list it.
+  preview: recordView,
+  activate(mod, host) {
+    const undoMod = record(mod, host);
+    let undoView: () => void;
+    try {
+      undoView = recordView(mod, host);
+    } catch (e) {
+      undoMod();
+      throw e;
+    }
+    return () => { undoView(); undoMod(); };
+  },
+});

@@ -2,9 +2,11 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { checkMode, policyOf, register as registerNode, registerCard, registerCondition, turnInstr } from '@reins/core';
+import type { NodeType } from '@reins/core';
 import { cap, kindIds, kindOf, kindsInOrder, show } from './kinds.js';
 import { Registry } from './registry.js';
-import type { LoadedMod, LoadOptions, ModApi, ModHost, Mods, ModSource, Problem } from './types.js';
+import type { LoadedMod, LoadOptions, ModApi, ModHost, Mods, ModSource, Problem, Protocol, Provides } from './types.js';
 
 const ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const RESERVED = /^(nul|con|prn|aux|com[1-9]|lpt[1-9])$/i;
@@ -321,6 +323,97 @@ function track(registry: Registry, tx: Tx, shadow: boolean): Registry {
   return t;
 }
 
+const frozen = <T extends object | undefined>(v: T): T => (v !== null && typeof v === 'object' ? (Object.freeze(Array.isArray(v) ? [...v] : { ...v }) as T) : v);
+
+/** A node copied once into plain frozen data, so what is checked is what core stores: a getter cannot answer differently the second time. */
+function nodeCopy(node: NodeType): NodeType {
+  if (typeof node !== 'object' || node === null) throw new Error('registerBlock needs a node object.');
+  const n = { ...node };
+  n.attrs = frozen(n.attrs);
+  n.ops = frozen(n.ops);
+  n.count = frozen(n.count);
+  n.print = frozen(n.print);
+  if (n.heading) n.heading = Object.freeze({ ...n.heading, owns: frozen(n.heading.owns) });
+  return Object.freeze(n);
+}
+
+const copyOf = <T extends object>(what: string, v: T): T => {
+  if (typeof v !== 'object' || v === null) throw new Error(`${what} needs an object.`);
+  return Object.freeze({ ...v });
+};
+
+/** Each thing a mod can register: the mod kind that may, the copy it is checked and stored from, what `provides` must list, and the core call. */
+interface Door<T> {
+  kind: string;
+  copy(item: T): T;
+  /** Throws, in words, for anything `provides` does not list. */
+  check(item: T, has: (key: keyof Provides, name: unknown, what: string) => void): void;
+  put(item: T, order: number, shadow: boolean): () => void;
+}
+const DOORS: { [M in 'registerBlock' | 'registerCondition' | 'registerCard']: Door<Parameters<ModApi[M]>[0]> } = {
+  registerBlock: {
+    kind: 'block',
+    copy: nodeCopy,
+    check(n, has) {
+      has('kinds', n.kind, 'the kind');
+      if (!Array.isArray(n.attrs) || n.attrs.some((a) => typeof a !== 'string')) throw new Error('`attrs` must be a list of names.');
+      for (const a of n.attrs) has('attrs', a, 'the attribute');
+      for (const a of n.heading?.owns ?? []) has('attrs', a, 'the heading key');
+      for (const op of Object.keys(n.ops ?? {})) has('ops', op, 'the op');
+      for (const ev of Object.keys(n.count ?? {})) has('events', ev, 'the counted event');
+      for (const ev of Object.keys(n.print ?? {})) has('events', ev, 'the printed event');
+    },
+    put: (n, order, shadow) => registerNode(n, order, { shadow }),
+  },
+  registerCondition: {
+    kind: 'condition',
+    copy: (c) => copyOf('registerCondition', c),
+    check: (c, has) => has('conditions', c.t, 'the condition'),
+    put: (c, order, shadow) => registerCondition(c, order, { shadow }),
+  },
+  registerCard: {
+    kind: 'card',
+    copy: (c) => copyOf('registerCard', c),
+    check: (c, has) => has('cards', c.kind, 'the card'),
+    put: (c, order, shadow) => registerCard(c, order, { shadow }),
+  },
+};
+
+/**
+ * The api of ONE mod: it can register only what its kind allows and its `provides` lists, and every function member throws once `close()` is
+ * called (when `activate` has settled). What a mod puts in core goes in `tx`, so a failed activation takes it out again.
+ */
+function buildApi(kindId: string, raw: Record<string, unknown>, env: NodeJS.ProcessEnv, registry: Registry, tx: Tx, shadow: boolean): { api: ModApi; close(): void } {
+  let open = true;
+  const provides = (typeof raw.provides === 'object' && raw.provides !== null ? raw.provides : {}) as Provides;
+  const order = typeof raw.order === 'number' ? raw.order : NaN;
+  const has = (key: keyof Provides, name: unknown, what: string) => {
+    if (typeof name !== 'string' || !provides[key]?.includes(name)) throw new Error(`\`provides.${key}\` does not list ${what} ${show(name)}.`);
+  };
+  const live = <A extends unknown[], R>(f: (...a: A) => R) => (...a: A): R => {
+    if (!open) throw new Error('the api can only be used while the mod activates.');
+    return f(...a);
+  };
+  const doors = Object.fromEntries(
+    Object.entries(DOORS).map(([member, d]) => [member, live((item: never) => {
+      const door = d as Door<typeof item>;
+      if (door.kind !== kindId) throw new Error(`\`${member}\` is for ${door.kind} mods; this is a ${kindId} mod.`);
+      const copy = door.copy(item);
+      door.check(copy, has);
+      const undo = door.put(copy, order, shadow);
+      tx.undo.push(undo);
+      return undo;
+    })]),
+  ) as Pick<ModApi, keyof typeof DOORS>;
+  const api: ModApi = Object.freeze({
+    env,
+    registerProtocol: live((p: Protocol) => registry.register('protocol-impl', p.id, p)),
+    ...doors,
+    core: Object.freeze({ checkMode, policyOf, turnInstr }),
+  });
+  return { api, close: () => { open = false; } };
+}
+
 /** The problem line for anything thrown. Cannot throw itself: a revoked proxy is as good as any other value. */
 function thrownLine(e: unknown, id: string): string {
   let ours = false;
@@ -392,6 +485,14 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
       const kind = kindOf(kindId)!;
       if (mod.problems.length) return;
 
+      // A user mod replaces a bundled one of the same kind by shadowing it: the built-in is never touched while
+      // the user mod activates. If activation fails only the user mod's entries go, and the built-in is still there.
+      const was = active.get(key);
+      const replacing = f.source === 'user' && was?.source === 'bundled';
+      txs.set(mod, tx);
+      const tracked = track(registry, tx, replacing);
+      const host: ModHost = { registry: tracked, env };
+
       const main = canonMain(raw.main);
       let codeDir = f.dir;
       if (mod.hasCode && files) {
@@ -403,6 +504,9 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
         mod.trusted = o.trusted(id, mod.hash) === true;
         if (!mod.trusted) {
           mod.problems.push(`\`${id}\`: needs trust. Its code is new, or a file changed since you trusted it. It has not run.`);
+          // What the manifest alone shows (a block's view) is recorded without running anything; a mod that would replace a built-in records nothing.
+          const shown = replacing ? undefined : kind.preview?.(mod, host);
+          if (shown) tx.undo.push(shown);
           return;
         }
         o.beforeActivate?.(mod);
@@ -426,17 +530,17 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
         activate = m.default as (api: ModApi) => unknown;
       }
 
-      // A user mod replaces a bundled one of the same kind by shadowing it: the built-in is never touched while
-      // the user mod activates. If activation fails only the user mod's entries go, and the built-in is still there.
-      const was = active.get(key);
-      const replacing = f.source === 'user' && was?.source === 'bundled';
-      txs.set(mod, tx);
-      const tracked = track(registry, tx, replacing);
-      const host: ModHost = { registry: tracked, env };
       try {
         const d = kind.activate(mod, host);
         if (d) tx.undo.push(d);
-        if (activate) await activate({ env, registerProtocol: (p) => tracked.register('protocol-impl', p.id, p) });
+        if (activate) {
+          const { api, close } = buildApi(kindId, raw, env, tracked, tx, replacing);
+          try {
+            await activate(api);
+          } finally {
+            close(); // settled, by return or by throw: from now on every member refuses
+          }
+        }
       } catch (e) {
         stop(tx);
         mod.problems.push(replacing ? `\`${id}\`: could not replace the built-in \`${id}\`; the built-in stays: ${errorText(e)}` : `\`${id}\`: ${errorText(e)}`);

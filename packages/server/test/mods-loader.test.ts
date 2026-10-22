@@ -450,6 +450,20 @@ describe('fix round', () => {
         delete g.__modGate;
       }
     });
+
+    it('registerProtocol after activate has settled throws and registers nothing', async () => {
+      const g = globalThis as unknown as Record<string, any>;
+      try {
+        codeMod('acme-wire', `export default function (api) { globalThis.__lateApi = api; api.registerProtocol({ id: 'acme-wire' }); }\n`);
+        const { mods, registry } = await loadTrusted();
+        expect(find(mods, 'acme-wire')?.problems).toEqual([]);
+        expect(() => g.__lateApi.registerProtocol({ id: 'late-wire' })).toThrow('the api can only be used while the mod activates.');
+        expect(registry.has('protocol-impl', 'late-wire')).toBe(false);
+        expect(registry.has('protocol-impl', 'acme-wire')).toBe(true);
+      } finally {
+        delete g.__lateApi;
+      }
+    });
   });
 
   describe('5. the cache', () => {
@@ -506,7 +520,7 @@ describe('fix round', () => {
     it('an unknown kind is listed with its words', async () => {
       h.writeMod('acme', provider('acme', { kind: 'gadget' }));
       const { mods } = await load();
-      expect(find(mods, 'acme')?.problems).toEqual(['`acme`: `kind` is "gadget", which Reins does not know. Known: protocol, provider.']);
+      expect(find(mods, 'acme')?.problems).toEqual(['`acme`: `kind` is "gadget", which Reins does not know. Known: block, card, condition, protocol, provider.']);
     });
   });
 

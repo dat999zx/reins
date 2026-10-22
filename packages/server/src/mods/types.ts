@@ -1,4 +1,4 @@
-import type { Decision, Engine, EngineEvent, EngineProbe, ToolRequest } from '@reins/core';
+import type { CardType, CondType, Decision, Engine, EngineEvent, EngineProbe, NodeType, ToolRequest, checkMode, policyOf, turnInstr } from '@reins/core';
 import type { ModelRequest, WireEvent } from '../loop/types.js';
 import type { KeyStatus } from '../secrets.js';
 import type { Registry } from './registry.js';
@@ -107,10 +107,37 @@ export type Protocol =
       folderTrust?(cwd: string): FolderTrust | undefined;
     };
 
-/** What a code mod's default export (`activate(api)`) is given. */
+/**
+ * What a code mod's default export (`activate(api)`) is given. It is built for one mod and limited to that mod's `provides`; every function
+ * member throws once `activate` has settled. `core` is the curated helpers a block's own code needs later, so it stays callable.
+ */
 export interface ModApi {
   env: NodeJS.ProcessEnv;
   registerProtocol(p: Protocol): () => void;
+  /** Block mods: adds a kind of step to core. Its view is the manifest's `view`, read before the code ran. */
+  registerBlock(node: NodeType): () => void;
+  /** Condition mods: adds a condition atom to core. */
+  registerCondition(c: CondType): () => void;
+  /** Card mods: adds a card kind to core. */
+  registerCard(c: CardType): () => void;
+  /** Exactly these three, frozen. It grows only by a reviewed edit; never `register`, `NODES`, `CONDS`, `CARDS` or `opOf`. */
+  core: { checkMode: typeof checkMode; policyOf: typeof policyOf; turnInstr: typeof turnInstr };
+}
+
+/** What a mod says it brings. The api refuses anything not listed here. Each list is names. */
+export interface Provides {
+  /** Block mods: the kinds of step. */
+  kinds?: string[];
+  /** Block mods: the instruction names the kinds compile to. */
+  ops?: string[];
+  /** Block mods: the attributes a kind's body accepts, and the keys its heading owns. */
+  attrs?: string[];
+  /** Block mods: the run events its `count` and `print` tables and its ops name. */
+  events?: string[];
+  /** Condition mods: the condition atoms. */
+  conditions?: string[];
+  /** Card mods: the card kinds. */
+  cards?: string[];
 }
 
 /** What a kind's `activate` is given. */
@@ -128,6 +155,12 @@ export interface Manifest {
   description?: string;
   /** Code mods only: a path inside the mod folder; the file default-exports `activate(api: ModApi): void`. */
   main?: string;
+  /** Block, condition and card mods: what the mod brings (see `Provides`). */
+  provides?: Provides;
+  /** Block, condition and card mods: where the kind or atom sits in core's registry (a finite number). */
+  order?: number;
+  /** Block mods: the block's view as JSON, checked by the kind before any code runs. */
+  view?: Record<string, unknown>;
 }
 
 export interface ProviderModel {
@@ -194,8 +227,15 @@ export interface ModKind {
   validate(raw: Record<string, unknown>, ctx: { id: string; registry: Registry; source?: ModSource }): Problem[];
   /** Records the mod; returns what undoes it. */
   activate(mod: LoadedMod, host: ModHost): (() => void) | undefined;
+  /**
+   * Runs for a mod with code that still needs trust, in place of `activate`: records what can be shown without running anything
+   * (a block's view). Returns what undoes it.
+   */
+  preview?(mod: LoadedMod, host: ModHost): (() => void) | undefined;
   /** Kinds whose mods load before this kind's (a provider after protocol). */
   after?: string[];
+  /** The mod's registrations in core take effect when the server starts, not live (block, condition, card). */
+  startOnly?: true;
 }
 
 export interface LoadOptions {

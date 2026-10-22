@@ -10,7 +10,7 @@ const WORDS = {
 };
 
 /** The protocol of the Claude Code CLI. The environment comes from the host, never from `process.env` (spec S2). */
-export default function activate(api: ModApi): void {
+export default function activate(api: Pick<ModApi, 'env' | 'registerProtocol'>): void {
   api.registerProtocol({
     id: 'claude-code-cli',
     conversation: 'own',

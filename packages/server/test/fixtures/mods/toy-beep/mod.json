@@ -1,0 +1,20 @@
+{
+  "reins": 1,
+  "id": "toy-beep",
+  "kind": "block",
+  "version": "1.0.0",
+  "label": "Toy beep",
+  "description": "A block for tests: beeps `times` times, logs beeped, counts and prints it.",
+  "main": "index.js",
+  "order": 140,
+  "provides": { "kinds": ["beep"], "ops": ["BEEP"], "attrs": ["times"], "events": ["beeped"] },
+  "view": {
+    "kind": "beep",
+    "order": 140,
+    "colour": "soft",
+    "fields": [{ "key": "times", "label": "Times", "input": "number", "check": "count" }],
+    "line": ["beep", { "field": "times" }],
+    "card": { "label": "beep", "section": "Flow" },
+    "fresh": { "attrs": { "times": "1" } }
+  }
+}
