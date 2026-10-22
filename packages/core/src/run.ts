@@ -36,6 +36,8 @@ export interface Track {
   lastStepId?: string;
   policy: Policy;
   recall: string[];
+  /** The engine session id a restored track resumes (its live `session` is gone after a restore); the next open passes it. */
+  sessionId?: string;
 }
 
 export interface PauseReason {
@@ -112,6 +114,8 @@ export interface CommandResult {
   cmd: string;
   exitCode: number;
   output: string;
+  /** The key of the track that ran it; absent for the main line. */
+  track?: string;
 }
 
 export interface SubagentOpen {
@@ -170,7 +174,62 @@ export interface RunOptions {
   setReasoning?: (level: string, step: string) => void;
   /** The host's opener for a subagent step's session; absent, the run's own engine opens it. */
   openSubagent?: (o: SubagentOpen) => Promise<SubagentOpened>;
+  /** The kinds the host loaded, each kind's id to its version. Core knows no mod: it saves this and compares it on restore. */
+  kinds?: Record<string, string>;
 }
+
+/** One live track as saved (one that ended is not a track: its result is in `ended`). Add a field here and in `snapTrack` / `unsnapTrack`. */
+export interface TrackSnap {
+  key: string;
+  /** Position in start order; the array is in that order too, but a key like "2" must not decide it. */
+  order: number;
+  parent: string;
+  group: string;
+  title: string;
+  programCounter: number;
+  /** The track's own state. The run's `status` is separate and stays whatever it was. */
+  status: 'running' | 'paused';
+  pauseReason?: PauseReason;
+  sessionId?: string;
+  handback: string[];
+  lastTurnText?: string;
+  lastStepId?: string;
+  capped: boolean;
+  recall: string[];
+  policy: Policy;
+}
+
+/** A group an op started and has not taken. */
+export interface GroupSnap {
+  group: string;
+  /** The key of the parked track ('' = the main line). */
+  parent: string;
+  keys: string[];
+  results: TrackResult[];
+}
+
+/** Sorted keys, so the same program always gives the same text. */
+const stable = (v: unknown): string => {
+  if (Array.isArray(v)) return `[${v.map(stable).join(',')}]`;
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    return `{${Object.keys(o).filter((k) => o[k] !== undefined).sort().map((k) => `${JSON.stringify(k)}:${stable(o[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(v) ?? 'null';
+};
+
+/** cyrb53: a short non-secure hash in plain JS (core also runs in the browser, so no node:crypto). It tells a changed program from the same one. */
+const hashText = (s: string): string => {
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);
+};
 
 export interface RunSnapshot {
   sessionId?: string;
@@ -209,6 +268,13 @@ export interface RunSnapshot {
   handback?: string[];
   /** A change request that a USD pause cut off, with the gate it came from. */
   changeRequest?: { note: string; gate: PauseReason };
+  /** Written only when a track exists or has existed (a group is live or a result was kept); a run with none writes exactly the keys above. */
+  tracks?: TrackSnap[];
+  groups?: GroupSnap[];
+  ended?: Array<{ key: string; text: string }>;
+  /** Written with `tracks`, or when the host gave `kinds`: a hash of the compiled program and the host's kind versions. */
+  programHash?: string;
+  kinds?: Record<string, string>;
 }
 
 /** Money sums carry float noise (0.1 + 0.07): six decimals keep every logged figure exact to the cent and below. */
@@ -283,6 +349,7 @@ export class Run {
   private lastTotal?: number;
   private lastTotals?: Record<string, number>;
   private openSubagent?: (o: SubagentOpen) => Promise<SubagentOpened>;
+  private kinds?: Record<string, string>;
   private subagents: Record<string, SubagentRecord> = {};
   /** The session whose turn is in flight: the run's own or a subagent's; interrupts go there. */
   private turnSession?: EngineSession;
@@ -337,6 +404,7 @@ export class Run {
     this.switchModel = opts.switchModel;
     this.setReasoning = opts.setReasoning;
     this.openSubagent = opts.openSubagent;
+    this.kinds = opts.kinds;
 
     this.program = compileProgram(this.workflow, this.resolveBlock, this.starts);
 
@@ -394,7 +462,7 @@ export class Run {
   /** A track other than the main line has its OWN session, opened once through the host opener; a Stop or close while it opens closes the new session. */
   private async ensureTrackSession(t: Track): Promise<EngineSession> {
     if (!t.session) {
-      const o: SubagentOpen = { step: t.key, title: t.title, policy: () => t.policy, ...(this.cwd !== undefined ? { cwd: this.cwd } : {}) };
+      const o: SubagentOpen = { step: t.key, title: t.title, policy: () => t.policy, ...(t.sessionId ? { sessionId: t.sessionId } : {}), ...(this.cwd !== undefined ? { cwd: this.cwd } : {}) };
       const opened = await (this.openSubagent ?? ((x: SubagentOpen) => this.ownSubagent(x)))(o);
       if (this.closing || this.status === 'stopped') { await opened.session.close().catch(() => {}); throw new Error('closed'); }
       t.session = opened.session;
@@ -596,7 +664,7 @@ export class Run {
       takeLink: (key, to, max) => this.takeLink(key, to, max, t),
       command: async (cmd) => {
         const res = await this.commandRunner(cmd);
-        this.recordCommandResult(cmd, res.exitCode, res.stdout || res.stderr);
+        this.recordCommandResult(cmd, res.exitCode, res.stdout || res.stderr, t);
         return res;
       },
       turnText: (step, handed, top) => compileTurn(step, {
@@ -968,8 +1036,8 @@ export class Run {
     return false;
   }
 
-  recordCommandResult(cmd: string, exitCode: number, output: string) {
-    this.commandResults.push({ cmd, exitCode, output });
+  recordCommandResult(cmd: string, exitCode: number, output: string, t: Track = this.main) {
+    this.commandResults.push({ cmd, exitCode, output, ...(t === this.main ? {} : { track: t.key }) });
   }
 
   checkAutoCards(): Promise<void> | void {
@@ -1010,7 +1078,7 @@ export class Run {
       commandResults: this.commandResults,
       runCommand: async (cmd) => {
         const res = await this.commandRunner(cmd);
-        this.recordCommandResult(cmd, res.exitCode, res.stdout || res.stderr);
+        this.recordCommandResult(cmd, res.exitCode, res.stdout || res.stderr, t);
         return res;
       },
       loopTotal: [...this.loopCounters.values()].reduce((a, b) => a + b, 0),
@@ -1094,7 +1162,55 @@ export class Run {
       ...(Object.keys(this.subagents).length ? { subagents: structuredClone(this.subagents) } : {}),
       ...(this.handback.length ? { handback: [...this.handback] } : {}),
       ...(this.changeRequest ? { changeRequest: structuredClone(this.changeRequest) } : {}),
+      ...this.trackSnap(),
     };
+  }
+
+  /** The track keys of a snapshot; empty for a run that never had a track, so its snapshot keeps exactly the M1 keys. */
+  private trackSnap(): Partial<RunSnapshot> {
+    const had = this.tracks.size > 0 || this.groups.size > 0 || this.ended.length > 0;
+    return {
+      ...(this.tracks.size ? { tracks: [...this.tracks.values()].map((t, order) => this.snapTrack(t, order)) } : {}),
+      ...(this.groups.size ? { groups: [...this.groups.entries()].map(([group, g]) => ({ group, parent: g.parent.key, keys: [...g.keys], results: structuredClone([...g.results.values()]) })) } : {}),
+      ...(this.ended.length ? { ended: this.ended.map((e) => ({ ...e })) } : {}),
+      ...(had || this.kinds ? { programHash: hashText(stable(this.program)) } : {}),
+      ...(this.kinds ? { kinds: { ...this.kinds } } : {}),
+    };
+  }
+
+  private snapTrack(t: Track, order: number): TrackSnap {
+    const sessionId = t.session?.sessionId ?? t.sessionId;
+    return {
+      key: t.key, order, parent: t.parent, group: t.group, title: t.title, programCounter: t.pc,
+      status: t.state === 'paused' ? 'paused' : 'running',
+      ...(t.pause ? { pauseReason: structuredClone(t.pause) } : {}),
+      ...(sessionId ? { sessionId } : {}),
+      handback: [...t.handback],
+      ...(t.lastTurnText !== undefined ? { lastTurnText: t.lastTurnText } : {}),
+      ...(t.lastStepId !== undefined ? { lastStepId: t.lastStepId } : {}),
+      capped: t.capped, recall: [...t.recall], policy: structuredClone(t.policy),
+    };
+  }
+
+  private unsnapTrack(s: TrackSnap): Track {
+    return {
+      key: s.key, title: s.title, parent: s.parent, group: s.group, pc: s.programCounter, state: s.status,
+      ...(s.pauseReason ? { pause: structuredClone(s.pauseReason) } : {}),
+      ...(s.sessionId ? { sessionId: s.sessionId } : {}),
+      turnInFlight: false, capped: s.capped, handback: [...s.handback],
+      ...(s.lastTurnText !== undefined ? { lastTurnText: s.lastTurnText } : {}),
+      ...(s.lastStepId !== undefined ? { lastStepId: s.lastStepId } : {}),
+      policy: structuredClone(s.policy), recall: [...s.recall],
+    };
+  }
+
+  /** What differs between the saved program and kinds and the ones this run has now: kind ids, or 'the program'; undefined when nothing does. */
+  private changedSince(snapshot: RunSnapshot): string | undefined {
+    const was = snapshot.kinds, now = this.kinds;
+    const kinds = was && now ? [...new Set([...Object.keys(was), ...Object.keys(now)])].filter((k) => was[k] !== now[k]) : [];
+    if (kinds.length) return kinds.join(', ');
+    if (snapshot.programHash !== undefined && snapshot.programHash !== hashText(stable(this.program))) return 'the program';
+    return undefined;
   }
 
   static restore(snapshot: RunSnapshot, opts: Partial<RunOptions>): Run {
@@ -1113,6 +1229,7 @@ export class Run {
       switchModel: opts.switchModel,
       setReasoning: opts.setReasoning,
       openSubagent: opts.openSubagent,
+      kinds: opts.kinds,
     });
 
     // Set after construction so the constructor's own run_started is not reported again.
@@ -1151,6 +1268,20 @@ export class Run {
     if (snapshot.subagents) run.subagents = structuredClone(snapshot.subagents);
     if (snapshot.handback) run.handback = [...snapshot.handback];
     if (snapshot.changeRequest) run.changeRequest = structuredClone(snapshot.changeRequest);
+    // A track that was running when the run was saved (a detach leaves them so) runs again; a paused one keeps its pause; an ended one is no track.
+    for (const s of [...(snapshot.tracks ?? [])].sort((a, b) => a.order - b.order)) run.tracks.set(s.key, run.unsnapTrack(s));
+    for (const g of snapshot.groups ?? []) {
+      const parent = g.parent === '' ? run.main : run.tracks.get(g.parent);
+      if (!parent) throw new Error(`saved group "${g.group}" has no parent track "${g.parent}"`);
+      run.groups.set(g.group, { parent, keys: [...g.keys], results: new Map(structuredClone(g.results).map((r) => [r.key, r])) });
+    }
+    run.ended.push(...(snapshot.ended ?? []).map((e) => ({ ...e })));
+
+    const changed = run.changedSince(snapshot);
+    if (changed !== undefined && run.status === 'running') {
+      const text = `This run was saved with other blocks (${changed}); Stop it, or Resume to run it with the blocks you have now.`;
+      run.pauseForStop(run.main, text);
+    }
 
     return run;
   }
