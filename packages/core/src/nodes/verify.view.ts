@@ -7,5 +7,5 @@ export default {
   cards: true,
   fails: true,
   against: true,
-  card: { label: 'verify against', section: 'Flow' }, fresh: () => ({}),
+  card: { label: 'verify against', section: 'Flow' }, fresh: {},
 } satisfies KindView;

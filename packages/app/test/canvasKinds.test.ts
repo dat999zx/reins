@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { CARDS, NODES, parseWorkflow, printWorkflow, validate, type Step, type StepKind } from '@reins/core';
 import { CARD_KINDS, CARD_LABEL, KINDS } from '../src/canvasKinds.js';
+import { freshOf } from '../src/blocks.js';
 import { BUDGET_ERRORS, applyField } from '../src/panelEdit.js';
+import { fill } from '../src/template.js';
 
 const step = (kind: string, over: Partial<Step> = {}): Step =>
   ({ id: 'x', kind, attrs: {}, cards: [], links: [], ...over }) as Step;
@@ -36,7 +38,7 @@ describe('KINDS', () => {
   });
   it('only use has sub', () => {
     expect((Object.keys(KINDS) as StepKind[]).slice(0, 13).filter((k) => KINDS[k].sub)).toEqual(['use']);
-    expect(KINDS.use.sub!(step('use', { attrs: { use: 'lint-fix' } }))).toBe('lint-fix');
+    expect(fill(KINDS.use.sub!, step('use', { attrs: { use: 'lint-fix' } }))).toBe('lint-fix');
   });
 });
 
@@ -51,7 +53,7 @@ describe('line', () => {
   it("'cond' is in exactly the kinds whose fresh step has a cond", () => {
     const withCond = kinds.filter((k) => KINDS[k].line.includes('cond')).sort();
     expect(withCond).toEqual(['gate', 'if', 'repeat']);
-    expect(kinds.filter((k) => KINDS[k].fresh?.().cond).sort()).toEqual(withCond);
+    expect(kinds.filter((k) => KINDS[k].fresh?.cond).sort()).toEqual(withCond);
   });
 });
 
@@ -75,7 +77,7 @@ describe('field hints', () => {
     const base = '---\nreins: 1\nname: t\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n## phase plan\n> Plan it.\n';
     for (const k of (Object.keys(KINDS) as StepKind[]).filter((x) => KINDS[x].fields.some((f) => f.key === 'prompt'))) {
       const w = parseWorkflow(base).workflow!;
-      w.steps.push({ id: `${k}-1`, kind: k, attrs: {}, cards: [], links: [], ...KINDS[k].fresh!() });
+      w.steps.push({ id: `${k}-1`, kind: k, attrs: {}, cards: [], links: [], ...KINDS[k].fresh! });
       const warns = validate(w).some((d) => d.severity === 'warning' && d.message.includes('has no prompt'));
       expect(!!KINDS[k].fields.find((f) => f.key === 'prompt')!.required, k).toBe(warns);
     }
@@ -91,7 +93,7 @@ describe('fresh', () => {
     it(`${k}: prints, reads back with no errors, same bytes, default id`, () => {
       const base = '---\nreins: 1\nname: t\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n## phase plan\n> Plan it.\n';
       const w = parseWorkflow(base).workflow!;
-      w.steps.push({ id: `${k}-1`, kind: k as StepKind, attrs: {}, cards: [], links: [], ...KINDS[k as StepKind].fresh!() });
+      w.steps.push({ id: `${k}-1`, kind: k as StepKind, attrs: {}, cards: [], links: [], ...KINDS[k as StepKind].fresh! });
       const text = printWorkflow(w);
       const r = parseWorkflow(text);
       expect(r.diagnostics).toEqual([]);
@@ -145,7 +147,7 @@ describe('fresh', () => {
     expect(CARD_KINDS).toEqual(['guard']);
     expect(CARD_LABEL.guard).toEqual({ section: 'Guards', add: 'Add guard' });
   });
-  it('gives a new attrs object per call', () => {
-    expect(KINDS.repeat.fresh!().attrs).not.toBe(KINDS.repeat.fresh!().attrs);
+  it('gives a new attrs object per call of freshOf', () => {
+    expect(freshOf('repeat').attrs).not.toBe(freshOf('repeat').attrs);
   });
 });

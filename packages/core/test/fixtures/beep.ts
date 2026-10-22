@@ -35,6 +35,6 @@ export const beepView = {
   kind: 'beep', order: 140, colour: 'soft',
   fields: [{ key: 'times', label: 'Times', input: 'number', check: 'count' }],
   line: ['beep', { field: 'times' }],
-  card: { label: 'beep', section: 'Flow' }, fresh: () => ({ attrs: { times: '1' } }),
-  rows: { beeped: (d) => ({ text: `beeped x${d.times}`, className: 'sx-sub' }) },
+  card: { label: 'beep', section: 'Flow' }, fresh: { attrs: { times: '1' } },
+  rows: { beeped: { text: 'beeped x{times}', className: 'sx-sub' } },
 } satisfies KindView;

@@ -4,6 +4,7 @@ import { KINDS, wiresOf, type Token } from './canvasKinds.js';
 import { applyParam, COND_KINDS, type CondParam } from './condKinds.js';
 import { AGAINST, editStep, flatSteps, marksOf } from './canvas.js';
 import { commitBudget, setCond, type CondPath } from './blocks.js';
+import { fill } from './template.js';
 import { applyField, budgetCount, budgetPatch, BUDGET_OVER, fieldValue, MODES, type BudgetKey } from './panelEdit.js';
 import type { Pt } from './surface.js';
 import { stepKey, type Key } from './selection.js';
@@ -24,7 +25,7 @@ const HANDLE_TITLE: Record<string, string> = {
   against: "Compares this block's work against the block you drag this to. Drag to a block to link.",
 };
 
-export function BlocksPane({ w, steps, diags, text, sel, primary, rev, models, efforts, sessionModel, sessionEffort, condDrag, src, over, linkOver, at, missing, loose, free, onEdit, onSelect }: {
+export function BlocksPane({ w, diags, text, sel, primary, rev, models, efforts, sessionModel, sessionEffort, condDrag, src, over, linkOver, at, missing, loose, free, onEdit, onSelect }: {
   w: Workflow; steps: Array<{ id: string; cond?: string }>; diags: Diagnostic[]; text: string; sel: Set<Key>; primary?: string; rev: unknown;
   models: Array<{ id: string; label: string }>; efforts: Array<{ id: string; label: string }>; sessionModel?: SessionModel; sessionEffort?: SessionModel;
   condDrag?: boolean; src?: Set<string>; over?: Over; linkOver?: string; at: Pt;
@@ -33,7 +34,6 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, models, e
   free?: { at: Map<string, Pt>; moving: Set<string> }; // the free blocks (steps behind the end) with a place of their own; the others stand in a column beside the script
   onEdit: (fn: (w: Workflow) => Workflow) => boolean; onSelect: (id: string, add: boolean) => void;
 }) {
-  const conds = Object.fromEntries(steps.flatMap((s) => (s.cond === undefined ? [] : [[s.id, s.cond]])));
   const found = useMemo(() => (loose ? undefined : marksOf(w, diags, text)), [w, diags, text, !!loose]);
   const marks = found?.steps;
   const { status, show: showAll, ended, thinking } = useContext(StatusCtx);
@@ -107,7 +107,7 @@ export function BlocksPane({ w, steps, diags, text, sel, primary, rev, models, e
 
   const token = (s: Step, t: Token, i: number): ReactNode => {
     if (t === 'cond') return <span key={i}>{hex(s, s.cond, [])}</span>;
-    if (t === 'sub') return <span key={i}>{KINDS[s.kind].sub?.(s, conds[s.id]) ?? ''}</span>;
+    if (t === 'sub') return <span key={i}>{fill(KINDS[s.kind].sub ?? '', s)}</span>;
     if (typeof t === 'string') return <b key={i}>{t}</b>;
     const f = KINDS[s.kind].fields.find((x) => x.key === t.field);
     const v = fieldValue(s, t.field);

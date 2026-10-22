@@ -127,21 +127,21 @@ describe('rows a view brings', () => {
   const row = (type: string, data: unknown = {}) => ({ sessionId: 's', seq: 1, ts: 1, type, data }) as LogRow;
   const ctx = { sess: reduce(initial(), row('note'), 0).sessions.s!, act: { answer: async () => {}, resume: () => {} } };
   const draw = (r: LogRow) => renderToStaticMarkup(renderRow(r, ctx) as never);
-  const beep = (d: { n: number; more?: boolean }) => ({ text: 'beep x' + d.n, ...(d.more === false ? {} : { details: 'more' }), className: 'sx-sub' });
+  const beep = { text: 'beep x{n}', details: '{more}', className: 'sx-sub' };
   const toyRows = (rows: Record<string, unknown>) => ({ kind: 'toyrows', order: 99, colour: 'soft' as const, fields: [], line: [], rows: rows as never });
 
   it('draws a details row with an Md body, or a plain row without details, until the disposer runs', () => {
     const off = registerView(toyRows({ beeped: beep }));
     expect(rowTypes()).toContain('beeped');
-    expect(draw(row('beeped', { n: 2 }))).toBe('<details class="row sx-sub"><summary>beep x2</summary><div class="md"><p>more</p></div></details>');
-    expect(draw(row('beeped', { n: 3, more: false }))).toBe('<div class="row sx-sub">beep x3</div>');
+    expect(draw(row('beeped', { n: 2, more: 'more' }))).toBe('<details class="row sx-sub"><summary>beep x2</summary><div class="md"><p>more</p></div></details>');
+    expect(draw(row('beeped', { n: 3 }))).toBe('<div class="row sx-sub">beep x3</div>');
     off();
     expect(rowTypes()).not.toContain('beeped');
     expect(draw(row('beeped', { n: 2 }))).toContain('<summary>beeped</summary>');
   });
   it('a row file of the same type wins over a view row, and the type is listed once', () => {
     const real = draw(row('subagent_result', { title: 'r', text: 'found it' }));
-    const off = registerView({ ...toyRows({ subagent_result: () => ({ text: 'toy' }) }), kind: 'toyrows2' });
+    const off = registerView({ ...toyRows({ subagent_result: { text: 'toy' } }), kind: 'toyrows2' });
     expect(draw(row('subagent_result', { title: 'r', text: 'found it' }))).toBe(real);
     expect(rowTypes().filter((t) => t === 'subagent_result')).toHaveLength(1);
     off();

@@ -24,10 +24,12 @@ export type KindView = {
   fields: Field[];
   line: Token[];
   card?: { label: string; section: 'Flow' | 'Memory' };
-  sub?(step: Step, cond?: string): string;
-  fresh?(): Partial<Step>;
-  // feed rows this kind brings, by event type; a row file of the same type wins
-  rows?: Partial<Record<RunEventType, (data: any) => { text: string; details?: string; className?: string }>>;
+  // A view is plain JSON. `sub` is a template over the step (what the `sub` token shows), `fresh` the fields of a new block,
+  // `rows` templates over the event data; the filler is app/src/template.ts: `{path}`, `{a|b}` (first with text), `{path:usd}`, `{path:count}`.
+  sub?: string;
+  fresh?: Partial<Step>;
+  // feed rows this kind brings, by event type; a row file of the same type wins. `details` filled empty means a plain row.
+  rows?: Partial<Record<RunEventType, { text: string; details?: string; className?: 'sx-sub' | 'faint' }>>;
 };
 
 export const USD_ERROR = 'USD must be an amount above 0, like 2.50. Leave it empty for no USD limit.';

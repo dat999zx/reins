@@ -48,10 +48,12 @@ export function insertSteps(w: Workflow, steps: Step[], to: Place): Workflow {
   return m;
 }
 
+// The fields of a new block of this kind: a copy each time, so no two blocks share an object.
+export const freshOf = (kind: StepKind): Partial<Step> => structuredClone(KINDS[kind].fresh ?? {});
+
 export function addStepAt(w: Workflow, kind: StepKind, to: Place): Workflow {
-  const fresh = KINDS[kind].fresh;
-  if (!fresh) return w;
-  return insertSteps(w, [{ id: newId(w, kind), kind, attrs: {}, cards: [], links: [], ...fresh() }], to);
+  if (!KINDS[kind].fresh) return w;
+  return insertSteps(w, [{ id: newId(w, kind), kind, attrs: {}, cards: [], links: [], ...freshOf(kind) }], to);
 }
 
 // The stack is the top-level steps before the first top-level `end`; what follows are free blocks.
