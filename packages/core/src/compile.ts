@@ -121,8 +121,8 @@ export function compileProgram(
     push: (i) => { instrs.push(i); return i; },
     get: (i) => instrs[i],
     compile: (steps) => { for (const s of steps) compileStep(s); },
-    linkLater: (instr, target) =>
-      links.push({ apply: (t) => { instr.onFailJump = t; }, target, fallback: -1 }),
+    linkTo: (target, apply, fallback = -1) => { links.push({ apply, target, fallback }); },
+    linkLater: (instr, target) => ctx.linkTo(target, (t) => { instr.onFailJump = t; }),
     resolveBlock,
   };
 
@@ -136,7 +136,7 @@ export function compileProgram(
     open.pop();
     // The inner step finishes first, so the outer one is put in front of it.
     if (starts && instrs.length > from) starts.set(from, [{ step: step.id, parents }, ...(starts.get(from) ?? [])]);
-    const next = step.links.find((l) => l.kind === 'next');
+    const next = NODES.get(step.kind)?.manyNext ? undefined : step.links.find((l) => l.kind === 'next');
     if (next) {
       const jump = ctx.push<Extract<Instr, { op: 'JUMP' }>>({
         op: 'JUMP',

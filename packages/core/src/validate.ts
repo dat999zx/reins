@@ -2,10 +2,30 @@ import type { Workflow, Step, Diagnostic, Pos } from './model.js';
 import { isValidGlob } from './util.js';
 import { CARDS } from './cards/index.js';
 import { CONDS } from './conds/index.js';
-import { NODES, opOf, nodeAttrs, headingOwns, type ValidateCtx } from './nodes/index.js';
+import { NODES, opOf, nodeAttrs, headingOwns, type ValidateCtx, type ProgramCtx } from './nodes/index.js';
 import { condAtoms } from './cond.js';
-import { compileProgram } from './compile.js';
+import { compileProgram, type Instr } from './compile.js';
 import { usdText } from './format/print.js';
+
+/** The instructions reached from `from`. END stops, JUMP goes to its target, an op with `next` goes where it says, else on one. With `skipStarts`, the places an op starts tracks at are left out (one each: a wire to the next instruction does not hide it). */
+function walk(program: readonly Instr[], from: number, skipStarts: boolean): Set<number> {
+  const seen = new Set<number>();
+  const todo = [from];
+  while (todo.length) {
+    const i = todo.pop()!;
+    const ins = program[i];
+    if (!ins || seen.has(i)) continue;
+    seen.add(i);
+    if (ins.op === 'END') continue;
+    if (ins.op === 'JUMP') { todo.push(ins.target); continue; }
+    const op = opOf(ins.op);
+    if (!op?.next) { todo.push(i + 1); continue; }
+    const out = op.next(ins, i).map((x) => x ?? -1);
+    if (skipStarts) for (const s of op.starts?.(ins) ?? []) { const k = out.indexOf(s); if (k >= 0) out.splice(k, 1); }
+    todo.push(...out);
+  }
+  return seen;
+}
 
 export function validate(
   w: Workflow,
@@ -39,7 +59,8 @@ export function validate(
 
   const allIds = new Set<string>();
   const orderMap = new Map<string, number>();
-  const vctx = (pos: Pos): ValidateCtx => ({ push: (d) => diagnostics.push(d), pos, resolveBlock, allIds });
+  const checkBlock = (b: Workflow) => validate({ ...b, block: b.block || 'block' }, resolveBlock);
+  const vctx = (pos: Pos): ValidateCtx => ({ push: (d) => diagnostics.push(d), pos, resolveBlock, allIds, checkBlock });
 
   // Check step kinds, attributes, duplicate IDs, and build order
   for (let i = 0; i < allSteps.length; i++) {
@@ -185,6 +206,7 @@ export function validate(
     NODES.get(step.kind)?.validate?.links?.(step, vctx(pos));
 
     for (const kind of ['next', 'on-fail'] as const) {
+      if (kind === 'next' && NODES.get(step.kind)?.manyNext) continue;
       const dup = step.links.filter((l) => l.kind === kind)[1];
       if (dup) {
         diagnostics.push({ severity: 'error', message: `a step can have only one \`${kind}\` link`, pos: dup.pos || pos });
@@ -262,19 +284,7 @@ export function validate(
   // Unknown kinds and missing targets compile to nothing or fall through, so only judge a clean workflow.
   if (!diagnostics.some((d) => d.severity === 'error')) {
     const program = compileProgram(w, resolveBlock);
-    const seen = new Set<number>();
-    const todo = [0];
-    while (todo.length) {
-      const i = todo.pop()!;
-      const ins = program[i];
-      if (!ins || seen.has(i)) continue;
-      seen.add(i);
-      if (ins.op === 'END') continue;
-      if (ins.op === 'JUMP') { todo.push(ins.target); continue; }
-      const own = opOf(ins.op)?.next;
-      if (own) { todo.push(...own(ins, i).map((x) => x ?? -1)); continue; }
-      todo.push(i + 1);
-    }
+    const seen = walk(program, 0, false);
     for (const step of allSteps) {
       const entry = program.findIndex((i) => 'step' in i && i.step === step.id);
       if (entry >= 0 && !seen.has(entry)) {
@@ -284,6 +294,63 @@ export function validate(
           pos: step.pos || { line: 1, col: 1 },
         });
       }
+    }
+
+    // Tracks: every instruction an op starts one at is the first of a region (what it reaches without starting more).
+    // Only steps count in a region (an `end` block compiles to a bare END), and only outside the main line for R2.
+    const stepAt = (i: number) => { const ins = program[i]; return ins && 'step' in ins ? (ins.step as string | undefined) : undefined; };
+    const posOf = (id: string | undefined) => allSteps.find((s) => s.id === id)?.pos || { line: 1, col: 1 };
+    const main = walk(program, 0, true);
+    const regions: Array<{ by: string; at: number; start: string; cells: number[] }> = [];
+    program.forEach((ins, i) => {
+      for (const at of new Set(opOf(ins.op)?.starts?.(ins) ?? [])) {
+        const start = stepAt(at);
+        if (start === undefined) continue;
+        const cells = [...walk(program, at, true)].filter((c) => stepAt(c) !== undefined).sort((a, b) => a - b);
+        regions.push({ by: stepAt(i) ?? ins.op, at, start, cells });
+      }
+    });
+    const leaked = new Set<(typeof regions)[number]>();
+    for (const r of regions) {
+      if (main.has(r.at)) {
+        leaked.add(r);
+        diagnostics.push({ severity: 'error', message: `\`${r.start}\` starts a branch of \`${r.by}\`, so only \`${r.by}\` may start it: put it behind the end, and let nothing else lead into it`, pos: posOf(r.by) });
+        continue;
+      }
+      const back = r.cells.find((c) => main.has(c));
+      if (back !== undefined) diagnostics.push({ severity: 'error', message: `branch \`${r.start}\` of \`${r.by}\` leads back into the stack at \`${stepAt(back)}\`; end the branch instead`, pos: posOf(r.by) });
+    }
+    const apart = regions.filter((r) => !leaked.has(r));
+    apart.forEach((a, k) => {
+      for (const b of apart.slice(k + 1)) {
+        const shared = a.cells.find((c) => !main.has(c) && b.cells.includes(c));
+        if (shared !== undefined) diagnostics.push({ severity: 'error', message: `\`${stepAt(shared)}\` is in branch \`${a.start}\` and branch \`${b.start}\`; put an end under each branch`, pos: posOf(a.by) });
+      }
+    });
+
+    if (!diagnostics.some((d) => d.severity === 'error')) {
+      const regionOf = (start: string) => regions.find((r) => r.start === start);
+      const members = (start: string, nested?: boolean): string[] => {
+        const cells = new Set<number>();
+        const todo = [start];
+        const done = new Set<string>();
+        while (todo.length) {
+          const s = todo.pop()!;
+          if (done.has(s)) continue;
+          done.add(s);
+          const r = regionOf(s);
+          if (!r) continue;
+          for (const c of r.cells) {
+            cells.add(c);
+            const ins = program[c]!;
+            if (nested) for (const at of opOf(ins.op)?.starts?.(ins) ?? []) { const t = stepAt(at); if (t !== undefined) todo.push(t); }
+          }
+        }
+        return [...new Set([...cells].sort((a, b) => a - b).map((c) => stepAt(c)!))];
+      };
+      const trackOf = (id: string) => regions.find((r) => members(r.start).includes(id))?.start;
+      const pctx = (pos: Pos): ProgramCtx => ({ ...vctx(pos), program, trackOf, members });
+      for (const step of allSteps) NODES.get(step.kind)?.validate?.program?.(step, pctx(step.pos || { line: 1, col: 1 }));
     }
   }
   return diagnostics;

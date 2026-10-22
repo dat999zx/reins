@@ -39,7 +39,9 @@ export interface CompileCtx {
   push<I extends Instr>(i: I): I;
   get(i: number): Instr | undefined;
   compile(steps: Step[]): void;
-  /** After everything is compiled, set instr.onFailJump to the index of targetStepId (if it compiled to anything). */
+  /** After everything is compiled: apply(the index where targetStepId's instructions begin; for a step that compiled to nothing, the next instruction), or apply(fallback) when the id is unknown and fallback >= 0. Applied in the order called. */
+  linkTo(targetStepId: string, apply: (index: number) => void, fallback?: number): void;
+  /** = linkTo(targetStepId, (t) => { instr.onFailJump = t; }); kept so verify.ts and run.ts compile byte for byte. */
   linkLater(instr: { onFailJump?: number }, targetStepId: string): void;
   resolveBlock?: (name: string) => Workflow | undefined;
 }
@@ -48,6 +50,16 @@ export interface ValidateCtx {
   pos: Pos;
   resolveBlock?: (name: string) => Workflow | undefined;
   allIds: Set<string>;
+  /** The diagnostics of a block file validated on its own (as `block: true`); a host that cannot leaves it out. */
+  checkBlock?(w: Workflow): Diagnostic[];
+}
+/** What `validate.program` sees: the compiled program and which track each step runs in. */
+export interface ProgramCtx extends ValidateCtx {
+  readonly program: readonly Instr[];
+  /** The step id a track starts at, for a step that runs in that track; undefined on the main line. */
+  trackOf(stepId: string): string | undefined;
+  /** The step ids of the track that starts at `start`, in program order; with `nested`, also those of every track started inside it. */
+  members(start: string, nested?: boolean): string[];
 }
 export interface NodeType {
   kind: string;
@@ -55,6 +67,8 @@ export interface NodeType {
   container?: 'kids' | 'kids+else';
   /** True when the step can fail, so an on-fail link on it can fire. */
   fails?: true;
+  /** The kind takes several `next` links and compiles them itself: core adds no JUMP for them, and the one-`next` rule skips it. `on-fail` stays single. */
+  manyNext?: true;
   /** True when this kind's exec runs a turn compiled from the step's own prompt, so a preview can show it. */
   sendsTurn?: true;
   heading?: {
@@ -67,6 +81,8 @@ export interface NodeType {
     early?(step: Step, ctx: ValidateCtx): void;
     late?(step: Step, ctx: ValidateCtx): void;
     links?(step: Step, ctx: ValidateCtx): void;
+    /** Runs last, only on a workflow with no error so far. */
+    program?(step: Step, ctx: ProgramCtx): void;
   };
   compile(step: Step, ctx: CompileCtx): void;
   /** The ops this kind compiles to (the instruction's `op` name is the key). Op names stay as they are, so compiled programs keep their bytes. */
@@ -125,6 +141,8 @@ export interface OpType<I extends Instr> {
   exec(instr: I, vm: VmCtx): Promise<void>;
   /** Where the reach walk goes from here (undefined: no such place); replaces `[at + 1]`. */
   next?(instr: I, at: number): Array<number | undefined>;
+  /** The instructions where this op starts tracks. `next` lists them too (whole reach); the main-line walk follows `next` minus these. */
+  starts?(instr: I): number[];
   /** The commands the instruction runs on its own, for the trust hash. */
   commands?(instr: I): string[];
   /** Where "Allow more" sends the run back to for an instruction that paused for its budget (undefined: nowhere). */

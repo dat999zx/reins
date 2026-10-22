@@ -17,6 +17,7 @@ export type KindView = {
   slice?: 'opens' | 'own'; // the run's usage slice: opens = a switch that starts a new one, own = the block is its own slice
   group?: 'kids' | 'kids+else';
   fails?: true;
+  manyNext?: true; // the face has the gray `next` handle, and each drag adds a wire
   stops?: true; // ends the workflow: no links out, drawn as a cap
   against?: true; // has a third wire: the step whose work it compares
   cards?: true;
