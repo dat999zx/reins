@@ -96,6 +96,11 @@ export function validate(
       }
     }
 
+    // U+0001 first is reserved: a track's USD counter is keyed with it (run.ts `trackSpendKey`), so no step id may equal such a key.
+    if (step.id.startsWith('\u0001')) {
+      diagnostics.push({ severity: 'error', message: `The id of step "${step.id.slice(1)}" starts with a reserved character`, pos });
+    }
+
     // Rule 2: duplicate step id
     if (allIds.has(step.id)) {
       diagnostics.push({

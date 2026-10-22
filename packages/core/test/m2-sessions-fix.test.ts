@@ -104,6 +104,7 @@ describe('a restored track slice is checked', () => {
     const { h, snap } = await held();
     const s = structuredClone(snap);
     s.tracks![0]!.openSlice = { step: 's', usd: 0 };
+    delete s.tracks![0]!.spendKey;   // a slice the track opened itself has no inherited spend key (a key must match its slice, see the 10b fix)
     const back = restore(h, s);
     expect(back.tracks.get('a')!.openSlice).toEqual({ step: 's', usd: 0 });
     await back.close();

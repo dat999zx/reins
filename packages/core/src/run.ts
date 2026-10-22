@@ -301,6 +301,15 @@ export interface RunSnapshot {
 
 /** Money sums carry float noise (0.1 + 0.07): six decimals keep every logged figure exact to the cent and below. */
 const r6 = (x: number) => Math.round(x * 1e6) / 1e6;
+/** A figure shown to people: rounded, and never non-finite (a huge raw sum overflows the rounding; it is shown as it is). */
+const money6 = (x: number) => { const v = r6(x); return Number.isFinite(v) ? v : Number.isFinite(x) ? x : 0; };
+/** What a track's money record may hold at most (a cost, a total, a total of one model): far above any real run, far below what `r6` can overflow. */
+const MONEY_MAX = 1e12;
+/**
+ * The `usdSpent` key of a slice a track inherited. U+0001 first (validate refuses a step id that starts with it, so no plain key equals this), then the
+ * track and the step as a JSON array, so no two pairs give the same text.
+ */
+export const trackSpendKey = (track: string, step: string) => `\u0001${JSON.stringify([track, step])}`;
 
 const CARRY_ON = '[Reins · the run was resumed] Carry on with your task from where you stopped. If you had already finished, give your result again.\n\n' +
   'When you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n';
@@ -511,10 +520,11 @@ export class Run {
       key: s.key, title: s.title, parent: parent.key, group, pc: s.at, state: 'running', turnInFlight: false, capped: false,
       handback: [...(s.seed ?? [])], policy: { mode: 'write', guards: [], allowShell: true }, recall: [],
       // The slice is copied with what its starter had spent on it; from here each track counts its own spend under its own key (siblings must not share a counter).
-      ...(parent.openSlice ? { openSlice: { ...parent.openSlice }, spendKey: `${s.key}\u0001${parent.openSlice.step}` } : {}),
+      ...(parent.openSlice ? { openSlice: { ...parent.openSlice }, spendKey: trackSpendKey(s.key, parent.openSlice.step) } : {}),
     }));
+    // Always set, 0 included: a key that an earlier track of the same name used must not carry its spend into this one.
     const was = parent.openSlice ? this.spentOn(parent, parent.openSlice) : 0;
-    if (was) for (const t of started) this.usdSpent[t.spendKey!] = was;
+    for (const t of started) if (t.spendKey !== undefined) this.usdSpent[t.spendKey] = was;
     for (const t of started) this.tracks.set(t.key, t);
     for (const t of started) this.logEvent('track_started', { track: t.key, parent: parent.key, group, title: t.title }, t);
     this.notify();
@@ -556,8 +566,13 @@ export class Run {
     return t.spendKey !== undefined && s === t.openSlice ? t.spendKey : s.step;
   }
 
+  /** A counter, only if the dictionary owns it (a name like `__proto__` or `constructor` is no counter). */
+  private spentAt(key: string): number {
+    return Object.hasOwn(this.usdSpent, key) ? this.usdSpent[key]! : 0;
+  }
+
   private spentOn(t: Track, s: { step: string }): number {
-    return this.usdSpent[this.keyOf(t, s)] ?? 0;
+    return this.spentAt(this.keyOf(t, s));
   }
 
   /**
@@ -660,7 +675,7 @@ export class Run {
     const key = p.stepId ?? '';
     // A subagent's own pause with a model slice open must not take the model's usd as its base.
     const base = p.stepId === undefined ? this.workflow.budget.usd! : this.openSlice?.step === p.stepId ? this.openSlice.usd : p.limit! - (this.usdExtra[key] ?? 0);
-    const spent = p.stepId === undefined ? this.runCost : this.usdSpent[key] ?? p.spent ?? 0;   // a track's slice is not under the step id: the pause says what it hit
+    const spent = p.stepId === undefined ? this.runCost : (Object.hasOwn(this.usdSpent, key) ? this.usdSpent[key]! : p.spent ?? 0);   // a track's slice is not under the step id: the pause says what it hit
     if (p.stepId !== undefined) {
       const left = this.usdLeft();
       if (left !== undefined && n > left + 1e-9) {
@@ -682,7 +697,10 @@ export class Run {
       // The host switches the run's own session: a track's session is its own, so a `model` step there logs `unsupported`.
       ...(t === this.main && this.switchModel ? { switchModel: this.switchModel } : {}),
       ...(t === this.main && this.setReasoning ? { setReasoning: this.setReasoning } : {}),
-      slice: (id, usd) => { t.openSlice = usd === undefined ? undefined : { step: id, usd }; t.spendKey = undefined; },
+      slice: (id, usd) => {
+        t.openSlice = usd === undefined ? undefined : { step: id, usd };
+        if (t.spendKey !== undefined) { delete this.usdSpent[t.spendKey]; t.spendKey = undefined; }   // the inherited slice is left: its counter goes with it
+      },
       log: (type, data) => this.logEvent(type, data, t),
       pause: (text) => { if (this.alive(t)) this.pauseForStop(t, text, step); },
       stop: () => this.stop(),
@@ -810,7 +828,7 @@ export class Run {
     if (blocked) { this.pauseTrack(t, { type: 'agent-blocked', reason: blocked[1] || 'blocked' }); return false; }
     const text = result.text.split(/\r?\n/).filter((l) => !/^\s*REINS:\s*/.test(l)).join('\n').trim();
     // A finished reply over its own slice (the cap rounds, or a provider with no cap) is kept: said, not paused (the step is done).
-    if (usd !== undefined && (this.usdSpent[id] ?? 0) > usd + (this.usdExtra[id] ?? 0) + 1e-9) {
+    if (usd !== undefined && this.spentAt(id) > usd + (this.usdExtra[id] ?? 0) + 1e-9) {
       this.logEvent('budget_warning', { step: id, text: `Subagent ${title} went over its $${usdText(usd)} budget; its result was kept.` }, t);
     }
     rec.done = true;
@@ -935,7 +953,7 @@ export class Run {
     }
     if (t !== this.main) {   // a track's record holds all it cost (its subagents too); the totals only of its own session
       const m = (t.money ??= { cost: 0 });
-      m.cost = r6(m.cost + (result.cost ?? 0));
+      m.cost += result.cost ?? 0;   // the raw sum: rounded where it is shown, so sub-micro charges add up
       if (!sub && result.total !== undefined) {
         m.total = result.total;
         if (result.totals) m.totals = result.totals; else delete m.totals;
@@ -944,7 +962,7 @@ export class Run {
     const slice = sub ? sub.slice : t.openSlice;
     if (slice) {
       const key = this.keyOf(t, slice);
-      this.usdSpent[key] = (this.usdSpent[key] ?? 0) + (result.cost ?? 0);
+      this.usdSpent[key] = this.spentAt(key) + (result.cost ?? 0);
       if (result.unknownCost) this.usdUnknown.add(slice.step);
     }
     return slice;
@@ -1124,17 +1142,19 @@ export class Run {
   }
 
   private evalCtx(t: Track): EvalCtx {
+    const results = () => this.commandResults, logged = () => this.events;
     const mine = t === this.main ? undefined : t.key;   // a track reads only what it recorded and logged; the main line, only what carries no track
     return {
       lastTurnText: t.lastTurnText,
-      commandResults: this.commandResults.filter((c) => c.track === mine),
+      // Getters: a condition that records a command result while it is judged (`not tests pass and same error twice`) reads it in its next operand.
+      get commandResults() { return results().filter((c) => c.track === mine); },
       runCommand: async (cmd) => {
         const res = await this.commandRunner(cmd);
         this.recordCommandResult(cmd, res.exitCode, res.stdout || res.stderr, t);
         return res;
       },
       loopTotal: [...this.loopCounters.values()].reduce((a, b) => a + b, 0),
-      events: this.events.filter((e) => e.data?.track === mine),
+      get events() { return logged().filter((e) => e.data?.track === mine); },
       cwd: this.cwd ?? '',
       testCmd: this.workflow.test ?? 'npm test',
       atRun: opOf(this.program[t.pc]?.op)?.ranCommand === true,
@@ -1279,6 +1299,7 @@ export class Run {
     const isObj = (x: unknown) => typeof x === 'object' && x !== null && !Array.isArray(x);
     if (s.kinds !== undefined && (!isObj(s.kinds) || Object.values(s.kinds).some((v) => typeof v !== 'string'))) bad('kinds is not a map of kind to version');
     if (s.ended !== undefined && (!Array.isArray(s.ended) || s.ended.some((e) => !isObj(e) || typeof e.key !== 'string' || typeof e.text !== 'string'))) bad('ended is not a list of results');
+    if (s.usdSpent !== undefined && (!isObj(s.usdSpent) || Object.values(s.usdSpent).some((v) => typeof v !== 'number' || !Number.isFinite(v) || v < 0))) bad('usdSpent is not a map of amounts');
     if (s.tracks !== undefined && !Array.isArray(s.tracks)) bad('tracks is not a list');
     if (s.groups !== undefined && !Array.isArray(s.groups)) bad('groups is not a list');
     const tracks = s.tracks ?? [], groups = s.groups ?? [];
@@ -1294,9 +1315,10 @@ export class Run {
       if (!Array.isArray(t.handback) || !Array.isArray(t.recall) || !isObj(t.policy)) bad(`track "${t.key}" is missing its handback, recall or policy`);
       const sl = t.openSlice as { step?: unknown; usd?: unknown } | undefined;
       if (sl !== undefined && (!isObj(sl) || typeof sl.step !== 'string' || typeof sl.usd !== 'number' || !Number.isFinite(sl.usd) || sl.usd < 0)) bad(`track "${t.key}" has an open USD slice that is not a step and an amount`);
-      if (t.spendKey !== undefined && typeof t.spendKey !== 'string') bad(`track "${t.key}" has a spend key that is not text`);
+      // The key is derived, never trusted: it must be the one this track's start made from its own key and the slice it holds.
+      if (t.spendKey !== undefined && (sl === undefined || t.spendKey !== trackSpendKey(t.key, sl.step as string))) bad(`track "${t.key}" has a spend key that is not its own slice's`);
       const mo = t.money as { cost?: unknown; total?: unknown; totals?: unknown } | undefined;
-      const num = (x: unknown) => typeof x === 'number' && Number.isFinite(x) && x >= 0;
+      const num = (x: unknown) => typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= MONEY_MAX;
       if (mo !== undefined && (!isObj(mo) || !num(mo.cost) || (mo.total !== undefined && !num(mo.total)) ||
         (mo.totals !== undefined && (!isObj(mo.totals) || Object.values(mo.totals as object).some((v) => !num(v)))))) bad(`track "${t.key}" has a money record that is not a cost and totals`);
     }
@@ -1499,7 +1521,8 @@ export class Run {
     const reply = (t.lastTurnText ?? '').split(/\r?\n/).filter((l) => !/^\s*REINS:\s*/.test(l)).join('\n').trim();
     const text = [reply, ...t.handback].filter((x) => x).join('\n\n');
     this.ended.push({ key: t.key, text });
-    const cost = t.money?.cost ?? 0;   // the run's cost already holds it; from here it lives in the result and the row
+    const cost = money6(t.money?.cost ?? 0);   // the run's cost already holds it; from here it lives in the result and the row
+    if (t.spendKey !== undefined) delete this.usdSpent[t.spendKey];   // so do not keep its counter
     this.groups.get(t.group)?.results.set(t.key, { key: t.key, title: t.title, text, cost });
     // State first, then the row (a snapshot is saved inside onEvent), then the close.
     this.logEvent('track_ended', { track: t.key, group: t.group, title: t.title, text, cost }, t);
