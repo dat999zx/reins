@@ -307,7 +307,8 @@ function addsOf(raw: Record<string, unknown>): string[] {
   }
   const card = isObj(raw.view) && isObj(raw.view.card) ? raw.view.card : undefined;
   if (clean(card?.label)) out.push(`shown in the block list as ${show(card.label)}${clean(card.section) ? ` under ${show(card.section)}` : ''}`);
-  // Task 19 (data blocks) hook: a block with no code shows its prompt template here, one line, cut and checked like the card label above.
+  // A block with no code (a data block) says so: there is nothing to run, so nothing to trust.
+  if (raw.kind === 'block' && raw.main === undefined) out.push('has no code, so there is nothing to trust');
   return out;
 }
 

@@ -88,7 +88,10 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, models, ef
       if (cr !== undefined && !c && !el.closest('.sx-autofree')) over = Math.max(over, cr - sw);
       next.set(el.dataset.id!, { x: q(b.left - o.left), y: q(row.top - o.top), w: q(b.width), h: q(row.height), ...(c && { c: c.dataset.zid }), ...(cr !== undefined && { cr }) });
     }
-    s.style.setProperty('--chip-over', `${Math.max(0, over)}px`);
+    const chipOver = `${Math.max(0, over)}px`;
+    const moved = s.style.getPropertyValue('--chip-over') !== chipOver;
+    s.style.setProperty('--chip-over', chipOver);
+    if (moved) requestAnimationFrame(measure); // the free column just moved, so its blocks are measured again at the new place
     setRects((p) => (JSON.stringify([...p]) === JSON.stringify([...next]) ? p : next));
   };
   const wires = useMemo(() => marksOf(w, diags, text).wires, [w, diags, text]);

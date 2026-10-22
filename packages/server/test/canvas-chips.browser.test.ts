@@ -65,7 +65,11 @@ describe.skipIf(skip)('canvas cost chips and arrows (M2 Task 22)', () => {
     await cleanup();
   }, T);
 
-  it('keeps each cost chip off the blocks beside it, and every arrow ends on its own target', async () => {
+  // `late`: the run is logged AFTER the canvas first painted, so the chips arrive as new text in a page already measured.
+  it.each([[false], [true]])('keeps each cost chip off the blocks beside it, and every arrow ends on its own target (chips arrive after first paint: %s)', async (late) => {
+    await browser?.close();
+    await srv?.close();
+    store?.close();
     const folder = tmpDir();
     fs.mkdirSync(path.join(folder, '.reins', 'workflows'), { recursive: true });
     fs.writeFileSync(path.join(folder, '.reins', 'workflows', 'chips.reins.md'), WORKFLOW);
@@ -79,12 +83,15 @@ describe.skipIf(skip)('canvas cost chips and arrows (M2 Task 22)', () => {
     expect(made.ok).toBe(true);
     const c = await made.json() as { id: string };
     const add = (type: string, data: unknown) => store!.appendLog(c.id, { type, data, runId: 'run-chips' });
-    add('run_started', { workflow: 'chips', steps: STEPS });
-    for (const step of RAN) {
-      add('step_started', { step, parents: [] });
-      add('turn_ended', { step, cost: 0.0123, model: 'claude-haiku-5-5' });
-    }
-    add('run_finished', {});
+    const seed = () => {
+      add('run_started', { workflow: 'chips', steps: STEPS });
+      for (const step of RAN) {
+        add('step_started', { step, parents: [] });
+        add('turn_ended', { step, cost: 0.0123, model: 'claude-haiku-5-5' });
+      }
+      add('run_finished', {});
+    };
+    if (!late) seed();
 
     browser = await chromium.launch();
     const page: Page = await (await browser.newContext()).newPage();
@@ -93,6 +100,7 @@ describe.skipIf(skip)('canvas cost chips and arrows (M2 Task 22)', () => {
     page.on('pageerror', (e) => errors.push(e.message));
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 
+    await page.addInitScript(`(() => { const E = window.EventSource; window.__es = []; window.EventSource = class extends E { constructor(...a) { super(...a); window.__es.push(this); } }; })()`);
     await page.goto(srv.url);
     await page.evaluate(`location.hash = ${JSON.stringify(`s=${c.id}`)}`);
     await page.reload();
@@ -101,8 +109,17 @@ describe.skipIf(skip)('canvas cost chips and arrows (M2 Task 22)', () => {
     await page.locator('.wflist button', { has: page.locator('.sx-wfname', { hasText: /^chips$/ }) }).click();
     await page.locator('.ebar b', { hasText: 'chips.reins.md' }).waitFor();
     await page.getByRole('tab', { name: 'Blocks' }).click();
+    if (late) {
+      await page.locator('.blk[data-id="plan"]').waitFor();
+      expect(await page.locator('.sx-st .sstate').count()).toBe(0);
+      // The server pushes only what a live session writes, so the app is made to reconnect: it replays the rows it has not seen.
+      seed();
+      await page.evaluate('window.__es.at(-1).dispatchEvent(new Event("error"))');
+    }
     await page.locator('.sx-st .sstate').first().waitFor();
+    if (late) await page.waitForFunction(`document.querySelectorAll('.sx-st .sstate').length === ${RAN.length}`);
     expect(await page.locator('.sx-st .sstate').count()).toBe(RAN.length);
+    await page.waitForTimeout(500); // let the re-measure settle
 
     // 1. no state chip covers a block (screen pixels). A chip of a block inside a loop sits in that loop's frame: the frame
     // is an ancestor of the chip's own block, so it is not counted here (the loop body is laid out as it was before this task).
