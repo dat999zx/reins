@@ -211,6 +211,10 @@ export interface GroupSnap {
 /** Sorted keys, so the same program always gives the same text. */
 const stable = (v: unknown): string => {
   if (Array.isArray(v)) return `[${v.map(stable).join(',')}]`;
+  // What JSON cannot say is spelled out, so two different programs never give one text; JSON-only programs hash as they always did.
+  if (v instanceof Date) return `Date(${v.getTime()})`;
+  if (typeof v === 'bigint') return `${v}n`;
+  if (typeof v === 'number' && !Number.isFinite(v)) return String(v);
   if (v && typeof v === 'object') {
     const o = v as Record<string, unknown>;
     return `{${Object.keys(o).filter((k) => o[k] !== undefined).sort().map((k) => `${JSON.stringify(k)}:${stable(o[k])}`).join(',')}}`;
@@ -466,6 +470,7 @@ export class Run {
       const opened = await (this.openSubagent ?? ((x: SubagentOpen) => this.ownSubagent(x)))(o);
       if (this.closing || this.status === 'stopped') { await opened.session.close().catch(() => {}); throw new Error('closed'); }
       t.session = opened.session;
+      t.sessionId = opened.session.sessionId;   // kept after the session ends or closes: a snapshot still names it
     }
     return t.session;
   }
@@ -477,14 +482,13 @@ export class Run {
     const taken = keys.find((k, i) => this.tracks.has(k) || k === '' || keys.indexOf(k) !== i);
     if (taken !== undefined) throw new Error(`track "${taken}" is live`);
     this.groups.set(group, { parent, keys, results: new Map() });
-    for (const s of list) {
-      const t: Track = {
-        key: s.key, title: s.title, parent: parent.key, group, pc: s.at, state: 'running', turnInFlight: false, capped: false,
-        handback: [...(s.seed ?? [])], policy: { mode: 'write', guards: [], allowShell: true }, recall: [],
-      };
-      this.tracks.set(t.key, t);
-      this.logEvent('track_started', { track: t.key, parent: parent.key, group, title: t.title }, t);
-    }
+    // Every track exists before the first row is logged: a snapshot saved inside that row's onEvent must list the whole group.
+    const started = list.map((s): Track => ({
+      key: s.key, title: s.title, parent: parent.key, group, pc: s.at, state: 'running', turnInFlight: false, capped: false,
+      handback: [...(s.seed ?? [])], policy: { mode: 'write', guards: [], allowShell: true }, recall: [],
+    }));
+    for (const t of started) this.tracks.set(t.key, t);
+    for (const t of started) this.logEvent('track_started', { track: t.key, parent: parent.key, group, title: t.title }, t);
     this.notify();
   }
 
@@ -1173,6 +1177,7 @@ export class Run {
       ...(this.tracks.size ? { tracks: [...this.tracks.values()].map((t, order) => this.snapTrack(t, order)) } : {}),
       ...(this.groups.size ? { groups: [...this.groups.entries()].map(([group, g]) => ({ group, parent: g.parent.key, keys: [...g.keys], results: structuredClone([...g.results.values()]) })) } : {}),
       ...(this.ended.length ? { ended: this.ended.map((e) => ({ ...e })) } : {}),
+      // On purpose: `kinds` is the host's opt-in. Without the option a run that never had a track writes exactly the M1 keys; with it, even that run carries the hash and the kinds.
       ...(had || this.kinds ? { programHash: hashText(stable(this.program)) } : {}),
       ...(this.kinds ? { kinds: { ...this.kinds } } : {}),
     };
@@ -1206,11 +1211,50 @@ export class Run {
 
   /** What differs between the saved program and kinds and the ones this run has now: kind ids, or 'the program'; undefined when nothing does. */
   private changedSince(snapshot: RunSnapshot): string | undefined {
-    const was = snapshot.kinds, now = this.kinds;
-    const kinds = was && now ? [...new Set([...Object.keys(was), ...Object.keys(now)])].filter((k) => was[k] !== now[k]) : [];
+    // A snapshot that has kinds restored by a host that gives none: every saved kind is gone. A snapshot without kinds is not compared.
+    const was = snapshot.kinds, now = this.kinds ?? {};
+    const kinds = was ? [...new Set([...Object.keys(was), ...Object.keys(now)])].filter((k) => was[k] !== now[k]) : [];
     if (kinds.length) return kinds.join(', ');
     if (snapshot.programHash !== undefined && snapshot.programHash !== hashText(stable(this.program))) return 'the program';
     return undefined;
+  }
+
+  /** The saved track fields must agree with each other and with the program compiled now; nothing has run yet when this throws. */
+  private checkSnapshot(s: RunSnapshot) {
+    const bad = (why: string): never => { throw new Error(`saved run is inconsistent: ${why}`); };
+    const isObj = (x: unknown) => typeof x === 'object' && x !== null && !Array.isArray(x);
+    if (s.kinds !== undefined && (!isObj(s.kinds) || Object.values(s.kinds).some((v) => typeof v !== 'string'))) bad('kinds is not a map of kind to version');
+    if (s.ended !== undefined && (!Array.isArray(s.ended) || s.ended.some((e) => !isObj(e) || typeof e.key !== 'string' || typeof e.text !== 'string'))) bad('ended is not a list of results');
+    if (s.tracks !== undefined && !Array.isArray(s.tracks)) bad('tracks is not a list');
+    if (s.groups !== undefined && !Array.isArray(s.groups)) bad('groups is not a list');
+    const tracks = s.tracks ?? [], groups = s.groups ?? [];
+    const live = new Map<string, TrackSnap>();
+    for (const t of tracks) {
+      if (!isObj(t) || typeof t.key !== 'string') bad('a track has no key');
+      if (t.key === '') bad('a track has the empty key');
+      if (live.has(t.key)) bad(`track "${t.key}" is listed twice`);
+      live.set(t.key, t);
+      if (!Number.isInteger(t.programCounter) || t.programCounter < 0 || t.programCounter >= this.program.length) bad(`track "${t.key}" is at instruction ${t.programCounter}, which the program does not have`);
+      if (typeof t.order !== 'number' || !Number.isFinite(t.order)) bad(`track "${t.key}" has no order`);
+      if (t.status !== 'running' && t.status !== 'paused') bad(`track "${t.key}" has the state ${String(t.status)}`);
+      if (!Array.isArray(t.handback) || !Array.isArray(t.recall) || !isObj(t.policy)) bad(`track "${t.key}" is missing its handback, recall or policy`);
+    }
+    const byName = new Map<string, NonNullable<RunSnapshot['groups']>[number]>();
+    for (const g of groups) {
+      if (!isObj(g) || typeof g.group !== 'string' || !Array.isArray(g.keys) || !Array.isArray(g.results)) bad('a group is not well formed');
+      if (byName.has(g.group)) bad(`group "${g.group}" is listed twice`);
+      byName.set(g.group, g);
+      const done = new Set(g.results.map((r) => r.key));
+      if (done.size !== g.results.length) bad(`group "${g.group}" has a result twice`);
+      for (const k of done) if (!g.keys.includes(k)) bad(`group "${g.group}" has a result for "${k}", which it did not start`);
+      for (const k of g.keys) {
+        const t = live.get(k);
+        if (done.has(k) && t) bad(`track "${k}" is live and also has a result in group "${g.group}"`);
+        if (!done.has(k) && !t) bad(`group "${g.group}" waits for "${k}", which is neither a live track nor a result`);
+        if (t && t.group !== g.group) bad(`track "${k}" is in group "${t.group}", not "${g.group}"`);
+      }
+    }
+    for (const t of tracks) if (t.group !== '' && !byName.has(t.group)) bad(`track "${t.key}" belongs to group "${t.group}", which is not saved`);
   }
 
   static restore(snapshot: RunSnapshot, opts: Partial<RunOptions>): Run {
@@ -1231,6 +1275,8 @@ export class Run {
       openSubagent: opts.openSubagent,
       kinds: opts.kinds,
     });
+
+    run.checkSnapshot(snapshot);
 
     // Set after construction so the constructor's own run_started is not reported again.
     run.onEvent = opts.onEvent;
