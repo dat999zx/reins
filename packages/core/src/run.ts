@@ -336,15 +336,16 @@ export class Run {
     this.logEvent('run_started', {
       workflow: this.workflow.name,
       steps: flatSteps(this.workflow.steps).map((s) => ({ id: s.id, kind: s.kind, ...(s.title ? { title: s.title } : {}) })),
-    });
+    }, this.main);
   }
 
-  private logEvent(type: RunEventRecord['type'], data: any) {
+  /** The track's key rides on the row only for a track other than the main line; the main line's rows are as they always were. */
+  private logEvent(type: RunEventRecord['type'], data: any, t: Track) {
     const ev: RunEventRecord = {
       id: `ev-${this.events.length + 1}`,
       timestamp: this.now(),
       type,
-      data,
+      data: t === this.main ? data : { ...data, track: t.key },
     };
     this.events.push(ev);
     this.onEvent?.(ev);
@@ -364,27 +365,27 @@ export class Run {
     return cards;
   }
 
-  private async ensureSession(): Promise<EngineSession> {
-    if (this.borrowed) return this.borrowed;
-    if (!this.engineSession) {
-      this.engineSession = await this.engine.open({
+  private async ensureSession(t: Track): Promise<EngineSession> {
+    if (this.borrowed) return this.borrowed;   // the main line's; a track's own session opens in the own-sessions task
+    if (!t.session) {
+      t.session = await this.engine.open({
         ...(this.cwd !== undefined ? { cwd: this.cwd } : {}),
         ...(this.resumeSessionId ? { sessionId: this.resumeSessionId } : {}),
         ...(this.lastTotal !== undefined ? { costBase: this.lastTotal } : {}),
         ...(this.lastTotals ? { costBaseByModel: this.lastTotals } : {}),
-        policy: () => this.policy(),
+        policy: () => t.policy,
         pendingCards: () => this.takeCards(),
-        usdRoom: () => this.usdRoom(),
+        usdRoom: () => this.usdRoom(t),
       });
     }
-    return this.engineSession;
+    return t.session;
   }
 
   /**
    * The USD the run still allows right now: the smaller of the workflow's room and the open slice's, unrounded (as the subagent cap below
    * takes them); undefined when neither limit exists.
    */
-  usdRoom(): number | undefined {
+  usdRoom(_t: Track = this.main): number | undefined {   // slices are run-wide for now; the track's share arrives with the money task
     const wf = this.workflow.budget.usd;
     const s = this.openSlice;
     const rooms = [wf === undefined ? undefined : wf + (this.usdExtra[''] ?? 0) - this.runCost, s && s.usd + (this.usdExtra[s.step] ?? 0) - (this.usdSpent[s.step] ?? 0)]
@@ -392,25 +393,25 @@ export class Run {
     return rooms.length ? Math.min(...rooms) : undefined;
   }
 
-  private handleTurnResult(result: TurnResult) {
+  private handleTurnResult(result: TurnResult, t: Track) {
     if (result.events) {
       for (const ev of result.events) {
         if (ev.type === 'refusal') {
-          this.logEvent('refusal', { reason: ev.reason });
+          this.logEvent('refusal', { reason: ev.reason }, t);
         } else if (ev.type === 'card_delivered') {
-          this.logEvent('card_delivered', { card: ev.card, channel: ev.channel });
+          this.logEvent('card_delivered', { card: ev.card, channel: ev.channel }, t);
         } else if (ev.type === 'tool_call') {
-          this.logEvent('tool_call', { tool: ev.tool, input: ev.input });
+          this.logEvent('tool_call', { tool: ev.tool, input: ev.input }, t);
         } else if (ev.type === 'cost') {
-          this.logEvent('engine_cost', { usd: ev.usd });
+          this.logEvent('engine_cost', { usd: ev.usd }, t);
         } else if (ev.type === 'hook') {
           const { type: _t, ...data } = ev;
-          this.logEvent('hook', data);
+          this.logEvent('hook', data, t);
         }
       }
     }
     if (result.cost !== undefined && !result.events?.some((e) => e.type === 'cost')) {
-      this.logEvent('engine_cost', { usd: result.cost, ...(result.models ? { models: result.models } : {}) });
+      this.logEvent('engine_cost', { usd: result.cost, ...(result.models ? { models: result.models } : {}) }, t);
     }
   }
 
@@ -421,7 +422,7 @@ export class Run {
    * next step.
    */
   queueCard(cardText: string, kind: LiveCardKind = 'steer', source: 'live' | 'auto' = 'live') {
-    this.logEvent('card_queued', { card: cardText, kind, source });
+    this.logEvent('card_queued', { card: cardText, kind, source }, this.main);
     if (kind === 'steer') {
       this.pendingCards.push(cardText);
     } else if (this.turnInFlight && this.turnSession) {
@@ -438,7 +439,7 @@ export class Run {
     } else if (kind === 'now') {
       this.pendingCards.push(cardText);
     } else if (this.status === 'running') {
-      this.pauseForStop(cardText);
+      this.pauseForStop(this.main, cardText);
     }
   }
 
@@ -448,10 +449,21 @@ export class Run {
   }
 
   /** `stepId` marks a step's own pause (a model step), said apart from a stop card. */
-  private pauseForStop(text: string, stepId?: string) {
-    this.status = 'paused';
-    this.pauseReason = { type: 'stop', text, ...(stepId ? { stepId } : {}) };
-    this.logEvent('run_paused', { reason: 'stop', text, ...(stepId ? { stepId } : {}) });
+  private pauseForStop(t: Track, text: string, stepId?: string) {
+    this.pauseTrack(t, { type: 'stop', text, ...(stepId ? { stepId } : {}) });
+    this.logEvent('run_paused', { reason: 'stop', text, ...(stepId ? { stepId } : {}) }, t);
+  }
+
+  /** A pause of one track: the main line writes the run's own fields as always; another track its own. */
+  private pauseTrack(t: Track, p: PauseReason) {
+    if (t === this.main) { this.status = 'paused'; this.pauseReason = p; return; }
+    t.state = 'paused';
+    t.pause = p;
+  }
+
+  /** The run is going, and so is this track (the main line's own state is the run's). */
+  private alive(t: Track): boolean {
+    return this.status === 'running' && (t === this.main || t.state === 'running');
   }
 
   /** The workflow's USD budget with allowances, minus the run's cost; undefined when the workflow sets none. */
@@ -482,25 +494,25 @@ export class Run {
     this.usdExtra[key] = r6(Math.max(this.usdExtra[key] ?? 0, spent - base) + n);
     this.status = 'running';
     this.pauseReason = undefined;
-    this.logEvent('run_resumed', { allowUsd: n, usd: r6(base + this.usdExtra[key]!), ...(p.stepId ? { step: p.stepId } : {}) });
+    this.logEvent('run_resumed', { allowUsd: n, usd: r6(base + this.usdExtra[key]!), ...(p.stepId ? { step: p.stepId } : {}) }, this.main);
     return undefined;
   }
 
   /** The host's hands for a NODE step (P12). */
-  private execCtx(step: string): ExecCtx {
+  private execCtx(t: Track, step: string): ExecCtx {
     return {
       ...(this.switchModel ? { switchModel: this.switchModel } : {}),
       ...(this.setReasoning ? { setReasoning: this.setReasoning } : {}),
       slice: (id, usd) => { this.openSlice = usd === undefined ? undefined : { step: id, usd }; },
-      log: (type, data) => this.logEvent(type, data),
-      pause: (text) => { if (this.status === 'running') this.pauseForStop(text, step); },
+      log: (type, data) => this.logEvent(type, data, t),
+      pause: (text) => { if (this.alive(t)) this.pauseForStop(t, text, step); },
       stop: () => this.stop(),
-      subagent: (s, usd) => this.subagentTurn(s, usd),
+      subagent: (s, usd) => this.subagentTurn(t, s, usd),
     };
   }
 
   /** The run's hands for an op: live over the run's fields, except `at`, which is the counter as the op started. */
-  private vm(): VmCtx {
+  private vm(t: Track): VmCtx {
     const program = () => this.program;
     const outputs = () => this.turnOutputs;
     // The host's recall function is called with the Run as its receiver, as `this.recall(...)` always did.
@@ -509,10 +521,10 @@ export class Run {
     return {
       get program() { return program(); },
       get services() { return { recall: recall(), store: store() }; },
-      ensureSession: () => this.ensureSession(),
-      turn: (session, stepId, compile) => this.handedTurn(session, stepId, compile),
+      ensureSession: () => this.ensureSession(t),
+      turn: (session, stepId, compile) => this.handedTurn(t, session, stepId, compile),
       get outputs() { return outputs(); },
-      takeLink: (key, to, max) => this.takeLink(key, to, max),
+      takeLink: (key, to, max) => this.takeLink(key, to, max, t),
       command: async (cmd) => {
         const res = await this.commandRunner(cmd);
         this.recordCommandResult(cmd, res.exitCode, res.stdout || res.stderr);
@@ -533,14 +545,14 @@ export class Run {
         },
         extra: (step) => this.loopLimitExtensions.get(step) || 0,
       },
-      at: this.programCounter,
-      next: () => { this.programCounter++; },
-      goto: (i) => { this.programCounter = i; },
-      running: () => this.status === 'running',
-      log: (type, data) => this.logEvent(type, data),
-      judge: (c) => this.judgeCond(c),
-      pause: (p) => { this.status = 'paused'; this.pauseReason = p; },
-      setRecall: (ctx) => { this.lastRecallContext = ctx; },
+      at: t.pc,
+      next: () => { t.pc++; },
+      goto: (i) => { t.pc = i; },
+      running: () => this.alive(t),
+      log: (type, data) => this.logEvent(type, data, t),
+      judge: (c) => this.judgeCond(c, false, t),
+      pause: (p) => this.pauseTrack(t, p),
+      setRecall: (ctx) => { t.recall = ctx; },
     };
   }
 
@@ -552,7 +564,7 @@ export class Run {
 
   // ponytail: steer cards typed while a subagent works wait for the parent's next turn (or go with a Resume); now and stop cards interrupt the subagent; a now card typed while it is still opening goes to the parent. An interrupt kill reports no total: that spend is counted only if the subagent is resumed, and a reply cut off by a kill or a crash is not counted (the provider drops it); after Stop it is never counted.
   /** A subagent step (D): its own session and model, its reply counted to its slice (else the open one) and the run; the result waits for the next TURN. */
-  private async subagentTurn(step: Step, usd: number | undefined): Promise<boolean> {
+  private async subagentTurn(t: Track, step: Step, usd: number | undefined): Promise<boolean> {
     // The turn budget, as TURN checks it: a subagent's replies are run turns.
     if (this.workflow.budget.turns && this.totalTurns >= this.workflow.budget.turns) { this.status = 'paused'; this.pauseReason = { type: 'run-turn-budget-used' }; return false; }
     const id = step.id;
@@ -584,46 +596,46 @@ export class Run {
     try {
       opened = await (this.openSubagent ?? ((x: SubagentOpen) => this.ownSubagent(x)))(o);
     } catch (e) {
-      if (this.status === 'running') this.pauseForStop(`the subagent did not start (${why(e)}); Resume tries again`, id);
+      if (this.alive(t)) this.pauseForStop(t, `the subagent did not start (${why(e)}); Resume tries again`, id);
       return false;
     }
     const s = opened.session;
-    if (this.status !== 'running') { await s.close().catch(() => {}); return false; }   // a Stop while it opened sends nothing
+    if (!this.alive(t)) { await s.close().catch(() => {}); return false; }   // a Stop while it opened sends nothing
     const rec: SubagentRecord = resumed ?? { sessionId: s.sessionId, cost: 0 };   // an unresumable old record never cost anything: cost > 0 means a reply was counted
     this.subagents[id] = rec;   // before the row below: its snapshot holds the session id, so a crash resumes it
-    this.logEvent('subagent_started', { step: id, title, ...(opened.model ? { model: opened.model } : {}), ...(opened.label ? { label: opened.label } : {}), ...(resumed ? { resumed: true } : {}) });
+    this.logEvent('subagent_started', { step: id, title, ...(opened.model ? { model: opened.model } : {}), ...(opened.label ? { label: opened.label } : {}), ...(resumed ? { resumed: true } : {}) }, t);
     // A note typed with Resume (drive.ts queues it as a steer card) was meant for the subagent.
     const notes = resumed ? this.pendingCards.splice(0) : [];
-    for (const n of notes) this.logEvent('card_delivered', { card: n, channel: 'next-turn' });   // the run panel marks a card delivered only on this row
+    for (const n of notes) this.logEvent('card_delivered', { card: n, channel: 'next-turn' }, t);   // the run panel marks a card delivered only on this row
     let result: TurnResult | undefined;
     try {
-      const top = this.program[this.programCounter]?.top ?? 0;
-      result = await this.runTurn(s, id, resumed ? CARRY_ON + notes.map((n) => `\n\n[Reins · a note from the user]\n${n}`).join('')
+      const top = this.program[t.pc]?.top ?? 0;
+      result = await this.runTurn(t, s, id, resumed ? CARRY_ON + notes.map((n) => `\n\n[Reins · a note from the user]\n${n}`).join('')
         : compileTurn(step, { workflowName: this.workflow.name, stepIndex: top, totalSteps: this.workflow.steps.length, always: this.workflow.always,
-          extras: [...this.handback] }), { rec, slice });   // copied, not taken: the parent's next TURN still gets every result
+          extras: [...t.handback] }), { rec, slice });   // copied, not taken: the parent's next TURN still gets every result
     } catch (e) {
-      if (this.status === 'running' && !this.usdOver(slice)) this.pauseForStop(`the subagent stopped before it answered (${why(e)}); Resume runs it on`, id);
+      if (this.alive(t) && !this.usdOver(slice)) this.pauseForStop(t, `the subagent stopped before it answered (${why(e)}); Resume runs it on`, id);
       return false;
     } finally {
       await s.close().catch(() => {});
     }
     if (!result) return false;   // a stop card paused the run, or Stop ended it
     if (result.isError) {   // the provider's cap (M3) or another error: counted above; the card says which limit, else Resume runs it on
-      if (!this.usdOver(slice)) this.pauseForStop(`the subagent's reply was an error${result.text ? ` (${result.text})` : ''}; Resume runs it on`, id);
+      if (!this.usdOver(slice)) this.pauseForStop(t, `the subagent's reply was an error${result.text ? ` (${result.text})` : ''}; Resume runs it on`, id);
       return false;
     }
     const blocked = /REINS: blocked:\s*(.*)/.exec(result.text);
-    if (blocked) { this.status = 'paused'; this.pauseReason = { type: 'agent-blocked', reason: blocked[1] || 'blocked' }; return false; }
+    if (blocked) { this.pauseTrack(t, { type: 'agent-blocked', reason: blocked[1] || 'blocked' }); return false; }
     const text = result.text.split(/\r?\n/).filter((l) => !/^\s*REINS:\s*/.test(l)).join('\n').trim();
     // A finished reply over its own slice (the cap rounds, or a provider with no cap) is kept: said, not paused (the step is done).
     if (usd !== undefined && (this.usdSpent[id] ?? 0) > usd + (this.usdExtra[id] ?? 0) + 1e-9) {
-      this.logEvent('budget_warning', { step: id, text: `Subagent ${title} went over its $${usdText(usd)} budget; its result was kept.` });
+      this.logEvent('budget_warning', { step: id, text: `Subagent ${title} went over its $${usdText(usd)} budget; its result was kept.` }, t);
     }
     rec.done = true;
     const quoted = handbackText(title, id, text);
     this.turnOutputs.set(id, quoted);   // a later verify against this subagent pastes it: quoted as data too
-    this.handback.push(quoted);   // before the row: the snapshot it saves has the result
-    this.logEvent('subagent_result', { step: id, title, text, cost: rec.cost, ...(rec.unknown ? { unknown: true } : {}) });
+    t.handback.push(quoted);   // before the row: the snapshot it saves has the result
+    this.logEvent('subagent_result', { step: id, title, text, cost: rec.cost, ...(rec.unknown ? { unknown: true } : {}) }, t);
     return true;
   }
 
@@ -631,12 +643,12 @@ export class Run {
   private pauseUsd(stepId: string | undefined, limit: number, spent: number, text?: string): true {
     this.status = 'paused';
     this.pauseReason = { type: 'usd-budget-used', ...(stepId ? { stepId } : {}), limit: r6(limit), spent: r6(spent), ...(text ? { text } : {}) };
-    this.logEvent('budget_reached', { ...(stepId ? { step: stepId } : {}), usd: r6(limit), spent: r6(spent), ...(text ? { text } : {}) });
+    this.logEvent('budget_reached', { ...(stepId ? { step: stepId } : {}), usd: r6(limit), spent: r6(spent), ...(text ? { text } : {}) }, this.main);
     return true;
   }
 
   /** A capped turn: the limit is reached by Reins' own count (pauses there), or the engine said it stopped for the budget (pauses here). */
-  private guardUsd(result: TurnResult): boolean {
+  private guardUsd(_t: Track, result: TurnResult): boolean {   // the limit and the slice are run-wide; the track's share arrives with the money task
     const over = this.usdOver();
     if (over || !result.budgetStop) return over;
     // The workflow's limit when it has one, else the open slice's; the figures are only what the card prints.
@@ -674,21 +686,21 @@ export class Run {
    */
   async requestChanges(note: string) {
     if (this.status !== 'paused' || this.pauseReason?.type !== 'gate') return;
-    this.logEvent('card_delivered', { card: note, channel: 'next-turn', source: 'gate-changes' });
-    await this.sendChanges(note, this.pauseReason);
+    this.logEvent('card_delivered', { card: note, channel: 'next-turn', source: 'gate-changes' }, this.main);
+    await this.sendChanges(this.main, note, this.pauseReason);
   }
 
   /**
    * The change request's turn. A capped one (the USD card paused the run) is kept with its gate, and `step` sends it again after Allow before
    * the gate asks: the user cannot approve a plan whose changes never finished. A stop card, or Stop, drops it.
    */
-  private async sendChanges(note: string, gate: PauseReason) {
+  private async sendChanges(t: Track, note: string, gate: PauseReason) {
     this.changeRequest = undefined;
-    const session = await this.ensureSession();
-    this.currentPolicy = { ...this.currentPolicy, pendingGate: gate.stepId ?? 'gate' };
-    this.capped = false;
+    const session = await this.ensureSession(t);
+    t.policy = { ...t.policy, pendingGate: gate.stepId ?? 'gate' };
+    t.capped = false;
     const result = await this.runTurn(
-      session,
+      t, session,
       gate.stepId ?? 'gate',
       `[Reins · workflow "${this.workflow.name}" · the user asked for changes before approving]\n\n${note}\n\n` +
         'When you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n'
@@ -696,10 +708,9 @@ export class Run {
     // A stop card during the turn replaced the gate pause; otherwise the gate still waits.
     if (result) {
       // The revised reply replaces the step's output, so verify quotes the plan as approved.
-      if (this.lastStepId) this.turnOutputs.set(this.lastStepId, result.text);
-      this.status = 'paused';
-      this.pauseReason = gate;
-    } else if (this.capped) this.changeRequest = { note, gate };
+      if (t.lastStepId) this.turnOutputs.set(t.lastStepId, result.text);
+      this.pauseTrack(t, gate);
+    } else if (t.capped) this.changeRequest = { note, gate };
   }
 
   /** Go on after a stop card or an agent's `REINS: blocked`: the paused step runs again. */
@@ -707,7 +718,7 @@ export class Run {
     if (this.status === 'paused' && (this.pauseReason?.type === 'stop' || this.pauseReason?.type === 'agent-blocked')) {
       this.status = 'running';
       this.pauseReason = undefined;
-      this.logEvent('run_resumed', {});
+      this.logEvent('run_resumed', {}, this.main);
     }
   }
 
@@ -716,17 +727,17 @@ export class Run {
    * on; a stop card pauses the run and returns undefined.
    */
   /** A turn of the parent that carries the subagent results. A copy, spliced only after the turn returns: a turn that throws leaves them for the re-run; one that returns, with a result or not, has taken them. */
-  private async handedTurn(session: EngineSession, stepId: string, compile: (handed: string[]) => string): Promise<TurnResult | undefined> {
-    const handed = [...this.handback];
-    this.capped = false;
-    const result = await this.runTurn(session, stepId, compile(handed));
+  private async handedTurn(t: Track, session: EngineSession, stepId: string, compile: (handed: string[]) => string): Promise<TurnResult | undefined> {
+    const handed = [...t.handback];
+    t.capped = false;
+    const result = await this.runTurn(t, session, stepId, compile(handed));
     // A capped turn is run again with its full text, so the results stay for that re-run (a stop card still takes them).
-    if (!this.capped) this.handback.splice(0, handed.length);
+    if (!t.capped) t.handback.splice(0, handed.length);
     return result;
   }
 
   /** What a turn spent counts against the run, the subagent's record or the engine totals, and the open slice (or the subagent's); returns that slice. */
-  private countCost(result: TurnResult, sub?: { rec: SubagentRecord; slice: { step: string; usd: number } | undefined }): { step: string; usd: number } | undefined {
+  private countCost(result: TurnResult, sub: { rec: SubagentRecord; slice: { step: string; usd: number } | undefined } | undefined, t: Track): { step: string; usd: number } | undefined {
     this.runCost += result.cost ?? 0;
     if (result.unknownCost) this.runUnknown = true;
     if (sub) {
@@ -736,7 +747,7 @@ export class Run {
         sub.rec.total = result.total;
         if (result.totals) sub.rec.totals = result.totals; else delete sub.rec.totals;   // a total with no split: the next process has no split, never a wrong one (C S4)
       }
-    } else {
+    } else if (t === this.main) {   // the totals open the main session; another track's go to its own record (money task)
       if (result.total !== undefined) this.lastTotal = result.total;
       if (result.totals) this.lastTotals = result.totals;
     }
@@ -760,18 +771,18 @@ export class Run {
   }
 
   private async runTurn(
-    session: EngineSession, stepId: string, text: string,
+    t: Track, session: EngineSession, stepId: string, text: string,
     sub?: { rec: SubagentRecord; slice: { step: string; usd: number } | undefined },
   ): Promise<TurnResult | undefined> {
     let turnText = text;
     for (;;) {
       if (this.unknownStop(sub ? sub.slice : this.openSlice)) {   // before the call, whatever engine it goes to: a new subagent has a total of its own
-        if (!sub) this.capped = true;
+        if (!sub) t.capped = true;
         return undefined;
       }
-      this.logEvent('turn_started', { step: stepId });
-      this.turnInFlight = true;
-      this.turnSession = session;
+      this.logEvent('turn_started', { step: stepId }, t);
+      t.turnInFlight = true;
+      t.turnSession = session;
       let result: TurnResult;
       try {
         result = await session.turn(turnText);
@@ -782,30 +793,30 @@ export class Run {
         // Spend that is not known rides the same way (`unknownCost`): the Run notes it, and the receipt counts a reply with no price.
         const spent = paid && typeof paid.cost === 'number' && Number.isFinite(paid.cost) && paid.cost > 0;
         if (paid && (spent || paid.unknownCost)) {
-          this.handleTurnResult({ text: '', ...paid });
-          if (paid.unknownCost) this.logEvent('engine_cost', { unknown: true, step: stepId });
-          this.countCost({ text: '', ...paid }, sub);
+          this.handleTurnResult({ text: '', ...paid }, t);
+          if (paid.unknownCost) this.logEvent('engine_cost', { unknown: true, step: stepId }, t);
+          this.countCost({ text: '', ...paid }, sub, t);
         }
         throw e;
       } finally {
-        this.turnInFlight = false;
-        this.turnSession = undefined;
+        t.turnInFlight = false;
+        t.turnSession = undefined;
       }
       this.totalTurns++;
-      this.lastTurnText = result.text;
-      this.handleTurnResult(result);
-      const slice = this.countCost(result, sub);
+      t.lastTurnText = result.text;
+      this.handleTurnResult(result, t);
+      const slice = this.countCost(result, sub, t);
       const usage = result.events?.find((e): e is Extract<typeof e, { type: 'usage' }> => e.type === 'usage');
       this.logEvent('turn_ended', {
         step: stepId, text: result.text, cost: result.cost,
         ...(result.unknownCost ? { unknown: true } : {}),
         ...(usage ? { model: usage.model } : {}),
         ...(slice ? { slice: { step: slice.step, spent: r6(this.usdSpent[slice.step]!), usd: r6(slice.usd + (this.usdExtra[slice.step] ?? 0)) } } : {}),
-      });
+      }, t);
 
       if (this.status === 'stopped') {
-        const held = this.interruptCard;
-        this.interruptCard = undefined;
+        const held = t.interruptCard;
+        t.interruptCard = undefined;
         if (held?.kind === 'now') this.pendingCards.push(held.text);
         return undefined;
       }
@@ -813,19 +824,19 @@ export class Run {
       // step output, and the step runs again after Allow. A stop card typed meanwhile wins (below); a now card waits for the re-run.
       // The engine can also say so itself (`budgetStop`: a limit it cannot hold because the spend is unknown, or a price is missing): the run
       // pauses on the same card with the engine's words, though no dollar figure says the limit is reached.
-      if (!sub && result.isError && this.interruptCard?.kind !== 'stop' && this.guardUsd(result)) {
-        const held = this.interruptCard;
-        this.interruptCard = undefined;
+      if (!sub && result.isError && t.interruptCard?.kind !== 'stop' && this.guardUsd(t, result)) {
+        const held = t.interruptCard;
+        t.interruptCard = undefined;
         if (held) this.pendingCards.push(held.text);
-        this.capped = true;
+        t.capped = true;
         return undefined;
       }
-      const card = this.interruptCard;
+      const card = t.interruptCard;
       if (!card) return result;
-      this.interruptCard = undefined;
-      this.logEvent('card_delivered', { card: card.text, kind: card.kind, channel: 'interrupt' });
+      t.interruptCard = undefined;
+      this.logEvent('card_delivered', { card: card.text, kind: card.kind, channel: 'interrupt' }, t);
       if (card.kind === 'stop') {
-        this.pauseForStop(card.text);
+        this.pauseForStop(t, card.text);
         return undefined;
       }
       const statusAt = text.lastIndexOf('When you finish this step');
@@ -840,7 +851,7 @@ export class Run {
     if (this.status === 'paused' && this.pauseReason?.type === 'gate') {
       this.status = 'running';
       this.pauseReason = undefined;
-      this.logEvent('gate_approved', {});
+      this.logEvent('gate_approved', {}, this.main);
       this.programCounter++;
     }
   }
@@ -857,7 +868,7 @@ export class Run {
       if (to !== undefined) this.programCounter = to;
       this.status = 'running';
       this.pauseReason = undefined;
-      this.logEvent('run_resumed', { allowMore: n });
+      this.logEvent('run_resumed', { allowMore: n }, this.main);
     } else if (this.status === 'paused' && this.pauseReason?.type === 'link-budget-used') {
       const { linkKey, to } = this.pauseReason;
       if (linkKey !== undefined) {
@@ -867,20 +878,19 @@ export class Run {
       if (to !== undefined) this.programCounter = to;
       this.status = 'running';
       this.pauseReason = undefined;
-      this.logEvent('run_resumed', { allowMore: n });
+      this.logEvent('run_resumed', { allowMore: n }, this.main);
     }
   }
 
   /** Count a link jump. Returns false (and pauses, remembering the jump) when its budget is used up. */
-  private takeLink(key: string, to: number, max: number | undefined): boolean {
+  private takeLink(key: string, to: number, max: number | undefined, t: Track): boolean {
     const jumps = (this.linkCounters.get(key) || 0) + 1;
     this.linkCounters.set(key, jumps);
     if (max === undefined) return true;
     const limit = max + (this.linkLimitExtensions.get(key) ?? 0);
     if (jumps <= limit) return true;
-    this.status = 'paused';
-    this.pauseReason = { type: 'link-budget-used', limit, linkKey: key, to };
-    this.logEvent('link_budget_exceeded', { linkKey: key, jumps, max });
+    this.pauseTrack(t, { type: 'link-budget-used', limit, linkKey: key, to });
+    this.logEvent('link_budget_exceeded', { linkKey: key, jumps, max }, t);
     return false;
   }
 
@@ -892,7 +902,7 @@ export class Run {
     const asyncTasks: Promise<void>[] = [];
 
     for (const auto of this.workflow.autos) {
-      const syncRes = this.judgeAutoCondSync(auto.cond);
+      const syncRes = this.judgeAutoCondSync(auto.cond, this.main);
       const applyResult = (isCondTrue: boolean) => {
         const isArmed = this.autoArmed.get(auto.id) ?? true;
         if (isCondTrue && isArmed) {
@@ -908,7 +918,7 @@ export class Run {
         applyResult(syncRes);
       } else {
         asyncTasks.push(
-          this.judgeCond(auto.cond, true).then((res) => {
+          this.judgeCond(auto.cond, true, this.main).then((res) => {
             applyResult(res);
           })
         );
@@ -920,9 +930,9 @@ export class Run {
     }
   }
 
-  private evalCtx(): EvalCtx {
+  private evalCtx(t: Track): EvalCtx {
     return {
-      lastTurnText: this.lastTurnText,
+      lastTurnText: t.lastTurnText,
       commandResults: this.commandResults,
       runCommand: async (cmd) => {
         const res = await this.commandRunner(cmd);
@@ -933,19 +943,19 @@ export class Run {
       events: this.events,
       cwd: this.cwd ?? '',
       testCmd: this.workflow.test ?? 'npm test',
-      atRun: this.program[this.programCounter]?.op === 'RUN',
+      atRun: this.program[t.pc]?.op === 'RUN',
       judge: this.judge,
-      logEvent: (type, data) => this.logEvent(type, data),
+      logEvent: (type, data) => this.logEvent(type, data, t),
       diffLines: this.diffLines,
     };
   }
 
-  private judgeAutoCondSync(c: Cond): boolean | null {
-    return evalCondSync(c, this.evalCtx());
+  private judgeAutoCondSync(c: Cond, t: Track): boolean | null {
+    return evalCondSync(c, this.evalCtx(t));
   }
 
-  private judgeCond(c: Cond, forAutoCard = false): Promise<boolean> {
-    return evalCond(c, this.evalCtx(), forAutoCard);
+  private judgeCond(c: Cond, forAutoCard: boolean, t: Track): Promise<boolean> {
+    return evalCond(c, this.evalCtx(t), forAutoCard);
   }
 
   edit(newWorkflow: Workflow) {
@@ -1074,7 +1084,7 @@ export class Run {
     // Stopped before the interrupt is awaited, so a second stop() meanwhile is a no-op.
     this.status = 'stopped';
     this.changeRequest = undefined;
-    this.logEvent('run_stopped', {});
+    this.logEvent('run_stopped', {}, this.main);
     await (this.turnSession ?? this.engineSession)?.interrupt();
   }
 
@@ -1103,38 +1113,39 @@ export class Run {
   }
 
   async step(): Promise<RunStatus> {
+    const t = this.main;   // the one track today; the scheduler task runs this body for each
     if (this.status !== 'running') {
       return this.status;
     }
 
     // After Allow on a capped change request: it is sent again first, and the gate asks again after it.
     if (this.changeRequest) {
-      await this.sendChanges(this.changeRequest.note, this.changeRequest.gate);
+      await this.sendChanges(t, this.changeRequest.note, this.changeRequest.gate);
       return this.status;
     }
 
-    if (this.programCounter >= this.program.length) {
+    if (t.pc >= this.program.length) {
       this.status = 'done';
-      this.logEvent('run_finished', {});
+      this.logEvent('run_finished', {}, this.main);
       return this.status;
     }
 
-    const instr = this.program[this.programCounter]!;
+    const instr = this.program[t.pc]!;
     // Every program ends in END: the last reply may pass a limit and the run still finishes instead of pausing.
     if (instr.op !== 'END' && this.usdOver()) return this.status;
 
     // ponytail: a step re-run after a stop card or REINS: blocked reports its start again; a TURN that hits the run turn budget reports its start, then pauses
-    for (const s of this.starts.get(this.programCounter) ?? []) this.logEvent('step_started', s);
+    for (const s of this.starts.get(t.pc) ?? []) this.logEvent('step_started', s, t);
 
     const op = opOf(instr.op);
     if (op) {
-      await op.exec(instr, this.vm());
+      await op.exec(instr, this.vm(t));
       return this.status;
     }
 
     switch (instr.op) {
       case 'TURN': {
-        this.lastStepId = instr.step;
+        t.lastStepId = instr.step;
         // Check turn budget
         if (this.workflow.budget.turns && this.totalTurns >= this.workflow.budget.turns) {
           this.status = 'paused';
@@ -1142,8 +1153,8 @@ export class Run {
           return this.status;
         }
 
-        this.currentPolicy = instr.policy;
-        const session = await this.ensureSession();
+        t.policy = instr.policy;
+        const session = await this.ensureSession(t);
 
         // Find step model
         const stepModel = instr.src;
@@ -1154,13 +1165,13 @@ export class Run {
         this.pendingCards = [];
 
         for (const card of textCards) {
-          this.logEvent('card_delivered', { card, channel: 'next-turn' });
+          this.logEvent('card_delivered', { card, channel: 'next-turn' }, t);
         }
 
-        const recallCtx = [...this.lastRecallContext];
-        this.lastRecallContext = [];
+        const recallCtx = [...t.recall];
+        t.recall = [];
 
-        const result = await this.handedTurn(session, instr.step, (handed) => compileTurn(stepModel, {
+        const result = await this.handedTurn(t, session, instr.step, (handed) => compileTurn(stepModel, {
           workflowName: this.workflow.name,
           stepIndex: instr.top ?? 0,
           totalSteps: this.workflow.steps.length,
@@ -1177,15 +1188,14 @@ export class Run {
         // Check if agent said blocked
         if (result.text.includes('REINS: blocked:')) {
           const match = result.text.match(/REINS: blocked:\s*(.*)/);
-          this.status = 'paused';
-          this.pauseReason = {
+          this.pauseTrack(t, {
             type: 'agent-blocked',
             reason: match ? match[1] : 'blocked',
-          };
+          });
           return this.status;
         }
 
-        this.programCounter++;
+        t.pc++;
 
         // Check if turn limit reached right after turn
         if (this.workflow.budget.turns && this.totalTurns >= this.workflow.budget.turns) {
@@ -1199,25 +1209,25 @@ export class Run {
 
       case 'JUMP': {
         if (instr.step !== undefined) {
-          if (!this.takeLink(`${instr.step}~next->${instr.target}`, instr.target, instr.linkMax)) {
+          if (!this.takeLink(`${instr.step}~next->${instr.target}`, instr.target, instr.linkMax, t)) {
             return this.status;
           }
         }
-        this.programCounter = instr.target;
+        t.pc = instr.target;
         return this.status;
       }
 
       case 'NODE': {
         const n = NODES.get(instr.kind);
-        const out = n?.exec ? await n.exec(instr.src, this.execCtx(instr.step)) : 'next';
-        if (this.status !== 'running') return this.status;
-        if (out === 'next') this.programCounter++;
+        const out = n?.exec ? await n.exec(instr.src, this.execCtx(t, instr.step)) : 'next';
+        if (!this.alive(t)) return this.status;
+        if (out === 'next') t.pc++;
         return this.status;
       }
 
       case 'END': {
         this.status = 'done';
-        this.logEvent('run_finished', {});
+        this.logEvent('run_finished', {}, this.main);
         return this.status;
       }
     }
