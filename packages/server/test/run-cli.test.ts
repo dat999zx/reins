@@ -1,7 +1,8 @@
 // The whole `reins run` path against fake-claude (plan 15b 2.6, 2.8). Runs in CI on every OS:
 // no real claude, no cost. Each assertion is on the event log, not on the agent's words.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import { receipt, type RunEventRecord } from '@reins/core';
@@ -10,7 +11,8 @@ import { openStore } from '../src/store.js';
 import { claudeEngine } from '../src/mods/claude-code-cli/engine.js';
 import { FAKE_CLAUDE, fakeSetup, alive, until } from './helpers.js';
 
-import { register, type NodeType } from '@reins/core';
+import { register, type Decision, type Engine, type NodeType, type ToolRequest } from '@reins/core';
+import { split } from '../../core/test/fixtures/split.js';
 
 // The toy kind of core's op-registry.test.ts, declared again for this program (same types, so the merge holds).
 declare module '../../core/src/model.js' {
@@ -318,4 +320,115 @@ describe('reins run against fake-claude', () => {
     expect(of(store2.loadRun(first.runId)!.snapshot.events, 'run_finished')).toHaveLength(1);
     store2.close();
   }, 60_000);
+});
+
+// M2 task 14: the terminal with branches. An engine of its own (no fake-claude): a track opens through `subagentEngine`, as the server's session does.
+describe('reins run with branches', () => {
+  const FRONT = '---\nreins: 1\nname: w\nbudget: { turns: 20, minutes: 20 }\nalways: []\n---\n\n';
+  const A = '## phase a\n> work-A\n\n## end\n\n';
+  const B = '## phase b\n> work-B\n\n## end\n\n';
+  const A_GATE = '## phase a\n> work-A\n\n## gate\nid: ga\nuntil: you approve\n\n## end\n\n';
+  const B_GATE = '## phase b\n> work-B\n\n## gate\nid: gb\nuntil: you approve\n\n## end\n\n';
+  const body = (a: string, b: string) => `${FRONT}## split\nnext: a\nnext: b\n\n## phase main\n> main-after\n\n## end\n\n${a}${b}`;
+  const engine: Engine = {
+    id: 'test',
+    probe: async () => ({ installed: true, loggedIn: true, capabilities: { midTurnSteer: 'hook', preToolDeny: true, resume: true }, problems: [] }),
+    open: async () => ({
+      sessionId: 'sess',
+      turn: async () => ({ text: 'ok\nREINS: done', events: [], cost: 0.01 }),
+      interrupt: async () => {},
+      events: { async *[Symbol.asyncIterator]() {} },
+      close: async () => {},
+    }),
+  };
+
+  /** `reins run` on `text` with the toy split registered; the caller types lines and reads the output. */
+  function branches(text: string, sub: (onApprove: (r: ToolRequest) => Promise<Decision>) => Engine = () => engine) {
+    const dispose = register(split);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reins-t14-'));
+    const file = path.join(dir, 'w.reins.md');
+    fs.writeFileSync(file, text);
+    const input = new PassThrough();
+    const output = new PassThrough();
+    let out = '';
+    output.setEncoding('utf8');
+    output.on('data', (d: string) => { out += d; });
+    const h = startRunCli({ file, cwd: dir, input, output, store: openStore(':memory:'), makeEngine: () => engine, subagentEngine: (_s, io) => ({ engine: sub(io.onApprove) }) });
+    let cleaned = false;
+    const cleanup = () => { if (cleaned) return; cleaned = true; dispose(); fs.rmSync(dir, { recursive: true, force: true }); };
+    const finish = async () => { try { return await h.done; } finally { cleanup(); } };
+    const d = { h, text: () => out, type: (l: string) => input.write(l + '\n'), finish, cleanup };
+    started.push(d);
+    return d;
+  }
+  // A test that fails while a run still waits must not leave the toy registered for the next one.
+  const started: Array<{ h: ReturnType<typeof startRunCli>; cleanup: () => void }> = [];
+  afterEach(async () => {
+    for (const d of started.splice(0)) {
+      d.h.sigint(); d.h.sigint();
+      await Promise.race([d.h.done.catch(() => {}), new Promise((r) => setTimeout(r, 3000))]);
+      d.cleanup();
+    }
+  });
+  const gatesWaiting = (t: string) => [...t.matchAll(/gate (g[ab]): until you approve/g)].map((m) => m[1]!);
+
+  it('prints a line when a branch starts and when it ends', async () => {
+    const d = branches(body(A, B));
+    const r = await d.finish();
+    expect(r.exitCode).toBe(0);
+    const t = d.text();
+    expect(t).toContain('track a started (Split split-1)');
+    expect(t).toContain('track b started (Split split-1)');
+    expect(t).toMatch(/track a ended \(Split split-1\) \$0\.0100/);
+    expect(t).toMatch(/track b ended \(Split split-1\) \$0\.0100/);
+    expect(t.indexOf('track a started')).toBeLessThan(t.indexOf('track a ended'));
+  });
+
+  it('two pause questions at once both print with the branch title, and the first typed line answers the first', async () => {
+    const d = branches(body(A_GATE, B_GATE));
+    await until(() => gatesWaiting(d.text()).length === 2 && (d.text().match(/\[Split split-1\] approve \/ changes <note> \/ stop/g) ?? []).length === 2, 30_000);
+    const first = gatesWaiting(d.text())[0]!;
+    d.type('approve');
+    const ended = first === 'ga' ? 'track a ended' : 'track b ended';
+    const other = first === 'ga' ? 'track b ended' : 'track a ended';
+    await until(() => d.text().includes(ended), 30_000);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(d.text()).not.toContain(other);   // the second question is still waiting for its own line
+    d.type('approve');
+    const r = await d.finish();
+    expect(r.exitCode).toBe(0);
+    expect(d.text()).toContain(other);
+  });
+
+  it('a Stop answers every other waiting line with null, says so, and the run ends', async () => {
+    const C_GATE = '## phase c\n> work-C\n\n## gate\nid: gc\nuntil: you approve\n\n## end\n\n';
+    const d = branches(`${FRONT}## split\nnext: a\nnext: b\nnext: c\n\n## phase main\n> main-after\n\n## end\n\n${A_GATE}${B_GATE}${C_GATE}`);
+    await until(() => (d.text().match(/\[Split split-1\] approve/g) ?? []).length === 3, 30_000);
+    d.type('stop');
+    const r = await Promise.race([d.finish(), new Promise<'timeout'>((res) => setTimeout(() => res('timeout'), 5000))]);
+    expect(r).not.toBe('timeout');
+    expect((r as { status: string }).status).toBe('stopped');
+    expect(d.text()).toContain('2 waiting questions cancelled: the run ended');
+    expect(d.text()).toContain('run stopped');
+  });
+
+  it('a titled TOOL question keeps its old words: no [title] prefix, so a subagent\'s output stays byte-identical', async () => {
+    const asking = (onApprove: (r: ToolRequest) => Promise<Decision>): Engine => ({
+      ...engine,
+      open: async () => ({
+        sessionId: 'sess',
+        turn: async () => { await onApprove({ tool: 'Bash', input: { command: 'ls' } }); return { text: 'ok\nREINS: done', events: [], cost: 0.01 }; },
+        interrupt: async () => {},
+        events: { async *[Symbol.asyncIterator]() {} },
+        close: async () => {},
+      }),
+    });
+    const d = branches(`${FRONT}## split\nnext: a\n\n## phase main\n> main-after\n\n## end\n\n${A}`, asking);
+    await until(() => /\? Allow Bash/.test(d.text()), 30_000);
+    expect(d.text()).toMatch(/^\? Allow Bash/m);   // the question line starts with its own words
+    expect(d.text()).not.toContain('[Split split-1]');
+    d.type('y');
+    const r = await d.finish();
+    expect(r.exitCode).toBe(0);
+  });
 });

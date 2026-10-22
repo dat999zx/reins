@@ -7,10 +7,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { register, type Decision, type EngineSession } from '@reins/core';
-import { openSession } from '../src/session.js';
+import { openSession, type SessionDeps } from '../src/session.js';
 import { openStore } from '../src/store.js';
 import { split } from '../../core/test/fixtures/split.js';
 import { openQuestions } from './http-helpers.js';
+import { testEngine, type TestTurn } from './test-engine.js';
 
 const disposers: Array<() => void> = [];
 beforeAll(() => { disposers.push(register(split)); });
@@ -228,5 +229,186 @@ describe('a keyed answer', () => {
     expect(x.l.of('work-B').texts.join('\n')).not.toContain('try the other API');
     expect(x.rows('card_queued')).toEqual([]);
     expect(x.rows('run_finished')).toHaveLength(1);
+  });
+});
+
+// M2 task 14: the folder question once for tracks that start together, and what a server stop does with a run whose branches are at different places.
+const FOLDER = { hash: 'h1', key: 'k1', detail: 'the folder holds settings the provider runs', prompt: 'Trust this folder? [y / n]', refused: 'The folder is not trusted.', stopped: 'The session was stopped before the folder was trusted.' };
+const C = '## phase c\n> work-C\n\n## end\n\n';
+const A_GATE = '## phase a\n> work-A\n\n## gate\nid: ga\nuntil: you approve\n\n## end\n\n';
+const split3 = `## split\nnext: a\nnext: b\nnext: c\n\n${MAIN}${A}${B}${C}`;
+
+/** Like `setup`, with the folder question of a protocol (none = a protocol without `folderTrust`) and a way to open the same session again. */
+function setupT(plans: Record<string, Plan[]> = {}, folderTrust?: SessionDeps['folderTrust']) {
+  const store = openStore(':memory:');
+  const l = lab([...MARKERS, 'work-C'], plans);
+  const cwd = tmp();
+  const dir = tmp();
+  const row = store.createSession({ id: 's1', cwd, engine: 'claude-code' });
+  const deps: SessionDeps = { store, makeEngine: l.makeEngine, dir, ...(folderTrust ? { folderTrust } : {}) };
+  const s = openSession(deps, row, true);
+  closers.push(() => s.close());
+  const open = (kind?: string) => openQuestions(store.readLog('s1')).filter((q) => !kind || q.kind === kind);
+  const rows = (type: string) => store.readLog('s1').filter((r) => r.type === type);
+  const folderAsks = () => rows('question').filter((r) => (r.data as { prompt: string }).prompt === FOLDER.prompt);
+  const workflowTrust = async () => { await until(() => open('trust').some((q) => q.prompt !== FOLDER.prompt)); return open('trust').find((q) => q.prompt !== FOLDER.prompt)!; };
+  const folderQuestion = async () => { await until(() => open('trust').some((q) => q.prompt === FOLDER.prompt)); return open('trust').find((q) => q.prompt === FOLDER.prompt)!; };
+  const go = async (body: string) => {
+    const file = path.join(cwd, 'w.reins.md');
+    fs.writeFileSync(file, FRONT + body);
+    expect(s.runFile(file)).toEqual({ ok: true });
+    s.answer((await workflowTrust()).id, 'y');
+  };
+  const reopen = () => { const s2 = openSession(deps, store.getSession('s1')!); closers.push(() => s2.close()); return s2; };
+  return { store, cwd, s, l, open, rows, folderAsks, folderQuestion, go, reopen };
+}
+const ask = (): SessionDeps['folderTrust'] => () => FOLDER;
+
+describe('a folder is trusted once for tracks that start together', () => {
+  it('three tracks that are the first step in an untrusted folder ask ONE folder question; a yes lets all three go on', async () => {
+    const x = setupT({}, ask());
+    await x.go(split3);
+    const q = await x.folderQuestion();
+    await sleep(150);   // the other two tracks have had time to ask
+    expect(x.folderAsks()).toHaveLength(1);
+    x.s.answer(q.id, 'y');
+    expect(await within(x.s.idle(), 3000)).not.toBe('timeout');
+    expect(x.folderAsks()).toHaveLength(1);
+    expect(x.store.isTrusted(x.cwd, FOLDER.key, FOLDER.hash)).toBe(true);
+    for (const m of ['work-A', 'work-B', 'work-C']) expect(x.l.of(m), m).toBeDefined();
+    expect(x.rows('run_finished')).toHaveLength(1);
+  });
+
+  it('a no refuses all three tracks with the same reason, asks once, and no process starts', async () => {
+    const x = setupT({}, ask());
+    await x.go(split3);
+    x.s.answer((await x.folderQuestion()).id, 'n');
+    await until(() => x.open('resume').length === 3);
+    expect(x.folderAsks()).toHaveLength(1);
+    expect(x.rows('note').filter((r) => (r.data as { text: string }).text === FOLDER.refused)).toHaveLength(1);
+    const failed = x.rows('say').filter((r) => (r.data as { text: string }).text.includes(`failed: ${FOLDER.refused}`));
+    expect(failed).toHaveLength(3);
+    expect(x.l.sessions).toHaveLength(0);
+    expect(x.store.isTrusted(x.cwd, FOLDER.key, FOLDER.hash)).toBe(false);
+    x.s.answer(x.open('resume')[0]!.id, 'stop');
+    expect(await within(x.s.idle(), 3000)).not.toBe('timeout');
+  });
+
+  it('a protocol without a folder question asks none', async () => {
+    let calls = 0;
+    const x = setupT({}, () => { calls++; return undefined; });
+    await x.go(split3);
+    expect(await within(x.s.idle(), 3000)).not.toBe('timeout');
+    expect(calls).toBeGreaterThan(0);   // it was asked about, and said nothing
+    expect(x.folderAsks()).toEqual([]);
+    expect(x.rows('question').filter((r) => (r.data as { kind: string }).kind === 'trust')).toHaveLength(1);   // the workflow's own
+    expect(x.rows('run_finished')).toHaveLength(1);
+  });
+});
+
+describe('a server stop with branches', () => {
+  it('shutdown with both branches at a gate detaches the run, and Resume restores both from the saved snapshot', async () => {
+    const x = setupT();
+    await x.go(split2(A_GATE, B_GATE));
+    await until(() => x.open('gate').length === 2);
+    await x.s.shutdown();
+    expect(x.rows('run_detached')).toHaveLength(1);
+    expect(x.rows('run_stopped')).toEqual([]);
+    const runId = x.rows('run_started')[0]!.runId!;
+    const saved = x.store.loadRun(runId)!.snapshot;
+    expect(saved.tracks!.map((t) => [t.key, t.status, t.pauseReason?.type])).toEqual([['a', 'paused', 'gate'], ['b', 'paused', 'gate']]);
+    expect(x.open('gate')).toEqual([]);
+    const s2 = x.reopen();
+    expect(s2.resume(runId)).toEqual({ ok: true });
+    await until(() => x.open('gate').length === 2);
+    for (const g of x.open('gate')) s2.answer(g.id, 'approve');
+    expect(await within(s2.idle(), 3000)).not.toBe('timeout');
+    expect(x.rows('run_finished')).toHaveLength(1);
+    expect(x.l.sessions.flatMap((s) => s.texts).filter((t) => t.includes('main-after'))).toHaveLength(1);
+  });
+
+  it('shutdown with one branch at a gate and the other in the middle of a turn STOPS the run, and never detaches it', async () => {
+    const x = setupT({ 'work-A': [{ hold: true }] });
+    await x.go(split2(A, B_GATE));
+    await until(() => x.open('gate').length === 1 && x.l.isHeld('work-A'));
+    expect(await within(x.s.shutdown(), 3000)).not.toBe('timeout');
+    expect(x.rows('run_stopped')).toHaveLength(1);
+    expect(x.rows('run_detached')).toEqual([]);
+    expect(x.open()).toEqual([]);
+    expect(x.l.sessions.every((s) => s.closed > 0)).toBe(true);
+  });
+});
+
+describe('a track asks like the main run (a pin of what the host already does)', () => {
+  const KEYS = ['a', 'b', 'c'];
+  const WF = (n: number) => `---\nreins: 1\nname: w\nbudget: { turns: 10, minutes: 10, usd: 5 }\nalways: []\n---\n\n## split\n${KEYS.slice(0, n).map((k) => `next: ${k}\n`).join('')}\n## phase after\n> after\n\n## end\n\n${KEYS.slice(0, n).map((k) => `## phase ${k}\n> ${k}\n\n## end\n\n`).join('')}`;
+  function setupE(script: TestTurn[], n: number, settings: Record<string, unknown> = {}) {
+    const store = openStore(':memory:');
+    const t = testEngine(script);
+    const cwd = tmp();
+    const row = store.createSession({ id: 's1', cwd, engine: 'claude-code' });
+    for (const [k, v] of Object.entries(settings)) store.putSetting(k, v);
+    const s = openSession({ store, makeEngine: t.makeEngine, dir: tmp() }, row, true);
+    closers.push(() => s.close());
+    const open = (kind: string) => openQuestions(store.readLog('s1')).filter((q) => q.kind === kind);
+    const go = async () => {
+      const file = path.join(cwd, 'w.reins.md');
+      fs.writeFileSync(file, WF(n));
+      expect(s.runFile(file)).toEqual({ ok: true });
+      await until(() => open('trust').length > 0);
+      s.answer(open('trust')[0]!.id, 'y');
+    };
+    return { t, s, open, go };
+  }
+
+  it('`asks`, `step` and `title` never reach engine.open, for any of three tracks', async () => {
+    const x = setupE([], 3);
+    await x.go();
+    expect(await within(x.s.idle(), 3000)).not.toBe('timeout');
+    expect(x.t.opens.length).toBeGreaterThanOrEqual(4);   // three tracks and the main line
+    for (const o of x.t.opens) for (const k of ['asks', 'step', 'title']) expect(k in o, k).toBe(false);
+  });
+
+  it('with subagent approvals on deny, a track\'s own request is a card titled with `asks`, and a subagent block inside it is denied', async () => {
+    const x = setupE([{ tools: [{ tool: 'Bash', input: { command: 'ls' }, approve: true }, { tool: 'Bash', input: { command: 'pwd' }, approve: true, via: 'native child' }], text: 'REINS: done' }, {}], 1, { subagentApprovals: 'deny' });
+    await x.go();
+    await until(() => x.open('tool').length > 0);
+    expect(x.open('tool')[0]!.title).toBe('Split split-1');
+    x.s.answer(x.open('tool')[0]!.id, 'y');
+    expect(await within(x.s.idle(), 3000)).not.toBe('timeout');
+    expect(x.t.decisions.map((d) => d.behavior)).toEqual(['allow', 'deny']);
+  });
+});
+
+describe('fix round 1: what the folder map and shutdown must not remember or assume', () => {
+  it('a refused folder question is not remembered: a retried track asks again, and a yes lets it go on and is stored', async () => {
+    const x = setupT({}, ask());
+    await x.go(split2(A, B));
+    x.s.answer((await x.folderQuestion()).id, 'n');
+    await until(() => x.open('resume').length === 2);
+    expect(x.folderAsks()).toHaveLength(1);
+    x.s.answer(x.open('resume')[0]!.id, 'resume');   // the first track tries again, in the same folder, in the same server session
+    await until(() => x.folderAsks().length === 2);
+    x.s.answer((await x.folderQuestion()).id, 'y');
+    await until(() => x.l.sessions.length === 1);   // that track went on
+    expect(x.store.isTrusted(x.cwd, FOLDER.key, FOLDER.hash)).toBe(true);
+    x.s.answer(x.open('resume')[0]!.id, 'resume');   // the other one: trusted now, so no third question
+    expect(await within(x.s.idle(), 3000)).not.toBe('timeout');
+    expect(x.folderAsks()).toHaveLength(2);
+    expect(x.rows('run_finished')).toHaveLength(1);
+  });
+
+  it('a run between two steps (nothing in flight, nothing open) is stopped by shutdown, not detached: it would carry on', async () => {
+    const x = setupT();
+    const save = x.store.saveSnapshot.bind(x.store);
+    let down: Promise<void> | undefined;
+    // The first snapshot is the run's own, saved before the driver steps it: no instruction is running and no question is open.
+    x.store.saveSnapshot = (...a: Parameters<typeof save>) => { x.store.saveSnapshot = save; save(...a); down = x.s.shutdown(); };
+    await x.go('## phase p\n> work-S\n\n## phase q\n> pre-main\n\n## end\n');
+    await until(() => down !== undefined);
+    expect(await within(down!, 3000)).not.toBe('timeout');
+    expect(x.rows('run_stopped')).toHaveLength(1);
+    expect(x.rows('run_detached')).toEqual([]);
+    expect(x.rows('run_finished')).toEqual([]);
   });
 });

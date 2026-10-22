@@ -775,6 +775,16 @@ describe('shutdown (server stop)', () => {
     expect(x.rows('run_detached')).toEqual([]);
     expect(x.rows('closed')).toEqual([]);
   });
+
+  it('plain chat with a turn in flight and no question open: shutdown interrupts the turn (nothing to detach)', async () => {
+    const x = setup([{ hold: true }, { text: 'never' }]);
+    x.s.message('go');
+    await turnsStarted(x, 1);
+    const r = await Promise.race([x.s.shutdown().then(() => 'done'), new Promise((res) => setTimeout(() => res('timeout'), 3000))]);
+    expect(r).toBe('done');
+    expect(x.t.interrupts).toBe(1);
+    expect(x.t.turns).toEqual(['go']);
+  });
 });
 
 describe('cost baseline (A)', () => {

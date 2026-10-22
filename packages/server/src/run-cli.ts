@@ -119,13 +119,19 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
     ask: (q) => {
       if (o.yes && q.kind === 'gate') { say('  approved (--yes)'); return Promise.resolve('approve'); }
       if (o.yes && q.kind === 'judge') { say('  yes (--yes)'); return Promise.resolve('y'); }
-      return ask(q.prompt, q.kind === 'tool' && q.long && q.detail !== undefined ? q.detail : undefined);
+      // A branch's pause says whose it is, so two at once can be told apart; a tool question keeps its old words.
+      return ask(q.title && q.kind !== 'tool' ? `[${q.title}] ${q.prompt}` : q.prompt, q.kind === 'tool' && q.long && q.detail !== undefined ? q.detail : undefined);
     },
     say,
     redact: hide,
     write: writeOutput,
     endOutput,
-    cancel: () => { for (const a of asks.splice(0)) a(null); },   // nothing waiting: nothing to do (Task 14 prints what was cancelled)
+    cancel: (why) => {
+      const waiting = asks.splice(0);
+      if (!waiting.length) return;   // nothing waiting: nothing printed, so a run without branches ends with the same bytes as before
+      say(`${waiting.length} waiting question${waiting.length === 1 ? '' : 's'} cancelled: ${why}`);
+      for (const a of waiting) a(null);
+    },
   };
 
   let sigints = 0;
@@ -262,6 +268,8 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
     else if (ev.type === 'subagent_started') say(`· ${d.step}: subagent ${d.title} ${d.resumed ? 'resumed' : 'started'} on ${d.label ?? d.model ?? "the CLI's model"}`);
     else if (ev.type === 'subagent_result') say(`· ${d.step}: handed back its result ($${Number(d.cost ?? 0).toFixed(4)}${d.unknown === true ? UNKNOWN_MARK : ''})`);
     else if (ev.type === 'budget_warning') say(`· ${d.text}`);
+    else if (ev.type === 'track_started') say(`track ${d.track} started (${d.title})`);
+    else if (ev.type === 'track_ended') say(`track ${d.track} ended (${d.title}) $${Number(d.cost ?? 0).toFixed(4)}`);
     else if (ev.type === 'run_stopped') say('⏹ run stopped');
   }
 

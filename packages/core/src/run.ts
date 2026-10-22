@@ -1665,6 +1665,9 @@ export class Run {
     }
   }
 
+  /** How many instructions are in flight, on any track (the main line's included). A track waiting at a pause has none; a model step waiting on its switch question has one. */
+  inflight(): number { return this.running.size; }
+
   /** Remembers an instruction until it settles, so `close()` can wait for it. */
   private watch(p: Promise<unknown>) {
     const w = p.then(() => {}, () => {});

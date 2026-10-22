@@ -402,13 +402,20 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     return { ...r, models: r.models.map((m) => ({ ...m, label: describe(engine, m.model, undefined).label })) };
   }
 
+  /** The folder questions open now, by key and hash: tracks that start together share one. */
+  const trusting = new Map<string, Promise<void>>();
   /** What the folder holds that the provider's own process runs without asking: trusted once per hash, before a process of `provider` starts here. */
   async function trustFolder(provider: string) {
     const f = deps.folderTrust?.(provider, cwd);
-    if (f && !store.isTrusted(cwd, f.key, f.hash)) {
-      await mustSayYes(f);
-      store.trust(cwd, f.key, f.hash);
+    if (!f || store.isTrusted(cwd, f.key, f.hash)) return;
+    // Single flight: tracks that start together in one folder share ONE question; its answer (a refusal too) is every waiter's.
+    const k = `${f.key}\n${f.hash}`;
+    let p = trusting.get(k);
+    if (!p) {
+      p = mustSayYes(f).then(() => { store.trust(cwd, f.key, f.hash); }).finally(() => { trusting.delete(k); });
+      trusting.set(k, p);
     }
+    await p;
   }
 
   /** A `trust` question that must be answered yes; a no (or a stop) leaves a note and throws its words. */
@@ -1077,7 +1084,11 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   async function shutdown() {
     if (busy) {
       stopping = true;
-      const detaches = [...pending.values()].some((p) => ['gate', 'budget', 'resume', 'switch', 'usd'].includes(p.q.kind));
+      // Detach only when nothing is open but detaching questions and no instruction is at work: a track at a gate has none in flight, and a model step
+      // waiting on its switch question is the one instruction that question stands for (so it counts as waiting, not working).
+      const open = [...pending.values()];
+      const detaches = open.length > 0 && open.every((p) => ['gate', 'budget', 'resume', 'switch', 'usd'].includes(p.q.kind))
+        && (run?.inflight() ?? 0) <= open.filter((p) => p.q.kind === 'switch').length;
       const stopped = detaches ? undefined : run ? run.stop() : applyStop();
       closeQuestions('the server stopped');
       await stopped;
