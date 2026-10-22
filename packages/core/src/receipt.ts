@@ -27,6 +27,8 @@ export interface Receipt {
   unsplitUsd?: number;
   /** Dollars and turns per subagent step, first started first; absent when no subagent ran. */
   subagents?: Array<{ step: string; title: string; usd: number; turns: number; unknown?: true }>;
+  /** One row per track, first started first; absent when the run started none. A branch row holds its subagents' turns and dollars too (they stay in `subagents`); the totals above do not add the rows again. */
+  tracks?: Array<{ key: string; title: string; usd: number; turns: number; ended: boolean; unknown?: true }>;
   /** What the kinds count in their own events (name to number); absent when nothing was counted. */
   counts?: Record<string, number>;
 }
@@ -53,6 +55,13 @@ export function receipt(events: RunEventRecord[]): Receipt {
 
   const subs = new Map<string, { title: string; usd: number; turns: number; unknown?: true }>();
   const counts: Record<string, number> = {};
+  // A Map: a track key is a name somebody chose. Rows are read from the `track` tag the Run puts on a track's own events.
+  const tracks = new Map<string, { title: string; usd: number; turns: number; ended: boolean; unknown?: true }>();
+  const trackOf = (ev: RunEventRecord) => {
+    const k = ev.data?.track;
+    if (typeof k !== 'string' || !k) return undefined;
+    return tracks.get(k) ?? (tracks.set(k, { title: k, usd: 0, turns: 0, ended: false }), tracks.get(k)!);
+  };
 
   const firstTimestamp = events[0]?.timestamp ?? 0;
   let lastTimestamp = firstTimestamp;
@@ -60,6 +69,14 @@ export function receipt(events: RunEventRecord[]): Receipt {
   for (const ev of events) {
     if (ev.timestamp > lastTimestamp) {
       lastTimestamp = ev.timestamp;
+    }
+
+    const tr = trackOf(ev);
+    if (tr) {
+      if (ev.type === 'track_started' && typeof ev.data.title === 'string') tr.title = ev.data.title;
+      else if (ev.type === 'track_ended') tr.ended = true;
+      else if (ev.type === 'turn_ended') { tr.turns++; if (ev.data.unknown === true) tr.unknown = true; }
+      else if (ev.type === 'engine_cost') { tr.usd += Number(ev.data.usd || 0); if (ev.data.unknown === true) tr.unknown = true; }
     }
 
     switch (ev.type) {
@@ -174,6 +191,7 @@ export function receipt(events: RunEventRecord[]): Receipt {
     ...(models.length ? { models } : {}),
     ...(models.length && unsplit > 0.00005 ? { unsplitUsd: r6(unsplit) } : {}),
     ...(subs.size ? { subagents: [...subs].map(([step, v]) => ({ step, title: v.title, usd: r6(v.usd), turns: v.turns, ...(v.unknown ? { unknown: true as const } : {}) })) } : {}),
+    ...(tracks.size ? { tracks: [...tracks].map(([key, v]) => ({ key, title: v.title, usd: r6(v.usd), turns: v.turns, ended: v.ended, ...(v.unknown ? { unknown: true as const } : {}) })) } : {}),
     ...(Object.keys(counts).length ? { counts } : {}),
     ...(unpricedTurns ? { unpricedTurns } : {}),
   };

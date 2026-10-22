@@ -12,6 +12,7 @@ import { addCustom, deleteKey, editMod, exportMod, firstRunDone, importApply, im
 import type { Redactor } from './secrets.js';
 import { createLiveModels } from './live-models.js';
 import { ID_SHAPE, listModels, parseModel, type PickerModel } from './models.js';
+import { servedKinds } from './mods/kinds-view.js';
 import type { Mods, SendWithKey } from './mods/types.js';
 import type { ProviderStatus } from './run-checks.js';
 import { recover } from './recover.js';
@@ -387,6 +388,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     }
     if (req.method === 'POST' && p === '/api/state/probe') { engines = await probeNow(); return ok({ engines }); }
     if (req.method === 'GET' && p === '/api/tags') return ok({ tags: tagCatalogue() });
+    if (req.method === 'GET' && p === '/api/kinds') return ok(hide(servedKinds(mods))); // the faces of the blocks: core's and the mods' manifests, never code
     if (req.method === 'GET' && p === '/api/workflows') return workflows(url.searchParams.get('cwd'));
     if (req.method === 'GET' && p === '/api/editor-state') {
       const key = editorKey(url.searchParams.get('cwd'));

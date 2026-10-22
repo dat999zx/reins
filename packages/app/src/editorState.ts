@@ -31,7 +31,7 @@ function cleanCond(c: unknown): c is Cond {
 // A stored step that does not read back is undefined; the caller counts it.
 export function cleanStep(raw: unknown, depth = 0): Step | undefined {
   if (!isObj(raw) || depth > 20 || !str(raw.id) || raw.id === '' || !str(raw.kind) || !(raw.kind in KINDS)) return undefined;
-  const kind = raw.kind as Step['kind'], group = KINDS[kind].group;
+  const kind = raw.kind as Step['kind'], group = KINDS[kind]?.group;
   if (!isObj(raw.attrs) || !Object.values(raw.attrs).every(str)) return undefined;
   if ((raw.title !== undefined && !str(raw.title)) || (raw.prompt !== undefined && !str(raw.prompt))) return undefined;
   if (!Array.isArray(raw.cards) || !Array.isArray(raw.links)) return undefined;

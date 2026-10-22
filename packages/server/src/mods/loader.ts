@@ -552,6 +552,8 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
           return;
         }
         activate = m.default as (api: ModApi) => unknown;
+      } else {
+        activate = kind.data?.(raw); // a mod with no code (a data block): what its manifest says, through the same api
       }
 
       try {

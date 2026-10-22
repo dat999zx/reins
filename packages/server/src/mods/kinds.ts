@@ -1,7 +1,7 @@
-import { hasHiddenChars } from '@reins/core';
+import { dataBlock, hasHiddenChars, turnNames } from '@reins/core';
 import { RESERVED_BODY } from '../loop/wire-util.js';
 import { Registry } from './registry.js';
-import type { LoadedMod, ModHost, ModKind, Problem } from './types.js';
+import type { LoadedMod, ModHost, ModKind, Problem, Provides } from './types.js';
 
 // The kinds of mod. A new kind is one more `registerKind` call; the loader does not change.
 const KINDS = new Registry();
@@ -201,11 +201,13 @@ const MAX_NAMES = 50;
 const MAX_VIEW = 32 * 1024;
 const MAX_VIEW_LIST = 50;
 
-/** The checks the three kinds share: code, a finite `order`, and a `provides` of known keys holding lists of names (`need` must be non-empty). */
+/** A condition or card mod is code: it needs `main`. */
+const codeProblems = (raw: Record<string, unknown>, id: string): Problem[] => (typeof raw.main === 'string' ? [] : [`\`${id}\`: a ${String(raw.kind)} mod needs code (\`main\`).`]);
+
+/** The checks the kinds share: a finite `order`, and a `provides` of known keys holding lists of names (`need` must be non-empty). */
 function providesProblems(raw: Record<string, unknown>, id: string, keys: string[], need: string): Problem[] {
   const out: Problem[] = [];
   const bad = (msg: string) => out.push(`\`${id}\`: ${msg}`);
-  if (typeof raw.main !== 'string') bad(`a ${String(raw.kind)} mod needs code (\`main\`).`);
   if (typeof raw.order !== 'number' || !Number.isFinite(raw.order)) bad(`\`order\` must be a number (got ${show(raw.order)}).`);
   const p = raw.provides;
   if (!isObj(p)) {
@@ -256,27 +258,73 @@ const recordView = (mod: LoadedMod, host: ModHost) => {
 registerKind({
   id: 'condition',
   startOnly: true,
-  validate: (raw, { id }) => providesProblems(raw, id, ['conditions'], 'conditions'),
+  validate: (raw, { id }) => [...codeProblems(raw, id), ...providesProblems(raw, id, ['conditions'], 'conditions')],
   activate: record,
 });
 
 registerKind({
   id: 'card',
   startOnly: true,
-  validate: (raw, { id }) => providesProblems(raw, id, ['cards'], 'cards'),
+  validate: (raw, { id }) => [...codeProblems(raw, id), ...providesProblems(raw, id, ['cards'], 'cards')],
   activate: record,
 });
+
+const BLOCK_KEYS = ['kinds', 'ops', 'attrs', 'events'];
+const MAX_TURN = 4 * 1024; // bytes
+const MAX_STATUS = 200;
+
+/** A block is code (`main`) or a data block (`turn`, no code): one of the two, never both. */
+function shapeProblems(raw: Record<string, unknown>, id: string): Problem[] {
+  if (raw.main !== undefined && raw.turn !== undefined) return [`\`${id}\`: a block has code (\`main\`) or a \`turn\`, not both.`];
+  if (raw.main === undefined && raw.turn === undefined) return [`\`${id}\`: a block mod needs code (\`main\`). A block with no code needs a \`turn\` instead.`];
+  return [];
+}
+
+/**
+ * A data block has no code, so no `ops`; it adds one kind; its `turn` names only attributes it lists; and nothing in its manifest sets its policy:
+ * that is the step's (`policyOf`). A line break is allowed in the prompt, since a template is several lines; no other hidden character is.
+ */
+function dataProblems(raw: Record<string, unknown>, id: string): Problem[] {
+  const bad = (msg: string): Problem[] => [`\`${id}\`: ${msg}`];
+  const out = providesProblems(raw, id, BLOCK_KEYS, 'kinds');
+  if (out.length) return out;
+  const p = raw.provides as Provides;
+  if (p.kinds!.length !== 1) return bad('a data block adds one kind: `provides.kinds` lists exactly one.');
+  if (p.ops?.length) return bad('a data block has no code, so it adds no ops: `provides.ops` must be empty.');
+  const set = ['policy', 'mode', 'allowShell', 'tools'].filter((k) => raw[k] !== undefined);
+  if (set.length) return bad(`a data block cannot set ${set.map((k) => `\`${k}\``).join(', ')}: its policy is the step's (\`mode: read-only\` in the workflow), never the manifest.`);
+  const turn = raw.turn;
+  if (typeof turn !== 'string') return bad('`turn` must be text.');
+  if (Buffer.byteLength(turn) > MAX_TURN) return bad('`turn` is larger than 4 KB.');
+  if (hasHiddenChars(turn.replaceAll('\n', ''))) return bad('`turn` holds a control, direction-changing or zero-width character; only a line break is allowed.');
+  const attrs = p.attrs ?? [];
+  const named = turnNames(turn).find((n) => !attrs.includes(n));
+  if (named !== undefined) return bad(`\`turn\` names {${plain(named)}}, which is not in \`provides.attrs\`.`);
+  const status = raw.statusLine;
+  if (status !== undefined && (typeof status !== 'string' || status.length > MAX_STATUS || hasHiddenChars(status))) {
+    return bad(`\`statusLine\` must be one line of at most ${MAX_STATUS} characters, with no hidden character.`);
+  }
+  return [];
+}
 
 registerKind({
   id: 'block',
   after: ['condition', 'card'],
   startOnly: true,
   validate(raw, { id }) {
-    const out = providesProblems(raw, id, ['kinds', 'ops', 'attrs', 'events'], 'kinds');
+    const shape = shapeProblems(raw, id);
+    if (shape.length) return shape;
+    const out = raw.turn === undefined ? providesProblems(raw, id, BLOCK_KEYS, 'kinds') : dataProblems(raw, id);
     return out.length ? out : viewProblems(raw, id);
   },
   // The view is known before the code runs and before trust, so the server can show it and the import summary can list it.
   preview: recordView,
+  // A data block has no code: its node is built from the manifest here, and registered through the api a code mod's activate gets (so it is checked and guarded the same way).
+  data(raw) {
+    const p = raw.provides as Provides;
+    const node = dataBlock({ kind: p.kinds![0]!, attrs: p.attrs ?? [], turn: raw.turn as string, statusLine: raw.statusLine as string | undefined });
+    return (api) => { api.registerBlock(node); };
+  },
   activate(mod, host) {
     const undoMod = record(mod, host);
     let undoView: () => void;

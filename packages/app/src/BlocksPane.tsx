@@ -1,6 +1,7 @@
 import { useContext, useMemo, useRef, type MouseEvent, type ReactNode } from 'react';
 import type { Cond, Diagnostic, Step, Workflow } from '@reins/core';
-import { KINDS, wiresOf, type Token } from './canvasKinds.js';
+import { showText } from '../../core/src/display.js';
+import { viewOf, wiresOf, type Token } from './canvasKinds.js';
 import { applyParam, COND_KINDS, type CondParam } from './condKinds.js';
 import { AGAINST, editStep, flatSteps, marksOf } from './canvas.js';
 import { commitBudget, setCond, type CondPath } from './blocks.js';
@@ -44,7 +45,7 @@ export function BlocksPane({ w, diags, text, sel, primary, rev, models, efforts,
   const ov = (z: Zone) => (!loose && over && zoneKey(over.el) === zoneKey(z) ? over.cls : undefined);
   const zone = (z: Zone) => ({ ...za(z), className: ov(z) });
   // Stack and C blocks share these attributes. A click stops here: it must not bubble to every enclosing C block.
-  const name = (s: Step) => `${KINDS[s.kind].card?.label ?? s.kind} ${s.id}`;
+  const name = (s: Step) => `${viewOf(s.kind).card?.label ?? showText(s.kind)} ${s.id}`;
   // The state cue is a child span, not a pseudo-element: ::before is the drop bar and ::after the notch. The ended mark is the same span.
   const stopped = (s: Step) => (show && ended?.id === s.id ? ended : undefined);
   const cue = (s: Step) => {
@@ -58,9 +59,9 @@ export function BlocksPane({ w, diags, text, sel, primary, rev, models, efforts,
       className: cx('blk', shape, !loose && sel.has(stepKey(s.id)) && 'sx-sel', src?.has(s.id) && 'sx-dragsrc', !loose && linkOver === s.id && 'sx-linkover', info?.state && `sx-${info.state}`, mark && `mark-${mark}`),
       'data-id': loose ? undefined : s.id,
       'data-kind': s.kind,
-      'data-colour': KINDS[s.kind]?.colour,
-      'data-icon': KINDS[s.kind]?.icon,
-      'data-stops': KINDS[s.kind]?.stops || undefined,
+      'data-colour': viewOf(s.kind).colour,
+      'data-icon': viewOf(s.kind).icon,
+      'data-stops': viewOf(s.kind).stops || undefined,
       role: loose ? undefined : ('group' as const), // a loose block is named by its wrapper
       'aria-label': loose ? undefined : `${free ? 'free ' : ''}${name(s)}`,
       'aria-current': !loose && primary === s.id ? ('true' as const) : undefined,
@@ -107,9 +108,9 @@ export function BlocksPane({ w, diags, text, sel, primary, rev, models, efforts,
 
   const token = (s: Step, t: Token, i: number): ReactNode => {
     if (t === 'cond') return <span key={i}>{hex(s, s.cond, [])}</span>;
-    if (t === 'sub') return <span key={i}>{fill(KINDS[s.kind].sub ?? '', s)}</span>;
+    if (t === 'sub') return <span key={i}>{fill(viewOf(s.kind).sub ?? '', s)}</span>;
     if (typeof t === 'string') return <b key={i}>{t}</b>;
-    const f = KINDS[s.kind].fields.find((x) => x.key === t.field);
+    const f = viewOf(s.kind).fields.find((x) => x.key === t.field);
     const v = fieldValue(s, t.field);
     if (f?.input === 'textarea') return v ? <span key={i} className="sx-faint">{v.split('\n')[0]}</span> : f.required ? <span key={i} className="sx-faint">no prompt yet</span> : null;
     const label = `${f?.label} of ${s.id}`;
@@ -140,7 +141,7 @@ export function BlocksPane({ w, diags, text, sel, primary, rev, models, efforts,
       <>
         <div className="sx-row">
           <span className="sx-grip" aria-hidden />
-          {KINDS[s.kind].line.map((t, i, all) => {
+          {viewOf(s.kind).line.map((t, i, all) => {
             const next = all[i + 1];
             if (typeof t === 'string' && next && typeof next === 'object') return null; // a word and its pill never separate: rendered together below
             const prev = all[i - 1];
@@ -157,7 +158,7 @@ export function BlocksPane({ w, diags, text, sel, primary, rev, models, efforts,
           </div>
         )}
         <span className="sx-st">
-          {info && <StepChips i={info} thinking={info.state === 'active' && !KINDS[s.kind].group ? thinking : undefined} />}
+          {info && <StepChips i={info} thinking={info.state === 'active' && !viewOf(s.kind).group ? thinking : undefined} />}
           {end && <span className={`sstate sx-ended ${end.phase}`} role="img" aria-label={ENDED[end.phase]}>{ENDED[end.phase]}</span>}
         </span>
       </>
@@ -170,11 +171,11 @@ export function BlocksPane({ w, diags, text, sel, primary, rev, models, efforts,
     <div className="sx-stack" data-list={`${parent ?? ''}/${branch}`}>
       {items.map((s, n) => {
         const key = items.findIndex((x) => x.id === s.id) === n ? s.id : `${n}/${s.id}`; // a duplicate id is a validator error; keep the keys unique anyway
-        const group = KINDS[s.kind].group;
+        const group = viewOf(s.kind).group;
         const bp = blockProps(s, group ? 'sx-c' : 'sx-blk', top);
         // a stack block is one target, halves from the whole block (chips and pills included)
         if (!group) {
-          const z = zone({ type: top ? 'free' : KINDS[s.kind].stops ? 'cap' : 'block', id: s.id });
+          const z = zone({ type: top ? 'free' : viewOf(s.kind).stops ? 'cap' : 'block', id: s.id });
           return <div key={key} {...bp} {...z} className={cx(bp.className, z.className)}>{cue(s)}{head(s)}</div>;
         }
         // ponytail: a drop on a body's own area, even beside its last child, lands first in that body (mockup behaviour); the snap bar shows it

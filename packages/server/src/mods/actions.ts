@@ -4,7 +4,7 @@
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { hasHiddenChars } from '@reins/core';
+import { CARDS, CONDS, NODES, hasHiddenChars } from '@reins/core';
 import { MIN_SECRET, clearKey, envGet, keyStatus, readSecrets, secretsFile, setKey, type KeyStatus } from '../secrets.js';
 import { ConsentNeeded, ProviderChanged, ProviderError } from '../send.js';
 import { readBounded } from '../loop/bounded.js';
@@ -278,6 +278,48 @@ function trustOf(env: Pick<ModEnv, 'home' | 'mods'>, m: LoadedMod): CodeTrust {
   return m.hash !== undefined && ran !== undefined && ran !== m.hash && modTrusted(env.home, m.id, m.hash) ? 'restart' : 'needs-trust';
 }
 
+/** The loader's line for a carried block, condition or card mod that was changed, switched off, un-trusted or removed (`loader.ts`). */
+const isNotice = (p: string) => p.endsWith(': applies after a restart.');
+
+// What a block, condition or card mod brings, read from its manifest alone (nothing of its code has run). `key` is the `provides` list, `core` is where
+// Reins keeps that thing. A new mod kind that brings something to core is one more row here.
+const BRINGS = [
+  { key: 'kinds', noun: 'block', core: NODES },
+  { key: 'conditions', noun: 'condition', core: CONDS },
+  { key: 'cards', noun: 'card', core: CARDS },
+] as const;
+const ALSO = [['ops', 'its operations'], ['events', 'may log the events'], ['attrs', 'may use the attributes']] as const;
+const NAME = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
+/** The names a `provides` list holds. A manifest that was not checked yet may hold anything: only plain names are kept. */
+const namesOf = (p: unknown, key: string): string[] => {
+  const v = isObj(p) ? p[key] : undefined;
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && NAME.test(x)).slice(0, 50) : [];
+};
+const clean = (v: unknown): v is string => typeof v === 'string' && v !== '' && !hasHiddenChars(v);
+
+/** The lines of "what it adds": the block, condition or card names, then its operations, events and attributes, then its entry in the block list. Empty for any other mod. */
+function addsOf(raw: Record<string, unknown>): string[] {
+  const out = BRINGS.flatMap((b) => namesOf(raw.provides, b.key).map((n) => `adds the ${b.noun} \`${n}\``));
+  if (!out.length) return [];
+  for (const [key, words] of ALSO) {
+    const names = namesOf(raw.provides, key);
+    if (names.length) out.push(`${words}: ${names.join(', ')}`);
+  }
+  const card = isObj(raw.view) && isObj(raw.view.card) ? raw.view.card : undefined;
+  if (clean(card?.label)) out.push(`shown in the block list as ${show(card.label)}${clean(card.section) ? ` under ${show(card.section)}` : ''}`);
+  // Task 19 (data blocks) hook: a block with no code shows its prompt template here, one line, cut and checked like the card label above.
+  return out;
+}
+
+/** What a mod file brings that Reins already has: its code would be refused at start. A mod's own earlier copy is not a clash. */
+function clashes(env: ModEnv, raw: Record<string, unknown>, id: string): string[] {
+  const before = env.mods.mods.find((m) => m.id === id)?.manifest;
+  const had = isObj(before) ? before.provides : undefined;
+  return BRINGS.flatMap((b) => namesOf(raw.provides, b.key)
+    .filter((n) => b.core.has(n) && !namesOf(had, b.key).includes(n))
+    .map((n) => `the ${b.noun} \`${n}\` already exists in Reins, so the code of this mod would be refused.`));
+}
+
 function summary(env: ModEnv, m: LoadedMod) {
   const man = isObj(m.manifest) ? m.manifest : {};
   const trust = m.source === 'bundled' ? undefined : trustOf(env, m);
@@ -293,7 +335,11 @@ function summary(env: ModEnv, m: LoadedMod) {
     // A user mod is "installed" when the catalog has that id (custom endpoints may not take a catalog id), else it is the user's own.
     source: m.source === 'bundled' ? 'bundled' : readCatalog(env, m.id) ? 'installed' : 'custom',
     ...(m.replaces ? { replaces: m.replaces } : {}),
-    problems: trust === 'restart' ? [`${id$(m.id)}: ${RESTART}.`] : m.problems,
+    // The loader's "applies after a restart" line is news, not a fault: it is told apart so the list does not draw it as an error.
+    problems: trust === 'restart' ? [`${id$(m.id)}: ${RESTART}.`] : m.problems.filter((p) => !isNotice(p)),
+    ...(m.problems.some(isNotice) ? { notices: m.problems.filter(isNotice) } : {}),
+    // What a block, condition or card mod adds, from its manifest (the words the import preview used).
+    ...(addsOf(man).length ? { adds: addsOf(man) } : {}),
   };
 }
 
@@ -836,6 +882,8 @@ export interface ImportSummary {
   keys: Array<{ name: string; host: string; plainHttp: boolean; line: string }>;
   /** Header names only; the values stay in the file. */
   headers: string[];
+  /** A block, condition or card mod: what it adds, from its manifest, shown before any of its code runs. Empty for any other mod. */
+  adds: string[];
   hasCode: boolean;
   /** The second prompt, word for word (spec 7.7). Only for a mod with code. */
   codePrompt?: string;
@@ -917,10 +965,12 @@ function checkImport(env: ModEnv, input: unknown): Checked {
     reach,
     keys: names.map((name) => ({ name, host, plainHttp: plain, line: `sends the value of ${name} to ${host}${plain ? ' over plain http' : ''}` })),
     headers: isObj(raw.headers) ? Object.keys(raw.headers) : [],
+    adds: addsOf(raw),
     hasCode,
     ...(hasCode ? { codePrompt: CODE_PROMPT, hash: hash!, trusted: modTrusted(env.home, id, hash!) } : {}),
     files: [...files].sort((a, b) => (a.rel < b.rel ? -1 : 1)).map((f) => ({ name: f.rel, bytes: f.bytes.length })),
     warnings: [
+      ...clashes(env, raw, id),
       ...(plain && names.length ? [`${host} is not on this machine and is reached over plain http, so the key can be read on the way.`] : []),
       ...(others.length ? [hasCode ? `also holds files the manifest does not name: ${others.join(', ')}. They are part of the code you would trust.` : `also holds files a mod without code does not use: ${others.join(', ')}.`] : []),
     ],

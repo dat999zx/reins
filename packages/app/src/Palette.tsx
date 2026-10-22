@@ -9,7 +9,7 @@ const GROUPS = [['Flow', 'Flow'], ['Memory', 'Memory · Knowl']] as const;
 export function Palette({ onAdd, onCond, press }: {
   onAdd: (kind: StepKind) => void; onCond: (t: string) => void; press: MutableRefObject<Start | undefined>;
 }) {
-  const kinds = (Object.keys(KINDS) as StepKind[]).filter((k) => KINDS[k].card);
+  const kinds = (Object.keys(KINDS) as StepKind[]).filter((k) => KINDS[k]?.card);
   const drag = (src: Src) => ({ onPointerDown: (e: PointerEvent<HTMLElement>) => press.current?.(e.nativeEvent, src, e.currentTarget) });
   return (
     <section className="sx-pal" aria-label="Palette">
@@ -17,8 +17,8 @@ export function Palette({ onAdd, onCond, press }: {
         <div key={section}>
           <h4>{title}</h4>
           <div className="sx-pgrp">
-            {kinds.filter((k) => KINDS[k].card!.section === section).map((k) => (
-              <button key={k} className="sx-card" data-kind={k} data-colour={KINDS[k]?.colour} data-icon={KINDS[k]?.icon} data-stops={KINDS[k]?.stops || undefined} onClick={() => onAdd(k)} {...drag({ kind: k })}><i />{KINDS[k].card!.label}</button>
+            {kinds.filter((k) => KINDS[k]?.card?.section === section).map((k) => (
+              <button key={k} className="sx-card" data-kind={k} data-colour={KINDS[k]?.colour} data-icon={KINDS[k]?.icon} data-stops={KINDS[k]?.stops || undefined} data-untrusted={KINDS[k]?.trusted === false || undefined} title={KINDS[k]?.trusted === false ? "This block's code is not trusted yet, so it will not run." : undefined} onClick={() => onAdd(k)} {...drag({ kind: k })}><i />{KINDS[k]?.card?.label}</button>
             ))}
           </div>
         </div>

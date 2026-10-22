@@ -15,4 +15,7 @@ export * from './cards/index.js';
 export * from './conds/index.js';
 export * from './display.js';
 export * from './nodes/index.js';
+export * from './data-block.js';
+export * from './views.js';
+export type { Field, KindView, Token } from './nodes/fields.js';
 export { FAULT_OP, faultLine, modOfOp, tame, textOf } from './guard.js';

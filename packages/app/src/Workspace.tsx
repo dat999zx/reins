@@ -71,17 +71,24 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, models, ef
 
   // Arrows: each block's first row, measured once per model change or size change in the script's own coordinates, so a hat drag or a zoom needs no measuring.
   // A block with a place of its own (a free block) is measured from its own origin, named by c.
-  const [rects, setRects] = useState(new Map<string, Rect & { c?: string }>());
+  const [rects, setRects] = useState(new Map<string, Rect & { c?: string; cr?: number }>());
   const measure = () => {
     const s = view.current?.querySelector<HTMLElement>('.sx-script');
     if (!s) return;
     const z = camRef.current.zoom, q = (v: number) => Math.round((v / z) * 100) / 100;
-    const next = new Map<string, Rect & { c?: string }>();
+    const next = new Map<string, Rect & { c?: string; cr?: number }>();
+    // cr: the right edge of the block's own cost chips. over: how far the widest chip of the stack reaches past the script, so the free column starts after it.
+    let over = 0;
+    const sw = q(s.getBoundingClientRect().width);
     for (const el of view.current!.querySelectorAll<HTMLElement>('.blk[data-id]')) {
       const c = el.closest<HTMLElement>('.sx-placed'), o = (c ?? s).getBoundingClientRect();
       const b = el.getBoundingClientRect(), row = el.querySelector('.sx-row')?.getBoundingClientRect() ?? b;
-      next.set(el.dataset.id!, { x: q(b.left - o.left), y: q(row.top - o.top), w: q(b.width), h: q(row.height), ...(c && { c: c.dataset.zid }) });
+      const chips = [...el.querySelectorAll<HTMLElement>('.sx-st > .sstate')].filter((k) => k.closest('.blk[data-id]') === el);
+      const cr = chips.length ? q(Math.max(...chips.map((k) => k.getBoundingClientRect().right)) - o.left) : undefined;
+      if (cr !== undefined && !c && !el.closest('.sx-autofree')) over = Math.max(over, cr - sw);
+      next.set(el.dataset.id!, { x: q(b.left - o.left), y: q(row.top - o.top), w: q(b.width), h: q(row.height), ...(c && { c: c.dataset.zid }), ...(cr !== undefined && { cr }) });
     }
+    s.style.setProperty('--chip-over', `${Math.max(0, over)}px`);
     setRects((p) => (JSON.stringify([...p]) === JSON.stringify([...next]) ? p : next));
   };
   const wires = useMemo(() => marksOf(w, diags, text).wires, [w, diags, text]);
@@ -97,6 +104,12 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, models, ef
     els.forEach((el) => ro.observe(el));
     return () => ro.disconnect();
   }, [tailKey]);
+  // A cost chip arrives as text inside the page, not as a size change of the script, so the page's changes are measured too.
+  useEffect(() => {
+    const mo = new MutationObserver(measure);
+    mo.observe(view.current!, { subtree: true, childList: true, characterData: true });
+    return () => mo.disconnect();
+  }, []);
   const base = useRef(new Map<string, Pt>()); // the world places of the free blocks when a press began
   // Where each free block stands now, read from the page: an unplaced one has no saved place until something moves it.
   const freePlaces = () => {
@@ -277,7 +290,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, models, ef
   };
   const menuCtx = (m: { id: string }): MenuCtx => {
     const s = flatSteps(w.steps).find((x) => x.id === m.id);
-    return { count: sel.size, topLevel: !!s && placeOf(w, s.id)?.parent === undefined, free: freeIds.has(m.id), isEnd: !!s && !!KINDS[s.kind].stops, clip: clip.length > 0, ran: !!ran?.(m.id) };
+    return { count: sel.size, topLevel: !!s && placeOf(w, s.id)?.parent === undefined, free: freeIds.has(m.id), isEnd: !!s && !!KINDS[s.kind]?.stops, clip: clip.length > 0, ran: !!ran?.(m.id) };
   };
   // One place decides what a point or an element is: the context menu and the Shift+F10 key both come here.
   const openOn = (t: Element | null, at: Pt) => {
@@ -397,7 +410,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, models, ef
         if (free.length) return 'hit' in t && free.every((id) => attach(w, id, t.hit));
         return !!to && unpark(w, looseOf(src.move).map((l) => l.step), to).w !== w;
       }
-      if ('surface' in t) return 'kind' in src ? !!KINDS[src.kind].fresh : 'id' in src && park(w, src.ids ?? [src.id]).w !== w;
+      if ('surface' in t) return 'kind' in src ? !!KINDS[src.kind]?.fresh : 'id' in src && park(w, src.ids ?? [src.id]).w !== w;
       if ('id' in src) return 'hit' in t && dropSteps(w, src.ids ?? [src.id], t.hit) !== w;
       const place = 'hit' in t ? dropPlace(w, t.hit) : undefined;
       return !!place && 'kind' in src && addStepAt(w, src.kind, place) !== w;
@@ -430,7 +443,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, models, ef
   press.current = drag.press;
   const hatMoving = !!drag.keys?.includes('hat');
   const scriptAt = { x: home.x + (hatMoving ? drag.d?.x ?? 0 : 0), y: home.y + (hatMoving ? drag.d?.y ?? 0 : 0) };
-  const world = new Map([...rects].map(([id, r]): [string, Rect] => { const o = (r.c ? freeAt.get(r.c) : scriptAt) ?? scriptAt; return [id, { x: r.x + o.x, y: r.y + o.y, w: r.w, h: r.h }]; }));
+  const world = new Map([...rects].map(([id, r]): [string, Rect & { cr?: number }] => { const o = (r.c ? freeAt.get(r.c) : scriptAt) ?? scriptAt; return [id, { x: r.x + o.x, y: r.y + o.y, w: r.w, h: r.h, ...(r.cr !== undefined && { cr: r.cr + o.x }) }]; }));
   const parking = !!drag.src && !!drag.ok && !drag.over; // a step over bare surface: a release parks it
   useEffect(() => {
     if (!parking) return;

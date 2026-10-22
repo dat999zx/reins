@@ -161,6 +161,10 @@ export interface Manifest {
   order?: number;
   /** Block mods: the block's view as JSON, checked by the kind before any code runs. */
   view?: Record<string, unknown>;
+  /** Data blocks (a block with no `main`): the prompt template, `{attr}` and `{a|b}` filled from the step's attributes. */
+  turn?: string;
+  /** Data blocks: the status line the step's reply ends with, one line. None: the default. */
+  statusLine?: string;
 }
 
 export interface ProviderModel {
@@ -232,6 +236,8 @@ export interface ModKind {
    * (a block's view). Returns what undoes it.
    */
   preview?(mod: LoadedMod, host: ModHost): (() => void) | undefined;
+  /** A mod with no code: what it registers, as a function of its manifest, run through the same api a code mod's `activate` gets. */
+  data?(raw: Record<string, unknown>): ((api: ModApi) => void) | undefined;
   /** Kinds whose mods load before this kind's (a provider after protocol). */
   after?: string[];
   /** The mod's registrations in core take effect when the server starts, not live (block, condition, card). */

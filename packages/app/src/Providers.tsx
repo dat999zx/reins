@@ -125,8 +125,22 @@ function FormView({ initial, editing, protocols, original, onDone, onCancel }: {
 
 interface TestReply { result: string; message: string; host?: string; origin?: string }
 
+/** A row as the server sends it for a block, condition or card mod: what it adds, and its "applies after a restart" lines (not errors). */
+export type KindRow = ModRow & { adds?: string[]; notices?: string[] };
+
+/** The lines under a kind mod's name: what it adds, then what waits for a restart. Plain text; nothing for a mod that has neither. */
+export function KindDetails({ row }: { row: KindRow }) {
+  if (!row.adds?.length && !row.notices?.length) return null;
+  return (
+    <>
+      {row.adds?.length ? <ul className="padds" aria-label={`What ${row.id} adds`}>{row.adds.map((l, i) => <li key={i}>{l}</li>)}</ul> : null}
+      {row.notices?.map((n, i) => <p key={i} className="pmsg" role="status">{n}</p>)}
+    </>
+  );
+}
+
 /** One row of either list: a provider, or a protocol and other mods. `used` = labels of the providers that use this mod. */
-function Row({ row, used, reload, edit }: { row: ModRow; used: string[]; reload: () => Promise<void>; edit: (r: ModRow) => void }) {
+export function Row({ row, used, reload, edit }: { row: KindRow; used: string[]; reload: () => Promise<void>; edit: (r: ModRow) => void }) {
   const info = rowInfo(row);
   const provider = row.kind === 'provider';
   const [msg, setMsg] = useState('');
@@ -178,6 +192,7 @@ function Row({ row, used, reload, edit }: { row: ModRow; used: string[]; reload:
       <div className="pmeta">
         {provider ? [info.host, `${info.models} ${info.models === 1 ? 'model' : 'models'}`, info.replaces, info.keyShown].filter(Boolean).join(' · ') : otherMeta(row, used)}
       </div>
+      <KindDetails row={row} />
       <div className="pactions">
         {info.canTest && <button onClick={() => void test()}>Test connection</button>}
         {info.canSetKey && <button onClick={() => setKeying(!keying)}>Set key</button>}
@@ -222,7 +237,7 @@ function Row({ row, used, reload, edit }: { row: ModRow; used: string[]; reload:
 }
 
 export function Providers({ onClose }: { onClose: () => void }) {
-  const [rows, setRows] = useState<ModRow[]>([]);
+  const [rows, setRows] = useState<KindRow[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [secretsPath, setSecretsPath] = useState('');
   const [problem, setProblem] = useState('');
@@ -231,7 +246,7 @@ export function Providers({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState<{ initial: ProviderForm; editing: boolean; original?: unknown } | undefined>();
   const reload = async () => {
     try {
-      const r = await get<{ mods: ModRow[]; secretsPath?: string }>('/api/mods');
+      const r = await get<{ mods: KindRow[]; secretsPath?: string }>('/api/mods');
       setRows(r.mods);
       setSecretsPath(r.secretsPath ?? '');
       setProblem('');

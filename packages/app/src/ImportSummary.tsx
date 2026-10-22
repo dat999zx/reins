@@ -5,10 +5,30 @@ import { NO_CODE_BUTTON, TRUST_BUTTON, applyBody, planOf, problemsFrom, summaryL
 const MAX_FILE = 1024 * 1024;
 const sayErr = (e: unknown) => (e instanceof ApiError ? e.message : (e as Error).message);
 
+/** The preview of a block, condition or card mod also lists what it adds (from its manifest; absent in an older reply or for a provider). */
+export type KindSummary = PreviewSummary & { adds?: string[] };
+
+/** Every line of the summary: the server's `adds` come right after the kind, before the files and the code line. */
+export function linesOf(s: KindSummary): string[] {
+  const lines = summaryLines(s);
+  const at = lines.indexOf(`Kind: ${s.kind}`) + 1;
+  return [...lines.slice(0, at), ...(s.adds ?? []), ...lines.slice(at)];
+}
+
+/** The lines as text (never HTML). */
+export function SummaryList({ summary }: { summary: KindSummary }) {
+  return (
+    <ul className="isummary" aria-label="What importing does">
+      {linesOf(summary).map((l, i) => <li key={i}>{l}</li>)}
+    </ul>
+  );
+}
+
 /** The import dialog (spec 7.7): a file or pasted text, what importing it would do, the code prompt, the built-in confirm. All text, never HTML. */
-export function ImportPanel({ onDone, onCancel }: { onDone: (said: string) => void; onCancel: () => void }) {
+export function ImportPanel({ onDone, onCancel, shown }: { onDone: (said: string) => void; onCancel: () => void; shown?: KindSummary }) {
   const [text, setText] = useState('');
-  const [summary, setSummary] = useState<PreviewSummary | undefined>();
+  // `shown`: a preview that is already there (the first render of a test); the dialog starts from a file and asks the server.
+  const [summary, setSummary] = useState<KindSummary | undefined>(shown);
   const [problems, setProblems] = useState<string[]>([]);
   // The choice made on the code prompt, waiting for the built-in confirm.
   const [pending, setPending] = useState<{ trust: boolean } | undefined>();
@@ -21,7 +41,7 @@ export function ImportPanel({ onDone, onCancel }: { onDone: (said: string) => vo
     setProblems([]);
     setBusy(true);
     try {
-      setSummary((await post<{ summary: PreviewSummary }>('/api/mods/import/preview', { file })).summary);
+      setSummary((await post<{ summary: KindSummary }>('/api/mods/import/preview', { file })).summary);
     } catch (e) {
       setProblems(e instanceof ApiError ? problemsFrom(e.body, e.message) : [sayErr(e)]);
     } finally {
@@ -62,11 +82,7 @@ export function ImportPanel({ onDone, onCancel }: { onDone: (said: string) => vo
         <button disabled={busy || !text.trim()} onClick={() => void preview(text)}>Preview</button>
       </div>
       {problems.map((p) => <p key={p} className="ferr" role="alert">{p}</p>)}
-      {summary && (
-        <ul className="isummary" aria-label="What importing does">
-          {summaryLines(summary).map((l, i) => <li key={i}>{l}</li>)}
-        </ul>
-      )}
+      {summary && <SummaryList summary={summary} />}
       {plan.codePrompt && <p className="pconfirm" role="alert">{plan.codePrompt}</p>}
       {pending && (
         <div className="pconfirm" role="dialog" aria-label="Replace the built-in provider">

@@ -1,6 +1,7 @@
 import type { Receipt } from '@reins/core';
 import type { LogRow } from '@reins/server/store.js';
 import { dollars } from '../unknown.js';
+import { trackTitle } from '../stepStatus.js';
 
 export const type = 'receipt';
 
@@ -21,7 +22,9 @@ export function receiptFields(r: Receipt): Array<[string, string]> {
   const models: Array<[string, string]> = split ? [['models', split + (r.unsplitUsd ? ` · not split by model ${money(r.unsplitUsd)}` : '')]] : [];
   const subs = (r.subagents ?? []).map((s) => `${s.title} ${money(s.usd, s.unknown)} (${s.turns} turn${s.turns === 1 ? '' : 's'})`).join(' · ');
   const subagents: Array<[string, string]> = subs ? [['subagents', subs]] : [];
-  return [...always, ...unpriced, ...models, ...subagents, ...sometimes.filter(([, n]) => n !== 0).map(([k, n]): [string, string] => [k, String(n)]),
+  const trackLine = (r.tracks ?? []).map((t) => `${trackTitle(t.title)} ${money(t.usd, t.unknown)} (${t.turns} turn${t.turns === 1 ? '' : 's'}${t.ended ? '' : ', not ended'})`).join(' · ');
+  const tracks: Array<[string, string]> = trackLine ? [['tracks', trackLine]] : [];
+  return [...always, ...unpriced, ...models, ...subagents, ...tracks,...sometimes.filter(([, n]) => n !== 0).map(([k, n]): [string, string] => [k, String(n)]),
     ...Object.entries(r.counts ?? {}).map(([k, n]): [string, string] => [k, String(n)])];
 }
 

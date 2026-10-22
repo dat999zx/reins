@@ -1,0 +1,22 @@
+# M2 carry list: findings from reviews that a later task must close (read this when writing each brief)
+
+Source: Codex review of tasks 4+5 (`C:/Users/Admin/AppData/Local/Temp/m2codex45/final.txt`), no blocker for main-only runs. Verified against v5.1: none of the three is in a task's text yet; add them to the briefs named here.
+
+1. **Task 10a** (own sessions): `ensureSession(t)` (run.ts ~369) returns `this.borrowed` before it checks `t.session`, and lines ~373-375 use the main line's resume id and cost bases. For a non-main track it must open through `ensureTrackSession` and use the track's own. Test: a Run with `session: mainSession`, another track with its own session, `vm(t).ensureSession()` must return the track's.
+2. **Task 11** (pauses per track, `requestChanges(note, track?)`): `sendChanges(t)` (~698-713) clears and stores `this.changeRequest`, which is the main line's single retry slot. It must be per track (a field on the Track), so a capped request from another track does not replay through the main line and does not erase a main retry. Test both directions.
+3. **Task 12** (money, unknown spend): the budget pause paths `pauseUsd` (~643-659) and the turn-limit pause (~569) write the run's `status`/`pauseReason` and log an untagged main event even when called for another track. The spec makes these run-wide on purpose (one USD card). Decide explicitly: keep run-wide, but tag the event with the track that hit the limit and make sure the other tracks stop at their next step (the spike proved the single card). Add the tag test.
+
+## From the Codex review of Task 10a (docs/plan/m2-codex-10a-review.md)
+4. **Task 13** (server, owners for tool questions): `session.ts` clears the shared `turnOpen` flag and closes ALL tool questions when any one track's turn ends, so a finishing branch denies another branch's pending approval (and the next approval is silently denied). Needs per-owner open turns and per-owner question closing; test: A waits on approval, B completes, A's question stays open and answerable.
+5. **Task 10b** (money records): `usdSpent` is keyed by step id only, and a track copies the starter's slice including its step id, so two sibling tracks that inherit `{step:'model-1', usd:1}` share one counter ($0.60 + $0.60 trips both). The per-track money record must key spending by track (and step), with the totals rule summing them. Test: two tracks each spend $0.60 against a $1 inherited slice and neither is stopped.
+
+## From the Codex review of Task 10b (docs/plan/m2-codex-10b-review.md)
+6. **Task 12** (money rules, usd pause per track): (a) "Allow more" for a track's slice pause reads `usdSpent[stepId]` (the STARTER's counter) instead of the paused track's, so the new limit is wrong and the track pauses again at once; (b) `usdExtra[stepId]` is shared, so allowing one track also raises its siblings' and the starter's room. Fix together: the usd pause carries the track (and the spend key), `allowUsd` reads that track's counter and raises only that track's allowance (`usdExtra` keyed like the spend), and the main line's behaviour stays as it is. Tests: A and B inherit a $1 slice, A spends $1.10 and gets $0.50 more: A continues, B and main keep $1; the starter spent $0.30 before A started.
+
+## From Task 11 (its report)
+7. **M3, the fork op:** the toy `split` logs `split_done` BEFORE `vm.next()`, so a snapshot saved inside that row has the counter on the SPLIT with the group already taken, and a restore starts the whole split again (golden `golden-m2/after-split-done.json` records it). The real fork op must call `next()` (move the counter) before it logs its done row. Test it with a snapshot inside the done row.
+8. **Task 12 / 13:** `pauseUsd` and `allowUsd` do not call `notify()`, so a driver must `poke()` after a USD pause or an Allow or a sleeping `step()` never wakes. Make them notify (core), and have the server driver poke too.
+
+## From the parallel batch (17b, 19, 20, 21)
+9. **Server view check (17b/17a):** `kinds.ts` checks `view.fresh` is an object but not the shape of `view.sub` (string) and `view.rows` entries; a mod row `className` reaches the DOM. Allowlist `className` to `sx-sub` and `faint`, require `sub` to be a string and each `rows` entry `{ text, details?, className? }` with strings. (Task 24 fixes round.)
+10. **Task 20/Settings:** a code-less data block (Task 19) loads with `trusted: false`; the Settings list and import summary should show a data block as "no code, nothing to trust" (check that 20's summary line says it).

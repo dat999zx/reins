@@ -338,8 +338,6 @@ export function TextTab({ view, onView, sess, models, efforts, sessionModel, ses
     pendingLine.current = undefined;
   }, [view]);
   const visual = view !== 'text';
-  // a step of a kind the app has no entry for (a stray `## Notes` heading) would crash the visual tabs
-  const known = !prev?.workflow || flatSteps(prev.workflow.steps).every((s) => s.kind in KINDS);
   const sel = stepId && prev?.workflow ? flatSteps(prev.workflow.steps).find((s) => s.id === stepId) : undefined;
 
   // The run panel's handle sits in the editor bar (Blocks only, as the dock did); its body floats over the canvas, so nothing moves when it opens.
@@ -349,7 +347,7 @@ export function TextTab({ view, onView, sess, models, efforts, sessionModel, ses
 
   // The slot is checked before edit(): a declined rewrite confirm or a busy editor must not show this note.
   const cond = (t: string) => {
-    if (!sel || !KINDS[sel.kind].line.includes('cond')) return setMsg('Select a wait until, repeat until or if block first.');
+    if (!sel || !KINDS[sel.kind]?.line.includes('cond')) return setMsg('Select a wait until, repeat until or if block first.');
     if (sel.cond && 'a' in sel.cond) return setMsg('This condition has and / or / not: drop a card on one part of it, or edit it in Text.');
     edit((w) => setCond(w, sel.id, [], COND_KINDS[t]!.fresh()));
   };
@@ -371,7 +369,7 @@ export function TextTab({ view, onView, sess, models, efforts, sessionModel, ses
           ))}
           {list.length === 0 && <li className="hint">No workflows yet.</li>}
         </ul>
-        {view === 'blocks' && prev?.workflow && known && <Palette onAdd={add} onCond={cond} press={press} />}
+        {view === 'blocks' && prev?.workflow && <Palette onAdd={add} onCond={cond} press={press} />}
       </aside>
       <section className="editor">
         {view === 'blocks' && !showDock && (sess.status === 'waiting' ? <p className="sx-dockline">The agent is waiting for you in Chat. <button onClick={() => onChat()}>Chat</button></p>
@@ -390,8 +388,8 @@ export function TextTab({ view, onView, sess, models, efforts, sessionModel, ses
               <button className="primary" onClick={() => void startRun()} disabled={dirty || sessionBusy}
                 title={dirty ? 'Save first: a run uses the saved file.' : sessionBusy ? 'A run or a chat turn is going. Stop it first.' : undefined}>Run</button>
             </div>
-            {visual && prev && !(prev.workflow && known) && <p className="hint">This file does not parse. Fix it in the Text tab.</p>}
-            {visual && prev?.workflow && known && (
+            {visual && prev && !prev.workflow && <p className="hint">This file does not parse. Fix it in the Text tab.</p>}
+            {visual && prev?.workflow && (
               <div className="canvaswrap" tabIndex={-1}
                 onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveWithDraft(); } }}>
                 <StatusCtx.Provider value={{ status: run.steps, show: showStatus, ended, ...(run.thinking !== undefined ? { thinking: run.thinking } : {}) }}>
