@@ -125,6 +125,7 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
     redact: hide,
     write: writeOutput,
     endOutput,
+    cancel: () => { for (const a of asks.splice(0)) a(null); },   // nothing waiting: nothing to do (Task 14 prints what was cancelled)
   };
 
   let sigints = 0;

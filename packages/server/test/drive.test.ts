@@ -1,7 +1,9 @@
 // drive.ts: the answer parser, the pause loop, the two ask helpers, and runOptions (plan 15d 3b.2).
-import { describe, it, expect } from 'vitest';
-import { FakeEngine, Run, type Cond, type Step, type Workflow } from '@reins/core';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { FakeEngine, Run, parseWorkflow, register, validate, type Cond, type ScriptedTurn, type Step, type Workflow } from '@reins/core';
 import { askJudge, askTool, driveRun, parseAnswer, runOptions, type DriveIo, type Question } from '../src/drive.js';
+import { m2harness } from '../../core/test/m2-harness.js';
+import { split } from '../../core/test/fixtures/split.js';
 
 const step = (id: string, kind: Step['kind'], over: Partial<Step> = {}): Step => ({ id, kind, attrs: {}, cards: [], links: [], ...over });
 const phase = (id: string) => step(id, 'phase', { title: id, prompt: 'do it' });
@@ -285,4 +287,218 @@ describe('runOptions', () => {
     expect(t.lines).toEqual(expect.arrayContaining(['$ echo hello', '✓ passed']));
     expect(t.chunks.join('')).toContain('hello');
   });
+});
+
+// ---- M2 task 13: the driver asks every track's pause at once, answers it by its key, and settles what is open when the run ends --------------------
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const within = <T>(p: Promise<T>, ms: number) => Promise.race([p, sleep(ms).then(() => 'timeout' as const)]);
+const until = async (f: () => boolean) => { for (let k = 0; k < 600 && !f(); k++) await sleep(5); expect(f(), 'the condition was not met in time').toBe(true); };
+
+/** Questions that stay open until a test answers them, in the order they were asked; `cancel` settles every open one with null, as the server's does. */
+function heldIo() {
+  const lines: string[] = [];
+  const asked: Question[] = [];
+  const settlers: Array<(a: string | null) => void> = [];
+  const open = new Set<number>();
+  const cancels: string[] = [];
+  const io: DriveIo = {
+    ask: (q) => new Promise((resolve) => {
+      const i = asked.push(q) - 1;
+      open.add(i);
+      settlers[i] = (a) => { open.delete(i); resolve(a); };
+    }),
+    say: (l) => lines.push(l),
+    write: () => {},
+    cancel: (why) => { cancels.push(why); for (const i of [...open]) settlers[i]!(null); },
+  };
+  return { io, lines, asked, cancels, answer: (i: number, a: string | null) => settlers[i]!(a), isOpen: (i: number) => open.has(i), get openCount() { return open.size; } };
+}
+
+const tracksWf = (body: string, budget = 'turns: 40, minutes: 60'): Workflow => {
+  const r = parseWorkflow(`---\nreins: 1\nname: t\nbudget: { ${budget} }\nalways: []\n---\n\n${body}\n`);
+  expect(r.diagnostics).toEqual([]);
+  expect(validate(r.workflow!).filter((d) => d.severity === 'error')).toEqual([]);
+  return r.workflow!;
+};
+const MAIN = '## phase main\n> m\n\n## end\n\n';
+const done = (text: string, cost?: number): ScriptedTurn => ({ text: `${text}\nREINS: done`, ...(cost !== undefined ? { cost } : {}) });
+const subOf = (s: string, key: string) => `${s}-sub-${key}`;
+
+describe('driveRun with tracks (M2 task 13)', () => {
+  const disposers: Array<() => void> = [];
+  beforeAll(() => { disposers.push(register(split)); });
+  afterAll(() => { for (const d of disposers.splice(0).reverse()) d(); });
+  const mk = (h: ReturnType<typeof m2harness>, body: string, budget?: string, o: Partial<ConstructorParameters<typeof Run>[0]> = {}) =>
+    new Run({ workflow: tracksWf(body, budget), engine: h.engine, openSubagent: h.openSubagent, now: h.now, ...o });
+  const TWO_GATES = `## split\nnext: a\nnext: b\n\n${MAIN}## phase a\n> a\n\n## gate\nid: ga\nuntil: you approve\n\n## end\n\n## phase b\n> b\n\n## gate\nid: gb\nuntil: you approve\n\n## end`;
+
+  it('two gates at once: each question is titled, each shows its own branch\'s last reply, and answering one resumes only that track; no gate is asked twice', async () => {
+    const h = m2harness('D1');
+    h.script(subOf('D1', 'a'), done('ALPHA-REPLY'));
+    h.script(subOf('D1', 'b'), done('BETA-REPLY'));
+    const t = heldIo();
+    const run = mk(h, TWO_GATES);
+    const driven = driveRun(run, t.io, () => {});
+    await until(() => t.asked.length === 2);
+    expect(t.asked.map((q) => [q.kind, q.title])).toEqual([['gate', 'Split split-1'], ['gate', 'Split split-1']]);
+    const textAfter = (gate: string) => t.lines[t.lines.findIndex((l) => l.startsWith(`⏸ gate ${gate}:`)) + 1]!;
+    expect(textAfter('ga')).toContain('ALPHA-REPLY');
+    expect(textAfter('ga')).not.toContain('BETA-REPLY');
+    expect(textAfter('gb')).toContain('BETA-REPLY');
+    expect(textAfter('gb')).not.toContain('ALPHA-REPLY');
+    await sleep(80);
+    expect(t.asked).toHaveLength(2);   // the loop went round again: the same gate is not asked a second time
+    t.answer(1, 'approve');   // the second question is b's
+    await until(() => run.ended.some((e) => e.key === 'b'));
+    expect(run.pauses().map((p) => p.track)).toEqual(['a']);
+    expect(run.getEvents().filter((e) => e.type === 'gate_approved').map((e) => e.data)).toEqual([{ track: 'b' }]);
+    expect(t.isOpen(0)).toBe(true);
+    await sleep(40);
+    expect(t.asked).toHaveLength(2);
+    t.answer(0, 'approve');
+    expect(await within(driven, 3000)).toEqual({ result: 'finished' });
+    expect(run.status).toBe('done');
+  }, 15_000);
+
+  it('a track pause that arises while the run\'s own question is open is asked at once; after the Allow the run goes on to its end', async () => {
+    const h = m2harness('D3');
+    // a's reply costs more than the workflow has: the run-wide USD card. b's turn is still held, so a step() is asleep when the card is written.
+    h.script(subOf('D3', 'a'), done('a', 0.6));
+    h.script(subOf('D3', 'b'), { text: 'stuck\nREINS: blocked: nope' }, done('b'));
+    const hb = h.hold(subOf('D3', 'b'));
+    const t = heldIo();
+    const run = mk(h, `## split\nnext: a\nnext: b\n\n${MAIN}## phase a\n> a\n\n## verify\nagainst: a\n\n## end\n\n## phase b\n> b\n\n## end`, 'turns: 40, minutes: 60, usd: 0.5');
+    const driven = driveRun(run, t.io, () => {});
+    await hb.started;
+    await until(() => t.asked.some((q) => q.kind === 'usd'));
+    expect(run.status).toBe('paused');
+    expect(t.asked.map((q) => q.kind)).toEqual(['usd']);
+    hb.release();   // b's reply says it is blocked while the USD question is still open
+    await until(() => t.asked.some((q) => q.kind === 'resume'));
+    expect(t.asked.map((q) => q.kind)).toEqual(['usd', 'resume']);
+    expect(t.asked[1]!.title).toBe('Split split-1');
+    expect(t.isOpen(0)).toBe(true);
+    t.answer(1, 'resume');
+    await until(() => run.pauses().length === 1);
+    expect(run.pauses()[0]).toMatchObject({ type: 'usd-budget-used' });
+    t.answer(0, 'allow $1');   // the sleeping loop wakes and the run goes on
+    expect(await within(driven, 3000)).toEqual({ result: 'finished' });
+    expect(run.status).toBe('done');
+  }, 15_000);
+
+  it('an invalid answer on a track\'s gate wakes the loop: the gate is asked again, though no track can run', async () => {
+    const h = m2harness('D4');
+    const hb = h.hold(subOf('D4', 'b'));
+    const t = heldIo();
+    const run = mk(h, `## split\nnext: ga\nnext: b\n\n${MAIN}## gate\nid: ga\nuntil: you approve\n\n## end\n\n## phase b\n> b\n\n## end`);
+    const driven = driveRun(run, t.io, () => {});
+    await hb.started;
+    await until(() => t.asked.length === 1);
+    t.answer(0, 'what?');
+    await until(() => t.asked.length === 2);   // the loop was asleep in step() on b's held turn; only the settle handler's poke wakes it
+    expect(t.lines).toContain('Type approve, changes <note>, or stop.');
+    t.answer(1, 'approve');
+    hb.release();
+    expect(await within(driven, 3000)).toEqual({ result: 'finished' });
+  }, 15_000);
+
+  it('a null answer to a track\'s gate detaches the run at once, though a branch is mid-turn; the run keeps its tracks running for a restore', async () => {
+    const h = m2harness('D5');
+    const hb = h.hold(subOf('D5', 'b'));
+    const t = heldIo();
+    const run = mk(h, `## split\nnext: ga\nnext: b\n\n${MAIN}## gate\nid: ga\nuntil: you approve\n\n## end\n\n## phase b\n> b\n\n## end`);
+    const driven = driveRun(run, t.io, () => {});
+    await hb.started;
+    await until(() => t.asked.length === 1);
+    t.answer(0, null);
+    expect(await within(driven, 2000)).toEqual({ result: 'detached' });
+    expect(run.status).toBe('running');
+    expect(run.tracks.get('b')!.state).toBe('running');
+    expect(h.stats(subOf('D5', 'b')).closed).toBe(1);
+  }, 15_000);
+
+  it('"changes <note>" on a track\'s gate sends the change request on THAT track, and the gate is asked again', async () => {
+    const h = m2harness('D9');
+    h.script(subOf('D9', 'a'), done('first'), done('revised'));
+    const t = heldIo();
+    const run = mk(h, `## split\nnext: a\n\n${MAIN}## phase a\n> a\n\n## gate\nid: ga\nuntil: you approve\n\n## end`);
+    const driven = driveRun(run, t.io, () => {});
+    await until(() => t.asked.length === 1);
+    t.answer(0, 'changes tighten the plan');
+    await until(() => t.asked.length === 2);
+    const texts = h.stats(subOf('D9', 'a')).texts;
+    expect(texts).toHaveLength(2);   // the change request was a turn of the track's own session
+    expect(texts[1]).toContain('tighten the plan');
+    expect(run.getEvents().filter((e) => e.type === 'card_delivered').map((e) => e.data)).toMatchObject([{ card: 'tighten the plan', track: 'a' }]);
+    t.answer(1, 'approve');
+    expect(await within(driven, 3000)).toEqual({ result: 'finished' });
+  }, 15_000);
+
+  it('"allow <n>" on one track\'s loop budget question raises only that track', async () => {
+    const h = m2harness('D10');
+    const loop = (n: number) => '## repeat\nuntil: tests pass\nmax: 1\n\n### run `npm test`\n\n### phase fix' + n + '\n> fix ' + n + '\n\n## end';
+    const commandRunner = async () => ({ exitCode: 1, stdout: '', stderr: '' });
+    const t = heldIo();
+    const run = mk(h, `## split\nnext: repeat-1\nnext: repeat-2\n\n${MAIN}${loop(1)}\n\n${loop(2)}`, undefined, { commandRunner });
+    const driven = driveRun(run, t.io, () => {});
+    await until(() => t.asked.length === 2);
+    expect(t.asked.map((q) => q.kind)).toEqual(['budget', 'budget']);
+    expect(t.lines.filter((l) => l.startsWith('⏸ loop ')).map((l) => l.split(' ')[2])).toEqual(['repeat-1', 'repeat-2']);
+    t.answer(1, 'allow 1');   // the second question is repeat-2's
+    await until(() => t.asked.length === 3);   // repeat-2 tried once more and used its budget again
+    expect(run.snapshot().loopLimitExtensions).toEqual({ 'repeat-2': 1 });
+    expect(t.isOpen(0)).toBe(true);
+    expect(run.pauses().map((p) => p.track)).toEqual(['repeat-1', 'repeat-2']);
+    await run.stop();
+    expect(await within(driven, 3000)).toEqual({ result: 'finished' });
+  }, 15_000);
+
+  it('a question of a track that throws ends the run as detached with the error said, though a branch is mid-turn', async () => {
+    const h = m2harness('D8');
+    const hb = h.hold(subOf('D8', 'b'));
+    const t = heldIo();
+    t.io.ask = async () => { throw new Error('boom'); };
+    const run = mk(h, `## split\nnext: ga\nnext: b\n\n${MAIN}## gate\nid: ga\nuntil: you approve\n\n## end\n\n## phase b\n> b\n\n## end`);
+    const driven = driveRun(run, t.io, () => {});
+    await hb.started;
+    expect(await within(driven, 2000)).toEqual({ result: 'detached', error: 'boom' });
+    expect(t.lines).toContain('✗ boom');
+    expect(h.stats(subOf('D8', 'b')).closed).toBe(1);
+  }, 15_000);
+
+  it('a detach with a branch in a judge question: cancel settles it (also from `finally`), and the run closes within 2 s', async () => {
+    const h = m2harness('D6');
+    const t = heldIo();
+    const judge = () => t.io.ask({ id: 'j', kind: 'judge', prompt: 'y / n' }).then((a) => a === 'y');
+    const run = mk(h, `## split\nnext: a\nnext: gb\n\n${MAIN}## phase a\n> a\n\n## gate\nid: ja\nuntil: llm says "fine"\n\n## end\n\n## gate\nid: gb\nuntil: you approve\n\n## end`, undefined, { judge });
+    const driven = driveRun(run, t.io, () => {});
+    await until(() => t.asked.some((q) => q.kind === 'judge') && t.asked.some((q) => q.kind === 'gate'));
+    t.answer(t.asked.findIndex((q) => q.kind === 'gate'), null);   // the asker went away
+    expect(await within(driven, 2000)).toEqual({ result: 'detached' });
+    expect(t.openCount).toBe(0);
+    expect(t.cancels.length).toBeGreaterThan(0);
+  }, 15_000);
+
+  it('Stop on one track\'s gate while another is in a judge question: the run ends within 2 s, with cancel called before the run closes', async () => {
+    const h = m2harness('D7');
+    const t = heldIo();
+    const judge = () => t.io.ask({ id: 'j', kind: 'judge', prompt: 'y / n' }).then((a) => a === 'y');
+    const run = mk(h, `## split\nnext: a\nnext: b\n\n${MAIN}## phase a\n> a\n\n## gate\nid: ja\nuntil: llm says "fine"\n\n## end\n\n## phase b\n> b\n\n## gate\nid: gb\nuntil: you approve\n\n## end`, undefined, { judge });
+    const order: string[] = [];
+    const close = run.close.bind(run);
+    run.close = async () => { order.push('close'); return close(); };
+    const cancel = t.io.cancel!;
+    t.io.cancel = (why) => { order.push('cancel'); cancel(why); };
+    const driven = driveRun(run, t.io, () => {});
+    await until(() => t.asked.some((q) => q.kind === 'judge') && t.asked.some((q) => q.kind === 'gate'));
+    t.answer(t.asked.findIndex((q) => q.kind === 'gate'), 'stop');
+    expect(await within(driven, 2000)).toEqual({ result: 'finished' });
+    expect(run.status).toBe('stopped');
+    expect(t.openCount).toBe(0);
+    expect(t.asked).toHaveLength(2);   // the gate that is still listed after the Stop is not asked again
+    expect(order[0]).toBe('cancel');
+    expect(order.filter((o) => o === 'close')).toHaveLength(1);
+    expect(h.stats(subOf('D7', 'a')).closed).toBe(1);
+    expect(h.stats(subOf('D7', 'b')).closed).toBe(1);
+  }, 15_000);
 });

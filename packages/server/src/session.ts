@@ -143,7 +143,14 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   let live: EngineSession | undefined;
   let opening: Promise<EngineSession | undefined> | undefined;
   let cancelOpen = false;
-  let turnOpen = false;
+  // The turns open now, counted per owner ('' is the run's own line; a track is its key, a subagent its step): a turn's end closes only its own tool questions.
+  const turnsOpen = new Map<string, number>();
+  const turnBegan = (owner: string) => void turnsOpen.set(owner, (turnsOpen.get(owner) ?? 0) + 1);
+  const turnEnded = (owner: string) => {
+    const n = (turnsOpen.get(owner) ?? 1) - 1;
+    if (n > 0) turnsOpen.set(owner, n); else turnsOpen.delete(owner);
+    closeQuestions('the turn ended', 'tool', owner);
+  };
   let notSent = false;
   let busy = false;
   let closed = false;
@@ -194,13 +201,14 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     p.resolve(a);
     refresh();
   };
-  const closeQuestions = (why: string, kind?: Question['kind']) => {
-    for (const [qid, p] of [...pending]) if (!kind || p.q.kind === kind) settle(qid, null, why);
+  /** `owner`: only the questions of that line of work (the run's own is ''); none: every one of that kind. */
+  const closeQuestions = (why: string, kind?: Question['kind'], owner?: string) => {
+    for (const [qid, p] of [...pending]) if ((!kind || p.q.kind === kind) && (owner === undefined || (p.q.owner ?? '') === owner)) settle(qid, null, why);
   };
 
   const ask = (q: Question): Promise<string | null> => {
     if (stopping) return Promise.resolve(null);
-    if (q.kind === 'tool' && !turnOpen) return Promise.resolve(null); // a late approval after its turn ended: deny, never leave it open
+    if (q.kind === 'tool' && !turnsOpen.has(q.owner ?? '')) return Promise.resolve(null); // a late approval after its owner's turn ended: deny, never leave it open
     // The one place a question reaches the app (and the stream): its words are shown with control, direction and zero-width characters as <U+XXXX>.
     // The detail of an approval is the whole input, never cut.
     // Keys are hidden FIRST, on the original text; a hidden character inside a key would stop the redactor from finding it once escaped.
@@ -225,6 +233,8 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     say: (text) => log('say', { text }, runId),
     write: (chunk) => outputRow(cmdOut ? cmdOut.push(chunk) : chunk),
     endOutput: () => { if (cmdOut) outputRow(cmdOut.end()); },
+    // The run is over: what is still open belongs to nobody (a judge question of a branch, a tool card), and the run cannot close while it waits.
+    cancel: (why) => { if (runId !== undefined) for (const [qid, p] of [...pending]) if (p.rid === runId) settle(qid, null, why); },
   };
 
   // The origin of the provider's address when `engine` was made. A reload that changes it (or removes the provider) retires the engine before its next use.
@@ -465,12 +475,12 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   };
 
   /** A subagent never asks the user itself (Hermes): its tool request is a card on the parent run, titled with it, or refused by the setting. */
-  function subagentApprove(title: string, r: ToolRequest): Promise<Decision> {
+  function subagentApprove(title: string, r: ToolRequest, owner?: string): Promise<Decision> {
     if (readSetting(store, 'subagentApprovals') === 'deny') {
       log('note', { text: `Denied ${r.tool} for ${title}: subagent approvals are set to deny.` }, runId);
       return Promise.resolve({ behavior: 'deny', message: 'Denied by Reins: subagent approvals are set to deny. Carry on without this tool.' });
     }
-    return askTool(io, r, title);
+    return askTool(io, r, title, undefined, owner);
   }
 
   // ponytail: the subagent runs on its block's model, else the session's; its guard refusals count in the receipt but not on its chip (run `refusal` rows are not in the session log, :43).
@@ -488,7 +498,8 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       provider,
       ...(model ? { model } : {}), ...(r.effort ? { effort: r.effort } : {}),
       // A track's own requests are asked like the main run's; a native child task inside it (`via`) keeps the subagent exception the main engine has.
-      onApprove: (x) => (o.asks && x.via === undefined ? askTool(io, x, o.asks) : subagentApprove(o.asks && x.via !== undefined ? `Task ${x.via.slice(0, 80).trim()}` : title, x)),
+      // Every question of this session belongs to its step (a track's key): it closes when this session's turn ends, not when another line's does.
+      onApprove: (x) => (o.asks && x.via === undefined ? askTool(io, x, o.asks, undefined, o.step) : subagentApprove(o.asks && x.via !== undefined ? `Task ${x.via.slice(0, 80).trim()}` : title, x, o.step)),
       // usage, cost, compacted and hook measure or note the parent's context, so they stay out; the rest is kept under the step
       onLive: (ev) => { if (KEPT.has(ev.type)) log('engine', { ...ev, step: o.step }, runId); },
     });
@@ -500,8 +511,8 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     const session: EngineSession = {
       sessionId: s.sessionId,
       async turn(text) {
-        turnOpen = true; // ask() takes tool questions only while a turn is open
-        try { return await s.turn(text); } finally { turnOpen = false; closeQuestions('the turn ended', 'tool'); }
+        turnBegan(o.step); // ask() takes this owner's tool questions only while its turn is open
+        try { return await s.turn(text); } finally { turnEnded(o.step); }
       },
       interrupt: () => s.interrupt(),
       events: s.events,
@@ -520,7 +531,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     const s = await ensureEngine();
     if (!s) { notSent = true; return { text: '', events: [] }; }
     let res: TurnResult;
-    turnOpen = true;
+    turnBegan('');
     try {
       res = await f(s);
     } catch (e) {
@@ -532,8 +543,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       undoSwitch(msg(e));
       throw e;
     } finally {
-      turnOpen = false;
-      closeQuestions('the turn ended', 'tool');
+      turnEnded('');
     }
     if (res.total !== undefined && !holdTotal) store.putEngineTotal(s.sessionId, res.total, res.totals);
     // ponytail: a session from before the cost table shows its first reply's cost as unknown; a switch to Default has no price, so with a context it asks with the switch card.
@@ -653,7 +663,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       return call(compactCall);
     },
     async interrupt() {
-      if (turnOpen && live) await live.interrupt();
+      if (turnsOpen.has('') && live) await live.interrupt();   // the run's own line only: a track's turn is interrupted through its own session
     },
     events: { async *[Symbol.asyncIterator]() {} },
     async close() {},

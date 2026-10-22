@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import {
   printCond, showText, usdText,
-  type Cond, type Decision, type Engine, type EngineSession, type Run, type RunEventRecord,
+  type Cond, type Decision, type Engine, type EngineSession, type PauseReason, type Run, type RunEventRecord,
   type RunOptions, type ToolRequest, type Workflow,
 } from '@reins/core';
 import { runCommand } from './commands.js';
@@ -10,10 +10,14 @@ import { runCommand } from './commands.js';
 export interface Question { id: string; kind: 'gate' | 'budget' | 'resume' | 'tool' | 'judge' | 'trust' | 'switch' | 'usd'; prompt: string; detail?: string;
   /** Who asks, when not the run's own agent (a subagent, D); the card shows it. */
   title?: string;
+  /** Whose turn a tool question belongs to: a track's key or a subagent's step. Absent: the run's own line. The question is closed when THAT turn ends. */
+  owner?: string;
   /** The prompt line is not the whole of what is asked (it was cut, or characters in it are shown as escapes): a terminal prints the whole detail under it. */
   long?: true }
 export interface DriveIo {
   ask(q: Question): Promise<string | null>; say(line: string): void; write(chunk: string): void;
+  /** The run is over (stopped, done, or the driver is leaving): settles every question of this run that is still open with `null`, a tool question as a denial. Without it a Stop with a judge question open never lets the run close. */
+  cancel?(why: string): void;
   /** A command's output is over: whatever `write` was holding back (the start of a possible key) can go out. */
   endOutput?(): void;
   /** Hides the keys Reins knows. Text that is cut or escaped for a card goes through it first: a hidden character inside a key would defeat it afterwards. */
@@ -60,16 +64,39 @@ export function parseAnswer(kind: 'gate' | 'budget' | 'resume' | 'usd', a: strin
 export async function driveRun(run: Run, io: DriveIo, save: () => void): Promise<{ result: 'finished' | 'detached'; error?: string }> {
   let detached = false;
   let error: string | undefined;
+  // Questions open at once, by track ('' is the run's own pause): each pause is asked once, and a track's does not wait for another's.
+  const asking = new Map<string, Promise<void>>();
+  let failure: { e: unknown } | undefined;
+  const ask = (p: PauseReason) => {
+    const key = p.track ?? '';
+    if (asking.has(key)) return;
+    asking.set(key, onPause(run, io, p).then(
+      (more) => { if (!more) detached = true; },
+      (e) => { failure ??= { e }; },
+    ).then(() => {
+      asking.delete(key);
+      run.poke();   // an invalid answer or a null changes nothing in the run, and a step() asleep on it would never wake
+    }));
+  };
   try {
     while (!detached) {
+      if (failure) throw failure.e;
+      if (run.status !== 'stopped' && run.status !== 'done') for (const p of run.pauses()) if (p.track !== undefined) ask(p);
       if (run.status === 'running') {
         await run.step();
         save();
         // Let typed lines land between steps.
         await new Promise((r) => setImmediate(r));
       } else if (run.status === 'paused') {
-        detached = !(await onPause(run, io));
+        const own = run.pauseReason!;
+        if (run.tracks.size === 0 && asking.size === 0) {
+          detached = !(await onPause(run, io, own));
+        } else {
+          ask(own);
+          await Promise.race([...asking.values(), run.changed()]);
+        }
       } else {
+        io.cancel?.('the run ended');
         break;
       }
     }
@@ -78,6 +105,7 @@ export async function driveRun(run: Run, io: DriveIo, save: () => void): Promise
     io.say(`✗ ${error}`);
     detached = true;
   } finally {
+    io.cancel?.('the run ended');
     await run.close().catch(() => {});
   }
   save();
@@ -85,18 +113,18 @@ export async function driveRun(run: Run, io: DriveIo, save: () => void): Promise
   return { result, ...(error !== undefined ? { error } : {}) };
 }
 
-/** Answer a pause. Returns false when the asker went away (the run stays saved). */
-async function onPause(run: Run, io: DriveIo): Promise<boolean> {
-  const p = run.pauseReason!;
+/** Answer a pause: the run's own, or (`p.track`) one track's, whose answers carry its key. Returns false when the asker went away (the run stays saved). */
+async function onPause(run: Run, io: DriveIo, p: PauseReason): Promise<boolean> {
+  const title = p.title ? { title: p.title } : {};
   if (p.type === 'gate') {
     io.say(`⏸ gate ${p.stepId}: until ${p.cond ? printCond(p.cond) : 'you approve'}`);
-    const last = lastTurnText(run.getEvents());
+    const last = lastTurnText(run.getEvents(), p.track);
     if (last) io.say(indent(last.split('\n').slice(-15).join('\n')) + '\n');
-    const a = await io.ask({ id: questionId(), kind: 'gate', prompt: 'approve / changes <note> / stop' });
+    const a = await io.ask({ id: questionId(), kind: 'gate', prompt: 'approve / changes <note> / stop', ...title });
     if (a === null) return false;
     const ans = parseAnswer('gate', a);
-    if (ans.t === 'approve') run.approve();
-    else if (ans.t === 'changes') await run.requestChanges(ans.note);
+    if (ans.t === 'approve') run.approve(p.track);
+    else if (ans.t === 'changes') await run.requestChanges(ans.note, p.track);
     else if (ans.t === 'stop') await run.stop();
     else if (ans.t === 'invalid') io.say(ans.hint);
     return true;
@@ -105,10 +133,10 @@ async function onPause(run: Run, io: DriveIo): Promise<boolean> {
     io.say(p.type === 'budget-used'
       ? `⏸ loop ${p.stepId} used its ${p.limit} attempts`
       : `⏸ link used its budget (max ${p.limit})`);
-    const a = await io.ask({ id: questionId(), kind: 'budget', prompt: 'allow <n> more / stop' });
+    const a = await io.ask({ id: questionId(), kind: 'budget', prompt: 'allow <n> more / stop', ...title });
     if (a === null) return false;
     const ans = parseAnswer('budget', a);
-    if (ans.t === 'allow') run.allowMore(ans.n);
+    if (ans.t === 'allow') run.allowMore(ans.n, p.track);
     else if (ans.t === 'stop') await run.stop();
     else if (ans.t === 'invalid') io.say(ans.hint);
     return true;
@@ -136,13 +164,11 @@ async function onPause(run: Run, io: DriveIo): Promise<boolean> {
   }
   if (p.type === 'agent-blocked' || p.type === 'stop') {
     io.say(p.type === 'stop' ? (p.stepId ? `⏸ ${p.stepId}: ${p.text}` : `⏹ stopped by a card: ${p.text}`) : `⏸ the agent is blocked: ${p.reason}`);
-    const a = await io.ask({ id: questionId(), kind: 'resume', prompt: 'resume [note] / stop' });
+    const a = await io.ask({ id: questionId(), kind: 'resume', prompt: 'resume [note] / stop', ...title });
     if (a === null) return false;
     const ans = parseAnswer('resume', a);
-    if (ans.t === 'resume') {
-      if (ans.note) run.queueCard(ans.note, 'steer');
-      run.resume();
-    } else if (ans.t === 'stop') await run.stop();
+    if (ans.t === 'resume') run.resume(p.track, ans.note || undefined);   // the run's own line queues the note as a steer card; a track carries it in its next turn
+    else if (ans.t === 'stop') await run.stop();
     else if (ans.t === 'invalid') io.say(ans.hint);
     return true;
   }
@@ -156,7 +182,7 @@ async function onPause(run: Run, io: DriveIo): Promise<boolean> {
 const PROMPT_CHARS = 200;
 
 /** `full`: the terminal prints the whole detail under this question even when the line shows all of it (an engine Reins runs: a short path hides the content). */
-export async function askTool(io: DriveIo, req: ToolRequest, title?: string, full?: boolean): Promise<Decision> {
+export async function askTool(io: DriveIo, req: ToolRequest, title?: string, full?: boolean, owner?: string): Promise<Decision> {
   const i = req.input ?? {};
   const hide = io.redact ?? ((s: string) => s);
   const chars = [...hide(String(i.command ?? i.file_path ?? i.path ?? JSON.stringify(i)))];
@@ -165,7 +191,7 @@ export async function askTool(io: DriveIo, req: ToolRequest, title?: string, ful
   const what = showText(head);
   const long = full === true || chars.length > PROMPT_CHARS || what !== head;
   const more = chars.length > PROMPT_CHARS ? ` (${i.command !== undefined ? 'command' : 'text'} continues, ${chars.length - PROMPT_CHARS} more characters, all shown below)` : '';
-  const a = await io.ask({ id: questionId(), kind: 'tool', prompt: `? Allow ${showText(hide(req.tool))}${req.reason ? ` (${showText(hide(req.reason))})` : ''}: ${what}${more}  [y / n <reason>]`, detail: JSON.stringify(req.input ?? {}), ...(title ? { title } : {}), ...(long ? { long: true as const } : {}) });
+  const a = await io.ask({ id: questionId(), kind: 'tool', prompt: `? Allow ${showText(hide(req.tool))}${req.reason ? ` (${showText(hide(req.reason))})` : ''}: ${what}${more}  [y / n <reason>]`, detail: JSON.stringify(req.input ?? {}), ...(title ? { title } : {}), ...(owner ? { owner } : {}), ...(long ? { long: true as const } : {}) });
   if (a !== null && /^(y|yes)$/i.test(a)) return { behavior: 'allow' };
   const reason = a?.replace(/^(n|no)\b\s*/i, '').trim();
   return { behavior: 'deny', message: reason ? `The user said no: ${reason}` : 'The user said no.' };
@@ -232,8 +258,9 @@ function diffLines(cwd: string, base: string, env?: () => NodeJS.ProcessEnv): nu
   }, 0);
 }
 
-function lastTurnText(evs: RunEventRecord[]): string {
-  for (let i = evs.length - 1; i >= 0; i--) if (evs[i]!.type === 'turn_ended') return String(evs[i]!.data.text ?? '');
+/** The newest reply of one line of work: the track's, or (no key) the run's own, whose events carry no track tag. */
+function lastTurnText(evs: RunEventRecord[], track?: string): string {
+  for (let i = evs.length - 1; i >= 0; i--) if (evs[i]!.type === 'turn_ended' && evs[i]!.data.track === track) return String(evs[i]!.data.text ?? '');
   return '';
 }
 
