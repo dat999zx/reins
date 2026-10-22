@@ -1,7 +1,7 @@
 import type { Workflow, Step, Cond } from './model.js';
 import { compileProgram, compileTurn, type Instr, type Policy, type StepStart } from './compile.js';
 import type { Engine, EngineSession, TurnResult } from './fake-engine.js';
-import { NODES, opOf, type ExecCtx, type SwitchOutcome, type VmCtx } from './nodes/index.js';
+import { NODES, opOf, type ExecCtx, type SwitchOutcome, type TrackResult, type TrackSpec, type VmCtx } from './nodes/index.js';
 import { policyOf } from './nodes/turn.js';
 import { CARDS } from './cards/index.js';
 import { evalCond, evalCondSync, type EvalCtx } from './cond.js';
@@ -18,6 +18,9 @@ export type RunStatus = 'running' | 'paused' | 'done' | 'stopped';
 export interface Track {
   key: string;
   title: string;
+  /** The key of the track whose op started this one ('' = the main line), and the op's group name. */
+  parent: string;
+  group: string;
   pc: number;
   /** Non-main: its own status. Main: always 'running' (the run's status is the Run's own). */
   state: 'running' | 'paused' | 'ended';
@@ -93,6 +96,8 @@ export interface RunEvents {
   subagent_result: unknown;
   hook: unknown;
   judge: unknown;
+  track_started: unknown;
+  track_ended: unknown;
 }
 export type RunEventType = keyof RunEvents;
 
@@ -285,7 +290,7 @@ export class Run {
   readonly main: Track = Run.mainTrack(this);
   private static mainTrack(r: Run): Track {
     return {
-      key: '', title: '', state: 'running' as const,
+      key: '', title: '', parent: '', group: '', state: 'running' as const,
       get pc() { return r.programCounter; }, set pc(v) { r.programCounter = v; },
       get pause() { return r.pauseReason; }, set pause(v) { r.pauseReason = v; },
       get session() { return r.engineSession; }, set session(v) { r.engineSession = v; },
@@ -301,11 +306,16 @@ export class Run {
       inflight: undefined as Promise<void> | undefined,
     } as Track;
   }
-  /** The live tracks other than the main line, in start order (empty until the scheduler task). */
+  /** The live tracks other than the main line, in start order. */
   readonly tracks = new Map<string, Track>();
   /** The ended tracks' results, in end order. */
   readonly ended: Array<{ key: string; text: string }> = [];
+  /** The groups an op started and has not taken: the track that started it parks until every one of `keys` has a result. */
+  private groups = new Map<string, { parent: Track; keys: string[]; results: Map<string, TrackResult> }>();
   private closing = false;
+  private waiters: Array<() => void> = [];
+  /** A throw from the main line's instruction while the scheduler ran it: rethrown from `step()`, which is where the driver looks. */
+  private thrown?: { e: unknown };
 
   constructor(opts: RunOptions) {
     this.workflow = opts.workflow;
@@ -365,8 +375,66 @@ export class Run {
     return cards;
   }
 
+  /** Resolves on the next change the scheduler must see: a pause, a stop, a settled instruction, or a `poke()`. What `step()` sleeps on. */
+  changed(): Promise<void> {
+    return new Promise((r) => { this.waiters.push(r); });
+  }
+
+  /** Wakes `step()`. A question that settles without changing the run (an invalid answer, a null) must call it, or a loop asleep in `step()` never wakes. */
+  poke() { this.notify(); }
+
+  private notify() {
+    const w = this.waiters;
+    this.waiters = [];
+    for (const r of w) r();
+  }
+
+  /** A track other than the main line has its OWN session, opened once through the host opener; a Stop or close while it opens closes the new session. */
+  private async ensureTrackSession(t: Track): Promise<EngineSession> {
+    if (!t.session) {
+      const o: SubagentOpen = { step: t.key, title: t.title, policy: () => t.policy, ...(this.cwd !== undefined ? { cwd: this.cwd } : {}) };
+      const opened = await (this.openSubagent ?? ((x: SubagentOpen) => this.ownSubagent(x)))(o);
+      if (this.closing || this.status === 'stopped') { await opened.session.close().catch(() => {}); throw new Error('closed'); }
+      t.session = opened.session;
+    }
+    return t.session;
+  }
+
+  /** Starts the tracks of `group` in order and parks `parent` on its instruction until every one ended. Nothing is started when a check fails. */
+  private startTracks(parent: Track, group: string, list: TrackSpec[]) {
+    if (this.groups.has(group)) throw new Error(`group "${group}" is live`);
+    const keys = list.map((s) => s.key);
+    const taken = keys.find((k, i) => this.tracks.has(k) || k === '' || keys.indexOf(k) !== i);
+    if (taken !== undefined) throw new Error(`track "${taken}" is live`);
+    this.groups.set(group, { parent, keys, results: new Map() });
+    for (const s of list) {
+      const t: Track = {
+        key: s.key, title: s.title, parent: parent.key, group, pc: s.at, state: 'running', turnInFlight: false, capped: false,
+        handback: [...(s.seed ?? [])], policy: { mode: 'write', guards: [], allowShell: true }, recall: [],
+      };
+      this.tracks.set(t.key, t);
+      this.logEvent('track_started', { track: t.key, parent: parent.key, group, title: t.title }, t);
+    }
+    this.notify();
+  }
+
+  /** The results of a group whose tracks all ended, in start order; the group is forgotten. */
+  private takeTracks(group: string): TrackResult[] | undefined {
+    const g = this.groups.get(group);
+    if (!g || g.results.size < g.keys.length) return undefined;
+    this.groups.delete(group);
+    return g.keys.map((k) => g.results.get(k)!);
+  }
+
+  /** The track started tracks and waits for them (its counter stays on the op). */
+  private parked(t: Track): boolean {
+    for (const g of this.groups.values()) if (g.parent === t && g.results.size < g.keys.length) return true;
+    return false;
+  }
+
   private async ensureSession(t: Track): Promise<EngineSession> {
-    if (this.borrowed) return this.borrowed;   // the main line's; a track's own session opens in the own-sessions task
+    if (t !== this.main) return this.ensureTrackSession(t);
+    if (this.borrowed) return this.borrowed;
     if (!t.session) {
       t.session = await this.engine.open({
         ...(this.cwd !== undefined ? { cwd: this.cwd } : {}),
@@ -456,9 +524,8 @@ export class Run {
 
   /** A pause of one track: the main line writes the run's own fields as always; another track its own. */
   private pauseTrack(t: Track, p: PauseReason) {
-    if (t === this.main) { this.status = 'paused'; this.pauseReason = p; return; }
-    t.state = 'paused';
-    t.pause = p;
+    if (t === this.main) { this.status = 'paused'; this.pauseReason = p; } else { t.state = 'paused'; t.pause = p; }
+    this.notify();   // a step() asleep on the other tracks sees it
   }
 
   /** The run is going, and so is this track (the main line's own state is the run's). */
@@ -553,6 +620,9 @@ export class Run {
       judge: (c) => this.judgeCond(c, false, t),
       pause: (p) => this.pauseTrack(t, p),
       setRecall: (ctx) => { t.recall = ctx; },
+      tracks: { start: (group, list) => this.startTracks(t, group, list), take: (group) => this.takeTracks(group) },
+      handBack: (text) => { t.handback.push(text); },
+      lastReply: () => t.lastTurnText,
     };
   }
 
@@ -959,6 +1029,8 @@ export class Run {
   }
 
   edit(newWorkflow: Workflow) {
+    // A live track's counter points into the old program: the edit is not applied, and the driver stops the run.
+    if (this.tracks.size) { this.pauseTrack(this.main, { type: 'step-deleted' }); return; }
     const currentInstr = this.program[this.programCounter];
     const isAtStep = !!(currentInstr && 'step' in currentInstr);
     const currentStepId = isAtStep ? (currentInstr as any).step : this.lastStepId;
@@ -1085,16 +1157,25 @@ export class Run {
     this.status = 'stopped';
     this.changeRequest = undefined;
     this.logEvent('run_stopped', {}, this.main);
-    await (this.turnSession ?? this.engineSession)?.interrupt();
+    this.notify();
+    // Every track's turn in flight is interrupted; with no track this is the one awaited interrupt it always was.
+    await Promise.all([this.main, ...this.tracks.values()].map((t) => (t.turnSession ?? t.session)?.interrupt()));
   }
 
-  /** End the engine session. */
+  /** End the engine session of every track, then the run's own, then wait for every instruction still in flight. */
   async close(): Promise<void> {
+    this.closing = true;
+    await Promise.allSettled([...this.tracks.values()].map(async (t) => { const s = t.session; t.session = undefined; await s?.close(); }));
     const s = this.engineSession;
     this.engineSession = undefined;
     // Keep the id: the snapshot needs it, and a later turn resumes this session.
     if (s) this.resumeSessionId = s.sessionId;
-    if (s !== this.borrowed) await s?.close();
+    try {
+      if (s !== this.borrowed) await s?.close();
+    } finally {
+      await Promise.allSettled([this.main, ...this.tracks.values()].flatMap((t) => (t.inflight ? [t.inflight] : [])));
+      this.closing = false;
+    }
   }
 
   private findStepById(steps: Step[], id: string): Step | undefined {
@@ -1112,19 +1193,73 @@ export class Run {
     return undefined;
   }
 
+  /** With no live track and nothing of the main line in flight: today's body on the main line. Otherwise the scheduler runs every track. */
   async step(): Promise<RunStatus> {
-    const t = this.main;   // the one track today; the scheduler task runs this body for each
+    this.rethrow();
+    if (this.status !== 'running') return this.status;
+    if (this.tracks.size === 0 && !this.main.inflight) return this.stepTrack(this.main);
+    return this.stepTracks();
+  }
+
+  private rethrow() {
+    if (!this.thrown) return;
+    const { e } = this.thrown;
+    this.thrown = undefined;
+    throw e;
+  }
+
+  private runnable(t: Track): boolean {
+    return !this.closing && !t.inflight && !this.parked(t) && (t === this.main || t.state === 'running');
+  }
+
+  /** Starts the next instruction of every runnable track with none in flight, then returns when the first settles or the run changes. */
+  private async stepTracks(): Promise<RunStatus> {
+    for (const t of [this.main, ...this.tracks.values()]) {
+      if (this.status !== 'running') break;
+      if (!this.runnable(t)) continue;
+      t.inflight = this.stepTrack(t).then(() => {}, async (e) => {
+        if (t === this.main) { this.thrown = { e }; return; }
+        // A track's throw ends its session too; a Stop or a close is not the track's failure.
+        const s = t.session;
+        t.session = undefined;
+        if (this.status === 'running' && !this.closing) this.pauseForStop(t, `${t.title} failed: ${String((e as Error)?.message ?? e)}; Resume tries again`, t.key);
+        await s?.close().catch(() => {});
+      }).then(() => { t.inflight = undefined; this.notify(); });
+    }
+    await Promise.race([...[this.main, ...this.tracks.values()].flatMap((t) => (t.inflight ? [t.inflight] : [])), this.changed()]);
+    this.rethrow();
+    return this.status;
+  }
+
+  /** A track other than the main line is done: its result is its last reply without the `REINS:` lines, then any handback it never passed on. */
+  private async endTrack(t: Track) {
+    t.state = 'ended';
+    this.tracks.delete(t.key);
+    const reply = (t.lastTurnText ?? '').split(/\r?\n/).filter((l) => !/^\s*REINS:\s*/.test(l)).join('\n').trim();
+    const text = [reply, ...t.handback].filter((x) => x).join('\n\n');
+    this.ended.push({ key: t.key, text });
+    // ponytail: cost is 0 until the money records (10b) give a track its own
+    this.groups.get(t.group)?.results.set(t.key, { key: t.key, title: t.title, text, cost: 0 });
+    // State first, then the row (a snapshot is saved inside onEvent), then the close.
+    this.logEvent('track_ended', { track: t.key, group: t.group, title: t.title, text, cost: 0 }, t);
+    const s = t.session;
+    t.session = undefined;
+    await s?.close().catch(() => {});
+  }
+
+  private async stepTrack(t: Track): Promise<RunStatus> {
     if (this.status !== 'running') {
       return this.status;
     }
 
     // After Allow on a capped change request: it is sent again first, and the gate asks again after it.
-    if (this.changeRequest) {
+    if (t === this.main && this.changeRequest) {
       await this.sendChanges(t, this.changeRequest.note, this.changeRequest.gate);
       return this.status;
     }
 
     if (t.pc >= this.program.length) {
+      if (t !== this.main) { await this.endTrack(t); return this.status; }
       this.status = 'done';
       this.logEvent('run_finished', {}, this.main);
       return this.status;
@@ -1227,6 +1362,7 @@ export class Run {
       }
 
       case 'END': {
+        if (t !== this.main) { await this.endTrack(t); return this.status; }
         this.status = 'done';
         this.logEvent('run_finished', {}, this.main);
         return this.status;

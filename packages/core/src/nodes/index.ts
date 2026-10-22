@@ -134,7 +134,29 @@ export interface VmCtx {
   turnText(step: Step, handed: string[], top: number): string;
   /** The loop attempt count (bump adds one) and the extra attempts "Allow more" granted, by loop step id: live views over the run's own maps. */
   readonly loops: { bump(step: string): number; extra(step: string): number };
+  readonly tracks: {
+    /** Starts the tracks in order and parks this track on its instruction until every one ended; then this op runs again. Throws when `group` is in use or a key is live. */
+    start(group: string, list: TrackSpec[]): void;
+    /** Once every track of `group` ended: their results in start order, and the group is forgotten. Undefined when never started or not all ended. */
+    take(group: string): TrackResult[] | undefined;
+  };
+  /** The next turn of this track carries `text` (the caller quotes it). */
+  handBack(text: string): void;
+  /** This track's last reply, read live. */
+  lastReply(): string | undefined;
 }
+
+export interface TrackSpec {
+  /** Unique among live tracks. */
+  key: string;
+  /** The instruction the track starts at. */
+  at: number;
+  /** Card and receipt title. */
+  title: string;
+  /** Texts its first turn carries (the caller quotes them). */
+  seed?: string[];
+}
+export interface TrackResult { key: string; title: string; text: string; cost: number }
 
 /** A kind's own instruction: `exec` runs it again from the start after a pause or crash. */
 export interface OpType<I extends Instr> {
