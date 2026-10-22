@@ -1,10 +1,12 @@
 import type { Workflow, Step, Cond } from './model.js';
-import { compileProgram, compileTurn, type Instr, type Policy, type StepStart } from './compile.js';
+import { compileProgram, compileTurn, programProblem, sound, type Instr, type Policy, type StepStart } from './compile.js';
+import { fence, isVmError, modOfOp, tame, textOf } from './guard.js';
 import type { Engine, EngineSession, TurnResult } from './fake-engine.js';
-import { NODES, opOf, type ExecCtx, type SwitchOutcome, type TrackResult, type TrackSpec, type VmCtx } from './nodes/index.js';
+import { NODES, opOf, type ExecCtx, type ModInfo, type OpType, type SwitchOutcome, type TrackResult, type TrackSpec, type VmCtx } from './nodes/index.js';
 import { policyOf } from './nodes/turn.js';
 import { CARDS } from './cards/index.js';
-import { evalCond, evalCondSync, type EvalCtx } from './cond.js';
+import { condAtoms, evalCond, evalCondSync, printCond, type EvalCtx } from './cond.js';
+import { CONDS } from './conds/index.js';
 import { usdText } from './format/print.js';
 import { USD_UNKNOWN } from './display.js';
 
@@ -470,6 +472,8 @@ export class Run {
     this.kinds = opts.kinds;
 
     this.program = compileProgram(this.workflow, this.resolveBlock, this.starts);
+    const broken = programProblem(this.program, false);
+    if (broken) throw new Error(`This workflow cannot run: ${broken}.`);
 
     // Initialize auto cards as armed
     for (const auto of this.workflow.autos) {
@@ -865,6 +869,67 @@ export class Run {
       stop: () => this.stop(),
       subagent: (s, usd) => this.subagentTurn(t, s, usd),
     };
+  }
+
+  /** The ends of the mod instructions in flight (Stop and close call them: an instruction that never settles holds neither). */
+  private aborts = new Set<() => void>();
+  private cutMods() { for (const a of [...this.aborts]) a(); }
+
+  /**
+   * Runs code a mod brought. Stop and close win the race, so an instruction that never settles holds nothing; once it is over (settled, cut, or lost to Stop)
+   * every call it makes is refused, so a late write changes nothing. A throw that did not come from a `vm` member pauses the track in words;
+   * one that did keeps the path a core op's error takes. `cut` pauses the track for something the mod may not do.
+   */
+  private async modRun<R>(t: Track, mod: ModInfo, step: string, what: string, go: (live: () => void, cut: (text: string) => never) => Promise<R>): Promise<R | undefined> {
+    let over = false;
+    const live = () => { if (over) throw new Error('this instruction is over; a late call is refused'); };
+    const cut = (text: string): never => {
+      if (!over && this.alive(t)) this.pauseForStop(t, text, step);
+      over = true;
+      throw new Error(text);
+    };
+    let end!: () => void;
+    const lost = new Promise<undefined>((res) => { end = () => res(undefined); });
+    this.aborts.add(end);
+    const work = (async () => go(live, cut))();
+    work.catch(() => {});   // a rejection that comes after Stop is nobody's
+    try {
+      return await Promise.race([work, lost]);
+    } catch (e) {
+      if (isVmError(e)) throw e;
+      if (this.alive(t)) this.pauseForStop(t, `The block "${mod.id}" failed in its ${what} (${textOf(e)}); Resume tries again`, step);
+      return undefined;
+    } finally {
+      over = true;
+      this.aborts.delete(end);
+    }
+  }
+
+  /** The `log` gate of a mod's instruction: only an event its mod.json `provides.events` lists, with a copy of the data. */
+  private logGate(mod: ModInfo) {
+    return (type: unknown, data: unknown) => {
+      if (typeof type !== 'string' || !mod.events.includes(type)) throw new Error(`The block "${mod.id}" may not log "${tame(String(type), 40)}": its mod.json provides.events does not list it.`);
+      return [type, structuredClone(data)];
+    };
+  }
+
+  /** The `vm` a mod's op gets: the run's own, fenced. It logs only what `provides.events` lists, runs only the commands its `commands()` lists, and cannot send the run or a track outside the program. */
+  private modVm(t: Track, mod: ModInfo, op: OpType<any>, instr: Instr, live: () => void, cut: (text: string) => never): VmCtx {
+    const place = (i: unknown) => { if (!sound(i, this.program.length)) cut(`The block "${mod.id}" sent the run to ${tame(String(i), 20)}, which is not a place in the program; Resume tries again`); };
+    const listed = (cmd: string) => (op.commands?.(instr) ?? []).includes(cmd);
+    const refuse = (what: unknown) => new Error(`The block "${mod.id}" may not run "${tame(String(what), 60)}": its commands() does not list it.`);
+    let seen: readonly Instr[] | undefined;
+    let copy: readonly Instr[] = [];
+    return fence(this.vm(t), live, {
+      log: this.logGate(mod),
+      command: (cmd) => { if (typeof cmd !== 'string' || !listed(cmd)) throw refuse(cmd); },
+      judge: (c) => { for (const a of condAtoms(c)) if (CONDS.get(a.t)?.judge === 'command' && !listed(printCond(a))) throw refuse(printCond(a)); },
+      goto: place,
+      'tracks.start': (_group, list) => { for (const s of Array.isArray(list) ? list : []) place(s?.at); },
+    }, {
+      program: () => { const p = this.program; if (p !== seen) { seen = p; copy = structuredClone(p); } return copy; },
+      outputs: () => new Map(this.turnOutputs),
+    });
   }
 
   /** The run's hands for an op: live over the run's fields, except `at`, which is the counter as the op started. */
@@ -1639,6 +1704,7 @@ export class Run {
     for (const t of this.tracks.values()) t.changeRequest = undefined;
     this.logEvent('run_stopped', {}, this.main);
     this.notify();
+    this.cutMods();
     // Every track's turn in flight is interrupted; with no track this is the one awaited interrupt it always was.
     await Promise.all([this.main, ...this.tracks.values()].map((t) => (t.turnSession ?? t.session)?.interrupt()));
   }
@@ -1646,6 +1712,7 @@ export class Run {
   /** End the engine session of every track, then the run's own, then wait for every instruction still in flight. */
   async close(): Promise<void> {
     this.closing = true;
+    this.cutMods();
     // A track's own session, and the session its turn runs on (a subagent step's), unless they are one object.
     await Promise.allSettled([...this.tracks.values()].map(async (t) => {
       const own = t.session, turn = t.turnSession;
@@ -1778,7 +1845,14 @@ export class Run {
 
     const op = opOf(instr.op);
     if (op) {
-      await op.exec(instr, this.vm(t));
+      const mod = modOfOp(op);
+      if (!mod) await op.exec(instr, this.vm(t));
+      else {
+        await this.modRun(t, mod, (instr as { step?: string }).step ?? instr.op, `instruction ${instr.op}`, (live, cut) => {
+          const own = structuredClone(instr);   // the op works on a copy: the program is not its to change
+          return op.exec(own, this.modVm(t, mod, op, instr, live, cut));
+        });
+      }
       return this.status;
     }
 
@@ -1861,7 +1935,10 @@ export class Run {
       case 'NODE': {
         const n = NODES.get(instr.kind);
         if (!n) { this.pauseForStop(t, `no block brings the instruction \`${instr.kind}\`; Resume tries again`, instr.step); return this.status; }
-        const out = n.exec ? await n.exec(instr.src, this.execCtx(t, instr.step)) : 'next';
+        const mod = n.mod;
+        const out = !n.exec ? 'next'
+          : !mod ? await n.exec(instr.src, this.execCtx(t, instr.step))
+          : await this.modRun(t, mod, instr.step, `block ${instr.kind}`, (live) => n.exec!(structuredClone(instr.src), fence(this.execCtx(t, instr.step), live, { log: this.logGate(mod) })));
         if (!this.alive(t)) return this.status;
         if (out === 'next') t.pc++;
         return this.status;

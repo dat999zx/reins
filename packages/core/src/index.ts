@@ -15,3 +15,4 @@ export * from './cards/index.js';
 export * from './conds/index.js';
 export * from './display.js';
 export * from './nodes/index.js';
+export { FAULT_OP, faultLine, modOfOp, tame, textOf } from './guard.js';

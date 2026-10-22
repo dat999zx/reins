@@ -63,6 +63,8 @@ export interface CondType<C extends { t: string } = any> {
   globs?(c: C): string[];
   /** The validator's "costs extra model calls" warning names this. */
   modelCall?: string;
+  /** The commands this atom runs on its own: the trust list shows them, beside the atom itself when it is judged by a command. */
+  commands?(c: C): string[];
   /** Warn when the workflow sets no `test:` command. */
   needsTestCmd?: boolean;
 }

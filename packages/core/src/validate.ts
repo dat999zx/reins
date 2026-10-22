@@ -4,7 +4,7 @@ import { CARDS } from './cards/index.js';
 import { CONDS } from './conds/index.js';
 import { NODES, opOf, nodeAttrs, headingOwns, type ValidateCtx, type ProgramCtx } from './nodes/index.js';
 import { condAtoms } from './cond.js';
-import { compileProgram, type Instr } from './compile.js';
+import { compileProgram, programProblem, type Instr } from './compile.js';
 import { usdText } from './format/print.js';
 
 /** The instructions reached from `from`. END stops, JUMP goes to its target, an op with `next` goes where it says, else on one. With `skipStarts`, the places an op starts tracks at are left out (one each: a wire to the next instruction does not hide it). */
@@ -289,6 +289,8 @@ export function validate(
   // Unknown kinds and missing targets compile to nothing or fall through, so only judge a clean workflow.
   if (!diagnostics.some((d) => d.severity === 'error')) {
     const program = compileProgram(w, resolveBlock);
+    const broken = programProblem(program, true);
+    if (broken) diagnostics.push({ severity: 'error', message: broken, pos: { line: 1, col: 1 } });
     const seen = walk(program, 0, false);
     for (const step of allSteps) {
       const entry = program.findIndex((i) => 'step' in i && i.step === step.id);

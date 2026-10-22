@@ -3,6 +3,7 @@ import type { Instr } from '../compile.js';
 import type { EngineSession, TurnResult } from '../fake-engine.js';
 import type { CommandOutcome, PauseReason, RunEventRecord, RunEventType } from '../run.js';
 import { ordered } from '../registry.js';
+import { guardNode } from '../guard.js';
 import phase from './phase.js';
 import say from './say.js';
 import run from './run.js';
@@ -62,7 +63,10 @@ export interface ProgramCtx extends ValidateCtx {
   /** The step ids of the track that starts at `start`, in program order; with `nested`, also those of every track started inside it. */
   members(start: string, nested?: boolean): string[];
 }
+/** Which mod a node came from and the events it declared (`provides.events`). Only the loader sets it, on its frozen copy; `register` then stores the guarded node (guard.ts). */
+export interface ModInfo { readonly id: string; readonly events: readonly string[] }
 export interface NodeType {
+  mod?: ModInfo;
   kind: string;
   attrs: string[];
   container?: 'kids' | 'kids+else';
@@ -177,7 +181,7 @@ export interface OpType<I extends Instr> {
 }
 
 /** The instructions the run itself executes: a kind cannot bring these. */
-const CORE_OPS = ['TURN', 'JUMP', 'END', 'NODE'];
+export const CORE_OPS = ['TURN', 'JUMP', 'END', 'NODE'];
 
 const KINDS = ordered<NodeType>('kind', (n) => n.kind);
 /** The kinds in `order` (ties by arrival). Read it; add and remove with `register`. */
@@ -188,7 +192,8 @@ export const NODES = KINDS.map;
  * and then adds nothing. With `shadow`, a known kind is covered instead (its own ops are not "taken"); the disposer brings
  * it back. Returns a function that removes the entry again; a second call does nothing.
  */
-export function register(n: NodeType, order?: number, opts?: { shadow?: boolean }): () => void {
+export function register(given: NodeType, order?: number, opts?: { shadow?: boolean }): () => void {
+  const n = given.mod ? guardNode(given) : given;   // a mod's node is stored as the guarded copy
   if (NODES.has(n.kind) && !opts?.shadow) throw new Error(`kind "${n.kind}" is already registered`);
   for (const op of Object.keys(n.ops ?? {})) {
     if (CORE_OPS.includes(op)) throw new Error(`op "${op}" is a core op`);

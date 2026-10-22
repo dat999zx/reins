@@ -1,6 +1,7 @@
 import type { Workflow, Step, Cond } from './model.js';
 import { CARDS } from './cards/index.js';
-import { NODES, type CompileCtx } from './nodes/index.js';
+import { CORE_OPS, NODES, opOf, type CompileCtx } from './nodes/index.js';
+import { FAULT_OP, modOfOp, tame } from './guard.js';
 
 export interface Policy {
   mode: 'read-only' | 'write';
@@ -127,12 +128,16 @@ export function compileProgram(
   };
 
   const open: string[] = [];
+  /** Where the instructions of a mod's step sit: once the links are patched they are replaced by frozen copies, so the mod keeps no handle on the program. */
+  const modSpans: Array<[number, number]> = [];
   function compileStep(step: Step) {
     const from = instrs.length;
     stepToIndex.set(step.id, from);
     const parents = [...open];
     open.push(step.id);
-    NODES.get(step.kind)?.compile(step, ctx);
+    const node = NODES.get(step.kind);
+    node?.compile(step, ctx);
+    if (node?.mod) modSpans.push([from, instrs.length]);
     open.pop();
     // The inner step finishes first, so the outer one is put in front of it.
     if (starts && instrs.length > from) starts.set(from, [{ step: step.id, parents }, ...(starts.get(from) ?? [])]);
@@ -163,5 +168,44 @@ export function compileProgram(
     else if (l.fallback >= 0) l.apply(l.fallback);
   }
 
+  for (const [a, b] of modSpans) {
+    for (let i = a; i < b; i++) {
+      const ins = instrs[i]!;
+      try {
+        instrs[i] = Object.freeze(structuredClone(ins));
+      } catch {
+        instrs[i] = { op: FAULT_OP, step: (ins as { step?: string }).step, why: 'its instruction holds more than plain data', ...(ins.top !== undefined ? { top: ins.top } : {}) } as unknown as Instr;
+      }
+    }
+  }
+
   return instrs;
+}
+
+/** True for an instruction index a jump or a track may name: a whole number from 0 to the program's length (one past the end finishes). */
+export const sound = (i: unknown, length: number): i is number => Number.isInteger(i) && (i as number) >= 0 && (i as number) <= length;
+
+/**
+ * What is wrong with a compiled program, in words; undefined when nothing is. Every JUMP target, and every place a mod's op starts a track at or goes
+ * on to, must be a place in the program; an instruction a failed compile left is reported with its reason. With `ops`, every instruction must also be a
+ * core op or one that a loaded kind brings (a run still starts with one a kind lost: it pauses on it).
+ */
+export function programProblem(program: readonly Instr[], ops: boolean): string | undefined {
+  for (let k = 0; k < program.length; k++) {
+    const ins = program[k]! as { op: string; step?: string; target?: unknown; why?: unknown };
+    const here = `instruction ${k + 1}${ins.step ? ` (step ${tame(ins.step, 60)})` : ''}`;
+    if (ins.op === FAULT_OP) return `${here} could not be compiled: ${tame(String(ins.why), 200)}`;
+    if (ins.op === 'JUMP') {
+      if (!sound(ins.target, program.length)) return `${here} jumps to ${tame(String(ins.target), 40)}, which is not a place in the program`;
+      continue;
+    }
+    if (CORE_OPS.includes(ins.op)) continue;
+    const op = opOf(ins.op);
+    if (!op) { if (ops) return `${here} needs a block that is not loaded (${tame(ins.op, 60)})`; continue; }
+    if (!modOfOp(op)) continue;
+    for (const to of [...(op.starts?.(ins as Instr) ?? []), ...(op.next?.(ins as Instr, k) ?? [])]) {
+      if (to !== undefined && !sound(to, program.length)) return `${here} leads to ${tame(String(to), 40)}, which is not a place in the program`;
+    }
+  }
+  return undefined;
 }

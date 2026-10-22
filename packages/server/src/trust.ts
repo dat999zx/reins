@@ -1,11 +1,21 @@
 import { createHash } from 'node:crypto';
-import { CONDS, NODES, compileProgram, condAtoms, opOf, printCond, type Cond, type Workflow } from '@reins/core';
+import { CONDS, NODES, compileProgram, condAtoms, faultLine, opOf, printCond, type Cond, type Workflow } from '@reins/core';
 
 // What a workflow runs on its own (plan 15d 3b.6): RUN commands, the atoms a command judges, and the test command. No kind is named here.
 export function commandsOf(w: Workflow, resolveBlock: (name: string) => Workflow | undefined): string[] {
   const out: string[] = [];
   const conds = (c: Cond | undefined) => {
-    for (const a of condAtoms(c)) if (CONDS.get(a.t)?.judge === 'command') out.push(printCond(a));
+    for (const a of condAtoms(c)) {
+      const t = CONDS.get(a.t);
+      if (t?.judge === 'command') out.push(printCond(a));
+      // What an atom runs on its own (a mod condition says so); a throw shows as a problem line, never as an exception out of here.
+      try {
+        const own = t?.commands?.(a);
+        if (Array.isArray(own)) out.push(...own.filter((x): x is string => typeof x === 'string'));
+      } catch (e) {
+        out.push(faultLine(`condition ${a.t}, its commands`, e));
+      }
+    }
   };
   for (const i of compileProgram(w, resolveBlock)) {
     out.push(...(opOf(i.op)?.commands?.(i) ?? []));

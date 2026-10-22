@@ -325,10 +325,14 @@ function track(registry: Registry, tx: Tx, shadow: boolean): Registry {
 
 const frozen = <T extends object | undefined>(v: T): T => (v !== null && typeof v === 'object' ? (Object.freeze(Array.isArray(v) ? [...v] : { ...v }) as T) : v);
 
-/** A node copied once into plain frozen data, so what is checked is what core stores: a getter cannot answer differently the second time. */
-function nodeCopy(node: NodeType): NodeType {
+/**
+ * A node copied once into plain frozen data, so what is checked is what core stores: a getter cannot answer differently the second time.
+ * The copy carries the mod mark (this mod's id and `provides.events`); only this function sets it, and it overwrites whatever the node said, so
+ * core guards the node (guard.ts) and holds a wrapped `vm.log` to those events.
+ */
+function nodeCopy(node: NodeType, id: string, provides: Provides): NodeType {
   if (typeof node !== 'object' || node === null) throw new Error('registerBlock needs a node object.');
-  const n = { ...node };
+  const n = { ...node, mod: Object.freeze({ id, events: Object.freeze([...(provides.events ?? [])]) }) };
   n.attrs = frozen(n.attrs);
   n.ops = frozen(n.ops);
   n.count = frozen(n.count);
@@ -345,7 +349,7 @@ const copyOf = <T extends object>(what: string, v: T): T => {
 /** Each thing a mod can register: the mod kind that may, the copy it is checked and stored from, what `provides` must list, and the core call. */
 interface Door<T> {
   kind: string;
-  copy(item: T): T;
+  copy(item: T, id: string, provides: Provides): T;
   /** Throws, in words, for anything `provides` does not list. */
   check(item: T, has: (key: keyof Provides, name: unknown, what: string) => void): void;
   put(item: T, order: number, shadow: boolean): () => void;
@@ -398,7 +402,7 @@ function buildApi(kindId: string, raw: Record<string, unknown>, env: NodeJS.Proc
     Object.entries(DOORS).map(([member, d]) => [member, live((item: never) => {
       const door = d as Door<typeof item>;
       if (door.kind !== kindId) throw new Error(`\`${member}\` is for ${door.kind} mods; this is a ${kindId} mod.`);
-      const copy = door.copy(item);
+      const copy = door.copy(item, typeof raw.id === 'string' ? raw.id : kindId, provides);
       door.check(copy, has);
       const undo = door.put(copy, order, shadow);
       tx.undo.push(undo);
