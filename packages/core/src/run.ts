@@ -313,6 +313,8 @@ export class Run {
   /** The groups an op started and has not taken: the track that started it parks until every one of `keys` has a result. */
   private groups = new Map<string, { parent: Track; keys: string[]; results: Map<string, TrackResult> }>();
   private closing = false;
+  /** Every instruction the run started and has not finished, kept apart from the tracks: an ending track has left `tracks`, and the main line's fast path has no `inflight`. Only `close()` reads it. */
+  private running = new Set<Promise<void>>();
   private waiters: Array<() => void> = [];
   /** A throw from the main line's instruction while the scheduler ran it: rethrown from `step()`, which is where the driver looks. */
   private thrown?: { e: unknown };
@@ -684,7 +686,7 @@ export class Run {
         : compileTurn(step, { workflowName: this.workflow.name, stepIndex: top, totalSteps: this.workflow.steps.length, always: this.workflow.always,
           extras: [...t.handback] }), { rec, slice });   // copied, not taken: the parent's next TURN still gets every result
     } catch (e) {
-      if (this.alive(t) && !this.usdOver(slice)) this.pauseForStop(t, `the subagent stopped before it answered (${why(e)}); Resume runs it on`, id);
+      if (this.alive(t) && (t === this.main || !this.closing) && !this.usdOver(slice)) this.pauseForStop(t, `the subagent stopped before it answered (${why(e)}); Resume runs it on`, id);
       return false;
     } finally {
       await s.close().catch(() => {});
@@ -846,6 +848,8 @@ export class Run {
   ): Promise<TurnResult | undefined> {
     let turnText = text;
     for (;;) {
+      // A Stop or close that landed while this track waited for its session (or any await before the call) sends nothing; the caller closes the session.
+      if (t !== this.main && (this.closing || this.status === 'stopped')) throw new Error('closed');
       if (this.unknownStop(sub ? sub.slice : this.openSlice)) {   // before the call, whatever engine it goes to: a new subagent has a total of its own
         if (!sub) t.capped = true;
         return undefined;
@@ -1165,7 +1169,12 @@ export class Run {
   /** End the engine session of every track, then the run's own, then wait for every instruction still in flight. */
   async close(): Promise<void> {
     this.closing = true;
-    await Promise.allSettled([...this.tracks.values()].map(async (t) => { const s = t.session; t.session = undefined; await s?.close(); }));
+    // A track's own session, and the session its turn runs on (a subagent step's), unless they are one object.
+    await Promise.allSettled([...this.tracks.values()].map(async (t) => {
+      const own = t.session, turn = t.turnSession;
+      t.session = undefined;
+      await Promise.allSettled([own?.close(), turn && turn !== own ? turn.close() : undefined]);
+    }));
     const s = this.engineSession;
     this.engineSession = undefined;
     // Keep the id: the snapshot needs it, and a later turn resumes this session.
@@ -1173,9 +1182,17 @@ export class Run {
     try {
       if (s !== this.borrowed) await s?.close();
     } finally {
-      await Promise.allSettled([this.main, ...this.tracks.values()].flatMap((t) => (t.inflight ? [t.inflight] : [])));
+      await Promise.allSettled([...this.running]);
       this.closing = false;
+      this.notify();   // a step() that slept while nothing could start sees that it can
     }
+  }
+
+  /** Remembers an instruction until it settles, so `close()` can wait for it. */
+  private watch(p: Promise<unknown>) {
+    const w = p.then(() => {}, () => {});
+    this.running.add(w);
+    void w.then(() => this.running.delete(w));
   }
 
   private findStepById(steps: Step[], id: string): Step | undefined {
@@ -1197,7 +1214,12 @@ export class Run {
   async step(): Promise<RunStatus> {
     this.rethrow();
     if (this.status !== 'running') return this.status;
-    if (this.tracks.size === 0 && !this.main.inflight) return this.stepTrack(this.main);
+    if (this.tracks.size === 0 && !this.main.inflight) {
+      // The caller still gets this very promise, so the old path times as it did; `watch` is a side chain for close().
+      const p = this.stepTrack(this.main);
+      this.watch(p);
+      return p;
+    }
     return this.stepTracks();
   }
 
@@ -1222,9 +1244,10 @@ export class Run {
         // A track's throw ends its session too; a Stop or a close is not the track's failure.
         const s = t.session;
         t.session = undefined;
-        if (this.status === 'running' && !this.closing) this.pauseForStop(t, `${t.title} failed: ${String((e as Error)?.message ?? e)}; Resume tries again`, t.key);
+        if (this.status !== 'stopped' && !this.closing) this.pauseForStop(t, `${t.title} failed: ${String((e as Error)?.message ?? e)}; Resume tries again`, t.key);
         await s?.close().catch(() => {});
       }).then(() => { t.inflight = undefined; this.notify(); });
+      this.watch(t.inflight);
     }
     await Promise.race([...[this.main, ...this.tracks.values()].flatMap((t) => (t.inflight ? [t.inflight] : [])), this.changed()]);
     this.rethrow();
