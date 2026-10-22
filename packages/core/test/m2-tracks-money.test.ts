@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { parseWorkflow } from '../src/format/parse.js';
 import { validate } from '../src/validate.js';
-import { Run, type RunOptions, type RunSnapshot } from '../src/run.js';
+import { Run, trackSpendKey, type RunOptions, type RunSnapshot } from '../src/run.js';
 import { register } from '../src/nodes/index.js';
 import type { OpenOptions, ScriptedTurn } from '../src/fake-engine.js';
 import type { Workflow } from '../src/model.js';
@@ -213,7 +213,7 @@ describe('a track counts an inherited slice by itself', () => {
     await driven;
     // Allow raises the slice from what the track spent (1.10), not from the main line's counter: 1.10 - 1 + 0.50
     expect(run.allowUsd(0.5)).toBeUndefined();
-    expect(run.snapshot().usdExtra).toEqual({ 'model-1': 0.6 });
+    expect(run.snapshot().usdExtra).toEqual({ [trackSpendKey('a', 'model-1')]: 0.6 });   // the allowance is keyed like the spend (Task 12)
     await drive(run);
     expect(run.status).toBe('done');
     await run.close();

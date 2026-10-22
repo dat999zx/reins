@@ -492,8 +492,11 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       // usage, cost, compacted and hook measure or note the parent's context, so they stay out; the rest is kept under the step
       onLive: (ev) => { if (KEPT.has(ev.type)) log('engine', { ...ev, step: o.step }, runId); },
     });
-    const { step: _s, title: _t, asks: _a, reasoning: _r, model: _m, ...open } = o;
-    const s = await e.open({ ...open, ...(o.model && model ? { model } : {}), cwd, pendingCards: () => [] });
+    const { step: _s, title: _t, asks: _a, reasoning: _r, model: _m, ...rest } = o;
+    // A track on Reins' own loop reads its room before every call (`usdRoom`), so a re-share reopens nothing and it takes no cap for its process; any other engine keeps `maxUsd`.
+    const live = o.usdRoom !== undefined && deps.providers?.facts(provider)?.conversation === 'reins';
+    const { maxUsd: _c, ...noCap } = rest;
+    const s = await e.open({ ...(live ? noCap : rest), ...(o.model && model ? { model } : {}), cwd, pendingCards: () => [] });
     const session: EngineSession = {
       sessionId: s.sessionId,
       async turn(text) {
@@ -504,7 +507,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       events: s.events,
       close: () => s.close(),
     };
-    return { session, ...(model ? { model, label: describe(provider, model, undefined).label } : {}) };
+    return { session, ...(model ? { model, label: describe(provider, model, undefined).label } : {}), ...(live ? { cap: 'live' as const } : {}) };
   }
 
   /** One engine call (a reply or a compaction): the process, the cost total, the unknown-cost note, a failed switch. */

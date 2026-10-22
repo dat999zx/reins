@@ -155,6 +155,8 @@ export interface TrackSpec {
   title: string;
   /** Texts its first turn carries (the caller quotes them). */
   seed?: string[];
+  /** Shares the USD room equally with the other tracks of the same `start` that say so (spec 4.6). No room (no workflow limit, no open slice): no share. */
+  share?: true;
 }
 export interface TrackResult { key: string; title: string; text: string; cost: number }
 

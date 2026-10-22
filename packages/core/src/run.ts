@@ -42,6 +42,12 @@ export interface Track {
   openSlice?: { step: string; usd: number };
   /** The `usdSpent` key that `openSlice` counts under when this track inherited it at start; absent: the slice's step id (the slice is the main line's or this track's own). */
   spendKey?: string;
+  /** The USD this track may spend (4.6): its part of the room at `start` with `share`, grown by a re-share or an Allow. Absent: no share. */
+  share?: number;
+  /** The track's last reply was cut off at its share: its next turn sends `CARRY_ON` instead of the step text. */
+  carryOn?: true;
+  /** Its session holds the room live (`SubagentOpened.cap`), so a re-share reopens nothing. Not saved: a restored track opens a new session. */
+  liveCap?: true;
   /** What this track's turns cost, and the totals of its own session (not a subagent's); absent until a turn is counted. */
   money?: TrackMoney;
   /** A change request at this track's gate that a USD pause cut off: sent again by its next `step`. The main line's is the Run's own. */
@@ -73,6 +79,9 @@ export interface PauseReason {
   limit?: number;
   /** usd-budget-used: what was spent against the limit when the check hit. */
   spent?: number;
+  /** usd-budget-used: the track whose spend hit the limit (absent: the main line), and the `usdSpent` key its slice counts under when it is the track's own copy. The card stays run-wide. */
+  onTrack?: string;
+  spendKey?: string;
   reason?: string;
   text?: string;
   /** link-budget-used: the jump that was interrupted, and its counter key. */
@@ -151,6 +160,8 @@ export interface SubagentOpen {
   costBase?: number;
   costBaseByModel?: Record<string, number>;
   maxUsd?: number;
+  /** A track's live room: the USD it may still spend now (its share and the limits). NaN: some spend under a limit is not known, so no call may be sent. Absent for a subagent. */
+  usdRoom?: () => number | undefined;
   /** The card title of a session that asks like the main run (a branch); absent: a subagent, under the subagent approvals setting. The engine never sees it. */
   asks?: string;
   policy: () => Policy;
@@ -160,6 +171,8 @@ export interface SubagentOpened {
   session: EngineSession;
   model?: string;
   label?: string;
+  /** How the opened session holds a track's cap: `live` reads `usdRoom` before every call (a re-share reopens nothing); `process` (the default) holds `maxUsd` for the life of its process (a re-share reopens it). */
+  cap?: 'live' | 'process';
 }
 
 /** A subagent step's own engine session and the money counted on it, by step id: the later controller (E) addresses a subagent by this key. */
@@ -225,6 +238,8 @@ export interface TrackSnap {
   money?: TrackMoney;
   changeRequest?: { note: string; gate: PauseReason };
   notes?: string[];
+  share?: number;
+  carryOn?: true;
 }
 
 /** A group an op started and has not taken. */
@@ -311,6 +326,11 @@ export interface RunSnapshot {
 
 /** Money sums carry float noise (0.1 + 0.07): six decimals keep every logged figure exact to the cent and below. */
 const r6 = (x: number) => Math.round(x * 1e6) / 1e6;
+/**
+ * A cap or a share: rounded UP to a micro-dollar. A cap a hair under Reins' limit would end the reply as an error that `usdOver` (1e-9) does not see as reached.
+ * The figure is first rounded to nano-dollars: a float sum's noise (0.2000000000000001) must not push it up a whole micro-dollar.
+ */
+const capOf = (x: number) => Math.ceil(Math.round(x * 1e9) / 1e3) / 1e6;
 /** A figure shown to people: rounded, and never non-finite (a huge raw sum overflows the rounding; it is shown as it is). */
 const money6 = (x: number) => { const v = r6(x); return Number.isFinite(v) ? v : Number.isFinite(x) ? x : 0; };
 /** What a track's money record may hold at most (a cost, a total, a total of one model): far above any real run, far below what `r6` can overflow. */
@@ -506,8 +526,11 @@ export class Run {
   private async ensureTrackSession(t: Track): Promise<EngineSession> {
     if (!t.session) {
       const m = t.money;
+      const cap = this.shareFor(t);
       const o: SubagentOpen = {
         step: t.key, title: t.title, asks: t.title, policy: () => t.policy, ...(this.cwd !== undefined ? { cwd: this.cwd } : {}),
+        // A track with a share: the cap of this process, and the live room for an engine that reads it before every call (the host answers which holds).
+        ...(cap !== undefined ? { maxUsd: cap, usdRoom: () => this.trackRoom(t) } : {}),
         // Reins made this engine session, so its running total starts at 0 (the rule of a resumed subagent): the track's own base, never the main line's.
         ...(t.sessionId ? { sessionId: t.sessionId, costBase: m?.total ?? 0, ...(m?.total === undefined ? { costBaseByModel: {} } : m.totals ? { costBaseByModel: m.totals } : {}) } : {}),
       };
@@ -515,6 +538,7 @@ export class Run {
       if (this.closing || this.status === 'stopped') { await opened.session.close().catch(() => {}); throw new Error('closed'); }
       t.session = opened.session;
       t.sessionId = opened.session.sessionId;   // kept after the session ends or closes: a snapshot still names it
+      if (opened.cap === 'live') t.liveCap = true; else delete t.liveCap;
     }
     return t.session;
   }
@@ -526,16 +550,21 @@ export class Run {
     const taken = keys.find((k, i) => this.tracks.has(k) || k === '' || keys.indexOf(k) !== i);
     if (taken !== undefined) throw new Error(`track "${taken}" is live`);
     this.groups.set(group, { parent, keys, results: new Map() });
+    // The room (workflow and the slice open on the starter) is split in equal parts among the tracks that ask for a share; no limit, no share.
+    const sharing = list.filter((s) => s.share).length;
+    const room = sharing ? this.usdRoom(parent) : undefined;
+    const share = room === undefined ? undefined : capOf(Math.max(0, room) / sharing);
     // Every track exists before the first row is logged: a snapshot saved inside that row's onEvent must list the whole group.
     const started = list.map((s): Track => ({
       key: s.key, title: s.title, parent: parent.key, group, pc: s.at, state: 'running', turnInFlight: false, capped: false,
       handback: [...(s.seed ?? [])], policy: { mode: 'write', guards: [], allowShell: true }, recall: [],
+      ...(share !== undefined && s.share ? { share } : {}),
       // The slice is copied with what its starter had spent on it; from here each track counts its own spend under its own key (siblings must not share a counter).
       ...(parent.openSlice ? { openSlice: { ...parent.openSlice }, spendKey: trackSpendKey(s.key, parent.openSlice.step) } : {}),
     }));
     // Always set, 0 included: a key that an earlier track of the same name used must not carry its spend into this one.
     const was = parent.openSlice ? this.spentOn(parent, parent.openSlice) : 0;
-    for (const t of started) if (t.spendKey !== undefined) this.usdSpent[t.spendKey] = was;
+    for (const t of started) if (t.spendKey !== undefined) { this.dropSpend(t.spendKey); this.usdSpent[t.spendKey] = was; }
     for (const t of started) this.tracks.set(t.key, t);
     for (const t of started) this.logEvent('track_started', { track: t.key, parent: parent.key, group, title: t.title }, t);
     this.notify();
@@ -586,16 +615,68 @@ export class Run {
     return this.spentAt(this.keyOf(t, s));
   }
 
+  /** What an Allow added to a limit, under the key its spend counts under (a track's own copy of a slice has its own); only the dictionary's own entries. */
+  private extraAt(key: string): number {
+    return Object.hasOwn(this.usdExtra, key) ? this.usdExtra[key]! : 0;
+  }
+
+  private extraOn(t: Track, s: { step: string }): number {
+    return this.extraAt(this.keyOf(t, s));
+  }
+
+  /** A track's counter and its allowance go together: the track, or its inherited slice, is gone. */
+  private dropSpend(key: string) {
+    delete this.usdSpent[key];
+    delete this.usdExtra[key];
+  }
+
+  /** What the track has spent (its subagents too), raw. */
+  private spentBy(t: Track): number {
+    return t.money?.cost ?? 0;
+  }
+
+  /** The part of its share the track has not spent (negative once over); undefined when it has no share. */
+  private shareRest(t: Track): number | undefined {
+    return t.share === undefined ? undefined : t.share - this.spentBy(t);
+  }
+
   /**
    * The USD the run still allows right now: the smaller of the workflow's room and the open slice's, unrounded (as the subagent cap below
-   * takes them); undefined when neither limit exists.
+   * takes them); undefined when neither limit exists. The one room sum: a share, a re-share and a cap all read it.
    */
   usdRoom(t: Track = this.main): number | undefined {
     const wf = this.workflow.budget.usd;
     const s = t.openSlice;
-    const rooms = [wf === undefined ? undefined : wf + (this.usdExtra[''] ?? 0) - this.runCost, s && s.usd + (this.usdExtra[s.step] ?? 0) - this.spentOn(t, s)]
+    const rooms = [wf === undefined ? undefined : wf + (this.usdExtra[''] ?? 0) - this.runCost, s && s.usd + this.extraOn(t, s) - this.spentOn(t, s)]
       .filter((x): x is number => x !== undefined);
     return rooms.length ? Math.min(...rooms) : undefined;
+  }
+
+  /** Some spend under a limit that `s` counts against is not known (the workflow's: any spend of the run; a slice's: its own). */
+  private unknownUnder(s: { step: string } | undefined): boolean {
+    return (this.workflow.budget.usd !== undefined && this.runUnknown) || (s !== undefined && this.usdUnknown.has(s.step));
+  }
+
+  /** What a track with a share may still spend: its share left, or the room if that is less. NaN while the limit it counts against cannot be held (spend not known). */
+  private trackRoom(t: Track): number | undefined {
+    if (this.unknownUnder(t.openSlice)) return NaN;
+    const left = this.shareRest(t);
+    const room = this.usdRoom(t);
+    return left === undefined ? room : room === undefined ? left : Math.min(room, left);
+  }
+
+  /** The cap of the next process of a track with a share: `share - spent` (never `total + share`), or the room if that is less; none without a share. */
+  private shareFor(t: Track): number | undefined {
+    const left = this.shareRest(t);
+    if (left === undefined) return undefined;
+    return capOf(Math.max(0, Math.min(this.usdRoom(t) ?? Infinity, left)));
+  }
+
+  /** What the other live tracks with a share still hold: each its share less its spend. */
+  private held(except: Track): number {
+    let sum = 0;
+    for (const x of this.tracks.values()) if (x !== except) sum += Math.max(0, this.shareRest(x) ?? 0);
+    return sum;
   }
 
   private handleTurnResult(result: TurnResult, t: Track) {
@@ -722,9 +803,11 @@ export class Run {
   allowUsd(n: number): string | undefined {
     const p = this.pauseReason;
     if (this.status !== 'paused' || p?.type !== 'usd-budget-used') return undefined;
-    const key = p.stepId ?? '';
+    // The pause is run-wide, but the limit it hit may be one track's: that track's counter and allowance, never the starter's or a sibling's.
+    const t = p.onTrack === undefined ? this.main : this.tracks.get(p.onTrack) ?? this.main;
+    const key = p.spendKey ?? p.stepId ?? '';
     // A subagent's own pause with a model slice open must not take the model's usd as its base.
-    const base = p.stepId === undefined ? this.workflow.budget.usd! : this.openSlice?.step === p.stepId ? this.openSlice.usd : p.limit! - (this.usdExtra[key] ?? 0);
+    const base = p.stepId === undefined ? this.workflow.budget.usd! : t.openSlice?.step === p.stepId ? t.openSlice.usd : p.limit! - this.extraAt(key);
     const spent = p.stepId === undefined ? this.runCost : (Object.hasOwn(this.usdSpent, key) ? this.usdSpent[key]! : p.spent ?? 0);   // a track's slice is not under the step id: the pause says what it hit
     if (p.stepId !== undefined) {
       const left = this.usdLeft();
@@ -734,11 +817,37 @@ export class Run {
         else return `Allow at most $${(Math.floor(left * 100 + 1e-6) / 100).toFixed(2)}: the workflow's USD budget has that much left.`;
       }
     }
-    this.usdExtra[key] = r6(Math.max(this.usdExtra[key] ?? 0, spent - base) + n);
+    this.usdExtra[key] = r6(Math.max(this.extraAt(key), spent - base) + n);
     this.status = 'running';
     this.pauseReason = undefined;
     this.logEvent('run_resumed', { allowUsd: n, usd: r6(base + this.usdExtra[key]!), ...(p.stepId ? { step: p.stepId } : {}) }, this.main);
+    this.regrow(p.stepId === undefined ? undefined : t);
+    this.notify();   // a step() asleep on the tracks sees the run go on
     return undefined;
+  }
+
+  /**
+   * After an Allow, the tracks with a share get a new one. The workflow's card: every live track has `spent + new room / live tracks`. A track's own slice
+   * card: that track takes the free room (what the others do not hold). A session that holds its cap for its process, and has no turn in flight, is dropped
+   * so it reopens under the new cap; one in flight keeps it (its next cut reply re-shares again).
+   */
+  private regrow(only?: Track) {
+    const live = [...this.tracks.values()].filter((x) => x.share !== undefined);
+    for (const x of only ? live.filter((y) => y === only) : live) {
+      const room = this.usdRoom(x);
+      if (room === undefined) continue;
+      const to = only ? this.spentBy(x) + Math.max(0, room - this.held(x)) : this.spentBy(x) + room / live.length;
+      x.share = r6(Math.max(0, to));
+      this.dropProcess(x);
+    }
+  }
+
+  /** The session of a track whose cap lives in its process is closed (idle only); the next use reopens the same conversation under the new cap. */
+  private dropProcess(t: Track) {
+    if (t.liveCap || t.turnInFlight || !t.session) return;
+    const s = t.session;
+    t.session = undefined;
+    void s.close().catch(() => {});
   }
 
   /** The host's hands for a NODE step (P12). */
@@ -749,7 +858,7 @@ export class Run {
       ...(t === this.main && this.setReasoning ? { setReasoning: this.setReasoning } : {}),
       slice: (id, usd) => {
         t.openSlice = usd === undefined ? undefined : { step: id, usd };
-        if (t.spendKey !== undefined) { delete this.usdSpent[t.spendKey]; t.spendKey = undefined; }   // the inherited slice is left: its counter goes with it
+        if (t.spendKey !== undefined) { this.dropSpend(t.spendKey); t.spendKey = undefined; }   // the inherited slice is left: its counter and allowance go with it
       },
       log: (type, data) => this.logEvent(type, data, t),
       pause: (text) => { if (this.alive(t)) this.pauseForStop(t, text, step); },
@@ -809,7 +918,7 @@ export class Run {
   /** No host opener (the terminal): the run's own engine opens the subagent's session. */
   private async ownSubagent(o: SubagentOpen): Promise<SubagentOpened> {
     const { step: _s, title: _t, asks: _a, reasoning, ...open } = o;
-    return { session: await this.engine.open({ ...open, ...(reasoning ? { effort: reasoning } : {}), pendingCards: () => [] }), ...(o.model ? { model: o.model, label: o.model } : {}) };
+    return { session: await this.engine.open({ ...open, ...(reasoning ? { effort: reasoning } : {}), pendingCards: () => [] }), ...(o.model ? { model: o.model, label: o.model } : {}), cap: 'process' };
   }
 
   // ponytail: steer cards typed while a subagent works wait for the parent's next turn (or go with a Resume); now and stop cards interrupt the subagent; a now card typed while it is still opening goes to the parent. An interrupt kill reports no total: that spend is counted only if the subagent is resumed, and a reply cut off by a kill or a crash is not counted (the provider drops it); after Stop it is never counted.
@@ -826,7 +935,7 @@ export class Run {
     // Resumable only once a reply was counted on it: before that the CLI has nothing saved to --resume. A reply of unknown cost was counted too.
     const resumed = old && !old.done && (old.total !== undefined || old.cost > 0 || old.unknown) ? old : undefined;
     const wf = this.workflow.budget.usd;   // not usdLeft(): it is already rounded by r6, which the cap must not inherit
-    const room = [slice && slice.usd + (this.usdExtra[slice.step] ?? 0) - this.spentOn(t, slice), wf === undefined ? undefined : wf + (this.usdExtra[''] ?? 0) - this.runCost]
+    const room = [slice && slice.usd + this.extraOn(t, slice) - this.spentOn(t, slice), wf === undefined ? undefined : wf + (this.usdExtra[''] ?? 0) - this.runCost, this.shareRest(t)]
       .filter((x): x is number => x !== undefined);
     const policy = policyOf(step);
     const o: SubagentOpen = {
@@ -837,9 +946,7 @@ export class Run {
       // Reins made this engine session, so its running total starts at 0: a resumed subagent never has an unknown base.
       ...(resumed ? { sessionId: resumed.sessionId, costBase: resumed.total ?? 0,
         ...(resumed.total === undefined ? { costBaseByModel: {} } : resumed.totals ? { costBaseByModel: resumed.totals } : {}) } : {}),
-      // Rounded up: a cap a hair under Reins' limit would end the reply as an error that usdOver (1e-9) does not see as reached.
-      // The room is first rounded to nano-dollars: a float sum's noise (0.2000000000000001) must not push the cap up a whole micro-dollar.
-      ...(room.length ? { maxUsd: Math.ceil(Math.round(Math.min(...room) * 1e9) / 1e3) / 1e6 } : {}),
+      ...(room.length ? { maxUsd: capOf(Math.min(...room)) } : {}),
     };
     const why = (e: unknown) => String((e as Error)?.message ?? e);
     let opened: SubagentOpened;
@@ -890,23 +997,57 @@ export class Run {
   }
 
   /** The USD pause: the card that asks "allow $n more / stop". `text` is the engine's own words, when it ended the reply itself. */
-  private pauseUsd(stepId: string | undefined, limit: number, spent: number, text?: string): true {
+  /**
+   * The one run-wide USD card, said by the track `t` whose spend hit the limit: the row and the pause name it (the main line's carry nothing), and a
+   * track's own copy of a slice names the key it counts under, so its Allow reads that track's counter. A card already open is not written again.
+   */
+  private pauseUsd(t: Track, s: { step: string } | undefined, limit: number, spent: number, text?: string): true {
+    if (this.status === 'paused' && this.pauseReason?.type === 'usd-budget-used') return true;
+    const key = s && this.keyOf(t, s);
     this.status = 'paused';
-    this.pauseReason = { type: 'usd-budget-used', ...(stepId ? { stepId } : {}), limit: r6(limit), spent: r6(spent), ...(text ? { text } : {}) };
-    this.logEvent('budget_reached', { ...(stepId ? { step: stepId } : {}), usd: r6(limit), spent: r6(spent), ...(text ? { text } : {}) }, this.main);
+    this.pauseReason = {
+      type: 'usd-budget-used', ...(s ? { stepId: s.step } : {}), limit: r6(limit), spent: r6(spent), ...(text ? { text } : {}),
+      ...(t === this.main ? {} : { onTrack: t.key }), ...(key !== undefined && key !== s!.step ? { spendKey: key } : {}),
+    };
+    this.logEvent('budget_reached', { ...(s ? { step: s.step } : {}), usd: r6(limit), spent: r6(spent), ...(text ? { text } : {}) }, t);
+    this.notify();   // a step() asleep on the other tracks sees the card
     return true;
   }
 
-  /** A capped turn: the limit is reached by Reins' own count (pauses there), or the engine said it stopped for the budget (pauses here). */
-  private guardUsd(t: Track, result: TurnResult): boolean {
-    const over = this.usdOver(t.openSlice, t);
-    if (over || !result.budgetStop) return over;
-    // The workflow's limit when it has one, else the open slice's; the figures are only what the card prints.
+  /** The card for the limit that holds the track now (the workflow's room or the open slice's, the smaller; the workflow's when neither is); the figures are only what it prints. */
+  private usdCard(t: Track, text: string | undefined): true {
     const wf = this.workflow.budget.usd;
     const s = t.openSlice;
-    if (wf !== undefined) this.pauseUsd(undefined, wf + (this.usdExtra[''] ?? 0), this.runCost, result.text);
-    else if (s) this.pauseUsd(s.step, s.usd + (this.usdExtra[s.step] ?? 0), this.spentOn(t, s), result.text);
-    else this.pauseUsd(undefined, 0, this.runCost, result.text);
+    const sliceRoom = s && s.usd + this.extraOn(t, s) - this.spentOn(t, s);
+    if (s && sliceRoom! < (wf === undefined ? Infinity : wf + (this.usdExtra[''] ?? 0) - this.runCost)) return this.pauseUsd(t, s, s.usd + this.extraOn(t, s), this.spentOn(t, s), text);
+    return this.pauseUsd(t, undefined, wf === undefined ? 0 : wf + (this.usdExtra[''] ?? 0), this.runCost, text);
+  }
+
+  /** A capped turn: the limit is reached by Reins' own count (pauses there), the track used its share (a re-share, else the card), or the engine said it stopped for the budget (pauses here). */
+  private guardUsd(t: Track, result: TurnResult): boolean {
+    const over = this.usdOver(t.openSlice, t);
+    if (over) return true;
+    if (t.share !== undefined && this.shareRest(t)! <= 1e-9) return this.reshare(t, result.text);
+    if (!result.budgetStop) return false;
+    if (t.share !== undefined && this.unknownStop(t.openSlice, t)) return true;   // not "used up": some spend under the limit is not known
+    return this.usdCard(t, result.text);
+  }
+
+  /**
+   * A track's reply was cut off at its share: it is not a reply (the instruction runs again and sends `CARRY_ON`). The free room is the room now less what
+   * the other live tracks still hold: a cent or more, and the track takes it (`share := spent + free`) and goes on, its process reopened under the new cap;
+   * less, and the run asks once (the card). A track under a limit with some spend not known is given nothing: the card says so.
+   */
+  private reshare(t: Track, text: string): true {
+    t.carryOn = true;
+    if (this.unknownStop(t.openSlice, t)) return true;
+    const room = this.usdRoom(t);
+    if (room === undefined) { t.share = undefined; return true; }   // no limit is left to share
+    const free = room - this.held(t);
+    if (free < 0.01 - 1e-9) return this.usdCard(t, text);
+    t.share = r6(this.spentBy(t) + free);
+    this.dropProcess(t);
+    this.logEvent('budget_warning', { step: t.key, text: `${t.title} used its share of the USD budget; it goes on with $${usdText(r6(free))} the others left unused.` }, t);
     return true;
   }
 
@@ -916,16 +1057,15 @@ export class Run {
    */
   // ponytail: a reply with an unknown cost counts 0 in the figures here and is noted (`runUnknown`, `usdUnknown`): the next call under a limit it counts against is refused; a `now` card's follow-up reply is part of its step and is not checked between replies; a subagent's follow-ups share its process's provider cap
   private usdOver(s: { step: string; usd: number } | undefined, t: Track): boolean {   // no default: a track with no slice has none, never the main line's
-    const hit = (stepId: string | undefined, limit: number, spent: number) => this.pauseUsd(stepId, limit, spent);
     const usd = this.workflow.budget.usd;
     if (usd !== undefined) {
       const limit = usd + (this.usdExtra[''] ?? 0);
-      if (this.runCost >= limit - 1e-9) return hit(undefined, limit, this.runCost);
+      if (this.runCost >= limit - 1e-9) return this.pauseUsd(t, undefined, limit, this.runCost);
     }
     if (s) {
-      const limit = s.usd + (this.usdExtra[s.step] ?? 0);
+      const limit = s.usd + this.extraOn(t, s);
       const spent = this.spentOn(t, s);
-      if (spent >= limit - 1e-9) return hit(s.step, limit, spent);
+      if (spent >= limit - 1e-9) return this.pauseUsd(t, s, limit, spent);
     }
     return false;
   }
@@ -1032,8 +1172,8 @@ export class Run {
    */
   private unknownStop(s: { step: string; usd: number } | undefined, t: Track): boolean {
     const wf = this.workflow.budget.usd;
-    if (wf !== undefined && this.runUnknown) return this.pauseUsd(undefined, wf + (this.usdExtra[''] ?? 0), this.runCost, USD_UNKNOWN);
-    if (s && this.usdUnknown.has(s.step)) return this.pauseUsd(s.step, s.usd + (this.usdExtra[s.step] ?? 0), this.spentOn(t, s), USD_UNKNOWN);
+    if (wf !== undefined && this.runUnknown) return this.pauseUsd(t, undefined, wf + (this.usdExtra[''] ?? 0), this.runCost, USD_UNKNOWN);
+    if (s && this.usdUnknown.has(s.step)) return this.pauseUsd(t, s, s.usd + this.extraOn(t, s), this.spentOn(t, s), USD_UNKNOWN);
     return false;
   }
 
@@ -1049,6 +1189,8 @@ export class Run {
         if (!sub) t.capped = true;
         return undefined;
       }
+      // A reply cut off at the track's share is no reply: the instruction runs again, and its turn only asks the resumed session to carry on (S18).
+      if (!sub && t.carryOn) { turnText = CARRY_ON; t.carryOn = undefined; }
       this.logEvent('turn_started', { step: stepId }, t);
       t.turnInFlight = true;
       t.turnSession = session;
@@ -1080,7 +1222,7 @@ export class Run {
         step: stepId, text: result.text, cost: result.cost,
         ...(result.unknownCost ? { unknown: true } : {}),
         ...(usage ? { model: usage.model } : {}),
-        ...(slice ? { slice: { step: slice.step, spent: r6(this.spentOn(t, slice)), usd: r6(slice.usd + (this.usdExtra[slice.step] ?? 0)) } } : {}),
+        ...(slice ? { slice: { step: slice.step, spent: r6(this.spentOn(t, slice)), usd: r6(slice.usd + this.extraOn(t, slice)) } } : {}),
       }, t);
 
       if (this.status === 'stopped') {
@@ -1327,6 +1469,8 @@ export class Run {
       ...(t.money ? { money: structuredClone(t.money) } : {}),
       ...(t.changeRequest ? { changeRequest: structuredClone(t.changeRequest) } : {}),
       ...(t.notes?.length ? { notes: [...t.notes] } : {}),
+      ...(t.share !== undefined ? { share: t.share } : {}),
+      ...(t.carryOn ? { carryOn: true as const } : {}),
     };
   }
 
@@ -1344,6 +1488,8 @@ export class Run {
       ...(s.money ? { money: structuredClone(s.money) } : {}),
       ...(s.changeRequest ? { changeRequest: structuredClone(s.changeRequest) } : {}),
       ...(s.notes?.length ? { notes: [...s.notes] } : {}),
+      ...(s.share !== undefined ? { share: s.share } : {}),
+      ...(s.carryOn ? { carryOn: true as const } : {}),
     };
   }
 
@@ -1364,6 +1510,7 @@ export class Run {
     if (s.kinds !== undefined && (!isObj(s.kinds) || Object.values(s.kinds).some((v) => typeof v !== 'string'))) bad('kinds is not a map of kind to version');
     if (s.ended !== undefined && (!Array.isArray(s.ended) || s.ended.some((e) => !isObj(e) || typeof e.key !== 'string' || typeof e.text !== 'string'))) bad('ended is not a list of results');
     if (s.usdSpent !== undefined && (!isObj(s.usdSpent) || Object.values(s.usdSpent).some((v) => typeof v !== 'number' || !Number.isFinite(v) || v < 0))) bad('usdSpent is not a map of amounts');
+    if (s.usdExtra !== undefined && (!isObj(s.usdExtra) || Object.values(s.usdExtra).some((v) => typeof v !== 'number' || !Number.isFinite(v)))) bad('usdExtra is not a map of amounts');
     if (s.tracks !== undefined && !Array.isArray(s.tracks)) bad('tracks is not a list');
     if (s.groups !== undefined && !Array.isArray(s.groups)) bad('groups is not a list');
     const tracks = s.tracks ?? [], groups = s.groups ?? [];
@@ -1388,6 +1535,8 @@ export class Run {
       const cr = t.changeRequest as { note?: unknown; gate?: unknown } | undefined;
       if (cr !== undefined && (!isObj(cr) || typeof cr.note !== 'string' || !isObj(cr.gate))) bad(`track "${t.key}" has a change request that is not a note and a gate`);
       if (t.notes !== undefined && (!Array.isArray(t.notes) || t.notes.some((n) => typeof n !== 'string'))) bad(`track "${t.key}" has notes that are not texts`);
+      if (t.share !== undefined && !num(t.share)) bad(`track "${t.key}" has a share that is not an amount`);
+      if (t.carryOn !== undefined && t.carryOn !== true) bad(`track "${t.key}" has a carry-on flag that is not true`);
     }
     const byName = new Map<string, NonNullable<RunSnapshot['groups']>[number]>();
     for (const g of groups) {
@@ -1590,7 +1739,7 @@ export class Run {
     const text = [reply, ...t.handback].filter((x) => x).join('\n\n');
     this.ended.push({ key: t.key, text });
     const cost = money6(t.money?.cost ?? 0);   // the run's cost already holds it; from here it lives in the result and the row
-    if (t.spendKey !== undefined) delete this.usdSpent[t.spendKey];   // so do not keep its counter
+    if (t.spendKey !== undefined) this.dropSpend(t.spendKey);   // so do not keep its counter or its allowance
     this.groups.get(t.group)?.results.set(t.key, { key: t.key, title: t.title, text, cost });
     // State first, then the row (a snapshot is saved inside onEvent), then the close.
     this.logEvent('track_ended', { track: t.key, group: t.group, title: t.title, text, cost }, t);
