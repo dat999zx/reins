@@ -191,10 +191,10 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
     const engine = o.makeEngine({ onApprove: (r) => askTool(io, r, undefined, o.fullDetail), onLive: printLive });
     const openSubagent = o.subagentEngine && (async (s: SubagentOpen): Promise<SubagentOpened> => {
       let subFull: boolean | undefined; // known once the subagent's engine is made, before it can ask anything
-      const made = o.subagentEngine!(s, { onApprove: (r) => askTool(io, r, `Subagent ${s.title} (\`${s.step}\`)`, subFull), onLive: printLive });
+      const made = o.subagentEngine!(s, { onApprove: (r) => askTool(io, r, s.asks ?? `Subagent ${s.title} (\`${s.step}\`)`, subFull), onLive: printLive });
       if (!('error' in made)) subFull = made.fullDetail;
       if ('error' in made) throw new Error(made.error);
-      const { step: _s, title: _t, reasoning, model: _m, ...open } = s;
+      const { step: _s, title: _t, asks: _a, reasoning, model: _m, ...open } = s;
       const session = await made.engine.open({ ...open, ...(made.model && s.model ? { model: made.model } : {}), ...(reasoning ? { effort: reasoning } : {}), pendingCards: () => [] });
       return { session, ...(made.model ? { model: made.model, label: made.model } : {}) };
     });

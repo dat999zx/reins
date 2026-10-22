@@ -38,6 +38,8 @@ export interface Track {
   recall: string[];
   /** The engine session id a restored track resumes (its live `session` is gone after a restore); the next open passes it. */
   sessionId?: string;
+  /** The USD slice open on this track: a track copies its starter's at start, and a `model` step on it changes only its own. */
+  openSlice?: { step: string; usd: number };
 }
 
 export interface PauseReason {
@@ -130,6 +132,8 @@ export interface SubagentOpen {
   costBase?: number;
   costBaseByModel?: Record<string, number>;
   maxUsd?: number;
+  /** The card title of a session that asks like the main run (a branch); absent: a subagent, under the subagent approvals setting. The engine never sees it. */
+  asks?: string;
   policy: () => Policy;
 }
 
@@ -197,6 +201,7 @@ export interface TrackSnap {
   capped: boolean;
   recall: string[];
   policy: Policy;
+  openSlice?: { step: string; usd: number };
 }
 
 /** A group an op started and has not taken. */
@@ -374,6 +379,7 @@ export class Run {
       get lastStepId() { return r.lastStepId; }, set lastStepId(v) { r.lastStepId = v; },
       get policy() { return r.currentPolicy; }, set policy(v) { r.currentPolicy = v; },
       get recall() { return r.lastRecallContext; }, set recall(v) { r.lastRecallContext = v; },
+      get openSlice() { return r.openSlice; }, set openSlice(v) { r.openSlice = v; },
       inflight: undefined as Promise<void> | undefined,
     } as Track;
   }
@@ -466,7 +472,7 @@ export class Run {
   /** A track other than the main line has its OWN session, opened once through the host opener; a Stop or close while it opens closes the new session. */
   private async ensureTrackSession(t: Track): Promise<EngineSession> {
     if (!t.session) {
-      const o: SubagentOpen = { step: t.key, title: t.title, policy: () => t.policy, ...(t.sessionId ? { sessionId: t.sessionId } : {}), ...(this.cwd !== undefined ? { cwd: this.cwd } : {}) };
+      const o: SubagentOpen = { step: t.key, title: t.title, asks: t.title, policy: () => t.policy, ...(t.sessionId ? { sessionId: t.sessionId } : {}), ...(this.cwd !== undefined ? { cwd: this.cwd } : {}) };
       const opened = await (this.openSubagent ?? ((x: SubagentOpen) => this.ownSubagent(x)))(o);
       if (this.closing || this.status === 'stopped') { await opened.session.close().catch(() => {}); throw new Error('closed'); }
       t.session = opened.session;
@@ -486,6 +492,7 @@ export class Run {
     const started = list.map((s): Track => ({
       key: s.key, title: s.title, parent: parent.key, group, pc: s.at, state: 'running', turnInFlight: false, capped: false,
       handback: [...(s.seed ?? [])], policy: { mode: 'write', guards: [], allowShell: true }, recall: [],
+      ...(parent.openSlice ? { openSlice: { ...parent.openSlice } } : {}),
     }));
     for (const t of started) this.tracks.set(t.key, t);
     for (const t of started) this.logEvent('track_started', { track: t.key, parent: parent.key, group, title: t.title }, t);
@@ -527,9 +534,9 @@ export class Run {
    * The USD the run still allows right now: the smaller of the workflow's room and the open slice's, unrounded (as the subagent cap below
    * takes them); undefined when neither limit exists.
    */
-  usdRoom(_t: Track = this.main): number | undefined {   // slices are run-wide for now; the track's share arrives with the money task
+  usdRoom(t: Track = this.main): number | undefined {
     const wf = this.workflow.budget.usd;
-    const s = this.openSlice;
+    const s = t.openSlice;
     const rooms = [wf === undefined ? undefined : wf + (this.usdExtra[''] ?? 0) - this.runCost, s && s.usd + (this.usdExtra[s.step] ?? 0) - (this.usdSpent[s.step] ?? 0)]
       .filter((x): x is number => x !== undefined);
     return rooms.length ? Math.min(...rooms) : undefined;
@@ -642,9 +649,10 @@ export class Run {
   /** The host's hands for a NODE step (P12). */
   private execCtx(t: Track, step: string): ExecCtx {
     return {
-      ...(this.switchModel ? { switchModel: this.switchModel } : {}),
-      ...(this.setReasoning ? { setReasoning: this.setReasoning } : {}),
-      slice: (id, usd) => { this.openSlice = usd === undefined ? undefined : { step: id, usd }; },
+      // The host switches the run's own session: a track's session is its own, so a `model` step there logs `unsupported`.
+      ...(t === this.main && this.switchModel ? { switchModel: this.switchModel } : {}),
+      ...(t === this.main && this.setReasoning ? { setReasoning: this.setReasoning } : {}),
+      slice: (id, usd) => { t.openSlice = usd === undefined ? undefined : { step: id, usd }; },
       log: (type, data) => this.logEvent(type, data, t),
       pause: (text) => { if (this.alive(t)) this.pauseForStop(t, text, step); },
       stop: () => this.stop(),
@@ -702,7 +710,7 @@ export class Run {
 
   /** No host opener (the terminal): the run's own engine opens the subagent's session. */
   private async ownSubagent(o: SubagentOpen): Promise<SubagentOpened> {
-    const { step: _s, title: _t, reasoning, ...open } = o;
+    const { step: _s, title: _t, asks: _a, reasoning, ...open } = o;
     return { session: await this.engine.open({ ...open, ...(reasoning ? { effort: reasoning } : {}), pendingCards: () => [] }), ...(o.model ? { model: o.model, label: o.model } : {}) };
   }
 
@@ -713,7 +721,7 @@ export class Run {
     if (this.workflow.budget.turns && this.totalTurns >= this.workflow.budget.turns) { this.status = 'paused'; this.pauseReason = { type: 'run-turn-budget-used' }; return false; }
     const id = step.id;
     const title = step.title || id;
-    const slice = usd === undefined ? this.openSlice : { step: id, usd };
+    const slice = usd === undefined ? t.openSlice : { step: id, usd };
     if (this.usdOver(slice)) return false;   // checked where the work starts: a resumed subagent with its slice used up asks first
     if (this.unknownStop(slice)) return false;   // and before its session is opened: some spend under the limit is not known
     const old = this.subagents[id];
@@ -749,7 +757,7 @@ export class Run {
     this.subagents[id] = rec;   // before the row below: its snapshot holds the session id, so a crash resumes it
     this.logEvent('subagent_started', { step: id, title, ...(opened.model ? { model: opened.model } : {}), ...(opened.label ? { label: opened.label } : {}), ...(resumed ? { resumed: true } : {}) }, t);
     // A note typed with Resume (drive.ts queues it as a steer card) was meant for the subagent.
-    const notes = resumed ? this.pendingCards.splice(0) : [];
+    const notes = resumed && t === this.main ? this.pendingCards.splice(0) : [];   // another track's notes arrive with the per-track answers (Task 11)
     for (const n of notes) this.logEvent('card_delivered', { card: n, channel: 'next-turn' }, t);   // the run panel marks a card delivered only on this row
     let result: TurnResult | undefined;
     try {
@@ -792,12 +800,12 @@ export class Run {
   }
 
   /** A capped turn: the limit is reached by Reins' own count (pauses there), or the engine said it stopped for the budget (pauses here). */
-  private guardUsd(_t: Track, result: TurnResult): boolean {   // the limit and the slice are run-wide; the track's share arrives with the money task
-    const over = this.usdOver();
+  private guardUsd(t: Track, result: TurnResult): boolean {
+    const over = this.usdOver(t.openSlice);
     if (over || !result.budgetStop) return over;
     // The workflow's limit when it has one, else the open slice's; the figures are only what the card prints.
     const wf = this.workflow.budget.usd;
-    const s = this.openSlice;
+    const s = t.openSlice;
     if (wf !== undefined) this.pauseUsd(undefined, wf + (this.usdExtra[''] ?? 0), this.runCost, result.text);
     else if (s) this.pauseUsd(s.step, s.usd + (this.usdExtra[s.step] ?? 0), this.usdSpent[s.step] ?? 0, result.text);
     else this.pauseUsd(undefined, 0, this.runCost, result.text);
@@ -895,7 +903,7 @@ export class Run {
       if (result.total !== undefined) this.lastTotal = result.total;
       if (result.totals) this.lastTotals = result.totals;
     }
-    const slice = sub ? sub.slice : this.openSlice;
+    const slice = sub ? sub.slice : t.openSlice;
     if (slice) {
       this.usdSpent[slice.step] = (this.usdSpent[slice.step] ?? 0) + (result.cost ?? 0);
       if (result.unknownCost) this.usdUnknown.add(slice.step);
@@ -922,7 +930,7 @@ export class Run {
     for (;;) {
       // A Stop or close that landed while this track waited for its session (or any await before the call) sends nothing; the caller closes the session.
       if (t !== this.main && (this.closing || this.status === 'stopped')) throw new Error('closed');
-      if (this.unknownStop(sub ? sub.slice : this.openSlice)) {   // before the call, whatever engine it goes to: a new subagent has a total of its own
+      if (this.unknownStop(sub ? sub.slice : t.openSlice)) {   // before the call, whatever engine it goes to: a new subagent has a total of its own
         if (!sub) t.capped = true;
         return undefined;
       }
@@ -1194,6 +1202,7 @@ export class Run {
       ...(t.lastTurnText !== undefined ? { lastTurnText: t.lastTurnText } : {}),
       ...(t.lastStepId !== undefined ? { lastStepId: t.lastStepId } : {}),
       capped: t.capped, recall: [...t.recall], policy: structuredClone(t.policy),
+      ...(t.openSlice ? { openSlice: { ...t.openSlice } } : {}),
     };
   }
 
@@ -1206,6 +1215,7 @@ export class Run {
       ...(s.lastTurnText !== undefined ? { lastTurnText: s.lastTurnText } : {}),
       ...(s.lastStepId !== undefined ? { lastStepId: s.lastStepId } : {}),
       policy: structuredClone(s.policy), recall: [...s.recall],
+      ...(s.openSlice ? { openSlice: { ...s.openSlice } } : {}),
     };
   }
 
@@ -1467,7 +1477,7 @@ export class Run {
 
     const instr = this.program[t.pc]!;
     // Every program ends in END: the last reply may pass a limit and the run still finishes instead of pausing.
-    if (instr.op !== 'END' && this.usdOver()) return this.status;
+    if (instr.op !== 'END' && this.usdOver(t.openSlice)) return this.status;
 
     // ponytail: a step re-run after a stop card or REINS: blocked reports its start again; a TURN that hits the run turn budget reports its start, then pauses
     for (const s of this.starts.get(t.pc) ?? []) this.logEvent('step_started', s, t);
@@ -1496,8 +1506,9 @@ export class Run {
 
         // Plan 6.5: everything queued before the turn goes into its text, exactly once.
         // Cards queued while the turn runs are drained by the engine at its next tool event.
-        const textCards = [...this.pendingCards];
-        this.pendingCards = [];
+        // Cards reach only the main session: a track's turn takes none, and they wait for the turn under the split.
+        const textCards = t === this.main ? [...this.pendingCards] : [];
+        if (t === this.main) this.pendingCards = [];
 
         for (const card of textCards) {
           this.logEvent('card_delivered', { card, channel: 'next-turn' }, t);
@@ -1517,7 +1528,7 @@ export class Run {
         if (!result) return this.status;
         this.turnOutputs.set(instr.step, result.text);
 
-        await this.checkAutoCards();
+        if (t === this.main) await this.checkAutoCards();   // autos judge the main line's turns and card the main session
         if ((this.status as RunStatus) === 'stopped') return this.status;
 
         // Check if agent said blocked

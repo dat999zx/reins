@@ -487,11 +487,11 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     const e = deps.makeEngine({
       provider,
       ...(model ? { model } : {}), ...(r.effort ? { effort: r.effort } : {}),
-      onApprove: (x) => subagentApprove(title, x),
+      onApprove: (x) => (o.asks ? askTool(io, x, o.asks) : subagentApprove(title, x)),
       // usage, cost, compacted and hook measure or note the parent's context, so they stay out; the rest is kept under the step
       onLive: (ev) => { if (KEPT.has(ev.type)) log('engine', { ...ev, step: o.step }, runId); },
     });
-    const { step: _s, title: _t, reasoning: _r, model: _m, ...open } = o;
+    const { step: _s, title: _t, asks: _a, reasoning: _r, model: _m, ...open } = o;
     const s = await e.open({ ...open, ...(o.model && model ? { model } : {}), cwd, pendingCards: () => [] });
     const session: EngineSession = {
       sessionId: s.sessionId,
