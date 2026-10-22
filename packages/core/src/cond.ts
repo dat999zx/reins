@@ -36,7 +36,7 @@ export interface EvalCtx {
   cwd: string;
   /** workflow.test, or 'npm test'. */
   testCmd: string;
-  /** The instruction being run is a RUN (its command just ran). */
+  /** The instruction being run brings a command (its op has `ranCommand`; its command just ran). */
   atRun: boolean;
   judge?: (cond: Cond, evidence: { lastText: string }) => Promise<boolean>;
   logEvent(type: RunEventRecord['type'], data: any): void;

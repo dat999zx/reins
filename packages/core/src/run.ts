@@ -943,7 +943,7 @@ export class Run {
       events: this.events,
       cwd: this.cwd ?? '',
       testCmd: this.workflow.test ?? 'npm test',
-      atRun: this.program[t.pc]?.op === 'RUN',
+      atRun: opOf(this.program[t.pc]?.op)?.ranCommand === true,
       judge: this.judge,
       logEvent: (type, data) => this.logEvent(type, data, t),
       diffLines: this.diffLines,
@@ -1219,7 +1219,8 @@ export class Run {
 
       case 'NODE': {
         const n = NODES.get(instr.kind);
-        const out = n?.exec ? await n.exec(instr.src, this.execCtx(t, instr.step)) : 'next';
+        if (!n) { this.pauseForStop(t, `no block brings the instruction \`${instr.kind}\`; Resume tries again`, instr.step); return this.status; }
+        const out = n.exec ? await n.exec(instr.src, this.execCtx(t, instr.step)) : 'next';
         if (!this.alive(t)) return this.status;
         if (out === 'next') t.pc++;
         return this.status;
@@ -1231,7 +1232,9 @@ export class Run {
         return this.status;
       }
     }
-    // An instruction no kind owns leaves the counter where it is, so the run keeps stepping on the same instruction (a hot loop); M3 adds a guard.
+    // An instruction no kind owns pauses the track on it; Resume tries again, so registering the block and resuming finishes.
+    const ghost = instr as { op: string; step?: string };
+    this.pauseForStop(t, `no block brings the instruction \`${ghost.op}\`; Resume tries again`, ghost.step ?? ghost.op);
     return this.status;
   }
 }

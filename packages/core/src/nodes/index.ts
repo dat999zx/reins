@@ -129,6 +129,8 @@ export interface OpType<I extends Instr> {
   commands?(instr: I): string[];
   /** Where "Allow more" sends the run back to for an instruction that paused for its budget (undefined: nowhere). */
   allowMore?(instr: I): number | undefined;
+  /** The instruction runs a command whose result the conditions read right after (`EvalCtx.atRun`). */
+  ranCommand?: true;
 }
 
 /** The instructions the run itself executes: a kind cannot bring these. */

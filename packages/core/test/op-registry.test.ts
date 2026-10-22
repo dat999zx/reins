@@ -118,6 +118,61 @@ describe('a kind counts its events into the receipt', () => {
   });
 });
 
+describe('an instruction no block brings', () => {
+  const words = (op: string) => `no block brings the instruction \`${op}\`; Resume tries again`;
+  const ghost = (kind: string, withStep: boolean): NodeType => ({
+    kind, attrs: [], compile(step, ctx) { ctx.push({ op: 'GHOST', ...(withStep ? { step: step.id } : {}) } as never); },
+  });
+  const owner: NodeType = { kind: 'ghost-owner', attrs: [], compile() {}, ops: { GHOST: { async exec(_i, vm) { vm.next(); } } } };
+  const paused = (run: Run) => run.getEvents().filter((e) => e.type === 'run_paused');
+
+  it('pauses the run with the words and the step id; Resume pauses again; registering the op and resuming finishes', async () => {
+    disposers.push(register(ghost('ghost', true)));
+    const h = harness('ghost', []);
+    const run = new Run({ workflow: wf('## ghost'), engine: h.engine, now: h.now });
+    expect(await run.step()).toBe('paused');
+    expect(run.pauseReason).toEqual({ type: 'stop', text: words('GHOST'), stepId: 'ghost-1' });
+    expect(paused(run)).toHaveLength(1);
+    run.resume();
+    expect(await run.step()).toBe('paused');
+    expect(paused(run)).toHaveLength(2);
+    disposers.push(register(owner));
+    run.resume();
+    await drive(run);
+    expect(run.status).toBe('done');
+  });
+
+  it('with no step id the op name is the stepId', async () => {
+    disposers.push(register(ghost('ghostless', false)));
+    const h = harness('ghostless', []);
+    const run = new Run({ workflow: wf('## ghostless'), engine: h.engine, now: h.now });
+    expect(await run.step()).toBe('paused');
+    expect(run.pauseReason).toEqual({ type: 'stop', text: words('GHOST'), stepId: 'GHOST' });
+  });
+
+  it('a NODE naming a kind that is no longer registered pauses with the words', async () => {
+    const dispose = register({ kind: 'vanish', attrs: [], compile(step, ctx) { ctx.push({ op: 'NODE', step: step.id, kind: 'vanish', src: step }); } });
+    const h = harness('vanish', []);
+    const run = new Run({ workflow: wf('## vanish'), engine: h.engine, now: h.now });
+    dispose();
+    expect(await run.step()).toBe('paused');
+    expect(run.pauseReason).toEqual({ type: 'stop', text: words('vanish'), stepId: 'vanish-1' });
+    expect(paused(run)).toHaveLength(1);
+  });
+
+  it('atRun follows the op\'s ranCommand flag, not its name', () => {
+    const toy = (kind: string, op: string, flag: boolean): NodeType => ({
+      kind, attrs: [], compile(step, ctx) { ctx.push({ op, step: step.id } as never); },
+      ops: { [op]: { async exec(_i, vm) { vm.next(); }, ...(flag ? { ranCommand: true as const } : {}) } },
+    });
+    disposers.push(register(toy('ran', 'RAN', true)), register(toy('plain', 'PLAIN', false)));
+    const h = harness('atrun', []);
+    const at = (body: string) => { const r = new Run({ workflow: wf(body), engine: h.engine, now: h.now }) as any; return r.evalCtx(r.main).atRun; };
+    expect(at('## ran')).toBe(true);
+    expect(at('## plain')).toBe(false);
+  });
+});
+
 describe('register', () => {
   const bare = (kind: string, ops?: NodeType['ops']): NodeType => ({ kind, attrs: [], compile() {}, ...(ops ? { ops } : {}) });
   const noop = { async exec() {} };

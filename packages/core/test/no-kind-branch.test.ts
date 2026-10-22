@@ -26,7 +26,6 @@ const ALLOW = [
   { file: 'packages/server/src/tags.ts', text: "for (const a of NODES.get('phase')?.attrs ?? []) out.push({ name: a, place: 'attr', arg: a, argRequired: true, enforced: true });", reason: 'a chat tag wraps a phase' },
   { file: 'packages/server/src/drive.ts', text: "if (kind === 'gate') {", reason: 'a question kind, core pause type' },
   { file: 'packages/server/src/run-cli.ts', text: "if (o.yes && q.kind === 'gate') { say('  approved (--yes)'); return Promise.resolve('approve'); }", reason: 'a question kind, core pause type' },
-  { file: 'packages/core/src/run.ts', text: "atRun: this.program[t.pc]?.op === 'RUN',", reason: 'the live current-op check, spec 4.2; the counter is the track\'s (M2)' },
 ];
 
 const root = fileURLToPath(new URL('../../..', import.meta.url));

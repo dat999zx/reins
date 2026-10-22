@@ -37,6 +37,7 @@ const RUN: OpType<Extract<Instr, { op: 'RUN' }>> = {
   },
   next: (i, at) => [at + 1, i.onFailJump, i.onPassJump, i.loopExit],
   commands: (i) => [i.cmd],
+  ranCommand: true,
 };
 
 const run: NodeType = {
