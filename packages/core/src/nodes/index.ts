@@ -2,6 +2,7 @@ import type { Cond, Diagnostic, Pos, Step, Workflow } from '../model.js';
 import type { Instr } from '../compile.js';
 import type { EngineSession, TurnResult } from '../fake-engine.js';
 import type { CommandOutcome, PauseReason, RunEventRecord, RunEventType } from '../run.js';
+import { ordered } from '../registry.js';
 import phase from './phase.js';
 import say from './say.js';
 import run from './run.js';
@@ -178,25 +179,26 @@ export interface OpType<I extends Instr> {
 /** The instructions the run itself executes: a kind cannot bring these. */
 const CORE_OPS = ['TURN', 'JUMP', 'END', 'NODE'];
 
-export const NODES = new Map<string, NodeType>();
+const KINDS = ordered<NodeType>('kind', (n) => n.kind);
+/** The kinds in `order` (ties by arrival). Read it; add and remove with `register`. */
+export const NODES = KINDS.map;
 
-/** Adds a kind and the ops it brings. Throws on a known kind, a core op or a taken op, and then adds nothing. Returns a function that removes them again. */
-export function register(n: NodeType): () => void {
-  if (NODES.has(n.kind)) throw new Error(`kind "${n.kind}" is already registered`);
+/**
+ * Adds a kind and the ops it brings, at `order` (none: after every other). Throws on a known kind, a core op or a taken op,
+ * and then adds nothing. With `shadow`, a known kind is covered instead (its own ops are not "taken"); the disposer brings
+ * it back. Returns a function that removes the entry again; a second call does nothing.
+ */
+export function register(n: NodeType, order?: number, opts?: { shadow?: boolean }): () => void {
+  if (NODES.has(n.kind) && !opts?.shadow) throw new Error(`kind "${n.kind}" is already registered`);
   for (const op of Object.keys(n.ops ?? {})) {
     if (CORE_OPS.includes(op)) throw new Error(`op "${op}" is a core op`);
     const owner = [...NODES.values()].find((k) => k.ops && Object.hasOwn(k.ops, op));
-    if (owner) throw new Error(`op "${op}" is already brought by kind "${owner.kind}"`);
+    if (owner && owner.kind !== n.kind) throw new Error(`op "${op}" is already brought by kind "${owner.kind}"`);
   }
-  NODES.set(n.kind, n);
-  let live = true;
-  return () => {
-    if (!live) return;
-    live = false;
-    NODES.delete(n.kind);
-  };
+  return KINDS.add(n, { order, shadow: opts?.shadow });
 }
-for (const n of [phase, say, run, gate, repeat, ifNode, verify, use, recall, store, model, subagent, end]) register(n);
+// The numbers are today's order, with room between them.
+for (const [n, order] of [[phase, 10], [say, 20], [run, 30], [gate, 40], [repeat, 50], [ifNode, 60], [verify, 70], [use, 80], [recall, 90], [store, 100], [model, 110], [subagent, 120], [end, 130]] as const) register(n, order);
 
 export function opOf(op: string): OpType<any> | undefined {
   for (const n of NODES.values()) if (n.ops && Object.hasOwn(n.ops, op)) return n.ops[op];
@@ -212,6 +214,7 @@ export function defaultId(step: { kind: string; title?: string }, counters: Reco
 export function nodeAttrs(): Set<string> { return new Set([...NODES.values()].flatMap((n) => n.attrs)); }
 export function headingOwns(): Set<string> { return new Set([...NODES.values()].flatMap((n) => n.heading?.owns ?? [])); }
 
+export { checkMode, turnInstr, policyOf } from './turn.js';
 export { default as phaseNode } from './phase.js';
 export { default as sayNode } from './say.js';
 export { default as runNode } from './run.js';

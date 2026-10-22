@@ -1,3 +1,4 @@
+export * from './registry.js';
 export * from './model.js';
 export * from './cond.js';
 export * from './format/parse.js';

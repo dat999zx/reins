@@ -1,6 +1,6 @@
 import type { Cond, Diagnostic, Pos } from './model.js';
 import type { CommandResult, RunEventRecord } from './run.js';
-import { CONDS } from './conds/index.js';
+import { CONDS, isModCond } from './conds/index.js';
 
 export type JudgeKind = 'you' | 'command' | 'deterministic' | 'agent' | 'model' | 'subagent';
 
@@ -275,12 +275,20 @@ export function parseCond(src: string, basePos: Pos = { line: 1, col: 1 }): Pars
   function parseAtom(): { cond?: Cond; diag?: Diagnostic } {
     skipWs();
     const atomStart = idx;
+    let held: { diag: Diagnostic } | undefined;
     for (const type of CONDS.values()) {
       const r = type.parse(s);
       if (r === null) { idx = atomStart; continue; }
-      if ('diag' in r) return r;
+      if ('diag' in r) {
+        // A mod atom's complaint is only the answer when no other atom takes the text.
+        if (!isModCond(type)) return r;
+        held ??= r;
+        idx = atomStart;
+        continue;
+      }
       return { cond: r as Cond };
     }
+    if (held) return held;
     return error(`Unexpected condition token at "${src.slice(atomStart, Math.min(len, atomStart + 15))}"`, atomStart);
   }
 
