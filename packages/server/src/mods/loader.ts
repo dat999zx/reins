@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { questionRefusal } from '../questions/index.js';
 import { checkMode, policyOf, register as registerNode, registerCard, registerCondition, turnInstr } from '@reins/core';
 import type { NodeType } from '@reins/core';
 import { cap, kindIds, kindOf, kindsInOrder, show } from './kinds.js';
@@ -346,6 +347,12 @@ const copyOf = <T extends object>(what: string, v: T): T => {
   return Object.freeze({ ...v });
 };
 
+/** A condition or card from a mod's code carries no editor data: that comes from the manifest, checked, and code never hands it over. */
+const viewless = <T extends { view?: unknown }>(v: T): T => {
+  const { view: _gone, ...rest } = v;
+  return Object.freeze(rest) as T;
+};
+
 /** Each thing a mod can register: the mod kind that may, the copy it is checked and stored from, what `provides` must list, and the core call. */
 interface Door<T> {
   kind: string;
@@ -371,13 +378,13 @@ const DOORS: { [M in 'registerBlock' | 'registerCondition' | 'registerCard']: Do
   },
   registerCondition: {
     kind: 'condition',
-    copy: (c) => copyOf('registerCondition', c),
+    copy: (c) => viewless(copyOf('registerCondition', c)),
     check: (c, has) => has('conditions', c.t, 'the condition'),
     put: (c, order, shadow) => registerCondition(c, order, { shadow }),
   },
   registerCard: {
     kind: 'card',
-    copy: (c) => copyOf('registerCard', c),
+    copy: (c) => viewless(copyOf('registerCard', c)),
     check: (c, has) => has('cards', c.kind, 'the card'),
     put: (c, order, shadow) => registerCard(c, order, { shadow }),
   },
@@ -393,6 +400,8 @@ function buildApi(kindId: string, raw: Record<string, unknown>, env: NodeJS.Proc
   const order = typeof raw.order === 'number' ? raw.order : NaN;
   const has = (key: keyof Provides, name: unknown, what: string) => {
     if (typeof name !== 'string' || !provides[key]?.includes(name)) throw new Error(`\`provides.${key}\` does not list ${what} ${show(name)}.`);
+    const q = questionRefusal(key, name); // the manifest check refuses it too; this is the api's own
+    if (q) throw new Error(q);
   };
   const live = <A extends unknown[], R>(f: (...a: A) => R) => (...a: A): R => {
     if (!open) throw new Error('the api can only be used while the mod activates.');

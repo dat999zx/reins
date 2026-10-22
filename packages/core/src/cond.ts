@@ -43,9 +43,19 @@ export interface EvalCtx {
   diffLines?: () => Promise<number>;
 }
 
+/** The one value an atom's editor box sets. `key` is a field of the atom; a mod's view may name only these four. */
+export const COND_PARAM_KEYS = ['cmd', 'q', 'n', 'glob'] as const;
+/** How the box looks: code, a text pill, a number, a glob pill. */
+export const COND_PARAM_LOOKS = ['code', 'str', 'num', 'pill'] as const;
+export interface CondParam { key: (typeof COND_PARAM_KEYS)[number]; look: (typeof COND_PARAM_LOOKS)[number]; optional?: true }
+/** What the editor needs to offer an atom: its menu words, a new atom, and the box. Plain data; a mod gives it in its manifest, never in code. */
+export interface CondView { label: string; fresh: { t: string; [field: string]: string | number | boolean }; param?: CondParam }
+
 /** One condition atom. Add a file under conds/ and list it in conds/index.ts. */
 export interface CondType<C extends { t: string } = any> {
   t: string;
+  /** The editor's data for this atom (menu words, new atom, value box). A built-in has it; for a mod it comes from the manifest. */
+  view?: CondView;
   /**
    * Try this atom at the cursor. `null`: not mine, try the next atom (and leave `s.idx` as it was).
    * A diagnostic: mine but malformed, and parsing stops. Atoms are tried in CONDS order.

@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import type { LogRow } from '@reins/server/store.js';
 import type { TagEntry } from '@reins/server/tags.js';
 import { ApiError, get, initToken, post, stream } from './api.js';
-import { setKinds } from './canvasKinds.js';
+import { setCards, setKinds } from './canvasKinds.js';
+import { setConds } from './condKinds.js';
+import { setQuestions } from './questions.js';
 import { Chat, type Provider } from './Chat.js';
 import { FirstRun } from './FirstRun.js';
 import { cardsOf, type ChooserEntry } from './firstRunCards.js';
@@ -55,7 +57,9 @@ export function App() {
   const [kindsReady, setKindsReady] = useState(false);
   useEffect(() => {
     if (!token) return;
-    get<{ kinds: unknown }>('/api/kinds').then((r) => setKinds(r.kinds)).catch(() => {}).finally(() => setKindsReady(true));
+    get<{ kinds: unknown; conds: unknown; cards: unknown; questions: unknown }>('/api/kinds')
+      .then((r) => { setKinds(r.kinds); setConds(r.conds); setCards(r.cards); setQuestions(r.questions); })
+      .catch(() => {}).finally(() => setKindsReady(true));
   }, [token]);
 
   const commit = (next: State) => { stRef.current = next; setSt(next); };

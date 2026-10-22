@@ -1,4 +1,4 @@
-import type { CondType } from '../cond.js';
+import type { CondType, CondView } from '../cond.js';
 import { ordered } from '../registry.js';
 import approve from './approve.js';
 import tests from './tests.js';
@@ -27,6 +27,8 @@ for (const [c, order] of [[approve, 10], [tests, 20], [cmd, 30], [llm, 40], [rev
   BUILT_IN.add(c);
   registerCondition(c, order);
 }
+/** The editor data of a built-in atom by `t`, even when a mod covers that atom. */
+export const builtinCondView = (t: string): CondView | undefined => [...BUILT_IN].find((c) => c.t === t)?.view;
 /** True for any atom that did not come with core: the parser holds back its diagnostic until no other atom matches. */
 export function isModCond(c: CondType): boolean { return !BUILT_IN.has(c); }
 

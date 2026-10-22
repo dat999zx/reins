@@ -19,6 +19,7 @@ const review: CondType<{ t: 'review'; q?: string }> = {
   },
   print(c) { return c.q ? `reviewer approves "${c.q}"` : 'reviewer approves'; },
   judge: 'subagent',
+  view: { label: 'reviewer approves', fresh: { t: 'review' }, param: { key: 'q', look: 'str', optional: true } },
   auto: false,
   modelCall: 'reviewer approves',
   async evaluate(c, ctx) {

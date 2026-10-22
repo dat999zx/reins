@@ -27,6 +27,7 @@ const attempts: CondType<{ t: 'attempts'; n: number }> = {
   },
   print(c) { return `attempts > ${c.n}`; },
   judge: 'deterministic',
+  view: { label: 'attempts > N', fresh: { t: 'attempts', n: 3 }, param: { key: 'n', look: 'num' } },
   evalSync(c, ctx) { return ctx.loopTotal > c.n; },
 };
 export default attempts;

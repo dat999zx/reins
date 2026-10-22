@@ -24,6 +24,7 @@ const touches: CondType<{ t: 'touches'; glob: string }> = {
   },
   print(c) { return `touches ${c.glob}`; },
   judge: 'deterministic',
+  view: { label: 'touches files', fresh: { t: 'touches', glob: 'migrations/**' }, param: { key: 'glob', look: 'pill' } },
   globs(c) { return [c.glob]; },
   evalSync(c, ctx) {
     const isMatch = picomatch(c.glob);

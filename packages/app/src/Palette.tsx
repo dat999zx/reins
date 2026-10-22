@@ -1,7 +1,7 @@
 import type { MutableRefObject, PointerEvent } from 'react';
 import type { StepKind } from '@reins/core';
 import { KINDS } from './canvasKinds.js';
-import { COND_KINDS } from './condKinds.js';
+import { COND_VIEWS } from './condKinds.js';
 import type { Src, Start } from './useDrag.js';
 
 const GROUPS = [['Flow', 'Flow'], ['Memory', 'Memory · Knowl']] as const;
@@ -26,7 +26,7 @@ export function Palette({ onAdd, onCond, press }: {
       <div>
         <h4>Conditions</h4>
         <div className="sx-pgrp">
-          {Object.entries(COND_KINDS).map(([t, k]) => <button key={t} className="sx-card sx-condcard" onClick={() => onCond(t)} {...drag({ cond: t })}>{k.label}</button>)}
+          {Object.entries(COND_VIEWS).map(([t, k]) => <button key={t} className="sx-card sx-condcard" onClick={() => onCond(t)} {...drag({ cond: t })}>{k.label}</button>)}
         </div>
       </div>
     </section>

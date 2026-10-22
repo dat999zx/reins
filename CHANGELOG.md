@@ -4,6 +4,16 @@ Format: [Keep a Changelog](https://keepachangelog.com). Versions: [SemVer](https
 
 ## Unreleased
 
+- Mods can add blocks, conditions and cards (Milestone M2). A mod lists everything it adds in its `mod.json`, and Reins refuses anything it does not list. Its code runs only after you trust it, and a changed file asks again. `packages/server/src/mods/README.md` is the guide.
+- A block mod can have no code. Its prompt is a template in `mod.json`, filled from the step's attributes. The step's mode still applies. The toy-ask example is in the guide.
+- A block, condition or card that is already in use keeps its old version until a restart. Settings says so when a changed mod waits for one. A mod that is not registered yet registers at once.
+- Import and export show what a kind mod adds before any of its code runs.
+- The block list comes from the server (`GET /api/kinds`). A mod's block shows up in the app without a change to the app. A block of an unknown kind is drawn as "unknown block".
+- Parallel tracks in the engine: a run can hold several tracks at once. No shipped block uses them yet.
+- Each track has its own pauses and its own money. Allow answers for the track that paused.
+- The run view shows each track on its own, with its title, its pause, and its own row in the receipt.
+- Cost chips on the canvas no longer cover blocks or arrows.
+
 - Providers are mods (Milestone P). A provider is one folder in `~/.reins/mods/<id>/` with a `mod.json`: any endpoint and any API key works through the two built-in chat protocols, and a new API is a code mod (a protocol) that you write and trust. Settings > Providers lists them with their status, and has Test connection, Set key, Edit, Disable, Export and Remove. `packages/server/src/mods/README.md` is the guide.
 - Money and the wire, final fixes: a reply with no usage, or a call that failed after the provider began to answer, is an unknown cost (never $0), so a USD budget stops honestly; a stream cut before its end is tried again and not kept; the cost of an automatic compression counts against the run at once, even when the reply after it fails; a changed price, path, header or body on the same address is used from the next reply; the extras of one provider are not sent to another; a reply is cut at 4 MiB or 30 minutes; a provider's `body` cannot change the model, messages, tools or stream settings.
 - Reins has its own agent loop for API providers: Read, Write, Edit, Glob, Grep and a shell tool (Bash, or PowerShell on Windows), with the same approval cards, budget and receipt as a Claude Code session. The conversation is a file in `~/.reins/conversations/` and is kept when you switch between two API providers. These sessions read `AGENTS.md`, not `CLAUDE.md`. The file tools stay in the project folder (outside it they ask); the shell is not confined to it, so the approval is the guard.

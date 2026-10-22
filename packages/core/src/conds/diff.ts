@@ -32,6 +32,7 @@ const diff: CondType<{ t: 'diff'; n: number }> = {
   },
   print(c) { return `diff > ${c.n} lines`; },
   judge: 'deterministic',
+  view: { label: 'diff > N lines', fresh: { t: 'diff', n: 300 }, param: { key: 'n', look: 'num' } },
   async evaluate(c, ctx) {
     if (!ctx.diffLines) return false;
     const lines = await ctx.diffLines();

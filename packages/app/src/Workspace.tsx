@@ -9,7 +9,7 @@ import { KINDS } from './canvasKinds.js';
 import { flatSteps, marksOf, removeLinks, setLink, type WireKind } from './canvas.js';
 import { lanes, linksToDraw, taken } from './arrows.js';
 import { LinkLayer } from './LinkLayer.js';
-import { COND_KINDS } from './condKinds.js';
+import { freshCond } from './condKinds.js';
 import { LOOSE_MAX, type Layout } from './editorState.js';
 import { cx } from './generic.js';
 import { DRAG_PX, pickGesture, type Press } from './gesture.js';
@@ -417,7 +417,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, models, ef
     },
     drop: (src, t, pt) => {
       const place = 'hit' in t ? dropPlace(w, t.hit) : undefined;
-      if ('hex' in t && 'cond' in src) onEdit((m) => setCond(m, t.hex.id, t.hex.path, COND_KINDS[src.cond]!.fresh()));
+      if ('hex' in t && 'cond' in src) { const fresh = freshCond(src.cond); if (fresh) onEdit((m) => setCond(m, t.hex.id, t.hex.path, fresh)); }
       else if ('hit' in t && 'id' in src) {
         const ids = src.ids ?? [src.id];
         moved((m) => dropSteps(m, ids, t.hit), ids);

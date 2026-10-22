@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type JSX, type KeyboardEvent } from 'react';
 import type { Step, Workflow } from '@reins/core';
-import { CARD_KINDS, CARD_LABEL, KINDS, type Field } from './canvasKinds.js';
+import { CARD_KINDS, CARD_LABEL, viewOf, type Field } from './canvasKinds.js';
 import { commitBudget, setAlways } from './blocks.js';
 import { editStep, removeLinks } from './canvas.js';
 import { applyField, applyLinkMax, budgetCount, BUDGET_HINT, fieldValue, MODES, type BudgetKey } from './panelEdit.js';
@@ -116,12 +116,13 @@ export function BlockPanel({ step, all, cond, turn, rev, models, efforts, sessio
   step: Step; all: Step[]; cond?: string; turn?: string; rev: unknown; models: Models; efforts: Models; sessionModel?: SessionModel; sessionEffort?: SessionModel;
   onEdit: (fn: (w: Workflow) => Workflow) => void; onEditInText: () => void; onShowInChat?: () => void; onDelete: () => void;
 }) {
-  const k = KINDS[step.kind];
+  const k = viewOf(step.kind);
   const id = step.id;
   const others = all.filter((s) => s.id !== id).map((s) => s.id);
   const change = (fn: (s: Step) => void | boolean) => onEdit((w) => editStep(w, id, fn));
   const incoming = all.flatMap((s) => s.links.filter((l) => l.to === id).map((l) => ({ from: s.id, kind: l.kind })));
-  const card = CARD_LABEL[CARD_KINDS[0]];
+  const cardKind = CARD_KINDS[0]; // the first card kind the server offers; none before its reply
+  const card = cardKind === undefined ? undefined : CARD_LABEL[cardKind];
 
   return (
     <aside className="bpanel" aria-label="Block panel">
@@ -141,7 +142,7 @@ export function BlockPanel({ step, all, cond, turn, rev, models, efforts, sessio
         </div>
       )}
 
-      {k.cards && (
+      {k.cards && card && cardKind && (
         <section aria-label={card.section}>
           <h4>{card.section}</h4>
           {step.cards.map((c, i) => (
@@ -149,7 +150,7 @@ export function BlockPanel({ step, all, cond, turn, rev, models, efforts, sessio
               commit={(v) => change((s) => { s.cards[i]!.text = v; })}
               remove={() => change((s) => { s.cards.splice(i, 1); })} />
           ))}
-          <button onClick={() => change((s) => { s.cards.push({ kind: CARD_KINDS[0], text: '' }); })}>{card.add}</button>
+          <button onClick={() => change((s) => { s.cards.push({ kind: cardKind, text: '' }); })}>{card.add}</button>
         </section>
       )}
 

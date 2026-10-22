@@ -13,6 +13,7 @@ const same: CondType<{ t: 'same' }> = {
   },
   print() { return 'same error twice'; },
   judge: 'deterministic',
+  view: { label: 'same error twice', fresh: { t: 'same' } },
   evalSync(_c, ctx) {
     const len = ctx.commandResults.length;
     if (len < 2) return false;

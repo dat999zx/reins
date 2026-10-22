@@ -163,3 +163,183 @@ await fake.close();
 - An environment variable (the name in `keyEnv`) always works instead, and is the safer choice on a shared machine.
 - Reins hides every known key in what it shows, logs and saves: events, the conversation file, error text, command output and exports. Hiding is a safety net, not a promise: a command you approve can still print a key it finds.
 - Removing a provider keeps its key in `secrets.json`, so installing it again finds it. Clear the key first if you want it gone.
+
+## Block, condition and card mods
+
+A mod can add a **block** (a kind of step), a **condition** (a test that a `gate`, `if` or `repeat` can make, such as `tests pass`) or a **card** (a card kind). It is one folder, `<home>/mods/<id>/`, with a `mod.json`. The folder name and the `id` must be the same: lowercase letters, digits and dashes, starting with a letter or a digit, at most 40 characters.
+
+A block has code (`main`) or no code at all (`turn`, see Data blocks). A condition and a card always need code.
+
+### The manifest
+
+| Field | Rule |
+|---|---|
+| `reins`, `id`, `kind`, `version`, `label` | Required, as for every mod. `kind` is `block`, `condition` or `card`. |
+| `description` | Optional text. |
+| `main` | The code file, inside the folder. A block has `main` or `turn`, never both. |
+| `turn`, `statusLine` | Data blocks only (see below). |
+| `order` | Required, a number. It sets where the kind or condition sits in core's registry. Built-in blocks use 10 to 130, and built-in conditions use 10 to 110. |
+| `provides` | Required. It lists everything the mod may add (below). |
+| `view` | Blocks only. The block's face, as JSON (below). |
+
+`provides` takes these keys:
+
+- A block: `kinds`, `ops`, `attrs` and `events`. A data block lists exactly one kind and no ops.
+- A condition: `conditions`.
+- A card: `cards`.
+
+Each list holds at most **50 names**. A name starts with a letter, and holds only letters, digits, `-` and `_`. It is at most 40 characters. A name may not repeat. Any other key in `provides` is refused.
+
+`view` is an object of at most **32 KB** of JSON text. Its `kind` must be one of `provides.kinds`. Its `fields` and `line` lists are required, with at most 50 entries each. `fresh` (an object) and `order` (a number) are optional. No text in the view may hold a control, line-break or direction-changing character. A zero-width one counts too. Keys count as text.
+
+The server checks the fields above. It does not check the other view keys (`colour`, `card`, `sub`, `rows`). Those are the `KindView` type in `packages/core/src/nodes/fields.ts`.
+
+A manifest that fails a check is listed with the reason, in plain words. Its code is never read.
+
+The app gets the views of every block mod from `GET /api/kinds`, built from the manifest only. A mod cannot give a view to a built-in block name. The block list sorts by the view's `order`, and falls back to the manifest's `order`.
+
+### The code: `activate(api)`
+
+The default export of `main` is `activate(api)`. Reins calls it once. The `api` is built for this mod, limited to what `provides` lists, and frozen.
+
+- `registerBlock(node)`: one argument, a `NodeType` (see `packages/core/src/nodes/README.md`). The block's view is the manifest's `view`. Code cannot give a view.
+- `registerCondition(c)`: a `CondType`.
+- `registerCard(c)`: a `CardType`.
+- `core`: exactly `checkMode`, `turnInstr` and `policyOf`. Nothing else: not `register`, `NODES`, `CONDS`, `CARDS` or `opOf`.
+- `env` and `registerProtocol`, as for a protocol mod.
+
+When `activate` returns or throws, the registrars refuse with "the api can only be used while the mod activates." `core` stays callable, because a block calls `turnInstr` when it runs.
+
+Each registrar refuses, and the line names the mod:
+
+- a kind, op, attribute, condition or card the mod did not list;
+- a `heading.owns` key, or a `count` or `print` event, the mod did not list;
+- a registrar its kind does not allow (a condition mod that calls `registerBlock`);
+- one of the core ops `TURN`, `JUMP`, `END` or `NODE`;
+- a kind that core already has (`kind "say" is already registered`).
+
+The block's node is copied once, before the check, and core stores that copy. A getter that changes the original later changes nothing.
+
+The eight question cards belong to core. They are not in the card registry, so no card mod can replace them. Task 18 moves them to data; see Task 18 for the details.
+
+### Templates
+
+Two places use a template. Both use `{...}` placeholders. Neither runs code.
+
+- A data block's `turn`, in the manifest. `{attr}` is replaced by the step's attribute of that name. `{a|b}` uses `a` if the step sets it, and `b` if not. Each name must be in `provides.attrs`. A filled value is one line of at most 1000 characters, and the whole prompt is at most 16 KB. A turn has no formats.
+- A view's `sub` (the small text on the face) and `rows` (feed rows). `{path}` reads a value by dots, such as `{attrs.use}`. `{a|b|c}` takes the first one that has text. `{path:usd}` shows dollars, such as `$0.0123`. `{path:count}` shows a number with separators, such as `1,234`. A template that does not parse is shown as its own text. The filler reads only the object's own values, never a getter.
+
+### Data blocks
+
+A block with `turn` and no `main` runs no code. Its step compiles to one prompt turn, filled from the template. The turn runs under the step's own mode, so `mode: read-only` in the workflow makes it read-only. The manifest cannot set `policy`, `mode`, `allowShell` or `tools`. The block has no ops and no heading. A data block needs no trust, because it runs nothing. Its `statusLine` is optional: one line, at most 200 characters, with no hidden character.
+
+This is the whole `toy-ask` mod (`packages/server/test/fixtures/mods/toy-ask/mod.json`):
+
+```json
+{
+  "reins": 1,
+  "id": "toy-ask",
+  "kind": "block",
+  "version": "1.0.0",
+  "label": "Toy ask",
+  "description": "A data block for tests: no code, one prompt about `topic` (and `mode`, if given).",
+  "order": 150,
+  "provides": { "kinds": ["ask"], "attrs": ["topic", "mode"] },
+  "turn": "Answer about {topic} in one line. Mode: {mode|topic}.",
+  "statusLine": "REINS: done | blocked: <reason>",
+  "view": {
+    "kind": "ask",
+    "order": 150,
+    "colour": "soft",
+    "fields": [{ "key": "topic", "label": "Topic", "input": "text" }],
+    "line": ["ask", { "field": "topic" }],
+    "card": { "label": "ask", "section": "Flow" },
+    "fresh": { "attrs": { "topic": "cats" } }
+  }
+}
+```
+
+A workflow step that uses it:
+
+```
+## ask
+topic: dogs
+mode: read-only
+```
+
+The prompt is "Answer about dogs in one line. Mode: read-only." Without `mode`, `{mode|topic}` falls back to the topic, so the prompt reads "Mode: dogs."
+
+### When a change applies
+
+Reins registers each block, condition and card in core once, when the server starts. A registration stays until the server stops. So a reload (after a change in Settings) never registers a mod twice, and never removes it.
+
+- A mod that is registered and unchanged stays as it is.
+- A mod whose `mod.json` or code changed, that was switched off, that is no longer trusted, or that was removed keeps its old registration. Settings says `` `<id>`: applies after a restart. ``
+- A mod that was not registered yet (a new one, or one trusted or turned on after start) registers at once. It does not wait for a restart.
+
+### Trust
+
+Before any of its code runs, the row in Settings (and the import preview) shows:
+
+- what the mod adds, as lines such as ``adds the block `beep` ``, `its operations: BEEP`, `may log the events: beeped`, `may use the attributes: times`, and `shown in the block list as "beep" under "Flow"`;
+- a warning when Reins already has a block, condition or card of that name, because its code would be refused at start;
+- the block's face, from its `view`. The block list draws it marked as not trusted, and nothing of it runs.
+
+Trust then asks the code prompt: "This mod runs its own code inside Reins, with your rights: it can read your files and your keys, and use the network. Reins cannot limit what it does. Trust it only if you trust its author."
+
+Trust is by hash of every file in the folder, `mod.json` included. A change to `provides`, to `view` or to any byte of code asks again. The new code does not run until you trust it.
+
+### What is contained
+
+Reins limits what a mod's code can do to core, through its hooks and ops.
+
+- A hook that throws does not break Reins. Saving, printing, reading and checking carry on. A throw in `compile` or in a check shows as an error on the step.
+- Hooks get a copy of the step, the instruction or the event. A hook cannot change the workflow or what the run records.
+- A node is copied once, before the check. The copy is what core runs.
+- A stuck op does not hold Stop. Stop returns at once, and the op's late writes are dropped.
+- A mod op's `vm` sees only: `vm.log`, with the event names the mod listed; `vm.command`, with the commands the op lists in `commands`; and `vm.goto` and `vm.tracks.start`, to a place in the program.
+- The program is checked after it is compiled. A jump or a start to a place outside the program is refused, and the run does not start.
+- Output is capped: a heading at 200 characters, a count key at 40, a printed line at 300, and an error message at 200.
+- A throw from a mod op pauses its track.
+
+### What is not contained
+
+A trusted mod's code runs in the Reins server process, with the server's rights. It can read your files, the keys in `secrets.json`, and use the network. The limits above cover only how core calls a block. They are not a sandbox. Trust a mod only if you trust its author.
+
+These are not stopped either:
+
+- a loop that never waits, and `process.exit`;
+- a condition's `parse` or `evaluate`, and a card's hooks, when they throw. They throw into core. Only a condition's `commands` is read safely;
+- the store, recall, session and turn functions that a block gets from the run. A block runs turns by design;
+- a mod that imports `@reins/core` itself.
+
+### A worked example: toy-beep
+
+This walks through `packages/server/test/fixtures/mods/toy-beep`, from install to a second home.
+
+1. **Install.** Copy `mod.json` and `index.js` from that fixture folder into `<home>/mods/toy-beep/`. The home is `~/.reins`, or `REINS_HOME`. Reins reads the folder when it starts and after each change in Settings. The row says "needs trust".
+2. **Preview.** Open Settings > Providers. The row under "Protocols and other mods" lists what the mod adds: the block `beep`, its operation `BEEP`, the event `beeped`, the attribute `times`, and its place under "Flow". Nothing has run.
+3. **Trust.** Press Trust, read the prompt, and say yes. Reins sends the hash the row showed. A different hash is refused. The block now runs, and `beep` is in the block list under Flow.
+4. **Restart.** Stop Reins and start it again. The block registers at start. Its hash still matches, so there is no prompt.
+5. **Use.** Save a workflow and check it:
+
+   ```
+   ---
+   reins: 1
+   name: toy
+   budget: { turns: 5, minutes: 5 }
+   always: []
+   ---
+
+   ## beep
+   times: 2
+
+   ## phase one
+   > go
+   ```
+
+   `reins doctor --no-probe` lists the loaded mods, with no model call. `reins run toy.reins.md` runs the workflow with your provider. The terminal prints `  beeped x2`, and the receipt counts `beeps 1`.
+6. **Export.** In Settings > Providers, press Export on the toy-beep row. You get one JSON file with `mod.json` and `index.js`. It holds no key and nothing from the home.
+7. **Import elsewhere.** On another machine, or with another `REINS_HOME`, open Settings > Providers and choose Import. The preview shows the same lines and the same hash, and nothing is registered yet. Press "Import without running its code" to install it as "needs trust", or "Trust and import" to run it at once.
+
+A data block needs the same steps, except the trust. `toy-ask` runs no code, so it has no prompt.

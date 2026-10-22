@@ -7,6 +7,7 @@ declare module '../model.js' {
 
 const guard: CardType = {
   kind: 'guard',
+  view: { section: 'Guards', add: 'Add guard' },
   turnLine(card) { return `Do not touch ${card.text}. (Enforced: edits there are blocked.)`; },
   policy(card, policy) { policy.guards.push(card.text); },
   validate(card, ctx) {

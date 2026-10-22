@@ -1,5 +1,6 @@
-import { dataBlock, hasHiddenChars, turnNames } from '@reins/core';
+import { COND_PARAM_KEYS, COND_PARAM_LOOKS, dataBlock, hasHiddenChars, turnNames } from '@reins/core';
 import { RESERVED_BODY } from '../loop/wire-util.js';
+import { questionRefusal } from '../questions/index.js';
 import { Registry } from './registry.js';
 import type { LoadedMod, ModHost, ModKind, Problem, Provides } from './types.js';
 
@@ -220,6 +221,7 @@ function providesProblems(raw: Record<string, unknown>, id: string, keys: string
     if (v === undefined) continue;
     if (!Array.isArray(v) || v.length > MAX_NAMES || !v.every((x) => typeof x === 'string' && NAME.test(x))) bad(`\`provides.${k}\` must be a list of at most ${MAX_NAMES} names (letters, digits, dash and underscore, starting with a letter).`);
     else if (new Set(v).size !== v.length) bad(`\`provides.${k}\` lists a name twice.`);
+    else for (const n of v as string[]) { const r = questionRefusal(k, n); if (r) bad(r); }
   }
   if (!out.length && !(p[need] as string[] | undefined)?.length) bad(`\`provides.${need}\` lists nothing.`);
   return out.slice(0, MAX_PROBLEMS);
@@ -255,18 +257,85 @@ const recordView = (mod: LoadedMod, host: ModHost) => {
   return host.registry.register('block-view', view.kind, view);
 };
 
+const MAX_WORDS = 60;
+const entryKeys = (e: Record<string, unknown>, allowed: string[]) => Object.keys(e).find((k) => !allowed.includes(k));
+
+/**
+ * `view` of a condition or card mod: one entry for each name it provides, plain data, so the editor can offer it. Optional (without it the
+ * editor does not list the thing). `one` judges one entry and returns what is wrong with it. Same size cap and hidden-character check as a block view.
+ */
+function namedViewProblems(raw: Record<string, unknown>, id: string, key: 'conditions' | 'cards', one: (name: string, e: Record<string, unknown>) => string | undefined): Problem[] {
+  const v = raw.view;
+  if (v === undefined) return [];
+  const bad = (msg: string): Problem[] => [`\`${id}\`: ${msg}`];
+  if (!isObj(v)) return bad(`\`view\` must be an object with one entry for each name in \`provides.${key}\`.`);
+  if (JSON.stringify(v).length > MAX_VIEW) return bad(`\`view\` is larger than ${MAX_VIEW / 1024} KB.`);
+  const names = (raw.provides as Provides)[key] ?? [];
+  for (const [name, e] of Object.entries(v)) {
+    if (!names.includes(name)) return bad(`\`view.${plain(name)}\` is not in \`provides.${key}\`.`);
+    if (!isObj(e)) return bad(`\`view.${name}\` must be an object.`);
+    const why = one(name, e);
+    if (why) return bad(`\`view.${name}\` ${why}`);
+  }
+  if (strings(v).some(hasHiddenChars)) return bad('a text in `view` holds a control, line-break or direction-changing character (a zero-width one too).');
+  return [];
+}
+
+const words = (v: unknown, n: number) => isStr(v) && v.length <= n;
+
+/** The editor data of a condition: `{ label, fresh, param? }`. `param.key` is one of the four fields the editor knows how to set. */
+const condEntry = (name: string, e: Record<string, unknown>): string | undefined => {
+  const extra = entryKeys(e, ['label', 'fresh', 'param']);
+  if (extra !== undefined) return `has \`${plain(extra)}\`, which is not part of a condition's view (label, fresh, param).`;
+  if (!words(e.label, MAX_WORDS)) return `needs a \`label\` of at most ${MAX_WORDS} characters.`;
+  const f = e.fresh;
+  if (!isObj(f) || f.t !== name || !Object.values(f).every((x) => typeof x === 'string' || typeof x === 'boolean' || (typeof x === 'number' && Number.isFinite(x)))) {
+    return `needs a \`fresh\` atom with \`t\` "${name}" and only text, number or true/false values.`;
+  }
+  if (e.param === undefined) return undefined;
+  const p = e.param;
+  if (!isObj(p) || entryKeys(p, ['key', 'look', 'optional']) !== undefined) return 'has a `param` that is not { key, look, optional }.';
+  if (!(COND_PARAM_KEYS as readonly unknown[]).includes(p.key)) return `has \`param.key\` ${show(p.key)}. It must be one of ${COND_PARAM_KEYS.join(', ')}.`;
+  if (!(COND_PARAM_LOOKS as readonly unknown[]).includes(p.look)) return `has \`param.look\` ${show(p.look)}. It must be one of ${COND_PARAM_LOOKS.join(', ')}.`;
+  if (p.optional !== undefined && p.optional !== true) return 'has a `param.optional` that is not true.';
+  return undefined;
+};
+
+/** The panel words of a card: `{ section, add }`. */
+const cardEntry = (_name: string, e: Record<string, unknown>): string | undefined => {
+  const extra = entryKeys(e, ['section', 'add']);
+  if (extra !== undefined) return `has \`${plain(extra)}\`, which is not part of a card's view (section, add).`;
+  return words(e.section, MAX_WORDS) && words(e.add, MAX_WORDS) ? undefined : `needs a \`section\` and an \`add\` text of at most ${MAX_WORDS} characters.`;
+};
+
+/**
+ * The mod, then the entries of its manifest's `view` under `what`. The host's registry writes down every `register`, so a mod that is disposed, or whose
+ * activation fails half way (a taken name), leaves none of them behind.
+ */
+const recordWith = (what: 'cond-view' | 'card-view') => (mod: LoadedMod, host: ModHost) => {
+  const undoMod = record(mod, host);
+  for (const [name, v] of Object.entries((mod.manifest as { view?: Record<string, unknown> } | undefined)?.view ?? {})) host.registry.register(what, name, v);
+  return undoMod;
+};
+
 registerKind({
   id: 'condition',
   startOnly: true,
-  validate: (raw, { id }) => [...codeProblems(raw, id), ...providesProblems(raw, id, ['conditions'], 'conditions')],
-  activate: record,
+  validate: (raw, { id }) => {
+    const out = [...codeProblems(raw, id), ...providesProblems(raw, id, ['conditions'], 'conditions')];
+    return out.length ? out : namedViewProblems(raw, id, 'conditions', condEntry);
+  },
+  activate: recordWith('cond-view'),
 });
 
 registerKind({
   id: 'card',
   startOnly: true,
-  validate: (raw, { id }) => [...codeProblems(raw, id), ...providesProblems(raw, id, ['cards'], 'cards')],
-  activate: record,
+  validate: (raw, { id }) => {
+    const out = [...codeProblems(raw, id), ...providesProblems(raw, id, ['cards'], 'cards')];
+    return out.length ? out : namedViewProblems(raw, id, 'cards', cardEntry);
+  },
+  activate: recordWith('card-view'),
 });
 
 const BLOCK_KEYS = ['kinds', 'ops', 'attrs', 'events'];

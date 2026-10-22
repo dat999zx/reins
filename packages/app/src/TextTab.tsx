@@ -3,7 +3,7 @@ import type { Diagnostic, StepKind, Workflow } from '@reins/core';
 import { addStep, deleteSteps, newId, setCond } from './blocks.js';
 import { FULL, pruneLayout, removeLoose, STATE_MAX, stateBytes } from './arrange.js';
 import { stepIds, stepKey, withoutNested, type Key } from './selection.js';
-import { COND_KINDS } from './condKinds.js';
+import { freshCond } from './condKinds.js';
 import { ApiError, get, post, put } from './api.js';
 import { restoreFile, restoreStep, type CanvasView, type EditorState, type Layout, type Tab } from './editorState.js';
 import { highlight, lineOffset } from './highlight.js';
@@ -349,7 +349,8 @@ export function TextTab({ view, onView, sess, models, efforts, sessionModel, ses
   const cond = (t: string) => {
     if (!sel || !KINDS[sel.kind]?.line.includes('cond')) return setMsg('Select a wait until, repeat until or if block first.');
     if (sel.cond && 'a' in sel.cond) return setMsg('This condition has and / or / not: drop a card on one part of it, or edit it in Text.');
-    edit((w) => setCond(w, sel.id, [], COND_KINDS[t]!.fresh()));
+    const fresh = freshCond(t);
+    if (fresh) edit((w) => setCond(w, sel.id, [], fresh));
   };
 
   return (

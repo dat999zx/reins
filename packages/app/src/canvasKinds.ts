@@ -49,10 +49,19 @@ export const wiresOf = (kind: StepKind): WireKind[] => {
   return k.stops ? [] :['next', ...(k.fails ? ['on-fail' as const] : []), ...(k.against ? ['against' as const] : [])];
 };
 
-// The card kinds a block holds; whenever-only kinds (now, stop) are left out.
+// The card kinds a block holds, and the words the panel uses for each; both come from the server (`GET /api/kinds`) in core's order and are empty
+// until the first reply. A card kind with no words is not offered (whenever-only kinds, now and stop, have none).
 // guard is enforced in core/src/policy.ts: the tool-approval hook blocks edits to a matching path and shell commands naming one.
-export const CARD_KINDS = ['guard'] as const satisfies readonly CardKind[];
-// The words the panel uses for a kind: a second kind is one entry here.
-export const CARD_LABEL: Record<(typeof CARD_KINDS)[number], { section: string; add: string }> = {
-  guard: { section: 'Guards', add: 'Add guard' },
-};
+export const CARD_KINDS: CardKind[] = [];
+export const CARD_LABEL: Record<string, { section: string; add: string }> = Object.create(null);
+// Fills the cards in place (importers hold these). An entry without a kind, section and add is left out.
+export function setCards(list: unknown): void {
+  CARD_KINDS.length = 0;
+  for (const k of Object.keys(CARD_LABEL)) delete CARD_LABEL[k];
+  if (!Array.isArray(list)) return;
+  for (const c of list) {
+    if (!isObj(c) || typeof c.kind !== 'string' || typeof c.section !== 'string' || typeof c.add !== 'string') continue;
+    CARD_KINDS.push(c.kind as CardKind);
+    CARD_LABEL[c.kind] = { section: c.section, add: c.add };
+  }
+}

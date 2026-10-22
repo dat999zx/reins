@@ -2,7 +2,7 @@ import { useContext, useMemo, useRef, type MouseEvent, type ReactNode } from 're
 import type { Cond, Diagnostic, Step, Workflow } from '@reins/core';
 import { showText } from '../../core/src/display.js';
 import { viewOf, wiresOf, type Token } from './canvasKinds.js';
-import { applyParam, COND_KINDS, type CondParam } from './condKinds.js';
+import { applyParam, COND_VIEWS, freshCond, type CondParam } from './condKinds.js';
 import { AGAINST, editStep, flatSteps, marksOf } from './canvas.js';
 import { commitBudget, setCond, type CondPath } from './blocks.js';
 import { fill } from './template.js';
@@ -87,16 +87,16 @@ export function BlocksPane({ w, diags, text, sel, primary, rev, models, efforts,
         </span>
       );
     }
-    const kind = c && COND_KINDS[c.t];
+    const kind = c && COND_VIEWS[c.t];
     if (c && !kind) return <span key={key} className={own} data-hex={key} {...drop}>{c.t}</span>;
     const param = kind?.param;
     const val = c && param ? (c as unknown as Record<string, unknown>)[param.key] : undefined;
     return (
       <span key={key} className={cx(own, !c && 'sx-hole')} data-hex={key} {...drop}>
         <select aria-label={`Condition of ${s.id}${at}`} value={c?.t ?? ''} inert={dead}
-          onChange={(e) => onEdit((m) => setCond(m, s.id, p, COND_KINDS[e.target.value]!.fresh()))}>
+          onChange={(e) => { const n = freshCond(e.target.value); if (n) onEdit((m) => setCond(m, s.id, p, n)); }}>
           {!c && <option value="" disabled>?</option>}
-          {Object.entries(COND_KINDS).map(([t, k]) => <option key={t} value={t}>{k.label}</option>)}
+          {Object.entries(COND_VIEWS).map(([t, k]) => <option key={t} value={t}>{k.label}</option>)}
         </select>
         {c && param && (
           <Pill label={`Value of ${s.id} condition${at}`} value={val === undefined ? '' : String(val)} look={LOOK[param.look]} rev={rev} dead={dead} valid={(v) => applyParam(c, v) !== undefined}

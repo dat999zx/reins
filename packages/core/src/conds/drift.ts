@@ -14,6 +14,7 @@ const drift: CondType<{ t: 'drift' }> = {
   },
   print() { return 'drift'; },
   judge: 'deterministic',
+  view: { label: 'drift detected', fresh: { t: 'drift' } },
   evalSync(_c, ctx) {
     return (
       repeatedAction(ctx.events) !== null ||

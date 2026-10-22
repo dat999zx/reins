@@ -13,6 +13,7 @@ const tests: CondType<{ t: 'tests' }> = {
   },
   print() { return 'tests pass'; },
   judge: 'command',
+  view: { label: 'tests pass', fresh: { t: 'tests' } },
   auto: false,
   needsTestCmd: true,
   async evaluate(_c, ctx) {

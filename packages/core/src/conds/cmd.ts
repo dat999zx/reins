@@ -27,6 +27,7 @@ const cmd: CondType<{ t: 'cmd'; cmd: string }> = {
   },
   print(c) { return `\`${c.cmd}\` passes`; },
   judge: 'command',
+  view: { label: 'command passes', fresh: { t: 'cmd', cmd: 'npm run lint' }, param: { key: 'cmd', look: 'code' } },
   auto: false,
   async evaluate(c, ctx) {
     const last = ctx.commandResults[ctx.commandResults.length - 1];

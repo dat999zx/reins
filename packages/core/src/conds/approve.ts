@@ -13,6 +13,7 @@ const approve: CondType<{ t: 'approve' }> = {
   },
   print() { return 'you approve'; },
   judge: 'you',
+  view: { label: 'you approve', fresh: { t: 'approve' } },
   auto: false,
 };
 export default approve;

@@ -15,6 +15,7 @@ const llm: CondType<{ t: 'llm'; q: string }> = {
   },
   print(c) { return `llm says "${c.q}"`; },
   judge: 'model',
+  view: { label: 'LLM says', fresh: { t: 'llm', q: 'the plan covers every requirement' }, param: { key: 'q', look: 'str' } },
   auto: false,
   modelCall: 'llm says',
   async evaluate(c, ctx) {

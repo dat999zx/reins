@@ -13,6 +13,7 @@ const done: CondType<{ t: 'done' }> = {
   },
   print() { return 'agent says done'; },
   judge: 'agent',
+  view: { label: 'agent says done', fresh: { t: 'done' } },
   evalSync(_c, ctx) {
     if (!ctx.lastTurnText) return false;
     const lastLine = ctx.lastTurnText.trim().split(/\r?\n/).pop()?.trim();
