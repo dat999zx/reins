@@ -251,6 +251,24 @@ export interface LoadOptions {
   beforeActivate?: (mod: LoadedMod) => void;
   /** Tests only: runs after the mods folders were scanned, before any mod is loaded. */
   afterScan?: () => void;
+  /**
+   * What a `startOnly` kind's mods put in core, by `<kind>:<id>`, kept across loads by the caller (`startMods`). A mod found here is not activated again.
+   * None: the mods of this load are undone by its own `dispose()`.
+   */
+  carry?: Map<string, Carried>;
+}
+
+/** One `startOnly` mod as it was when it registered in core, and what undoes that. */
+export interface Carried {
+  /** The manifest and code hash it registered under: a load that finds another says "applies after a restart". */
+  sig: string;
+  manifest: Record<string, unknown>;
+  source: ModSource;
+  dir: string;
+  hasCode: boolean;
+  hash?: string;
+  /** Its registrations in core. */
+  undo: Array<() => void>;
 }
 
 export interface Mods {

@@ -3,11 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { EngineProbe } from '@reins/core';
 import { modTrusted, readDisabled, sweepScratch } from './mods/actions.js';
-import { loadMods } from './mods/loader.js';
+import { dropCarried, loadMods } from './mods/loader.js';
 import { loopEngine } from './loop/engine.js';
 import { childEnv, envGet, keyStatus, readSecrets, Redactor, redactCut, StreamRedactor } from './secrets.js';
 import { makeSend } from './send.js';
-import type { EngineHost, LoadedMod, Mods, Protocol, ProviderManifest, SendWithKey } from './mods/types.js';
+import type { Carried, EngineHost, LoadedMod, Mods, Protocol, ProviderManifest, SendWithKey } from './mods/types.js';
 import type { CheckEnv, ProviderFacts } from './run-checks.js';
 import type { MakeEngine, SessionDeps } from './session.js';
 import type { Store } from './store.js';
@@ -26,8 +26,10 @@ export const CATALOG_DIR = fileURLToPath(new URL('../catalog/', import.meta.url)
  */
 export async function startMods(o: { dir: string; env: NodeJS.ProcessEnv }): Promise<Mods> {
   const ran = new Map<string, string>();
+  // What block, condition and card mods put in core lives as long as this object: a reload carries it, `dispose()` takes it out.
+  const carry = new Map<string, Carried>();
   const load = () => loadMods({
-    bundledDir: BUNDLED_MODS, userDir: path.join(o.dir, 'mods'), home: o.dir, disabled: readDisabled(o.dir), env: o.env,
+    bundledDir: BUNDLED_MODS, userDir: path.join(o.dir, 'mods'), home: o.dir, disabled: readDisabled(o.dir), env: o.env, carry,
     trusted: (id, hash) => (ran.get(id) ?? hash) === hash && modTrusted(o.dir, id, hash),
     beforeActivate: (m) => { if (m.hash !== undefined && !ran.has(m.id)) ran.set(m.id, m.hash); },
   });
@@ -37,7 +39,10 @@ export async function startMods(o: { dir: string; env: NodeJS.ProcessEnv }): Pro
   let tail: Promise<unknown> = Promise.resolve();
   const live: Mods = {
     mods: inner.mods, registry: inner.registry, problems: [...swept, ...inner.problems],
-    dispose: () => inner.dispose(),
+    dispose: () => {
+      inner.dispose();
+      dropCarried(carry);
+    },
     codeRan: (id) => ran.get(id),
     reload: () => (tail = tail.catch(() => {}).then(async () => {
       const next = await load();

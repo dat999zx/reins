@@ -1,3 +1,4 @@
+// M2 Task 16b (at the end of this file): what a block, condition or card mod puts in core is carried over a reload and taken out only by dispose.
 // M2 Task 16a: a block, a condition and a card are mods. A toy block (`toy-beep`, test/fixtures/mods) goes through the real loader and runs end to end with
 // no edit under packages/*/src; the api of a mod is limited to its `provides`. Every mod here is made at run time in a temp home through `tempHome`.
 import fs from 'node:fs';
@@ -9,8 +10,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { CARDS, CONDS, NODES, Run, checkMode, compileProgram, opOf, parseWorkflow, policyOf, printWorkflow, receipt, turnInstr, validate } from '@reins/core';
 import { harness } from '../../core/test/m1-harness.js';
 import { kindOf, kindsInOrder } from '../src/mods/kinds.js';
-import { loadMods } from '../src/mods/loader.js';
-import type { LoadedMod, Mods } from '../src/mods/types.js';
+import { startMods } from '../src/engines.js';
+import { dropCarried, hashFiles, loadMods, readFolder } from '../src/mods/loader.js';
+import type { Carried, LoadedMod, Mods } from '../src/mods/types.js';
 import { startRunCli } from '../src/run-cli.js';
 import { openStore } from '../src/store.js';
 import { claudeEngine } from '../src/mods/claude-code-cli/engine.js';
@@ -31,7 +33,7 @@ afterAll(() => { delete process.env.TOY_MARKER; fs.rmSync(marker, { force: true 
 beforeEach(() => { h = tempHome(); fs.rmSync(marker, { force: true }); });
 afterEach(() => {
   for (const m of loaded.splice(0).reverse()) m.dispose();
-  for (const k of ['__lateApi', '__shape', '__core']) delete g[k];
+  for (const k of ['__lateApi', '__shape', '__core', '__acts']) delete g[k];
   h.cleanup();
 });
 
@@ -358,5 +360,269 @@ describe('the kinds', () => {
     h.writeMod('zap', { reins: 1, id: 'zap', kind: 'card', version: '1.0.0', label: 'Zap', main: 'index.js', order: 40, provides: { cards: ['zap'] } }, { 'index.js': code('') });
     const mods = await load();
     expect(mods.mods.map((m) => m.id)).toEqual(['ping', 'zap', 'toy-beep']);
+  });
+});
+
+// ---- Task 16b: the server's own `startMods`, which owns the carry. Trust is the real `<home>/mod-trust.json`.
+const trust = (...ids: string[]) => fs.writeFileSync(path.join(h.home, 'mod-trust.json'), JSON.stringify(Object.fromEntries(ids.map((id) => [id, hashFiles(readFolder(path.join(h.modsDir, id), id))]))));
+const start = async () => {
+  const m = await startMods({ dir: h.home, env: {} });
+  loaded.push(m);
+  return m;
+};
+const acts = () => (g.__acts as number | undefined) ?? 0;
+const NOTICE = (id: string) => `\`${id}\`: applies after a restart.`;
+/** A block mod `cnt` whose activate counts its calls in a global; `v` changes its files (and so its hash). */
+const countedBlock = (v = '1.0.0', label = 'Cnt') => h.writeMod('cnt', blockManifest({ id: 'cnt', version: v, view: { kind: 'beep', fields: [], line: [label] } }), { 'index.js': code(`globalThis.__acts = (globalThis.__acts ?? 0) + 1; api.registerBlock(${BASE});`) });
+const ATOM = "{ t: 'ping', parse(s) { if (!s.src.startsWith('ping', s.idx)) return null; s.idx += 4; return { t: 'ping' }; }, print: () => 'ping', judge: 'agent', evalSync: () => true }";
+const countedCondition = () => h.writeMod('ping', { reins: 1, id: 'ping', kind: 'condition', version: '1.0.0', label: 'Ping', main: 'index.js', order: 25, provides: { conditions: ['ping'] } }, { 'index.js': code(`globalThis.__acts = (globalThis.__acts ?? 0) + 1; api.registerCondition(${ATOM});`) });
+const countedCard = () => h.writeMod('zap', { reins: 1, id: 'zap', kind: 'card', version: '1.0.0', label: 'Zap', main: 'index.js', order: 15, provides: { cards: ['zap'] } }, { 'index.js': code("globalThis.__acts = (globalThis.__acts ?? 0) + 1; api.registerCard({ kind: 'zap', delivery: 'now' });") });
+
+describe('start-time carry: a reload keeps what block, condition and card mods put in core', () => {
+  it('after reload() the node is the same object, one key, same order, activate ran once, the view is recorded again', async () => {
+    countedBlock();
+    trust('cnt');
+    const before = coreNow();
+    const mods = await start();
+    expect(find(mods, 'cnt').problems).toEqual([]);
+    const node = NODES.get('beep');
+    const keys = [...NODES.keys()];
+    const first = mods.registry;
+    expect(acts()).toBe(1);
+    for (let n = 0; n < 2; n++) {
+      expect(await mods.reload!()).toEqual([]);
+      expect(NODES.get('beep')).toBe(node);
+      expect([...NODES.keys()]).toEqual(keys);
+      expect(keys.filter((k) => k === 'beep')).toHaveLength(1);
+      expect(acts()).toBe(1); // the code's activate was not called again
+      expect(mods.registry).not.toBe(first); // a new registry was built ...
+      expect(mods.registry.get('block-view', 'beep')).toEqual({ kind: 'beep', fields: [], line: ['Cnt'] }); // ... and holds the view
+      expect(mods.registry.has('block', 'cnt')).toBe(true);
+      expect(first.has('block-view', 'beep')).toBe(false); // the old one was disposed
+      expect(find(mods, 'cnt')).toMatchObject({ problems: [], trusted: true, enabled: true });
+    }
+    mods.dispose();
+    expect(coreNow()).toBe(before);
+  });
+
+  it('a failed activation leaves nothing in core, at start and on a reload that already carries another mod', async () => {
+    h.writeMod('bad', blockManifest(), { 'index.js': code(`api.registerBlock(${BASE}); throw new Error('boom');`) });
+    trust('bad');
+    const before = coreNow();
+    const mods = await start();
+    expect(find(mods, 'bad').problems).toEqual(['`bad`: boom']);
+    untouched(mods, before);
+    const size = NODES.size;
+
+    h.writeMod('bad2', blockManifest({ id: 'bad2' }), { 'index.js': code(`api.registerBlock(${BASE}); api.registerBlock(${withExtra("kind: 'two'")});`) });
+    countedCondition();
+    trust('bad', 'bad2', 'ping');
+    expect(await mods.reload!()).toEqual([]);
+    expect(find(mods, 'bad2').problems).toEqual(['`bad2`: `provides.kinds` does not list the kind "two".']);
+    expect(NODES.size).toBe(size);
+    expect(NODES.has('beep')).toBe(false);
+    expect(opOf('BEEP')).toBeUndefined();
+    expect(CONDS.has('ping')).toBe(true); // the good one beside it is carried
+    expect(mods.registry.has('block-view', 'beep')).toBe(false);
+    mods.dispose();
+    expect(coreNow()).toBe(before);
+  });
+
+  it('dispose() removes the kinds and restores the registries; a second startMods in the same process registers cleanly', async () => {
+    countedBlock();
+    countedCondition();
+    countedCard();
+    trust('cnt', 'ping', 'zap');
+    const before = coreNow();
+    const lists = () => [[...NODES.keys()], [...CONDS.keys()], [...CARDS.keys()]];
+    const clean = lists();
+    const a = await start();
+    expect(a.mods.filter((m) => m.problems.length)).toEqual([]);
+    expect(NODES.has('beep') && CONDS.has('ping') && CARDS.has('zap')).toBe(true);
+    await a.reload!();
+    a.dispose();
+    expect(lists()).toEqual(clean);
+    expect(coreNow()).toBe(before);
+    expect(a.registry.has('block-view', 'beep')).toBe(false);
+
+    const b = await start();
+    expect(b.mods.filter((m) => m.problems.length)).toEqual([]); // not "already registered"
+    expect(NODES.has('beep') && CONDS.has('ping') && CARDS.has('zap')).toBe(true);
+    expect(acts()).toBe(6);
+    expect(b.registry.get('block-view', 'beep')).toBeDefined();
+    b.dispose();
+    expect(lists()).toEqual(clean);
+  });
+
+  it('a changed carried mod says "applies after a restart", keeps the old registration and the old view, and does not run the new code', async () => {
+    countedBlock();
+    trust('cnt');
+    const mods = await start();
+    const node = NODES.get('beep');
+    countedBlock('1.0.1', 'Changed');
+    trust('cnt');
+    expect(await mods.reload!()).toEqual([]);
+    expect(find(mods, 'cnt').problems).toEqual([NOTICE('cnt')]);
+    expect(NODES.get('beep')).toBe(node);
+    expect(acts()).toBe(1);
+    expect(mods.registry.get('block-view', 'beep')).toEqual({ kind: 'beep', fields: [], line: ['Cnt'] }); // what is running, not what the file now says
+    expect(mods.registry.has('block', 'cnt')).toBe(true);
+  });
+
+  it('a carried mod whose manifest or code changed says so even when trust says yes (the loader alone, one carry map)', async () => {
+    countedBlock();
+    const carry = new Map<string, Carried>();
+    const opts = { bundledDir: path.join(h.home, 'no-bundled'), userDir: h.modsDir, home: h.home, disabled: new Set<string>(), trusted: () => true, env: {}, carry };
+    loaded.push(await loadMods(opts));
+    const node = NODES.get('beep');
+    countedBlock('1.0.1', 'Changed');
+    const next = await loadMods(opts);
+    loaded.push(next);
+    expect(find(next, 'cnt').problems).toEqual([NOTICE('cnt')]);
+    expect(NODES.get('beep')).toBe(node);
+    expect(acts()).toBe(1);
+    expect(next.registry.get('block-view', 'beep')).toEqual({ kind: 'beep', fields: [], line: ['Cnt'] });
+    dropCarried(carry);
+    expect(NODES.has('beep')).toBe(false);
+  });
+
+  it('a carried mod whose index.js changed under a byte-identical mod.json says so and keeps the old node; the same code says nothing', async () => {
+    countedBlock();
+    const carry = new Map<string, Carried>();
+    const opts = { bundledDir: path.join(h.home, 'no-bundled'), userDir: h.modsDir, home: h.home, disabled: new Set<string>(), trusted: () => true, env: {}, carry };
+    loaded.push(await loadMods(opts));
+    const node = NODES.get('beep');
+    const manifestBytes = fs.readFileSync(path.join(h.modsDir, 'cnt', 'mod.json'));
+    const same = await loadMods(opts);
+    loaded.push(same);
+    expect(find(same, 'cnt').problems).toEqual([]);
+
+    fs.appendFileSync(path.join(h.modsDir, 'cnt', 'index.js'), '// changed code, same manifest\n');
+    expect(fs.readFileSync(path.join(h.modsDir, 'cnt', 'mod.json')).equals(manifestBytes)).toBe(true);
+    const next = await loadMods(opts);
+    loaded.push(next);
+    expect(find(next, 'cnt').problems).toEqual([NOTICE('cnt')]);
+    expect(NODES.get('beep')).toBe(node);
+    expect(acts()).toBe(1);
+    dropCarried(carry);
+  });
+
+  it('a carried mod is not published or announced again: beforeActivate ran once and the code folder did not change', async () => {
+    countedBlock();
+    const carry = new Map<string, Carried>();
+    const ran: string[] = [];
+    const opts = { bundledDir: path.join(h.home, 'no-bundled'), userDir: h.modsDir, home: h.home, disabled: new Set<string>(), trusted: () => true, env: {}, carry, beforeActivate: (m: LoadedMod) => { ran.push(m.id); } };
+    const cache = path.join(h.home, 'mod-cache');
+    const listing = () => fs.readdirSync(cache, { recursive: true }).map(String).sort().map((rel) => `${rel} ${fs.statSync(path.join(cache, rel)).mtimeMs}`);
+    loaded.push(await loadMods(opts));
+    expect(ran).toEqual(['cnt']);
+    const before = listing();
+    expect(before.length).toBeGreaterThan(0);
+    for (let n = 0; n < 2; n++) {
+      const next = await loadMods(opts);
+      loaded.push(next);
+      expect(find(next, 'cnt').problems).toEqual([]);
+      expect(ran).toEqual(['cnt']); // not announced again
+      expect(listing()).toEqual(before); // nothing written
+    }
+    dropCarried(carry);
+  });
+
+  it('a disabled carried mod stays registered and says so; enabled again it is quiet and still the same node', async () => {
+    countedBlock();
+    trust('cnt');
+    const mods = await start();
+    const node = NODES.get('beep');
+    fs.writeFileSync(path.join(h.home, 'disabled-mods.json'), JSON.stringify(['cnt']));
+    expect(await mods.reload!()).toEqual([]);
+    expect(find(mods, 'cnt')).toMatchObject({ enabled: false, problems: [NOTICE('cnt')] });
+    expect(NODES.get('beep')).toBe(node);
+    expect(mods.registry.get('block-view', 'beep')).toBeDefined();
+    fs.rmSync(path.join(h.home, 'disabled-mods.json'));
+    expect(await mods.reload!()).toEqual([]);
+    expect(find(mods, 'cnt')).toMatchObject({ enabled: true, problems: [] });
+    expect(NODES.get('beep')).toBe(node);
+    expect(acts()).toBe(1);
+  });
+
+  it('a carried mod whose trust is taken back is not unregistered live; it says so', async () => {
+    countedBlock();
+    trust('cnt');
+    const mods = await start();
+    const node = NODES.get('beep');
+    fs.rmSync(path.join(h.home, 'mod-trust.json'));
+    expect(await mods.reload!()).toEqual([]);
+    expect(find(mods, 'cnt')).toMatchObject({ trusted: false, problems: [NOTICE('cnt')] });
+    expect(NODES.get('beep')).toBe(node);
+    expect(mods.registry.get('block-view', 'beep')).toBeDefined();
+    expect(acts()).toBe(1);
+  });
+
+  it('a removed carried mod is not unregistered live; it stays listed with the same words', async () => {
+    countedBlock();
+    trust('cnt');
+    const mods = await start();
+    const node = NODES.get('beep');
+    fs.rmSync(path.join(h.modsDir, 'cnt'), { recursive: true });
+    expect(await mods.reload!()).toEqual([]);
+    expect(find(mods, 'cnt').problems).toEqual([NOTICE('cnt')]);
+    expect(NODES.get('beep')).toBe(node);
+    expect(mods.registry.get('block-view', 'beep')).toEqual({ kind: 'beep', fields: [], line: ['Cnt'] }); // the kind is still in core, so its view is still served
+  });
+
+  it('a condition mod and a card mod are carried the same way', async () => {
+    countedCondition();
+    countedCard();
+    trust('ping', 'zap');
+    const mods = await start();
+    const cond = CONDS.get('ping');
+    const card = CARDS.get('zap');
+    const keys = [[...CONDS.keys()], [...CARDS.keys()]];
+    expect(await mods.reload!()).toEqual([]);
+    expect(CONDS.get('ping')).toBe(cond);
+    expect(CARDS.get('zap')).toBe(card);
+    expect([[...CONDS.keys()], [...CARDS.keys()]]).toEqual(keys);
+    expect(acts()).toBe(2);
+    expect(mods.registry.has('condition', 'ping') && mods.registry.has('card', 'zap')).toBe(true);
+    expect(mods.mods.filter((m) => m.problems.length)).toEqual([]);
+  });
+
+  it('the carry key holds the kind: a mod that changes kind under the same id is not taken for the carried one', async () => {
+    countedCondition();
+    const carry = new Map<string, Carried>();
+    const opts = { bundledDir: path.join(h.home, 'no-bundled'), userDir: h.modsDir, home: h.home, disabled: new Set<string>(), trusted: () => true, env: {}, carry };
+    const first = await loadMods(opts);
+    loaded.push(first);
+    const cond = CONDS.get('ping');
+    expect([...carry.keys()]).toEqual(['condition:ping']);
+    h.writeMod('ping', blockManifest({ id: 'ping' }), { 'index.js': code(`globalThis.__acts = (globalThis.__acts ?? 0) + 1; api.registerBlock(${BASE});`) });
+    loaded.push(await loadMods(opts));
+    expect(NODES.has('beep')).toBe(true); // the block was activated, not skipped as "carried"
+    expect(acts()).toBe(2);
+    expect(CONDS.get('ping')).toBe(cond); // and the condition was not unregistered
+    expect([...carry.keys()].sort()).toEqual(['block:ping', 'condition:ping']);
+    dropCarried(carry);
+  });
+
+  it('a live mod (a protocol) is NOT carried: its code runs again and its registration goes with the load', async () => {
+    h.writeMod('wire', { reins: 1, id: 'wire', kind: 'protocol', version: '1.0.0', label: 'Wire', main: 'index.js' }, { 'index.js': code("globalThis.__acts = (globalThis.__acts ?? 0) + 1; api.registerProtocol({ id: 'wire-p', conversation: 'reins', wire: {} });") });
+    trust('wire');
+    const mods = await start();
+    const first = mods.registry;
+    expect(first.has('protocol-impl', 'wire-p')).toBe(true);
+    expect(await mods.reload!()).toEqual([]);
+    expect(acts()).toBe(2);
+    expect(mods.registry.has('protocol-impl', 'wire-p')).toBe(true);
+    expect(first.has('protocol-impl', 'wire-p')).toBe(false);
+  });
+
+  it('only startOnly mods are written to the carry map', async () => {
+    h.writeMod('wire', { reins: 1, id: 'wire', kind: 'protocol', version: '1.0.0', label: 'Wire', main: 'index.js' }, { 'index.js': code("api.registerProtocol({ id: 'wire-p', conversation: 'reins', wire: {} });") });
+    countedBlock();
+    const carry = new Map<string, Carried>();
+    loaded.push(await loadMods({ bundledDir: path.join(h.home, 'no-bundled'), userDir: h.modsDir, home: h.home, disabled: new Set(), trusted: () => true, env: {}, carry }));
+    expect([...carry.keys()]).toEqual(['block:cnt']);
+    expect(carry.get('block:cnt')!.undo).toHaveLength(1); // the node, and nothing else: the view and the mod record belong to the load
+    dropCarried(carry);
   });
 });

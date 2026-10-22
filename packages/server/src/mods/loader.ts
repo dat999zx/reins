@@ -6,7 +6,7 @@ import { checkMode, policyOf, register as registerNode, registerCard, registerCo
 import type { NodeType } from '@reins/core';
 import { cap, kindIds, kindOf, kindsInOrder, show } from './kinds.js';
 import { Registry } from './registry.js';
-import type { LoadedMod, LoadOptions, ModApi, ModHost, Mods, ModSource, Problem, Protocol, Provides } from './types.js';
+import type { Carried, LoadedMod, LoadOptions, ModApi, ModHost, Mods, ModSource, Problem, Protocol, Provides } from './types.js';
 
 const ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const RESERVED = /^(nul|con|prn|aux|com[1-9]|lpt[1-9])$/i;
@@ -381,7 +381,7 @@ const DOORS: { [M in 'registerBlock' | 'registerCondition' | 'registerCard']: Do
 
 /**
  * The api of ONE mod: it can register only what its kind allows and its `provides` lists, and every function member throws once `close()` is
- * called (when `activate` has settled). What a mod puts in core goes in `tx`, so a failed activation takes it out again.
+ * called (when `activate` has settled). What a mod puts in core goes in `tx` (the undo list the caller passes), so a failed activation takes it out again.
  */
 function buildApi(kindId: string, raw: Record<string, unknown>, env: NodeJS.ProcessEnv, registry: Registry, tx: Tx, shadow: boolean): { api: ModApi; close(): void } {
   let open = true;
@@ -456,16 +456,33 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
   // A file that never parsed has no kind to wait for: list it now.
   for (const f of all) if (f.error) list(f, f.folder, '', [f.error]);
 
+  // A startOnly mod's registrations in core outlive a load: they sit in `carry` (the caller's, or this load's own, undone by `dispose`).
+  const carry = o.carry ?? new Map<string, Carried>();
+  const held = new Set<string>(); // carried keys this load met
+
   const load = async (f: Found, kindId: string) => {
     const id = idOf(f.raw, f.folder);
     const mod = list(f, id, kindId, []);
-    if (o.disabled.has(id)) {
-      mod.enabled = false;
-      return;
-    }
     const tx: Tx = { undo: [] };
+    const own: Tx = { undo: [] }; // what the mod put in core (startOnly kinds); `tx` holds only this load's registry entries
     const key = `${kindId}:${id}`;
     try {
+      const kind = kindOf(kindId)!;
+      const carried = carry.get(key); // only startOnly mods are ever written to it
+      // A carried mod is not activated again: its registry entries are recorded anew, from what it registered under. Anything but "same and in force" says so.
+      const keep = (stale: boolean) => {
+        txs.set(mod, tx);
+        const d = kind.activate(stale ? { ...mod, manifest: carried!.manifest } : mod, { registry: track(registry, tx, false), env });
+        if (d) tx.undo.push(d);
+        active.set(key, mod);
+        held.add(key);
+        if (stale) mod.problems.push(`\`${id}\`: applies after a restart.`);
+      };
+      if (o.disabled.has(id)) {
+        mod.enabled = false;
+        if (carried) keep(true);
+        return;
+      }
       let raw = f.raw!;
       let files: Bytes[] | undefined;
       if (f.source === 'user' && raw.main !== undefined) {
@@ -482,7 +499,6 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
         mod.hasCode = raw.main !== undefined;
       }
       mod.problems.push(...validateMod(raw, f, id, bundledKinds, registry));
-      const kind = kindOf(kindId)!;
       if (mod.problems.length) return;
 
       // A user mod replaces a bundled one of the same kind by shadowing it: the built-in is never touched while
@@ -502,16 +518,20 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
         }
         mod.hash = hashFiles(files);
         mod.trusted = o.trusted(id, mod.hash) === true;
-        if (!mod.trusted) {
+        if (!carried && !mod.trusted) {
           mod.problems.push(`\`${id}\`: needs trust. Its code is new, or a file changed since you trusted it. It has not run.`);
           // What the manifest alone shows (a block's view) is recorded without running anything; a mod that would replace a built-in records nothing.
           const shown = replacing ? undefined : kind.preview?.(mod, host);
           if (shown) tx.undo.push(shown);
           return;
         }
-        o.beforeActivate?.(mod);
-        codeDir = publish(o.home, mod.hash, files, id);
+        if (!carried) {
+          o.beforeActivate?.(mod);
+          codeDir = publish(o.home, mod.hash, files, id);
+        }
       }
+      // Never trusted, copied or imported again: what registered in core stays. Another manifest or code, or trust taken back, waits for a restart.
+      if (carried) return keep(sigOf(mod, raw) !== carried.sig || !mod.trusted);
 
       let activate: ((api: ModApi) => unknown) | undefined;
       if (mod.hasCode) {
@@ -534,7 +554,7 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
         const d = kind.activate(mod, host);
         if (d) tx.undo.push(d);
         if (activate) {
-          const { api, close } = buildApi(kindId, raw, env, tracked, tx, replacing);
+          const { api, close } = buildApi(kindId, raw, env, tracked, kind.startOnly ? own : tx, replacing);
           try {
             await activate(api);
           } finally {
@@ -543,10 +563,15 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
         }
       } catch (e) {
         stop(tx);
+        stop(own);
         mod.problems.push(replacing ? `\`${id}\`: could not replace the built-in \`${id}\`; the built-in stays: ${errorText(e)}` : `\`${id}\`: ${errorText(e)}`);
         return;
       }
       active.set(key, mod);
+      if (kind.startOnly) {
+        held.add(key);
+        carry.set(key, { sig: sigOf(mod, raw), manifest: raw, source: f.source, dir: f.dir, hasCode: mod.hasCode, hash: mod.hash, undo: own.undo });
+      }
       if (replacing) {
         mods.splice(mods.indexOf(was), 1); // the list shows the mod that is in force; the built-in stays registered underneath
         mod.replaces = 'bundled';
@@ -568,6 +593,23 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
     const why = commonProblems(f.raw!, f, id, bundledKinds);
     list(f, id, typeof f.raw?.kind === 'string' ? f.raw.kind : '', why.length ? why : [`\`${id}\`: this mod was not loaded.`]);
   }
+  // A carried mod this load did not meet in force (removed, or its files no longer read) is still in core: its words, on its entry or on a stand-in.
+  for (const [key, c] of carry) {
+    if (held.has(key)) continue;
+    const [kindId, id] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
+    const notice = `\`${id}\`: applies after a restart.`;
+    const there = mods.find((m) => m.id === id);
+    if (there) {
+      there.problems.push(notice);
+      continue;
+    }
+    const stand: LoadedMod = { id, kind: kindId, source: c.source, dir: c.dir, enabled: true, hasCode: c.hasCode, trusted: true, hash: c.hash, problems: [notice], manifest: c.manifest };
+    mods.push(stand);
+    const tx: Tx = { undo: [] };
+    txs.set(stand, tx);
+    const d = kindOf(kindId)?.activate(stand, { registry: track(registry, tx, false), env });
+    if (d) tx.undo.push(d);
+  }
 
   // Node's own errors (a missing helper, a syntax error) name absolute paths; nothing the loader returns may show the home.
   const scrub = homeScrubber(o.home);
@@ -579,6 +621,16 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
     dispose() {
       for (const tx of [...txs.values()].reverse()) stop(tx);
       txs.clear();
+      if (!o.carry) dropCarried(carry); // a caller's carry outlives the load; this load's own goes with it
     },
   };
 }
+
+/** Undoes what every carried mod put in core, newest first, and forgets them. `startMods().dispose()` and a load with no `carry` of its own end here. */
+export function dropCarried(carry: Map<string, Carried>): void {
+  for (const c of [...carry.values()].reverse()) stop(c);
+  carry.clear();
+}
+
+/** What a carried mod is compared by: its code hash (user code) and its manifest as the file spells it. */
+const sigOf = (mod: LoadedMod, raw: Record<string, unknown>) => `${mod.hash ?? ''}\0${JSON.stringify(raw)}`;
