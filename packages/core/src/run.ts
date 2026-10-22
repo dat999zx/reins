@@ -817,7 +817,7 @@ export class Run {
    * budget comes first: a slice pause then always has workflow money left, so its Allow is never a dead end.
    */
   // ponytail: a reply with an unknown cost counts 0 in the figures here and is noted (`runUnknown`, `usdUnknown`): the next call under a limit it counts against is refused; a `now` card's follow-up reply is part of its step and is not checked between replies; a subagent's follow-ups share its process's provider cap
-  private usdOver(s: { step: string; usd: number } | undefined = this.openSlice): boolean {
+  private usdOver(s: { step: string; usd: number } | undefined): boolean {   // no default: a track with no slice has none, never the main line's
     const hit = (stepId: string | undefined, limit: number, spent: number) => this.pauseUsd(stepId, limit, spent);
     const usd = this.workflow.budget.usd;
     if (usd !== undefined) {
@@ -1248,6 +1248,8 @@ export class Run {
       if (typeof t.order !== 'number' || !Number.isFinite(t.order)) bad(`track "${t.key}" has no order`);
       if (t.status !== 'running' && t.status !== 'paused') bad(`track "${t.key}" has the state ${String(t.status)}`);
       if (!Array.isArray(t.handback) || !Array.isArray(t.recall) || !isObj(t.policy)) bad(`track "${t.key}" is missing its handback, recall or policy`);
+      const sl = t.openSlice as { step?: unknown; usd?: unknown } | undefined;
+      if (sl !== undefined && (!isObj(sl) || typeof sl.step !== 'string' || typeof sl.usd !== 'number' || !Number.isFinite(sl.usd) || sl.usd < 0)) bad(`track "${t.key}" has an open USD slice that is not a step and an amount`);
     }
     const byName = new Map<string, NonNullable<RunSnapshot['groups']>[number]>();
     for (const g of groups) {

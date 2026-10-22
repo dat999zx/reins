@@ -487,7 +487,8 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     const e = deps.makeEngine({
       provider,
       ...(model ? { model } : {}), ...(r.effort ? { effort: r.effort } : {}),
-      onApprove: (x) => (o.asks ? askTool(io, x, o.asks) : subagentApprove(title, x)),
+      // A track's own requests are asked like the main run's; a native child task inside it (`via`) keeps the subagent exception the main engine has.
+      onApprove: (x) => (o.asks && x.via === undefined ? askTool(io, x, o.asks) : subagentApprove(o.asks && x.via !== undefined ? `Task ${x.via.slice(0, 80).trim()}` : title, x)),
       // usage, cost, compacted and hook measure or note the parent's context, so they stay out; the rest is kept under the step
       onLive: (ev) => { if (KEPT.has(ev.type)) log('engine', { ...ev, step: o.step }, runId); },
     });
