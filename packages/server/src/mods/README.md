@@ -269,6 +269,12 @@ mode: read-only
 
 The prompt is "Answer about dogs in one line. Mode: read-only." Without `mode`, `{mode|topic}` falls back to the topic, so the prompt reads "Mode: dogs."
 
+### Conditions, cards and question cards
+
+A condition or card mod gives its editor data in the manifest `view`, keyed by each name in `provides.conditions` or `provides.cards`. A condition view is `{ label, fresh, param? }`; `param.key` must be one of `cmd`, `q`, `n`, `glob`. A card view is `{ section, add }`. The app builds its menus from the served list, so a mod condition shows up in the menu with no app change.
+
+The eight question cards (gate, budget, usd, tool, trust, switch, judge, resume) belong to core. A mod cannot register, replace or switch one: a manifest that names one is refused. They are plain data in `packages/server/src/questions/`, one file each, and the app reads them from the same served list.
+
 ### When a change applies
 
 Reins registers each block, condition and card in core once, when the server starts. A registration stays until the server stops. So a reload (after a change in Settings) never registers a mod twice, and never removes it.
