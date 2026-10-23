@@ -280,6 +280,15 @@ function commonProblems(raw: Record<string, unknown>, f: Pick<Found, 'folder' | 
   if (!kindOf(kind)) return bad(`\`kind\` is ${show(kind)}, which Reins does not know. Known: ${kindIds().join(', ')}.`);
   const other = bundledKinds.get(id);
   if (f.source === 'user' && other !== undefined && other !== kind) return [`\`${id}\` is the id of a built-in ${other}; pick another id.`];
+  // `pack` and `required` are the built-in mods' own words: a user mod that claims either is refused, whatever the value.
+  if (f.source === 'user') {
+    for (const key of ['pack', 'required'] as const) {
+      if (raw[key] !== undefined) return bad(`\`${key}\` is for the mods that ship with Reins. A mod of yours cannot say it; take it out of mod.json.`);
+    }
+  } else {
+    if (raw.pack !== undefined && raw.pack !== 'default') return bad(`\`pack\` is ${show(raw.pack)}; it must be "default".`);
+    if (raw.required !== undefined && raw.required !== true) return bad(`\`required\` is ${show(raw.required)}; it must be true or left out.`);
+  }
   const out: Problem[] = [];
   for (const key of ['version', 'label'] as const) {
     if (typeof raw[key] !== 'string' || raw[key] === '') out.push(...bad(`\`${key}\` is missing.`));
@@ -303,6 +312,14 @@ interface Tx {
   undo: Array<() => void>;
 }
 
+/** A carried bundled mod and a user mod of the same id are two entries in `carry`; the bundled one's key starts with this. */
+const BUNDLED_KEY = 'bundled:';
+const keyOf = (kindId: string, id: string, source: ModSource) => `${source === 'bundled' ? BUNDLED_KEY : ''}${kindId}:${id}`;
+
+/** What a mod says when a hand-edited off list names a required id: it stays on. The ending is what Settings reads as news, not a fault. */
+export const REQUIRED_TAIL = ': is required, so it stays on.';
+const requiredNote = (id: string) => `\`${id}\`${REQUIRED_TAIL} Reins ignored the switch-off in disabled-mods.json.`;
+
 /** Newest first. One failing disposer never stops the others, and never replaces the error that caused the clean-up. */
 const stop = (tx: Tx) => {
   const all = tx.undo.splice(0).reverse();
@@ -315,11 +332,32 @@ const stop = (tx: Tx) => {
   }
 };
 
-/** The registry, with every `register` call's disposer written down in `tx`. A shadowing mod goes on top of the entries it replaces. */
-function track(registry: Registry, tx: Tx, shadow: boolean): Registry {
+/** Whether a mod that replaces a built-in may cover the entry `name` of the registry `what`. */
+type May = (what: string, name: string) => boolean;
+const NEVER: May = () => false;
+
+/** The registry entries that hold a name from the built-in's `provides`, and the list that name must be in. */
+const OWN_LIST = new Map<string, keyof Provides>([['block-view', 'kinds'], ['cond-view', 'conditions'], ['card-view', 'cards']]);
+
+/**
+ * A mod that replaces a built-in covers only what the built-in itself brought: the names its `provides` lists (kinds, conditions, cards), its
+ * own record, and the protocol it is named for. Anything else it registers must be new, so a copy of one mod cannot take another's kind.
+ */
+function mayShadow(was: LoadedMod | undefined, id: string): May {
+  if (!was) return NEVER;
+  const own = (was.manifest as { provides?: Provides } | undefined)?.provides;
+  return (what, name) => {
+    const list = OWN_LIST.get(what);
+    if (list) return own?.[list]?.includes(name) === true;
+    return what === 'protocol-impl' ? name === id : true;
+  };
+}
+
+/** The registry, with every `register` call's disposer written down in `tx`. A shadowing mod goes on top of the entries `may` allows. */
+function track(registry: Registry, tx: Tx, may: May): Registry {
   const t = Object.create(registry) as Registry;
   t.register = (kind, id, value) => {
-    const d = registry.register(kind, id, value, { shadow });
+    const d = registry.register(kind, id, value, { shadow: may(kind, id) });
     tx.undo.push(d);
     return d;
   };
@@ -361,7 +399,7 @@ interface Door<T> {
   copy(item: T, id: string, provides: Provides): T;
   /** Throws, in words, for anything `provides` does not list. */
   check(item: T, has: (key: keyof Provides, name: unknown, what: string) => void): void;
-  put(item: T, order: number, shadow: boolean): () => void;
+  put(item: T, order: number, may: May): () => void;
 }
 const DOORS: { [M in 'registerBlock' | 'registerCondition' | 'registerCard']: Door<Parameters<ModApi[M]>[0]> } = {
   registerBlock: {
@@ -376,19 +414,19 @@ const DOORS: { [M in 'registerBlock' | 'registerCondition' | 'registerCard']: Do
       for (const ev of Object.keys(n.count ?? {})) has('events', ev, 'the counted event');
       for (const ev of Object.keys(n.print ?? {})) has('events', ev, 'the printed event');
     },
-    put: (n, order, shadow) => registerNode(n, order, { shadow }),
+    put: (n, order, may) => registerNode(n, order, { shadow: may('block-view', n.kind) }),
   },
   registerCondition: {
     kind: 'condition',
     copy: (c) => viewless(copyOf('registerCondition', c)),
     check: (c, has) => has('conditions', c.t, 'the condition'),
-    put: (c, order, shadow) => registerCondition(c, order, { shadow }),
+    put: (c, order, may) => registerCondition(c, order, { shadow: may('cond-view', c.t) }),
   },
   registerCard: {
     kind: 'card',
     copy: (c) => viewless(copyOf('registerCard', c)),
     check: (c, has) => has('cards', c.kind, 'the card'),
-    put: (c, order, shadow) => registerCard(c, order, { shadow }),
+    put: (c, order, may) => registerCard(c, order, { shadow: may('card-view', c.kind) }),
   },
 };
 
@@ -396,7 +434,7 @@ const DOORS: { [M in 'registerBlock' | 'registerCondition' | 'registerCard']: Do
  * The api of ONE mod: it can register only what its kind allows and its `provides` lists, and every function member throws once `close()` is
  * called (when `activate` has settled). What a mod puts in core goes in `tx` (the undo list the caller passes), so a failed activation takes it out again.
  */
-function buildApi(kindId: string, raw: Record<string, unknown>, env: NodeJS.ProcessEnv, registry: Registry, tx: Tx, shadow: boolean): { api: ModApi; close(): void } {
+function buildApi(kindId: string, raw: Record<string, unknown>, env: NodeJS.ProcessEnv, registry: Registry, tx: Tx, may: May): { api: ModApi; close(): void } {
   let open = true;
   const provides = (typeof raw.provides === 'object' && raw.provides !== null ? raw.provides : {}) as Provides;
   const order = typeof raw.order === 'number' ? raw.order : NaN;
@@ -415,7 +453,7 @@ function buildApi(kindId: string, raw: Record<string, unknown>, env: NodeJS.Proc
       if (door.kind !== kindId) throw new Error(`\`${member}\` is for ${door.kind} mods; this is a ${kindId} mod.`);
       const copy = door.copy(item, typeof raw.id === 'string' ? raw.id : kindId, provides);
       door.check(copy, has);
-      const undo = door.put(copy, order, shadow);
+      const undo = door.put(copy, order, may);
       tx.undo.push(undo);
       return undo;
     })]),
@@ -454,6 +492,9 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
   const all = [...b.found, ...u.found];
   const bundledKinds = new Map<string, string>();
   for (const f of b.found) if (typeof f.raw?.kind === 'string') bundledKinds.set(f.folder, f.raw.kind);
+  // The ids that cannot be switched off: only a bundled manifest can say so (a user mod that says it is refused by `commonProblems`).
+  const required = new Set(b.found.filter((f) => f.raw?.required === true).map((f) => f.folder));
+  const forced = new Set<string>(); // required ids a hand-edited off list named: they stay on, and say so
 
   o.afterScan?.();
 
@@ -463,6 +504,8 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
     const mod: LoadedMod = {
       id, kind, source: f.source, dir: f.dir, enabled: true, hasCode: f.raw?.main !== undefined,
       trusted: f.source === 'bundled', problems, manifest: f.raw,
+      ...(required.has(id) ? { required: true as const } : {}),
+      ...(f.source === 'bundled' && f.raw?.pack === 'default' ? { pack: 'default' as const } : {}),
     };
     mods.push(mod);
     return mod;
@@ -474,6 +517,7 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
   // A startOnly mod's registrations in core outlive a load: they sit in `carry` (the caller's, or this load's own, undone by `dispose`).
   const carry = o.carry ?? new Map<string, Carried>();
   const held = new Set<string>(); // carried keys this load met
+  const carriedBefore = new Set(carry.keys()); // what an earlier load of this process left in core
   const previews: Array<() => void> = []; // untrusted mods' manifest-only views, recorded after every activation
 
   const load = async (f: Found, kindId: string) => {
@@ -481,20 +525,38 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
     const mod = list(f, id, kindId, []);
     const tx: Tx = { undo: [] };
     const own: Tx = { undo: [] }; // what the mod put in core (startOnly kinds); `tx` holds only this load's registry entries
-    const key = `${kindId}:${id}`;
+    // A bundled mod and a user mod of the same id are two carried mods (the user copy sits on top of the built-in in core): the built-in's key says so.
+    const key = keyOf(kindId, id, f.source);
     try {
       const kind = kindOf(kindId)!;
       const carried = carry.get(key); // only startOnly mods are ever written to it
+      const was = f.source === 'user' ? active.get(keyOf(kindId, id, 'bundled')) : undefined; // the built-in this mod replaces, if it is in force
+      const replacing = was?.source === 'bundled';
+      const may = replacing ? mayShadow(was, id) : NEVER;
+      // The user copy of a built-in that is already in core waits for a restart (a live swap of a kind under running workflows is not made).
+      const pending = replacing && !carried && carriedBefore.has(keyOf(kindId, id, 'bundled'));
+      // The list shows the mod that is in force; the built-in stays registered underneath.
+      const settle = () => {
+        if (!replacing) return;
+        const at = mods.indexOf(was!);
+        if (at >= 0) mods.splice(at, 1);
+        mod.replaces = 'bundled';
+        const version = (was!.manifest as { version?: unknown } | undefined)?.version;
+        if (typeof version === 'string') mod.builtinVersion = version;
+        if (was!.pack) mod.pack = was!.pack;
+      };
       // A carried mod is not activated again: its registry entries are recorded anew, from what it registered under. Anything but "same and in force" says so.
       const keep = (stale: boolean) => {
         txs.set(mod, tx);
-        const d = kind.activate(stale ? { ...mod, manifest: carried!.manifest } : mod, { registry: track(registry, tx, false), env });
+        const d = kind.activate(stale ? { ...mod, manifest: carried!.manifest } : mod, { registry: track(registry, tx, may), env });
         if (d) tx.undo.push(d);
         active.set(key, mod);
         held.add(key);
+        settle();
         if (stale) mod.problems.push(`\`${id}\`: applies after a restart.`);
       };
-      if (o.disabled.has(id)) {
+      if (o.disabled.has(id) && required.has(id)) forced.add(id); // a required id is never off, whatever the file says
+      else if (o.disabled.has(id)) {
         mod.enabled = false;
         if (carried) keep(true);
         return;
@@ -519,10 +581,9 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
 
       // A user mod replaces a bundled one of the same kind by shadowing it: the built-in is never touched while
       // the user mod activates. If activation fails only the user mod's entries go, and the built-in is still there.
-      const was = active.get(key);
-      const replacing = f.source === 'user' && was?.source === 'bundled';
+      // It may cover only what the built-in's own `provides` lists (`mayShadow`).
       txs.set(mod, tx);
-      const tracked = track(registry, tx, replacing);
+      const tracked = track(registry, tx, may);
       const host: ModHost = { registry: tracked, env };
 
       const main = canonMain(raw.main);
@@ -548,10 +609,15 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
           });
           return;
         }
-        if (!carried) {
+        if (!carried && !pending) {
           o.beforeActivate?.(mod);
           codeDir = publish(o.home, mod.hash, files, id);
         }
+      }
+      if (pending) {
+        mod.problems.push(`\`${id}\`: applies after a restart.`);
+        settle();
+        return;
       }
       // Never trusted, copied or imported again: what registered in core stays. Another manifest or code, or trust taken back, waits for a restart.
       if (carried) return keep(sigOf(mod, raw) !== carried.sig || !mod.trusted);
@@ -579,7 +645,7 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
         const d = kind.activate(mod, host);
         if (d) tx.undo.push(d);
         if (activate) {
-          const { api, close } = buildApi(kindId, raw, env, tracked, kind.startOnly ? own : tx, replacing);
+          const { api, close } = buildApi(kindId, raw, env, tracked, kind.startOnly ? own : tx, may);
           let timer: ReturnType<typeof setTimeout> | undefined;
           try {
             // An activate that never settles must not hold the start of the server: after the limit it fails like one that threw.
@@ -603,10 +669,7 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
         held.add(key);
         carry.set(key, { sig: sigOf(mod, raw), manifest: raw, source: f.source, dir: f.dir, hasCode: mod.hasCode, hash: mod.hash, undo: own.undo });
       }
-      if (replacing) {
-        mods.splice(mods.indexOf(was), 1); // the list shows the mod that is in force; the built-in stays registered underneath
-        mod.replaces = 'bundled';
-      }
+      settle();
     } catch (e) {
       stop(tx);
       mod.problems.push(thrownLine(e, id));
@@ -628,7 +691,8 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
   // A carried mod this load did not meet in force (removed, or its files no longer read) is still in core: its words, on its entry or on a stand-in.
   for (const [key, c] of carry) {
     if (held.has(key)) continue;
-    const [kindId, id] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
+    const bare = c.source === 'bundled' ? key.slice(BUNDLED_KEY.length) : key;
+    const [kindId, id] = [bare.slice(0, bare.indexOf(':')), bare.slice(bare.indexOf(':') + 1)];
     const notice = `\`${id}\`: applies after a restart.`;
     const there = mods.find((m) => m.id === id);
     if (there) {
@@ -639,9 +703,11 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
     mods.push(stand);
     const tx: Tx = { undo: [] };
     txs.set(stand, tx);
-    const d = kindOf(kindId)?.activate(stand, { registry: track(registry, tx, false), env });
+    const d = kindOf(kindId)?.activate(stand, { registry: track(registry, tx, NEVER), env });
     if (d) tx.undo.push(d);
   }
+
+  for (const m of mods) if (forced.has(m.id)) m.problems.push(requiredNote(m.id));
 
   // Node's own errors (a missing helper, a syntax error) name absolute paths; nothing the loader returns may show the home.
   const scrub = homeScrubber(o.home);

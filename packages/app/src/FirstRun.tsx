@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { ApiError, post } from './api.js';
-import { BUILT_IN_LINE, installIds, needsLine, preTicked, resultLine, type ChooserEntry, type InstallResult } from './firstRunCards.js';
+import { BUILT_IN_LINE, PACK_LINE, installIds, needsLine, packRows, preTicked, resultLine, type ChooserEntry, type InstallResult, type PackRow } from './firstRunCards.js';
 import { cx } from './generic.js';
 
-/** The first screen of a new Reins home (spec 7.3): pick providers to install, or skip. Skip always works. */
-export function FirstRun({ cards, onLeave }: { cards: ChooserEntry[]; onLeave: () => void }) {
+/** The first screen of a new Reins home (spec 7.3): pick providers to install, or skip. Skip always works. `pack`: the default pack's mods (the pack line). */
+export function FirstRun({ cards, pack = [], onLeave }: { cards: ChooserEntry[]; pack?: PackRow[]; onLeave: () => void }) {
   const [ticked, setTicked] = useState(() => preTicked(cards));
+  const [on, setOn] = useState<Record<string, boolean>>(() => Object.fromEntries(packRows(pack).map((p) => [p.id, p.enabled])));
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
   const [results, setResults] = useState<InstallResult[]>([]);
@@ -25,6 +26,16 @@ export function FirstRun({ cards, onLeave }: { cards: ChooserEntry[]; onLeave: (
       setBusy(false);
     }
   }
+  /** A switch of the pack line. A required mod has none (and the server refuses it too). */
+  async function switchPack(id: string, to: boolean) {
+    setProblem('');
+    try {
+      await post(`/api/mods/${encodeURIComponent(id)}/${to ? 'enable' : 'disable'}`);
+      setOn((o) => ({ ...o, [id]: to }));
+    } catch (e) {
+      setProblem(e instanceof ApiError ? e.message : (e as Error).message);
+    }
+  }
   async function skip() {
     try {
       await post('/api/mods/first-run/done');
@@ -38,6 +49,22 @@ export function FirstRun({ cards, onLeave }: { cards: ChooserEntry[]; onLeave: (
     <main className="firstrun" aria-label="First run">
       <h2>Choose your providers</h2>
       <p className="hint">{BUILT_IN_LINE}</p>
+      {pack.length > 0 && (
+        <section aria-label="Default pack">
+          <p className="hint">{PACK_LINE}</p>
+          <ul className="plist">
+            {packRows(pack).map((p) => (
+              <li key={p.id} className="prow" data-id={p.id}>
+                <label className="phead">
+                  <input type="checkbox" checked={on[p.id] ?? p.enabled} disabled={p.locked} onChange={(e) => void switchPack(p.id, e.target.checked)} />
+                  <b>{p.label}</b> <code>{p.id}</code>
+                  {p.locked && <span className="badge">required</span>}
+                </label>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <ul className="plist">
         {cards.map((c) => (
           <li key={c.id} className={cx('prow', 'card', ticked.includes(c.id) && 'on')} data-id={c.id}>

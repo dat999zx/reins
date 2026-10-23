@@ -140,7 +140,7 @@ export function KindDetails({ row }: { row: KindRow }) {
 }
 
 /** One row of either list: a provider, or a protocol and other mods. `used` = labels of the providers that use this mod. */
-export function Row({ row, used, reload, edit }: { row: KindRow; used: string[]; reload: () => Promise<void>; edit: (r: ModRow) => void }) {
+export function Row({ row, used, reload, edit, customize }: { row: KindRow; used: string[]; reload: () => Promise<void>; edit: (r: ModRow) => void; customize?: (file: string) => void }) {
   const info = rowInfo(row);
   const provider = row.kind === 'provider';
   const [msg, setMsg] = useState('');
@@ -182,6 +182,8 @@ export function Row({ row, used, reload, edit }: { row: KindRow; used: string[];
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   });
+  // Customize opens the import dialog on a copy of the built-in: the same preview, trust question and built-in confirm as any import.
+  const copyIt = () => run(async () => customize?.(JSON.stringify((await get<{ file: unknown }>(url(row.id, '/customize'))).file)));
   return (
     <li className={cx('prow', !row.enabled && 'dim')} data-id={row.id}>
       <div className="phead">
@@ -190,7 +192,7 @@ export function Row({ row, used, reload, edit }: { row: KindRow; used: string[];
         <span className="pstatus">{info.status}</span>
       </div>
       <div className="pmeta">
-        {provider ? [info.host, `${info.models} ${info.models === 1 ? 'model' : 'models'}`, info.replaces, info.keyShown].filter(Boolean).join(' · ') : otherMeta(row, used)}
+        {provider ? [info.host, `${info.models} ${info.models === 1 ? 'model' : 'models'}`, info.replaces, info.newer, info.keyShown].filter(Boolean).join(' · ') : otherMeta(row, used)}
       </div>
       <KindDetails row={row} />
       <div className="pactions">
@@ -199,7 +201,8 @@ export function Row({ row, used, reload, edit }: { row: KindRow; used: string[];
         {info.canClearKey && <button onClick={() => void run(() => del(url(row.id, '/key')))}>Clear key</button>}
         {info.canEdit && <button onClick={() => edit(row)}>Edit</button>}
         {info.canTrust && <button onClick={() => setTrusting(true)}>Trust</button>}
-        <button onClick={() => (row.enabled && used.length ? setSure('disable') : void run(() => post(url(row.id, row.enabled ? '/disable' : '/enable'))))}>{row.enabled ? 'Disable' : 'Enable'}</button>
+        {info.canDisable && <button onClick={() => (row.enabled && used.length ? setSure('disable') : void run(() => post(url(row.id, row.enabled ? '/disable' : '/enable'))))}>{row.enabled ? 'Disable' : 'Enable'}</button>}
+        {info.canCustomize && customize && <button onClick={() => void copyIt()}>Customize</button>}
         {!row.bundled && <button onClick={() => void exportIt()}>Export</button>}
         {info.canReinstall && <button onClick={() => void run(() => post(url(row.id, '/reinstall')))}>Re-install</button>}
         {info.canRemove && !sure && <button className="danger" onClick={() => setSure('remove')}>Remove</button>}
@@ -242,6 +245,8 @@ export function Providers({ onClose }: { onClose: () => void }) {
   const [secretsPath, setSecretsPath] = useState('');
   const [problem, setProblem] = useState('');
   const [importing, setImporting] = useState(false);
+  // A built-in pack mod being customized: its copy, as the text of a mod file, opens in the import dialog.
+  const [customizing, setCustomizing] = useState<string | undefined>();
   const [said, setSaid] = useState('');
   const [form, setForm] = useState<{ initial: ProviderForm; editing: boolean; original?: unknown } | undefined>();
   const reload = async () => {
@@ -269,6 +274,7 @@ export function Providers({ onClose }: { onClose: () => void }) {
       </div>
       {said && <p className="pmsg" role="status">{said}</p>}
       {importing && <ImportPanel onCancel={() => setImporting(false)} onDone={(m) => { setImporting(false); setSaid(m); void reload(); }} />}
+      {customizing !== undefined && <ImportPanel initial={customizing} onCancel={() => setCustomizing(undefined)} onDone={(m) => { setCustomizing(undefined); setSaid(m); void reload(); }} />}
       {form && (
         <FormView key={form.initial.id || 'new'} {...form} protocols={protocols} onCancel={() => setForm(undefined)} onDone={() => { setForm(undefined); void reload(); }} />
       )}
@@ -283,7 +289,7 @@ export function Providers({ onClose }: { onClose: () => void }) {
             <>
               <h3>Protocols and other mods</h3>
               <ul className="plist" aria-label="Protocols and other mods">
-                {rows.filter((r) => r.kind !== 'provider').map((r) => <Row key={r.id} row={r} used={usedBy(rows, r.id)} reload={reload} edit={() => {}} />)}
+                {rows.filter((r) => r.kind !== 'provider').map((r) => <Row key={`${r.id}:${r.bundled}`} row={r} used={usedBy(rows, r.id)} reload={reload} edit={() => {}} customize={setCustomizing} />)}
               </ul>
             </>
           )}

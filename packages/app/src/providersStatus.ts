@@ -4,6 +4,12 @@ export interface ModRow {
   /** `bundled`, `installed` (copied from the catalog) or `custom`. */
   source: string;
   replaces?: 'bundled';
+  /** The default pack: its mods can be customized, and a required one has no off switch. */
+  pack?: 'default';
+  required?: boolean;
+  /** A user copy of a built-in: the built-in's version, and whether it is newer than the copy. */
+  builtinVersion?: string;
+  newer?: boolean;
   problems: string[];
   trust?: 'none' | 'trusted' | 'needs-trust' | 'restart';
   /** Only a provider Reins sends to has these. `key` is a state, never a value. */
@@ -37,6 +43,9 @@ export function statusOf(r: ModRow): string {
   return 'ready';
 }
 
+/** A copy of a built-in that has fallen behind it (the server compares the versions). */
+const newerLine = (r: ModRow) => (r.newer ? `the built-in is newer${r.builtinVersion ? ` (${r.builtinVersion})` : ''}` : undefined);
+
 export function rowInfo(r: ModRow) {
   const m = r.manifest ?? {};
   let host = r.host;
@@ -48,6 +57,7 @@ export function rowInfo(r: ModRow) {
     models: Array.isArray(m.models) ? m.models.length : 0,
     untested: m.untested === true,
     replaces: r.replaces === 'bundled' ? `replaces the built-in ${r.id}` : undefined,
+    newer: newerLine(r),
     /** Shown instead of a value: the key itself is never in the list. */
     // Spec 8.1: the source after it when a variable supplies the key; the Reins file is the default and says nothing more.
     keyShown: key ? (r.key?.state === 'set' ? (r.key.source && r.key.source !== 'Reins' ? `key set (${r.key.source})` : 'key set') : 'no key') : undefined,
@@ -57,6 +67,10 @@ export function rowInfo(r: ModRow) {
     canTest: r.host !== undefined && r.enabled && r.problems.length === 0,
     canEdit: !r.bundled && r.kind === 'provider',
     canRemove: !r.bundled,
+    /** A required mod has no off switch. */
+    canDisable: r.required !== true,
+    /** A built-in mod of the default pack can be copied to the user's folder. */
+    canCustomize: r.bundled && r.pack === 'default',
     canReinstall: r.source === 'installed',
     /** A code mod that waits for a yes, and has the hash and the prompt the yes needs. */
     canTrust: r.trust === 'needs-trust' && typeof r.hash === 'string' && typeof r.codePrompt === 'string',
@@ -70,7 +84,10 @@ export const usedBy = (rows: ModRow[], id: string): string[] => rows.filter((r) 
 export const stopsLine = (labels: string[]) => `Providers that use it will stop working: ${labels.join(', ')}`;
 
 /** The second line of a row in "Protocols and other mods": kind, bundled or user, and who uses it. */
-export const otherMeta = (r: ModRow, users: string[]) => [r.kind, r.bundled ? 'bundled' : 'user', users.length ? `used by ${users.join(', ')}` : ''].filter(Boolean).join(' · ');
+export const otherMeta = (r: ModRow, users: string[]) => [
+  r.kind, r.bundled ? 'bundled' : 'user', r.pack ? 'default pack' : '', r.required ? 'required' : '',
+  r.replaces === 'bundled' ? `replaces the built-in ${r.id}` : '', newerLine(r) ?? '', users.length ? `used by ${users.join(', ')}` : '',
+].filter(Boolean).join(' · ');
 
 /** The providers a custom endpoint can use: protocols that are on and well, except those a built-in provider uses (they run a program, not an API). */
 export function apiProtocols(rows: ModRow[]): Array<{ id: string; label: string }> {

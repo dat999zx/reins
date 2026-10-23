@@ -9,6 +9,12 @@ export interface InstallResult { id: string; ok: boolean; error?: string }
 
 export const BUILT_IN_LINE = 'Claude Code is built in and ready if it is installed.';
 
+/** One mod of the default pack, as `GET /api/mods` lists it in `pack`. */
+export interface PackRow { id: string; label: string; enabled: boolean; required: boolean }
+export const PACK_LINE = 'The blocks Reins starts with are built in, as the default pack. Switch off the ones you do not want; a required one is always on.';
+/** The rows of the pack line. A required mod is shown on and has no switch, whatever the server sent. */
+export const packRows = (pack: PackRow[]): Array<PackRow & { locked: boolean }> => pack.map((p) => ({ ...p, enabled: p.required || p.enabled, locked: p.required }));
+
 /** The cards to show. A built-in provider is already there and is never a card, whatever the server sent. */
 export const cardsOf = (chooser: ChooserEntry[], builtIn: string[]): ChooserEntry[] => chooser.filter((c) => !builtIn.includes(c.id));
 

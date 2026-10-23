@@ -24,12 +24,12 @@ export const CATALOG_DIR = fileURLToPath(new URL('../catalog/', import.meta.url)
  * A code mod runs only when `<dir>/mod-trust.json` holds the hash of its files (spec 5.4). Node cannot unload code, so once a hash has run for an id,
  * a different hash is not run until the process restarts (`codeRan` tells Settings).
  */
-export async function startMods(o: { dir: string; env: NodeJS.ProcessEnv }): Promise<Mods> {
+export async function startMods(o: { dir: string; env: NodeJS.ProcessEnv; /** Tests only: another folder of bundled mods (the default is `BUNDLED_MODS`). */ bundledDir?: string }): Promise<Mods> {
   const ran = new Map<string, string>();
   // What block, condition and card mods put in core lives as long as this object: a reload carries it, `dispose()` takes it out.
   const carry = new Map<string, Carried>();
   const load = () => loadMods({
-    bundledDir: BUNDLED_MODS, userDir: path.join(o.dir, 'mods'), home: o.dir, disabled: readDisabled(o.dir), env: o.env, carry,
+    bundledDir: o.bundledDir ?? BUNDLED_MODS, userDir: path.join(o.dir, 'mods'), home: o.dir, disabled: readDisabled(o.dir), env: o.env, carry,
     trusted: (id, hash) => (ran.get(id) ?? hash) === hash && modTrusted(o.dir, id, hash),
     beforeActivate: (m) => { if (m.hash !== undefined && !ran.has(m.id)) ran.set(m.id, m.hash); },
   });

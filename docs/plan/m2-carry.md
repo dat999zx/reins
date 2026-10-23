@@ -23,3 +23,7 @@ Source: Codex review of tasks 4+5 (`C:/Users/Admin/AppData/Local/Temp/m2codex45/
 
 ## From the final review (docs/plan/m2-final-review-v5-1.md)
 11. **(owner: M3 Task 1)** Shadowing must be limited to the replaced bundled mod's own `provides`. loader.ts passes `replacing` as `shadow` to every registration the user mod makes, and core's `register` lets a shadow cover any kind, so a user copy of `say` could also cover `end` or `gate`. Unreachable in M2 (no bundled block, condition or card mod). Fix: the loader gives `shadow` only for names in the bundled mod's `provides`. Test: a user copy of a bundled block that registers a second kind it did not replace is refused.
+
+## From M3 Task 1
+12. **Pack mods must build flat (Tasks 3 to 8):** Customize imports a flat folder (max 50 files, 1 MB, no subfolders, text only). A pack mod folder must build to `index.js` + `mod.json` only: no subfolders, no `.d.ts`, no `.map` (check tsconfig for the mods build). `packProblems` guards imports; add a size/shape check on the built folder when the first real pack mod lands.
+13. **Source vs built `main`:** a pack mod's `mod.json` says `main: index.js` while the source folder holds `index.ts`; Customize and its preview work from the BUILT folder only.

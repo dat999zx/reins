@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { showText } from '../../core/src/display.js';
 import { ApiError, post } from './api.js';
 import { NO_CODE_BUTTON, TRUST_BUTTON, applyBody, planOf, problemsFrom, summaryLines, type PreviewSummary } from './importLines.js';
@@ -26,8 +26,9 @@ export function SummaryList({ summary }: { summary: KindSummary }) {
 }
 
 /** The import dialog (spec 7.7): a file or pasted text, what importing it would do, the code prompt, the built-in confirm. All text, never HTML. */
-export function ImportPanel({ onDone, onCancel, shown }: { onDone: (said: string) => void; onCancel: () => void; shown?: KindSummary }) {
-  const [text, setText] = useState('');
+export function ImportPanel({ onDone, onCancel, shown, initial }: { onDone: (said: string) => void; onCancel: () => void; shown?: KindSummary; initial?: string }) {
+  // `initial`: a file that is already chosen (Customize): the dialog opens on its preview, and the import is the same one a chosen file makes.
+  const [text, setText] = useState(initial ?? '');
   // `shown`: a preview that is already there (the first render of a test); the dialog starts from a file and asks the server.
   const [summary, setSummary] = useState<KindSummary | undefined>(shown);
   const [problems, setProblems] = useState<string[]>([]);
@@ -49,6 +50,7 @@ export function ImportPanel({ onDone, onCancel, shown }: { onDone: (said: string
       setBusy(false);
     }
   }
+  useEffect(() => { if (initial) void preview(initial); }, []);
   async function pick(f: File | undefined) {
     if (!f) return;
     if (f.size > MAX_FILE) return void setProblems(['The file is larger than 1 MB.']);

@@ -55,11 +55,11 @@ describe('GET /api/kinds: the built-in views', () => {
 });
 
 describe('the test setup is the app project\'s only', () => {
-  it('vitest.config.ts: the app project has the setup file, core and server have none', async () => {
+  it('vitest.config.ts: the app project has the kinds setup, core has the pack setup (M3 Task 1), the server has none', async () => {
     const { default: config } = await import('../../../vitest.config.js');
     const projects = (config as { test: { projects: Array<{ test: { name: string; setupFiles?: string[] } }> } }).test.projects;
     expect(projects.map((p) => p.test.name)).toEqual(['core', 'server', 'app']);
-    expect(projects.map((p) => p.test.setupFiles)).toEqual([undefined, undefined, ['packages/app/test/setup-kinds.ts']]);
+    expect(projects.map((p) => p.test.setupFiles)).toEqual([['packages/core/test/setup-pack.ts'], undefined, ['packages/app/test/setup-kinds.ts']]);
   });
 
   it('in a server test file the app\'s KINDS has not been filled', async () => {

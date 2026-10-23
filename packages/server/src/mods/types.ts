@@ -153,6 +153,10 @@ export interface Manifest {
   version: string;
   label: string;
   description?: string;
+  /** Bundled mods only (a user mod that says it is refused): the mod is part of the default pack, and Customize may copy it. */
+  pack?: 'default';
+  /** Bundled mods only: the mod cannot be switched off. */
+  required?: true;
   /** Code mods only: a path inside the mod folder; the file default-exports `activate(api: ModApi): void`. */
   main?: string;
   /** Block, condition and card mods: what the mod brings (see `Provides`). */
@@ -221,6 +225,12 @@ export interface LoadedMod {
   /** SHA-256 over the folder's files, for a mod with code. The trust prompt shows it. */
   hash?: string;
   replaces?: 'bundled';
+  /** The `version` of the built-in this mod replaces (a user copy of a bundled mod). */
+  builtinVersion?: string;
+  /** Part of the default pack (a bundled mod that says so, or the user copy that replaces one). */
+  pack?: 'default';
+  /** The id cannot be switched off (a bundled mod that says `required`, and the user copy of it). */
+  required?: true;
   problems: Problem[];
   manifest?: unknown;
 }

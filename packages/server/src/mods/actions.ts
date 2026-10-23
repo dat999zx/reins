@@ -12,7 +12,7 @@ import { classify, WORDS } from '../loop/retry.js';
 import { modelIdsFrom } from '../loop/wire-util.js';
 import { cleanIds } from '../live-models.js';
 import { cap, show } from './kinds.js';
-import { canonMain, caseAlias, hashFiles, isModId, parseManifest, readFolder, validateMod } from './loader.js';
+import { canonMain, caseAlias, hashFiles, isModId, parseManifest, readFolder, REQUIRED_TAIL, validateMod } from './loader.js';
 import type { LoadedMod, Mods, Protocol, ProviderManifest, SendWithKey } from './types.js';
 
 export type Reply = { status: number; body: unknown; headers?: Record<string, string> };
@@ -240,6 +240,21 @@ async function reloaded(env: ModEnv, extra: Record<string, unknown> = {}): Promi
 }
 
 const exists = (env: ModEnv, id: string) => env.mods.mods.some((m) => m.id === id) || there(path.join(modsDir(env.home), id));
+/** The mod of this id that a change is meant for: the user's own copy when there is one (a built-in of the same id may be listed beside a copy that failed). */
+const entry = (env: ModEnv, id: string) => env.mods.mods.find((m) => m.id === id && m.source === 'user') ?? env.mods.mods.find((m) => m.id === id);
+
+/** Whether version `a` is newer than `b`: dotted numbers (1 to 4 of them), compared left to right. Anything else is never "newer". */
+export function isNewer(a: unknown, b: unknown): boolean {
+  const parts = (v: unknown) => (typeof v === 'string' && /^\d{1,9}(\.\d{1,9}){0,3}$/.test(v) ? v.split('.').map(Number) : undefined);
+  const x = parts(a);
+  const y = parts(b);
+  if (!x || !y) return false;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (x[i] ?? 0) - (y[i] ?? 0);
+    if (d !== 0) return d > 0;
+  }
+  return false;
+}
 
 // ---- GET /api/mods
 
@@ -279,7 +294,7 @@ function trustOf(env: Pick<ModEnv, 'home' | 'mods'>, m: LoadedMod): CodeTrust {
 }
 
 /** The loader's line for a carried block, condition or card mod that was changed, switched off, un-trusted or removed (`loader.ts`). */
-const isNotice = (p: string) => p.endsWith(': applies after a restart.');
+const isNotice = (p: string) => p.endsWith(': applies after a restart.') || p.includes(REQUIRED_TAIL);
 
 // What a block, condition or card mod brings, read from its manifest alone (nothing of its code has run). `key` is the `provides` list, `core` is where
 // Reins keeps that thing. A new mod kind that brings something to core is one more row here.
@@ -341,6 +356,11 @@ function summary(env: ModEnv, m: LoadedMod) {
     // A user mod is "installed" when the catalog has that id (custom endpoints may not take a catalog id), else it is the user's own.
     source: m.source === 'bundled' ? 'bundled' : readCatalog(env, m.id) ? 'installed' : 'custom',
     ...(m.replaces ? { replaces: m.replaces } : {}),
+    // The default pack: its mods can be customized (copied to the user's folder), and a required one has no off switch.
+    ...(m.pack ? { pack: m.pack } : {}),
+    ...(m.required ? { required: true } : {}),
+    // A copy of a built-in says which version the built-in is, and when the built-in has gone ahead of it.
+    ...(m.replaces && m.builtinVersion ? { builtinVersion: m.builtinVersion, ...(isNewer(m.builtinVersion, man.version) ? { newer: true } : {}) } : {}),
     // The loader's "applies after a restart" line is news, not a fault: it is told apart so the list does not draw it as an error.
     problems: trust === 'restart' ? [`${id$(m.id)}: ${RESTART}.`] : m.problems.filter((p) => !isNotice(p)),
     ...(m.problems.some(isNotice) ? { notices: m.problems.filter(isNotice) } : {}),
@@ -390,7 +410,9 @@ async function chooser(env: ModEnv, probe: boolean) {
 export async function listMods(env: ModEnv): Promise<Reply> {
   // First run: the marker was never written and no provider besides the built-in ones was installed.
   const firstRun = !there(firstRunFile(env.home)) && !env.mods.mods.some((m) => m.kind === 'provider' && m.source === 'user');
-  return { status: 200, body: { mods: env.mods.mods.map((m) => summary(env, m)), firstRun, chooser: await chooser(env, firstRun), problems: env.mods.problems, secretsPath: secretsFile(env.home) } };
+  // The pack line of the first-run screen: the mods of the default pack, and which of them cannot be switched off.
+  const pack = env.mods.mods.filter((m) => m.pack).map((m) => ({ id: m.id, label: typeof (m.manifest as { label?: unknown } | undefined)?.label === 'string' ? (m.manifest as { label: string }).label : m.id, enabled: m.enabled, required: m.required === true }));
+  return { status: 200, body: { mods: env.mods.mods.map((m) => summary(env, m)), firstRun, chooser: await chooser(env, firstRun), pack, problems: env.mods.problems, secretsPath: secretsFile(env.home) } };
 }
 
 // ---- POST /api/mods/first-run/done
@@ -514,7 +536,7 @@ export function editMod(env: ModEnv, id: unknown, b: Record<string, unknown>): P
     if (!EDITABLE.has(k)) return Promise.resolve(fail(400, `\`${cap(k, 40)}\` is not a field Reins lets you edit.`));
   }
   return serial(env.home, async () => {
-    const mod = env.mods.mods.find((m) => m.id === id);
+    const mod = entry(env, id);
     if (!mod) return fail(404, `No mod ${id$(id)} is installed.`);
     if (mod.source === 'bundled') return fail(409, `${id$(id)} is built in and cannot be edited. Disable it, or add your own endpoint.`);
     if (mod.kind !== 'provider') return fail(409, `${id$(id)} is not a provider, so it cannot be edited here.`);
@@ -546,7 +568,9 @@ export function editMod(env: ModEnv, id: unknown, b: Record<string, unknown>): P
 export function setEnabled(env: ModEnv, id: unknown, on: boolean): Promise<Reply> {
   if (!isModId(id)) return Promise.resolve(fail(400, 'That is not a valid mod id.'));
   return serial(env.home, async () => {
-    if (!env.mods.mods.some((m) => m.id === id)) return fail(404, `No mod ${id$(id)} is installed.`);
+    const mod = entry(env, id);
+    if (!mod) return fail(404, `No mod ${id$(id)} is installed.`);
+    if (!on && mod.required) return fail(409, `${id$(id)} is required: Reins cannot run without it, so it cannot be switched off. You can customize it instead.`);
     const off = readDisabled(env.home);
     if (on) off.delete(id);
     else off.add(id);
@@ -564,7 +588,7 @@ export function setEnabled(env: ModEnv, id: unknown, on: boolean): Promise<Reply
 export function removeMod(env: ModEnv, id: unknown): Promise<Reply> {
   if (!isModId(id)) return Promise.resolve(fail(400, 'That is not a valid mod id.'));
   return serial(env.home, async () => {
-    const mod = env.mods.mods.find((m) => m.id === id);
+    const mod = entry(env, id);
     if (!mod) return fail(404, `No mod ${id$(id)} is installed.`);
     if (mod.source === 'bundled') return fail(409, `${id$(id)} is built in and cannot be removed. You can disable it.`);
     const dir = path.join(modsDir(env.home), id);
@@ -595,7 +619,7 @@ export function trustMod(env: ModEnv, id: unknown, b: Record<string, unknown>): 
   if (!isModId(id)) return Promise.resolve(fail(400, BAD_ID));
   if (typeof b.hash !== 'string' || b.hash === '') return Promise.resolve(fail(400, '`hash` must be the hash the code prompt showed.'));
   return serial(env.home, async () => {
-    const mod = env.mods.mods.find((m) => m.id === id);
+    const mod = entry(env, id);
     if (!mod) return fail(404, `No mod ${id$(id)} is installed.`);
     if (mod.source === 'bundled') return fail(409, `${id$(id)} is built in; there is nothing to trust.`);
     if (!mod.hasCode) return fail(409, `${id$(id)} has no code, so there is nothing to trust.`);
@@ -612,7 +636,7 @@ export function trustMod(env: ModEnv, id: unknown, b: Record<string, unknown>): 
       return fail(500, 'The trust could not be saved.');
     }
     const r = await reloaded(env, { id });
-    const after = env.mods.mods.find((m) => m.id === id);
+    const after = entry(env, id);
     (r.body as Record<string, unknown>).trust = after ? trustOf(env, after) : 'none';
     return r;
   });
@@ -623,7 +647,7 @@ export function trustMod(env: ModEnv, id: unknown, b: Record<string, unknown>): 
 export function reinstallMod(env: ModEnv, id: unknown): Promise<Reply> {
   if (!isModId(id)) return Promise.resolve(fail(400, 'That is not a valid mod id.'));
   return serial(env.home, async () => {
-    const mod = env.mods.mods.find((m) => m.id === id);
+    const mod = entry(env, id);
     if (!mod) return fail(404, `No mod ${id$(id)} is installed.`);
     if (mod.source === 'bundled') return fail(409, `${id$(id)} is built in and has no catalog copy to install.`);
     const raw = readCatalog(env, id);
@@ -1020,11 +1044,13 @@ function stagedMatches(stage: string, files: FileBytes[]): boolean {
  * recorded) or the same bytes were trusted before; a mod that shadows a built-in one needs `b.replaceBuiltin` true.
  */
 export function importApply(env: ModEnv, b: Record<string, unknown>): Promise<Reply> {
-  for (const k of ['trust', 'replaceBuiltin'] as const) if (b[k] !== undefined && typeof b[k] !== 'boolean') return Promise.resolve(fail(400, `\`${k}\` must be true or false.`));
+  for (const k of ['trust', 'replaceBuiltin', 'newOnly'] as const) if (b[k] !== undefined && typeof b[k] !== 'boolean') return Promise.resolve(fail(400, `\`${k}\` must be true or false.`));
   return serial(env.home, async () => {
     const got = checkImport(env, b.file);
     if ('reply' in got) return got.reply;
     const { id, files, summary } = got.ok;
+    // Customize: the check "there is no copy of yours" is made here, inside the same turn as the write, so a copy made in between is never replaced.
+    if (b.newOnly === true && summary.replaces === 'your') return fail(409, OWN_COPY(id));
     if (summary.replaces === 'builtin' && b.replaceBuiltin !== true) return fail(409, `This ${summary.replacesLine}. Import it again with replaceBuiltin true to go on.`);
     const home = env.home;
     const final = path.join(modsDir(home), id);
@@ -1094,10 +1120,57 @@ export function importApply(env: ModEnv, b: Record<string, unknown>): Promise<Re
     const r = await reloaded(env, { id, replaced: had });
     const body = r.body as Record<string, unknown>;
     if (left.length) body.problems = [...(Array.isArray(body.problems) ? body.problems : []), ...left];
-    const now = env.mods.mods.find((m) => m.id === id);
+    const now = entry(env, id);
     body.trust = now ? trustOf(env, now) : 'none';
     return r;
   });
+}
+
+// ---- GET / POST /api/mods/:id/customize
+
+const OWN_COPY = (id: string) => `You already have your own copy of ${id$(id)}. Edit it, or remove it first.`;
+
+/**
+ * The mod file Customize imports: the built-in pack mod's own files (read and checked as an export is), without `pack` and `required`, which only a
+ * built-in mod may say. Everything else is the import path's: names, sizes, keys, the manifest check, the code prompt, the built-in confirm.
+ */
+function customizeSource(env: ModEnv, id: unknown): { file: { reinsMod: 1; files: Record<string, string> } } | { reply: Reply } {
+  if (!isModId(id)) return { reply: fail(400, BAD_ID) };
+  const same = env.mods.mods.filter((m) => m.id === id);
+  if (!same.length) return { reply: fail(404, `No mod ${id$(id)} is installed.`) };
+  if (same.some((m) => m.source === 'user') || there(path.join(modsDir(env.home), id))) return { reply: fail(409, OWN_COPY(id)) };
+  if (!same.some((m) => m.source === 'bundled' && m.pack)) return { reply: fail(409, `${id$(id)} is not part of the default pack, so it cannot be customized.`) };
+  // The files as they are, whole and as text. Nothing else is judged here: names, count, size, keys, binary and the manifest are the import's checks.
+  const files: Record<string, string> = {};
+  try {
+    for (const f of readFolder(same.find((m) => m.source === 'bundled')!.dir, id)) {
+      files[f.rel] = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(f.bytes);
+    }
+  } catch {
+    return { reply: fail(409, `${id$(id)} could not be copied: its files could not be read as text.`) };
+  }
+  const p = parseManifest(Buffer.from(files['mod.json'] ?? '', 'utf8'), 'mod.json');
+  if ('error' in p) return { reply: fail(409, `${id$(id)} could not be copied: ${p.error}`) };
+  delete p.raw.pack;
+  delete p.raw.required;
+  return { file: { reinsMod: 1, files: { ...files, 'mod.json': JSON.stringify(p.raw, null, 2) + '\n' } } };
+}
+
+/** The file Customize would import, for the import dialog to preview. Writes nothing. */
+export function customizeFile(env: ModEnv, id: unknown): Reply {
+  const got = customizeSource(env, id);
+  return 'reply' in got ? got.reply : { status: 200, body: { file: got.file } };
+}
+
+/**
+ * Customize: copies the pack mod `id` into the user's mods folder, through the import path (`importApply`). The copy takes the built-in's place after a
+ * restart. Code asks for trust as any import does (`b.trust`); a copy of yours that is already there is never replaced.
+ */
+export function customizeMod(env: ModEnv, id: unknown, b: Record<string, unknown>): Promise<Reply> {
+  for (const k of Object.keys(b)) if (k !== 'trust') return Promise.resolve(fail(400, `\`${cap(k, 40)}\` is not a field of a customize request.`));
+  const got = customizeSource(env, id);
+  if ('reply' in got) return Promise.resolve(got.reply);
+  return importApply(env, { file: got.file, replaceBuiltin: true, newOnly: true, ...(b.trust !== undefined ? { trust: b.trust } : {}) });
 }
 
 /** At most `budget` bytes of a plain file, read through one open descriptor, however big it is or grows. */
@@ -1123,7 +1196,7 @@ export function exportMod(env: ModEnv, id: unknown): Reply {
   if (!isModId(id)) return fail(400, BAD_ID);
   // The id is the download's file name, and a header is not redacted: an id that is a known key is never sent. Generic words, no value.
   if (env.holdsSecret(id)) return fail(409, 'This mod cannot be exported.');
-  const mod = env.mods.mods.find((m) => m.id === id);
+  const mod = entry(env, id);
   if (!mod) return fail(404, `No mod ${id$(id)} is installed.`);
   const no = (why: string) => fail(409, `${id$(id)} was not exported: ${why}`);
   const files: Record<string, string> = {};
