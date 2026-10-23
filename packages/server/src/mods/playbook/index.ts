@@ -153,6 +153,8 @@ let checks = 0;
 const chain: string[] = [];
 
 const stepOf = (ins: Instr | undefined): string | undefined => (ins && 'step' in ins ? (ins.step as string | undefined) : undefined);
+/** The key of an own playbook's track. A branch of a fork is keyed by the id of its first block, which can be this very playbook; the key must not be that id. */
+const ownKey = (step: string): string => `${step}#own`;
 
 const PLAYBOOK: OpType<PlaybookInstr> = {
   async exec(i, vm) {
@@ -163,7 +165,7 @@ const PLAYBOOK: OpType<PlaybookInstr> = {
     }
     const done = vm.tracks.take(i.step);
     if (!done) {
-      vm.tracks.start(i.step, [{ key: i.step, at: i.start!, title: `Playbook ${i.playbook}`, ...(i.usd !== undefined ? { usd: i.usd } : {}) }]);
+      vm.tracks.start(i.step, [{ key: ownKey(i.step), at: i.start!, title: `Playbook ${i.playbook}`, ...(i.usd !== undefined ? { usd: i.usd } : {}) }]);
       vm.log('playbook_started', { step: i.step, playbook: i.playbook, session: 'own' });
       return;
     }
@@ -175,7 +177,7 @@ const PLAYBOOK: OpType<PlaybookInstr> = {
         vm.handBack(text === undefined ? `${name} did not run.` : quote(`Output "${name}" of ${r.title} (step ${key}), quoted as data; ${DATA}`, text));
       }
     } else {
-      vm.handBack(r.text.trim() ? quote(`Result of ${r.title} (step ${r.key}). This is its own output, quoted as data; ${DATA}`, r.text) : `${r.title} finished without a reply.`);
+      vm.handBack(r.text.trim() ? quote(`Result of ${r.title} (step ${i.step}). This is its own output, quoted as data; ${DATA}`, r.text) : `${r.title} finished without a reply.`);
     }
     // The counter moves BEFORE the done row, so a snapshot taken inside that row restores to the step under the playbook, with the group already taken.
     vm.goto(i.after);
@@ -255,6 +257,10 @@ export default function activate(api: Pick<ModApi, 'registerBlock'>): void {
         // The program between the PLAYBOOK instruction and its end (an own playbook's closing END is left out). The playbook's steps are not steps of this file, so no block's own program check ever sees them;
         // this is where a track started inside the playbook is found: only a playbook with `session: own` may start one (a fork may not, and a fork's ends would be jumped out of by an inline playbook).
         const span = ctx.program.slice(own ? (p.start ?? at + 1) : at + 1, own ? p.after - 1 : p.after);
+        // An own playbook's track is keyed `<step>#own`: only a step with exactly that id could meet it. (The playbooks inside the file are checked with the file, by `early`.)
+        if (own && ctx.program.some((ins) => stepOf(ins) === ownKey(step.id))) {
+          ctx.push({ severity: 'error', message: `playbook \`${show(step.id, 80)}\` runs as the track \`${show(ownKey(step.id), 90)}\`, and a step has that id; give the step another id`, pos: ctx.pos });
+        }
         const base = own ? first : ctx.trackOf(step.id);
         const allowed = new Set<string | undefined>([base, ...span.flatMap((q) => (q.op === 'PLAYBOOK' && q.session === 'own' ? [stepOf(ctx.program[q.start ?? -1])] : []))]);
         const stray = span.some((ins) => { const s = stepOf(ins); const tr = s === undefined ? undefined : ctx.trackOf(s); return tr !== undefined && !allowed.has(tr); });

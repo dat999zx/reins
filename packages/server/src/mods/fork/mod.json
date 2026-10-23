@@ -8,6 +8,7 @@
   "main": "index.js",
   "order": 135,
   "pack": "default",
+  "tracks": true,
   "provides": { "kinds": ["fork"], "ops": ["FORK"], "events": ["fork_started", "fork_done"] },
   "view": {
     "kind": "fork",

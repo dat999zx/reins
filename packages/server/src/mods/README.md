@@ -1,5 +1,7 @@
 # Providers are mods
 
+> Writing a block, a condition, a card or a playbook, the default pack, Customize, the `fork` block and the Share file are in [`PACK.md`](PACK.md). This file covers providers, protocols, and the rules every mod follows.
+
 A provider is one folder in `<home>/mods/<id>/` with a `mod.json`. The home is `~/.reins` unless `REINS_HOME` says otherwise. Reins reads the folder when it starts and again after every change in Settings. A mod that has a mistake is listed with the reason, and nothing else stops.
 
 There are two kinds you need here:
@@ -178,9 +180,11 @@ A block has code (`main`) or no code at all (`turn`, see Data blocks). A conditi
 | `description` | Optional text. |
 | `main` | The code file, inside the folder. A block has `main` or `turn`, never both. |
 | `turn`, `statusLine` | Data blocks only (see below). |
-| `order` | Required, a number. It sets where the kind or condition sits in core's registry. Built-in blocks use 10 to 140, and built-in conditions use 10 to 110. |
+| `order` | Required, a number. It sets where the kind or condition sits in core's registry. The default pack's blocks use 10 to 140 (their views, 10 to 150), and its conditions use 10 to 110. Pick a number above 150 for a new block. |
 | `provides` | Required. It lists everything the mod may add (below). |
 | `view` | Blocks only. The block's face, as JSON (below). |
+| `tracks` | Blocks only, optional, `true` or `false`. Says the block's ops may start tracks (several sessions at once, spending USD). A block with code that says it, or whose code calls `tracks.start`, gets one more line under the trust prompt: "This mod may run several sessions at once and spend money on them." |
+| `reads` | Blocks only, optional: `{ "noun": a name, "folder": a name, "name": [1 to 4 field names] }`. Says the block reads files from a folder of this computer, named by the step's `title` or attributes. The Share file does not carry those files and says so with the `noun` (the playbook says `{ "noun": "playbook", "folder": "blocks", "name": ["title", "playbook"] }`). |
 
 `provides` takes these keys:
 
@@ -197,7 +201,7 @@ The server checks the fields above. It does not check the other view keys (`colo
 
 A manifest that fails a check is listed with the reason, in plain words. Its code is never read.
 
-The app gets the views of every block mod from `GET /api/kinds`, built from the manifest only. A mod cannot give a view to a built-in block name. The block list sorts by the view's `order`, and falls back to the manifest's `order`.
+The app gets the views of every block mod from `GET /api/kinds`, built from the manifest only. A mod cannot give a view to a built-in block name, except the Customize copy of that block (see `PACK.md`). The block list sorts by the view's `order`, and falls back to the manifest's `order`.
 
 ### The code: `activate(api)`
 
@@ -206,7 +210,21 @@ The default export of `main` is `activate(api)`. Reins calls it once. The `api` 
 - `registerBlock(node)`: one argument, a `NodeType` (see `packages/core/src/nodes/README.md`). The block's view is the manifest's `view`. Code cannot give a view.
 - `registerCondition(c)`: a `CondType`.
 - `registerCard(c)`: a `CardType`.
-- `core`: exactly `checkMode`, `turnInstr`, `policyOf`, `parseCond` and `printCond` (the last two for a block that takes a condition in its heading, like `if`). Nothing else: not `register`, `NODES`, `CONDS`, `CARDS` or `opOf`.
+- `core`: exactly nine functions (`buildApi` in `loader.ts`; the object is frozen). Nothing else: not `register`, `NODES`, `CONDS`, `CARDS` or `opOf`. They are plain functions of core; none of them registers anything or reads a registry for you to change.
+
+  | Function | What it does | Safety |
+  |---|---|---|
+  | `checkMode(step, ctx)` | A `validate` hook: pushes an error when the step's `mode:` is not `read-only` or `write`. | Pure. |
+  | `turnInstr(step)` | The `TURN` instruction for a step: a turn under the step's own mode and cards. A block pushes it from `compile`. | Builds data; calls `policyOf`. |
+  | `policyOf(step)` | What the step's turn may do (`mode`, `guards`, `allowShell`), from its `mode:` and its cards. | Runs the `policy` hook of each card on the step, which is other mods' code. |
+  | `parseCond(src, pos?)` | Reads condition text into `{ cond }` or `{ diag }`, for a block that takes a condition in its heading (like `if`). | Runs the `parse` of the registered condition atoms. |
+  | `printCond(cond)` | Prints a condition back to text. | Runs the `print` of the atoms. |
+  | `driftFound(events)` | True when any drift signal fires in a run's events (the `drift` condition's test). | Pure; reads the array, never writes it. |
+  | `globMatcher(glob)` | A function that tests a project-relative path against a workflow glob (picomatch's defaults). | Pure. A pattern it cannot read may throw, so check with `isValidGlob` first. |
+  | `isValidGlob(glob)` | True when the text is a glob Reins accepts. | Pure. |
+  | `relPath(path, cwd)` | A tool path with `\` turned into `/`, `.` and `..` resolved, and made relative to `cwd` when it lies inside it. | Pure; touches no file. |
+
+  The last four exist so that a condition or a card can do its work without importing a package: a mod may not import `@reins/core` or the glob package itself. The default pack uses them (`cond-touches` uses `globMatcher` and `relPath`, `cond-drift` uses `driftFound`, `card-guard` uses `isValidGlob`).
 - `env` and `registerProtocol`, as for a protocol mod.
 
 When `activate` returns or throws, the registrars refuse with "the api can only be used while the mod activates." `core` stays callable, because a block calls `turnInstr` when it runs.
@@ -221,7 +239,7 @@ Each registrar refuses, and the line names the mod:
 
 The block's node is copied once, before the check, and core stores that copy. A getter that changes the original later changes nothing.
 
-The eight question cards belong to core. They are not in the card registry, so no card mod can replace them. Task 18 moves them to data; see Task 18 for the details.
+The eight question cards belong to core. They are not in the card registry, so no card mod can replace them. They are plain data; see "Conditions, cards and question cards" below.
 
 ### Templates
 
@@ -283,7 +301,7 @@ Reins registers each block, condition and card in core once, when the server sta
 - A mod that is registered and unchanged stays as it is.
 - A mod whose `mod.json` or code changed, that was switched off, that is no longer trusted, or that was removed keeps its old registration. Settings says `` `<id>`: applies after a restart. ``
 - A mod that was not registered yet (a new one, or one trusted or turned on after start) registers at once. It does not wait for a restart.
-- A user mod with the id of a bundled block, condition or card mod replaces it. The copy may cover only what the bundled mod itself `provides`: a copy of `say` may replace `say`, never `end` or `gate`. (Reins does not yet enforce this: no bundled block mod ships in M2, and the limit is M3 Task 1's.)
+- A user mod with the id of a bundled block, condition or card mod replaces it (that is what Customize makes: see `PACK.md`). The copy may cover only what the bundled mod itself `provides`: a copy of `say` may replace `say`, never `end` or `gate`. Reins enforces this (`mayShadow` in `loader.ts`). A copy of a built-in waits for a restart.
 
 ### Trust
 

@@ -95,10 +95,11 @@ export function guardNode(src: NodeType): NodeType {
   const n = { ...src };
   const mod = n.mod;
   if (!mod || typeof mod.id !== 'string' || !Array.isArray(mod.events) || mod.events.some((e) => typeof e !== 'string')) throw new Error('a node from a mod needs the loader\'s mod mark');
-  const info: ModInfo = Object.freeze({ id: mod.id, events: Object.freeze([...mod.events]), ...(mod.pack === true ? { pack: true as const } : {}) });
+  const info: ModInfo = Object.freeze({ id: mod.id, events: Object.freeze([...mod.events]), ...(mod.pack === true ? { pack: true as const } : {}), ...(mod.pack === true || mod.builtin === true ? { builtin: true as const } : {}) });
   // What a block of the default pack prints in a heading or makes an id from is the user's own data (a phase's title, the id made from it, which links in saved files name):
-  // it is not cut. The same text from any other mod is one capped line. Only the loader sets `pack`, from a bundled manifest.
-  const fit = (v: unknown, max: number): string | undefined => (info.pack ? (typeof v === 'string' ? v : undefined) : tame(v, max));
+  // it is not cut. The same text from any other mod is one capped line. Only the loader sets `builtin`: for the pack's own blocks, and for a Customize copy of one (the same block, tweaked).
+  // This flag is about what the block PRINTS. Its ops stay fenced and trusted as a mod's (`modOfOp` keeps `info`), and count/print lines keep their caps.
+  const fit = (v: unknown, max: number): string | undefined => (info.builtin ? (typeof v === 'string' ? v : undefined) : tame(v, max));
   const where = (what: string) => `block ${info.id}, ${what}`;
   const out: NodeType = { ...n, mod: info, attrs: Array.isArray(n.attrs) ? Object.freeze([...n.attrs]) as string[] : [] };
 

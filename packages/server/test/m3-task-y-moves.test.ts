@@ -133,15 +133,15 @@ describe('M3 group Y: Customize copies of run, repeat and verify (ordinary, fenc
     }
   }, 90_000);
 
-  it('a copy is an ordinary mod to Stop: the run does not wait for its command (the pack\'s own code does, see the pin)', async () => {
+  it('a copy is the same block, tweaked, to Stop: the run waits for its command as for the pack\'s own code, see the pin (M3 fix B item 8)', async () => {
     const mods = await world(['run']);
     try {
       const copy = await stopDuring(WF.runFix!, false);
       const own = PIN.stops.runStopThenSettle as { counter: number; events: Array<{ type: string }> };
       expect(own.events.map((e) => e.type)).toContain('command_result');   // the pack's: waited for, recorded
       expect(copy.status).toBe('stopped');
-      expect(copy.events.map((e) => e.type)).not.toContain('command_result');
-      expect(copy.counter).toBe(0);
+      expect(copy.events.map((e) => e.type)).toContain('command_result');   // waited for, recorded
+      expect(copy.counter).toBe(own.counter);
     } finally {
       mods.dispose();
     }

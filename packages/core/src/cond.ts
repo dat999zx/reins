@@ -115,7 +115,7 @@ export function printCond(c: Cond): string {
       return `${left} or ${right}`;
     }
     default:
-      return CONDS.get((c as { t: string }).t)?.print(c) as string;   // `c` is `never` when core is compiled alone: the atoms are merged in by the pack's mods
+      return CONDS.get((c as { t: string }).t)?.print(c) ?? '';   // an atom nobody registered (a whenever that did not parse) prints as nothing. `c` is `never` when core is compiled alone: the atoms are merged in by the pack's mods
   }
 }
 

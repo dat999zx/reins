@@ -155,7 +155,7 @@ describe('NODES, CONDS and CARDS are ordered and shadowable', () => {
     const before = keys();
     const original = opOf('RUN');
     expect(original).toBeDefined();
-    const copy: NodeType = { ...runNode, ops: { RUN: { ...noop } } };
+    const copy: NodeType = { ...runNode, mod: undefined, ops: { RUN: { ...noop } } };   // no mod mark: `register` stores this very object (a marked node is stored as its guarded copy)
     const d = register(copy, undefined, { shadow: true });
     expect(NODES.get('run')).toBe(copy);
     expect(opOf('RUN')).toBe(copy.ops!.RUN);

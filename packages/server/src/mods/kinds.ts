@@ -394,6 +394,23 @@ function dataProblems(raw: Record<string, unknown>, id: string): Problem[] {
   return [];
 }
 
+/**
+ * Two optional facts a block says about itself for the people who import or share it: `tracks` (its ops may start tracks: several sessions at once, spending
+ * USD; the import summary says so) and `reads` (a block that reads files from a folder of this computer, `{ noun, folder, name }`: the share file does not
+ * carry them, and says so by `noun`, naming the file by the step's `name` fields).
+ */
+function shareProblems(raw: Record<string, unknown>, id: string): Problem[] {
+  const bad = (msg: string): Problem[] => [`\`${id}\`: ${msg}`];
+  if (raw.tracks !== undefined && typeof raw.tracks !== 'boolean') return bad('`tracks` must be true or false.');
+  const r = raw.reads;
+  if (r === undefined) return [];
+  const name = (v: unknown) => typeof v === 'string' && NAME.test(v);
+  if (!isObj(r) || entryKeys(r, ['noun', 'folder', 'name']) !== undefined || !name(r.noun) || !name(r.folder) || !Array.isArray(r.name) || r.name.length < 1 || r.name.length > 4 || !r.name.every(name)) {
+    return bad('`reads` must be { "noun": a name, "folder": a name, "name": a list of 1 to 4 field names }.');
+  }
+  return [];
+}
+
 registerKind({
   id: 'block',
   after: ['condition', 'card'],
@@ -401,7 +418,7 @@ registerKind({
   validate(raw, { id, builtin }) {
     const shape = shapeProblems(raw, id);
     if (shape.length) return shape;
-    const out = raw.turn === undefined ? providesProblems(raw, id, BLOCK_KEYS, 'kinds', builtin) : dataProblems(raw, id);
+    const out = [...(raw.turn === undefined ? providesProblems(raw, id, BLOCK_KEYS, 'kinds', builtin) : dataProblems(raw, id)), ...shareProblems(raw, id)];
     return out.length ? out : viewProblems(raw, id, builtin);
   },
   // The view is known before the code runs and before trust, so the server can show it and the import summary can list it.

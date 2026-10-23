@@ -49,10 +49,12 @@ function build(folder: string, out: string): string[] {
 }
 
 const wf = (kind: string) => `---\nreins: 1\nname: t\nbudget: { turns: 5, minutes: 5 }\nalways: []\n---\n\n## ${kind}\n> go\n`;
-const unknownKind = (kind: string): boolean => {
+/** The "Unknown step kind" lines for a step of `kind` (M3 fix D: a kind of a mod that is switched off says which mod, so the line may go on after the name). */
+const unknownLines = (kind: string): string[] => {
   const p = parseWorkflow(wf(kind));
-  return [...p.diagnostics, ...(p.workflow ? validate(p.workflow) : [])].some((d) => d.message === `Unknown step kind "${kind}"`);
+  return [...p.diagnostics, ...(p.workflow ? validate(p.workflow) : [])].map((d) => d.message).filter((m) => m === `Unknown step kind "${kind}"` || m.startsWith(`Unknown step kind "${kind}": `));
 };
+const unknownKind = (kind: string): boolean => unknownLines(kind).length > 0;
 const kindsOf = (m: { manifest: Record<string, any> }): string[] => m.manifest.provides?.kinds ?? [];
 
 describe('the default pack: what every pack mod must be', () => {
@@ -151,6 +153,7 @@ describe('the default pack, started by the real loader in a temp home', () => {
         for (const k of kindsOf(p as never)) {
           expect(NODES.has(k), `${p.id}: ${k}`).toBe(false);
           expect(unknownKind(k), `${p.id}: ${k}`).toBe(true);
+          expect(new Set(unknownLines(k)), `${p.id}: ${k}`).toEqual(new Set([`Unknown step kind "${k}": it comes with the mod ${p.id}, which is switched off in Settings`]));
         }
       } finally {
         mods.dispose();

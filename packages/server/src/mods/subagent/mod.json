@@ -8,6 +8,7 @@
   "main": "index.js",
   "order": 120,
   "pack": "default",
+  "tracks": true,
   "provides": { "kinds": ["subagent"], "attrs": ["model", "reasoning", "usd", "mode"] },
   "view": {
     "kind": "subagent",
@@ -26,6 +27,7 @@
     "cards": true,
     "card": { "label": "subagent", "section": "Flow" },
     "fresh": {},
+    "coreRows": ["subagent_started", "subagent_result"],
     "rows": {
       "subagent_started": {
         "text": "Subagent {title} {resumed?'resumed'|'started'} on {label|model|'the session model'}.",

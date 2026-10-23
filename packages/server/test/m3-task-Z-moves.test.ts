@@ -63,29 +63,33 @@ describe('the events of model and subagent', () => {
     expect((s.manifest as { provides: { events?: string[] } }).provides.events).toBeUndefined();
   });
 
-  it('mayRow: any non-core event; a core event only for the kind core names for it', () => {
-    expect(mayRow('anything', 'x')).toBe(true);
-    expect(mayRow('model_switched', 'x')).toBe(true);
-    expect(mayRow('subagent_started', 'subagent')).toBe(true);
-    expect(mayRow('subagent_result', 'subagent')).toBe(true);
-    expect(mayRow('subagent_started', 'model')).toBe(false);
-    expect(mayRow('subagent_started', undefined)).toBe(false);
-    expect(mayRow('turn_ended', 'subagent')).toBe(false);
-    expect(mayRow('run_started', 'subagent')).toBe(false);
-    for (const t of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) expect(mayRow(t, 'subagent'), t).toBe(true);   // not core events at all
+  it('mayRow: any non-core event; a core event only for a view that lists it in coreRows (M3 fix D: the view says it, core names no kind)', () => {
+    const sub = { coreRows: ['subagent_started', 'subagent_result'] };
+    expect(mayRow('anything', {})).toBe(true);
+    expect(mayRow('model_switched', {})).toBe(true);
+    expect(mayRow('subagent_started', sub)).toBe(true);
+    expect(mayRow('subagent_result', sub)).toBe(true);
+    expect(mayRow('subagent_started', {})).toBe(false);
+    expect(mayRow('subagent_started', { coreRows: ['subagent_result'] })).toBe(false);
+    expect(mayRow('turn_ended', sub)).toBe(false);
+    expect(mayRow('run_started', sub)).toBe(false);
+    for (const t of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) expect(mayRow(t, sub), t).toBe(true);   // not core events at all
   });
 });
 
 describe('who may draw the rows of a core event', () => {
-  const view = (kind: string, rows: object) => ({ kind, colour: 'soft', fields: [], line: [kind], rows });
-  const scope = { mod: { attrs: [], events: [] as string[] } };
-  it('the subagent view may; any other mod view is refused, and so is a core event that has no owner', () => {
-    expect(viewShapeProblem(view('subagent', { subagent_started: { text: 'x' } }), scope)).toBeUndefined();
-    expect(viewShapeProblem(view('subagent', { subagent_result: { text: 'x', details: '{text}', className: 'sx-sub' } }), scope)).toBeUndefined();
+  const view = (kind: string, rows: object, coreRows?: string[]) => ({ kind, colour: 'soft', fields: [], line: [kind], rows, ...(coreRows ? { coreRows } : {}) });
+  const scope = { mod: { attrs: [], events: [] as string[], pack: true as const } };
+  const both = ['subagent_started', 'subagent_result'];
+  it('a pack view that lists the events may; one that does not, or a mod that is not a pack block, is refused, and so is a core event that has no owner', () => {
+    expect(viewShapeProblem(view('subagent', { subagent_started: { text: 'x' } }, both), scope)).toBeUndefined();
+    expect(viewShapeProblem(view('subagent', { subagent_result: { text: 'x', details: '{text}', className: 'sx-sub' } }, both), scope)).toBeUndefined();
     expect(viewShapeProblem(view('other', { subagent_started: { text: 'x' } }), scope)).toMatch(/event core logs/);
-    expect(viewShapeProblem(view('subagent', { turn_ended: { text: 'x' } }), scope)).toMatch(/event core logs/);
-    expect(viewShapeProblem(view('subagent', { run_started: { text: 'x' } }), scope)).toMatch(/event core logs/);
-    expect(viewShapeProblem(view('subagent', { not_provided: { text: 'x' } }), scope)).toMatch(/provides\.events/);
+    expect(viewShapeProblem(view('subagent', { subagent_started: { text: 'x' } }), scope)).toMatch(/event core logs/);
+    expect(viewShapeProblem(view('subagent', { subagent_started: { text: 'x' } }, both), { mod: { attrs: [], events: [] } })).toMatch(/coreRows/);
+    expect(viewShapeProblem(view('subagent', { turn_ended: { text: 'x' } }, both), scope)).toMatch(/event core logs/);
+    expect(viewShapeProblem(view('subagent', { run_started: { text: 'x' } }, both), scope)).toMatch(/event core logs/);
+    expect(viewShapeProblem(view('subagent', { not_provided: { text: 'x' } }, both), scope)).toMatch(/provides\.events/);
   });
 
   it('a user mod\'s own block cannot draw subagent_started, and the pack\'s subagent still does', async () => {

@@ -9,7 +9,7 @@ import { checkMode, driftFound, globMatcher, isValidGlob, parseCond, policyOf, p
 /** Where the pack mods are. */
 export const PACK_DIR = fileURLToPath(new URL('../../server/src/mods/', import.meta.url));
 
-interface PackManifest { id?: unknown; pack?: unknown; main?: unknown; order?: unknown }
+interface PackManifest { id?: unknown; pack?: unknown; main?: unknown; order?: unknown; provides?: { events?: string[] } }
 
 /** The pack mods under `dir` as the loader would find them: a folder with a mod.json that says `"pack": "default"`, by folder name. */
 export function packMods(dir: string): Array<{ id: string; dir: string; manifest: PackManifest }> {
@@ -64,7 +64,8 @@ export async function registerPack(dir: string): Promise<() => void> {
       if (typeof main !== 'string' || typeof order !== 'number') throw new Error(`pack mod ${mod.id}: needs "main" and a numeric "order"`);
       const api = {
         env: process.env,
-        registerBlock: (n: Parameters<typeof register>[0]) => { const d = register(n, order); undo.push(d); return d; },
+        // The loader's mark (`nodeCopy`): the mod's id and `provides.events`, `pack` and `builtin`. So `register` guards the node as it does in production.
+        registerBlock: (n: Parameters<typeof register>[0]) => { const d = register({ ...n, mod: { id: mod.id, events: mod.manifest.provides?.events ?? [], pack: true, builtin: true } }, order); undo.push(d); return d; },
         registerCondition: (c: Parameters<typeof registerCondition>[0]) => { const d = registerCondition(c, order, { pack: true }); undo.push(d); return d; },
         registerCard: (c: Parameters<typeof registerCard>[0]) => { const d = registerCard(c, order); undo.push(d); return d; },
         core: Object.freeze({ checkMode, driftFound, globMatcher, isValidGlob, parseCond, policyOf, printCond, relPath, turnInstr }),

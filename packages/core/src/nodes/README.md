@@ -1,25 +1,31 @@
 # Adding a block
 
-A block is a kind of step in a workflow, like `run` or `gate`. There are two ways to add one.
+A block is a kind of step in a workflow, like `run` or `gate`. **A block is a mod.** The default pack is the only source of kinds: core registers none. The 14 blocks you see in the palette (`phase`, `say`, `run`, `gate`, `repeat`, `if`, `verify`, `recall`, `store`, `model`, `subagent`, `end`, `fork`, `playbook`) are mod folders in `packages/server/src/mods/<id>/`, each with a `mod.json` that says `"pack": "default"`, and the loader registers them when the server starts. A block of yours is the same thing, in `<home>/mods/<id>/`.
 
-- **As a mod.** No core file. The node is code in the mod's `main` file, and the view is JSON in its `mod.json`. The mod guide is `packages/server/src/mods/README.md`, under "Block, condition and card mods".
-- **Built in.** Two files in this folder, and two lines in other files. This guide covers that way. A mod block gives core the same `NodeType`, so the fields below apply to both.
+- Walkthrough with a block you can run: `packages/server/src/mods/PACK.md`, "Write a block".
+- The manifest, `provides`, `api`, trust and what is contained: `packages/server/src/mods/README.md`, "Block, condition and card mods".
+- This file: the `NodeType` a block hands to `api.registerBlock`, what an op can do with the run, and the `KindView` data in a block's `mod.json`.
 
-## The built-in files
+## What still lives in core
 
-- `<kind>.ts` is the core half: how the block is read, checked, compiled and run. It default-exports a `NodeType`.
-- `<kind>.view.ts` is the app half: how the block looks and edits. It default-exports one object, `satisfies KindView`. It is plain data (see "The view" below).
+`packages/core/src/nodes/`, `conds/` and `cards/` hold the registries and the pieces every block shares, and nothing else. Six files, and `packages/core/test/no-kind-branch.test.ts` fails when there is any other:
 
-Then two more lines:
+| File | What it is | Why it stays |
+|---|---|---|
+| `nodes/index.ts` | The `NodeType`, `OpType` and `VmCtx` types, and the registry (`register`, `NODES`, `opOf`, `defaultId`, `nodeAttrs`, `headingOwns`). The registry starts empty. | The loader and the tests need one place to register into. |
+| `nodes/fields.ts` | The `KindView` and `Field` types, and a few field helpers. | A view is data, and the app and the server check it by this one shape. |
+| `nodes/turn.ts` | `checkMode`, `policyOf`, `turnInstr`. | Every block that sends a turn needs them. A mod gets them through `api.core`. |
+| `nodes/README.md` | This guide. | |
+| `conds/index.ts` | The condition registry (`CONDS`, `registerCondition`). It starts empty. | The parser needs it; the 11 conditions are `cond-*` mods. |
+| `cards/index.ts` | The card registry (`CARDS`, `registerCard`). It starts empty. | The 3 cards are `card-*` mods. |
 
-- `index.ts`: one import, and one entry in the list that `register` loops over (the line that starts `for (const [n, order] of [[phase, 10], [say, 20], ...`). The number is the block's place in core's registry.
-- `../views.ts`: one import of the view file, and one entry in `BUILTIN_VIEWS`. The server serves this list at `GET /api/kinds`, and the app builds its block list from that.
+Nothing in core, in the server outside a pack mod's folder, or in the app may name a block, a condition, a card, one of their instructions or one of their events: `no-kind-branch.test.ts` builds the list of names from the pack manifests and scans for them. A new block never needs an edit in core.
 
-The test `nodes-registry.test.ts` treats every `.ts` file here as a kind, except `index.ts`, `turn.ts`, `fields.ts` and the `*.view.ts` files. Put a helper in one of those, or outside this folder.
+Core's tests get the pack from `packages/core/test/setup-pack.ts` and `pack.ts` (they activate each pack mod with a test `api`, at the `order` its manifest gives). The server's tests use `usePack()` (`packages/server/test/pack-helper.ts`) and the app's use `packages/app/test/setup-kinds.ts`. A test that needs a toy kind registers it straight with `register`: `packages/core/test/fixtures/beep.ts` and `split.ts` are two.
 
 ## A minimal example
 
-`packages/core/test/fixtures/beep.ts` is a whole working block. A step like this
+`packages/core/test/fixtures/beep.ts` is a whole working block for a core test. A step like this
 
 ```
 ## beep
@@ -71,7 +77,7 @@ export const beepView = {
 } satisfies KindView;
 ```
 
-The `declare module` blocks teach the types about the new kind, the new instruction and the new event.
+The `declare module` blocks teach the types about the new kind, the new instruction and the new event. In a mod the core half is the object you pass to `api.registerBlock` (in `index.js`, with no types), and the view half is the `view` object in `mod.json`. The pack mods put the `declare module '@reins/core'` lines in their `index.ts`: see `packages/server/src/mods/fork/index.ts`.
 
 ## The NodeType fields
 
@@ -93,13 +99,31 @@ The `declare module` blocks teach the types about the new kind, the new instruct
 | `count`, `print` | The receipt name and the `reins run` line, by event type. |
 | `defaultPrompt(step)` | The prompt a new step starts with. |
 | `statusLine` | The status line of the block's replies. |
+| `chatTurn` | True on the one kind a chat message is wrapped in (`phase`). Only the default pack, or a Customize copy of one of its blocks, may claim it. |
 | `tag` | How a chat tag builds a step: `place` (`after` or `wrap`), `arg`, `argRequired`, `lines`. |
 
 ## Order
 
-The blocks of the default pack use these numbers: phase 10, say 20, run 30, gate 40, repeat 50, if 60, verify 70, recall 90, store 100, model 110, subagent 120, end 130, fork 135, playbook 140. The number is the block's place in core's registry. A mod block's place is its manifest's `order`; a new block picks a free number above 140.
+The `order` in a mod's manifest is the block's place in core's registry. The blocks of the default pack use these numbers, and the view's own `order` (the palette order) differs for six of them:
 
-The palette order comes from the view's `order`, and it is not always the same number. `end` is 130 in core's registry and 120 in its view, `playbook` is 140 and 150.
+| Block | `order` (registry) | view `order` (palette) |
+|---|---|---|
+| phase | 10 | 10 |
+| say | 20 | 20 |
+| run | 30 | 30 |
+| gate | 40 | 40 |
+| repeat | 50 | 50 |
+| if | 60 | 60 |
+| verify | 70 | 70 |
+| recall | 90 | 80 |
+| store | 100 | 90 |
+| model | 110 | 100 |
+| subagent | 120 | 110 |
+| end | 130 | 120 |
+| fork | 135 | 135 |
+| playbook | 140 | 150 |
+
+A new block picks a free number above 150 in both places (the guide's `ping` uses 200). Conditions use 10 to 110, in their own manifests.
 
 ## Ops and VmCtx
 
@@ -115,23 +139,25 @@ const passed = await vm.judge(i.cond);
 if (!vm.running()) return;
 ```
 
-The built-in recall, store, verify and run ops deliberately skip the check after some awaits (the session open, the store write, the recall, a run command with no repeat). Tests pin them as they were before M1. A new op should check after every await, and must not copy those.
+The pack's recall, store, verify and run ops deliberately skip the check after some awaits (the session open, the store write, the recall, a run command with no repeat). Tests pin them as they were before M1. A new op should check after every await, and must not copy those.
 
 `vm.pause(reason)` pauses the run and logs nothing. If the pause should show in the log, the op sets the pause first and then logs its own event. The CLI saves a snapshot inside the event handler, and that snapshot must already say `paused`.
 
 An op that can jump can say where, with `next: (i, at) => [at + 1, i.target]`, so the checker knows what is reachable. An op that runs a shell command lists it with `commands: (i) => [i.cmd]`, so the user is asked to trust it.
 
+`vm.outputs` (what each step answered, by step id), `vm.lastReply()`, `vm.handBack(text)` (the next turn of this track carries `text`; quote it as data) and `vm.tracks` are the members `fork` and `playbook` use. See "Tracks".
+
 ## Blocks with their own session
 
-A kind can also define `exec(step, ctx)` instead of ops. Its `compile` pushes a `NODE` instruction, and the run calls `exec` with an `ExecCtx` (switch model, slice, pause, stop, subagent). It returns `'next'` to move on or `'stay'` when the run paused or stopped. `model` and `subagent` do this; `model.ts` is the small example.
+A kind can also define `exec(step, ctx)` instead of ops. Its `compile` pushes a `NODE` instruction, and the run calls `exec` with an `ExecCtx` (switch model, slice, pause, stop, subagent). It returns `'next'` to move on or `'stay'` when the run paused or stopped. `model` and `subagent` do this; `packages/server/src/mods/model/index.ts` is the small example.
 
 ## Several next links (`manyNext`)
 
-A block that takes several `next` links sets `manyNext: true`. Its face then has the grey `next` handle, and each drag adds a wire. Core does not compile those links into a JUMP. The block's `compile` links them itself, with `ctx.linkTo`. The one-`next` rule skips such a block. `on-fail` stays one link.
+A block that takes several `next` links sets `manyNext: true`. Its face then has the grey `next` handle, and each drag adds a wire. Core does not compile those links into a JUMP. The block's `compile` links them itself, with `ctx.linkTo`. The one-`next` rule skips such a block. `on-fail` stays one link. The only pack block that does this is `fork`; the `next` handle is drawn only on a block whose view says `manyNext`, so a plain block has none (a file with a `next:` line on a plain block still loads and runs).
 
 ## Tracks: `starts` and the region rules
 
-An op that starts tracks lists the instructions where they begin, with `starts(instr)`. Its `next(instr, at)` lists them too, so the reach walk sees the whole reach.
+An op that starts tracks lists the instructions where they begin, with `starts(instr)`. Its `next(instr, at)` lists them too, so the reach walk sees the whole reach. At run time the op calls `vm.tracks.start(group, [{ key, at, title, ... }])`, which parks the main line on the instruction; when every track of the group has ended, the op runs again, and `vm.tracks.take(group)` returns their results. A `TrackSpec` can carry a `seed` (texts the track's first turn carries), a `usd` (a budget of its own) and `share: true` (an equal part of the room).
 
 Each start begins a region: the steps it reaches without starting another track. The checker (`validate.ts`) gives an error when:
 
@@ -141,7 +167,12 @@ Each start begins a region: the steps it reaches without starting another track.
 
 Only steps count in a region. A block that compiles to a bare END is not one. The `validate.program` checks run only when there is no error.
 
-The only op that uses `starts` today is the test fixture `split` (`packages/core/test/fixtures/split.ts`). No shipped block starts tracks.
+Two pack blocks start tracks:
+
+- `fork` (`packages/server/src/mods/fork/index.ts`): one track for each `next:` branch, all at once. The main line waits until every branch ended, then hands their results to the block under the fork.
+- `playbook` with `session: own` (`packages/server/src/mods/playbook/index.ts`): one track for the whole playbook file. An inline playbook starts none.
+
+The test fixtures `split` (`packages/core/test/fixtures/split.ts`) and `split-share` are two more, for core tests that need a track and no pack.
 
 ## count and print
 
@@ -152,7 +183,7 @@ The only op that uses `starts` today is the test fixture `split` (`packages/core
 
 ## The view
 
-A view is plain JSON. It holds no function. The keys are these.
+A view is plain JSON. It holds no function. In a mod it is the `view` object of `mod.json`. The keys are these.
 
 - `kind`, `order`, `colour` (`soft`, `hard`, `gate`, `loop`, `verify`, `hand`, `mem` or `mine`), `icon` (`round`), `slice`, `group`, `fails`, `manyNext`, `stops`, `against` and `cards`: how the face looks and behaves.
 - `fields`: the editable lines.
@@ -161,21 +192,16 @@ A view is plain JSON. It holds no function. The keys are these.
 - `sub`: a template for the small text on the face.
 - `fresh`: the fields of a new block, as plain data. It is copied each time a block is made.
 - `rows`: feed rows by event type. Each has `text` (a template), and optionally `details` and `className` (`sx-sub` or `faint`).
+- `status` and `hidden`: what an event of the block does to the run's marks, and which events draw no row (see the mod guide).
 
 A field is one editable line on the block. Its `key` is the attribute name (`times`). Two optional words help:
 
-- `check` says what a good value is. `'count'` is a whole number of 1 or more, so `applyField(step, 'times', 'x')` says no and `'3'` says yes. `'usd'` is an amount above 0, and empty means none.
+- `check` says what a good value is. `'count'` is a whole number of 1 or more, so `applyField(step, 'times', 'x')` (in `packages/app/src/panelEdit.ts`) says no and `'3'` says yes. `'usd'` is an amount above 0, and empty means none.
 - `unset` is the value that means "not set". The panel shows it when the attribute is empty, and typing it clears the attribute, so it is left out of the file. For example, `mode` has `unset: 'write'`, because write is the default.
 
-The same key must carry the same `check` and `unset` in every view. `views.test.ts` checks that.
+The same key must carry the same `check` and `unset` in every view. `packages/app/test/views.test.ts` checks that for the pack.
 
-`order` puts the block in the palette. Built-in views use the numbers in "Order" above.
-
-The server checks a mod's view for `kind`, `order`, `fields`, `line`, `fresh` and hidden characters. The mod guide has the template syntax for `sub` and `rows`.
-
-## The import rule
-
-A view file imports only types, and the field helpers from `./fields.js`.
+The server checks a mod's view for `kind`, `order`, `fields`, `line`, `fresh` and hidden characters. The mod guide has the template syntax for `sub` and `rows`. The app builds its block list from `GET /api/kinds`, which the server fills from the manifests.
 
 ## What stays core, and is not a block
 
@@ -190,5 +216,7 @@ Several blocks share these, so no block owns them.
 
 ## Checklist
 
-- A built-in block: 2 files (`<kind>.ts`, `<kind>.view.ts`) and 2 lines (`index.ts`, and `views.ts` for the view). Tests: copy `packages/core/test/fixtures/beep.ts`.
-- A mod block: no core file. A folder with `mod.json` and `index.js`, or `mod.json` alone for a data block. See the mod guide.
+- A new block: a folder `<home>/mods/<id>/` with a `mod.json` (`kind: "block"`, `provides`, `order`, `view`) and an `index.js` that calls `api.registerBlock(node)`. No core file, no server file, no app file. List everything the code registers in `provides`. Walkthrough: `packages/server/src/mods/PACK.md`.
+- A block with no code: `mod.json` alone, with a `turn` template (a data block). See the mod guide.
+- A block for the default pack itself (a change to Reins, not a user mod): the same folder in `packages/server/src/mods/<id>/`, with `"pack": "default"`, an `index.ts` and its `declare module '@reins/core'` lines. The guard test, the palette and the served list read the manifest, so nothing else needs the name. The tests that list the pack's kinds by name (for example `packages/core/test/kind-order.test.ts`) need the new one.
+- Tests for a core-only toy kind: copy `packages/core/test/fixtures/beep.ts` and `register` it in the test.

@@ -11,6 +11,8 @@ export interface PreviewSummary {
   hasCode: boolean;
   /** The second prompt, from the server, word for word. */
   codePrompt?: string;
+  /** One more line under the code prompt: the block may run several sessions at once and spend money on them. From the server. */
+  tracksLine?: string;
   files: Array<{ name: string; bytes: number }>;
   warnings: string[];
 }
@@ -40,6 +42,7 @@ export interface ImportPlan {
   /** A mod that shadows a built-in one is asked about before anything is written. */
   confirmBuiltin: boolean;
   codePrompt?: string;
+  tracksLine?: string;
 }
 
 export function planOf(s: PreviewSummary | undefined, problems: string[]): ImportPlan {
@@ -49,6 +52,7 @@ export function planOf(s: PreviewSummary | undefined, problems: string[]): Impor
     trustChoice: !!s?.hasCode,
     confirmBuiltin: s?.replaces === 'builtin',
     ...(prompt !== undefined ? { codePrompt: prompt } : {}),
+    ...(prompt !== undefined && s?.tracksLine ? { tracksLine: s.tracksLine } : {}),
   };
 }
 

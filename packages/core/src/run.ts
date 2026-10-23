@@ -563,9 +563,9 @@ export class Run {
     return t.session;
   }
 
-  /** The cap of the next process of a track that has a slice of its own and no share: the room (the workflow's and the slice's, the smaller); none for any other track. */
+  /** The cap of the next process of a track that has no share: the room (the workflow's and the open slice's, the smaller) as a main-line subagent has it; none when no limit exists. */
   private sliceCap(t: Track): number | undefined {
-    const room = t.ownSlice && t.openSlice ? this.usdRoom(t) : undefined;
+    const room = this.usdRoom(t);
     return room === undefined ? undefined : capOf(Math.max(0, room));
   }
 
@@ -901,8 +901,9 @@ export class Run {
   }
 
   /** The ends of the mod instructions in flight (Stop and close call them: an instruction that never settles holds neither). */
-  private aborts = new Set<() => void>();
-  private cutMods() { for (const a of [...this.aborts]) a(); }
+  private aborts = new Map<() => void, ModInfo>();
+  /** Stop leaves a Customize copy of a built-in block (`builtin`) to finish its command, as the built-in does; close cuts every one. */
+  private cutMods(stopping = false) { for (const [a, mod] of [...this.aborts]) if (!(stopping && mod.builtin)) a(); }
 
   /**
    * Runs code a mod brought. Stop and close win the race, so an instruction that never settles holds nothing; once it is over (settled, cut, or lost to Stop)
@@ -919,7 +920,7 @@ export class Run {
     };
     let end!: () => void;
     const lost = new Promise<undefined>((res) => { end = () => res(undefined); });
-    this.aborts.add(end);
+    this.aborts.set(end, mod);
     const work = (async () => go(live, cut))();
     work.catch(() => {});   // a rejection that comes after Stop is nobody's
     try {
@@ -1750,7 +1751,7 @@ export class Run {
     for (const t of this.tracks.values()) t.changeRequest = undefined;
     this.logEvent('run_stopped', {}, this.main);
     this.notify();
-    this.cutMods();
+    this.cutMods(true);
     // Every track's turn in flight is interrupted; with no track this is the one awaited interrupt it always was.
     await Promise.all([this.main, ...this.tracks.values()].map((t) => (t.turnSession ?? t.session)?.interrupt()));
   }
@@ -1989,11 +1990,11 @@ export class Run {
         if (!n) { this.pauseForStop(t, `no block brings the instruction \`${instr.kind}\`; Resume tries again`, instr.step); return this.status; }
         const mod = n.mod;
         const out = !n.exec ? 'next'
-          : !mod ? await n.exec(instr.src, this.execCtx(t, instr.step))
+          : !mod || mod.pack ? await n.exec(instr.src, this.execCtx(t, instr.step))   // the default pack's own block: not fenced, not raced with Stop (as its ops, above)
           : await this.modRun(t, mod, instr.step, `block ${instr.kind}`, (live, cut) => n.exec!(structuredClone(instr.src), fence(this.execCtx(t, instr.step), live, { log: this.logGate(mod, cut) })));
         if (!this.alive(t)) return this.status;
         if (out === 'next') t.pc++;
-        else if (mod) this.pauseForStop(t, `The block "${mod.id}" did not move on; Resume tries again`, instr.step);   // 'stay' while the run goes on: the next pass would do the same
+        else if (mod && !mod.pack) this.pauseForStop(t, `The block "${mod.id}" did not move on; Resume tries again`, instr.step);   // 'stay' while the run goes on: the next pass would do the same
         return this.status;
       }
 

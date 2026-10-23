@@ -21,10 +21,10 @@ const defs = new Map(Object.values(import.meta.glob<RowDef>('./rows/*.tsx', { ea
 type ViewRow = { text: string; details?: string; className?: string };
 
 // Read live, so a view registered or disposed later is seen; a row file of the same type wins. A view never speaks for an event core logs, and the first
-// view (by order) to name an event keeps it. The one exception is the kind core names for an event (`mayRow`): the subagent block draws its own start and result.
+// view (by order) to name an event keeps it. The one exception is a pack block that lists the event in its own `coreRows` (`mayRow`): the subagent block draws its own start and result.
 const viewRows = (): Record<string, ViewRow> => {
   const out: Record<string, ViewRow> = Object.create(null);
-  for (const v of Object.values(KINDS)) for (const [type, r] of Object.entries(v.rows ?? {})) if (mayRow(type, v.kind)) out[type] ??= r;
+  for (const v of Object.values(KINDS)) for (const [type, r] of Object.entries(v.rows ?? {})) if (mayRow(type, v)) out[type] ??= r;
   return out;
 };
 // A view's row is templates over the event data; a details template that fills empty draws a plain row.

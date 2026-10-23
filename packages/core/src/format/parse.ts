@@ -2,7 +2,7 @@ import YAML from 'yaml';
 import type { Workflow, Step, StepKind, Card, Cond, Link, AutoCard, Diagnostic, CardKind, LinkKind } from '../model.js';
 import { parseCond } from '../cond.js';
 import { CARDS } from '../cards/index.js';
-import { NODES, defaultId, nodeAttrs } from '../nodes/index.js';
+import { NODES, defaultId, nodeAttrs, unknownKind } from '../nodes/index.js';
 
 export interface ParseWorkflowResult {
   workflow?: Workflow;
@@ -239,7 +239,7 @@ export function parseWorkflow(input: string): ParseWorkflowResult {
         if (card) {
           autos.push({
             id: defaultId({ kind: 'auto' }, counters),
-            cond: condRes.cond || ({ t: 'drift' } as unknown as Cond),
+            cond: condRes.cond || ({ t: 'unparsed' } as unknown as Cond),   // the error is reported; no atom has this name, so the auto never fires
             card,
           });
         }
@@ -265,7 +265,7 @@ export function parseWorkflow(input: string): ParseWorkflowResult {
       if (!NODES.has(blk.kindStr)) {
         diagnostics.push({
           severity: 'error',
-          message: `Unknown step kind "${blk.kindStr}"`,
+          message: unknownKind(blk.kindStr),
           pos: { line: blk.lineNum, col: 1 },
         });
       }

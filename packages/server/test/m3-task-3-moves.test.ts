@@ -84,12 +84,12 @@ describe('the chat turn is the block marked chatTurn', () => {
     }
   });
 
-  it('a block that is not end cannot say stops, and the end block can', async () => {
+  it('a block that is not a pack block cannot say stops, and the end block can (M3 fix D: the pack\'s view says it, core names no kind)', async () => {
     const { mods } = await start((h) => {
       h.writeMod('stopper', block('stopper', 'stopper', { view: { stops: true } }), { 'index.js': code('stopper') });
       trust(h.home, 'stopper');
     });
-    expect(mods.mods.find((m) => m.id === 'stopper')!.problems.join(' ')).toContain('`view.stops` is only for the `end` block');
+    expect(mods.mods.find((m) => m.id === 'stopper')!.problems.join(' ')).toContain('`view.stops` is only for a block of the default pack');
     expect(NODES.has('stopper')).toBe(false);
     expect(servedKinds(mods).kinds.find((k) => k.kind === 'end')).toMatchObject({ stops: true });
   });
@@ -125,9 +125,9 @@ describe('a Customize copy of phase', () => {
     expect(mods.mods.find((m) => m.id === 'phase')).toMatchObject({ source: 'user', replaces: 'bundled' });
     expect(NODES.get('phase')?.chatTurn).toBe(true);
     expect(buildTagged('hi', []).ok).toBe(true);
-    // a copy is the user's own mod, so its heading is one capped line like any mod's (the pack's own phase prints a title whole)
+    // a copy is the same block, tweaked (M3 fix B item 3): it prints a title whole, as the pack's own phase does
     const long = Array.from({ length: 60 }, (_, i) => `word${i}`).join(' ');
-    expect(printWorkflow(parseWorkflow(wf(long)).workflow!)).not.toContain(long);
+    expect(printWorkflow(parseWorkflow(wf(long)).workflow!)).toContain(long);
     // the user edits the copy so that it is not marked: the tags say why they cannot build
     const file = path.join(home, 'mods', 'phase', 'index.js');
     fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/chatTurn: true,/, ''));

@@ -2,7 +2,7 @@ import type { Workflow, Step, Diagnostic, Pos } from './model.js';
 import { isValidGlob } from './util.js';
 import { CARDS } from './cards/index.js';
 import { CONDS } from './conds/index.js';
-import { NODES, opOf, nodeAttrs, headingOwns, type ValidateCtx, type ProgramCtx } from './nodes/index.js';
+import { NODES, opOf, nodeAttrs, headingOwns, unknownKind, type ValidateCtx, type ProgramCtx } from './nodes/index.js';
 import { condAtoms } from './cond.js';
 import { compileProgram, programProblem, type Instr, type StepStart } from './compile.js';
 import { usdText } from './format/print.js';
@@ -81,7 +81,7 @@ export function validate(
     if (!NODES.has(step.kind)) {
       diagnostics.push({
         severity: 'error',
-        message: `Unknown step kind "${step.kind}"`,
+        message: unknownKind(step.kind),
         pos,
       });
     }

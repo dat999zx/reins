@@ -15,6 +15,11 @@ async function download(file: string, body: { ids?: string[]; workflow?: { name:
   a.download = file;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  return exportWords(r);
+}
+
+/** The words under the Share and Export buttons: how many mods are in the file, then each note of the server (a missing block, a playbook file that is not carried). */
+export function exportWords(r: Bundle): string {
   const mods = r.ids.length ? `${r.ids.length} ${r.ids.length === 1 ? 'mod' : 'mods'} in the file` : 'no mods in the file (the blocks it uses ship with Reins)';
   return [mods, ...r.notes].join('. ');
 }

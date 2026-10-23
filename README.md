@@ -52,9 +52,9 @@ Put workflows in `<project>/.reins/workflows/` or `~/.reins/workflows/`. More in
 
 | | |
 |---|---|
-| **Steps** | `phase`, `say`, `turn`, `run` (a shell command), `gate`, `verify`, `if` / `else`, `repeat`, `recall`, `store`, `end` (stops the workflow), `playbook` (runs another workflow file from the `blocks/` folder, with inputs) |
+| **Steps** | `phase`, `say`, `run` (a shell command), `gate`, `verify`, `if` / `else`, `repeat`, `recall`, `store`, `model` (switch the model, open a USD budget), `subagent` (a step in a session of its own), `end` (stops the workflow), `fork` (runs branches at the same time), `playbook` (runs another workflow file from the `blocks/` folder, with inputs) |
 | **Conditions** | `tests`, `cmd`, `diff`, `touches`, `same`, `attempts`, `drift`, `done`, `approve`, `llm`, `review`, joined with `and` / `or` / `not` |
-| **Wires** | `next` jumps to a step, `on-fail` goes back and retries (with a max) |
+| **Wires** | `next` from a `fork` starts a branch (only the fork has the `next` handle), `on-fail` goes back and retries (with a max) |
 | **Auto cards** | `## whenever <condition>` fires a `now:` or `stop:` card by itself, e.g. `whenever attempts > 3` |
 | **Live cards** | Drop onto a running session: `guard`, `stop`, `now` |
 | **Budgets** | Every loop has a `max`; the run has turns, minutes and dollars. Each run ends with a receipt |

@@ -8,6 +8,8 @@
   "main": "index.js",
   "order": 140,
   "pack": "default",
+  "tracks": true,
+  "reads": { "noun": "playbook", "folder": "blocks", "name": ["title", "playbook"] },
   "provides": {
     "kinds": ["playbook"],
     "ops": ["PLAYBOOK", "PLAYBOOK_END"],

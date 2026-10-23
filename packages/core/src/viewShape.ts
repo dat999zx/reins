@@ -21,17 +21,13 @@ export const CORE_EVENTS: Record<string, 1> = {
   subagent_started: 1, subagent_result: 1, hook: 1, judge: 1, track_started: 1, track_ended: 1,
 };
 export const isCoreEvent = (type: string): boolean => Object.hasOwn(CORE_EVENTS, type);
-/** Core events whose feed row one block of the default pack draws: the event, and the kind whose view may carry the row. */
-const EVENT_ROW_KIND: Record<string, string> = { subagent_started: 'subagent', subagent_result: 'subagent' };
-/** True when a view of `kind` may carry a row for `type`: any event core does not log, or one core logs for that very kind. */
-export const mayRow = (type: string, kind: unknown): boolean => !isCoreEvent(type) || (Object.hasOwn(EVENT_ROW_KIND, type) && EVENT_ROW_KIND[type] === kind);
+/** True when `view` may carry a row for `type`: any event core does not log, or a core event the view lists in its own `coreRows` (the server lets only a pack block list one). */
+export const mayRow = (type: string, view: { coreRows?: unknown }): boolean => !isCoreEvent(type) || (Array.isArray(view.coreRows) && view.coreRows.includes(type));
 
 export const MAX_VIEW_LIST = 50;
 export const MAX_ROW_TEXT = 200;
 export const MAX_ROW_DETAILS = 400;
-/** The kind that ends the workflow (the default pack's `end`): the only view that may say `stops`. */
-const CAP = 'end';
-const VIEW_KEYS = ['kind', 'order', 'colour', 'icon', 'slice', 'group', 'fails', 'manyNext', 'stops', 'against', 'cards', 'fields', 'line', 'card', 'sub', 'fresh', 'rows', 'status', 'hidden'];
+const VIEW_KEYS = ['kind', 'order', 'colour', 'icon', 'slice', 'group', 'fails', 'manyNext', 'stops', 'coreRows', 'against', 'cards', 'fields', 'line', 'card', 'sub', 'fresh', 'rows', 'status', 'hidden'];
 const STATES: Record<StatusState, 1> = { active: 1, done: 1, waiting: 1, stuck: 1, failed: 1 };
 const RULE_KEYS = ['when', 'step', 'state', 'why', 'attempts', 'cursor', 'gate', 'opens', 'label'];
 const MAX_WORDS = 8;
@@ -42,7 +38,7 @@ const goodName = (v: unknown): v is string => typeof v === 'string' && NAME.test
 const FIELD_KEYS = ['key', 'label', 'input', 'error', 'inherits', 'ph', 'required', 'check', 'unset'];
 
 /** What the mod providing the view may use (its `provides`). Without it the view is core's or one the server already checked. */
-export interface ViewScope { mod?: { attrs: readonly string[]; events: readonly string[]; /** A block of the default pack, or a copy of one: its `fresh` may hold a condition (the `if` and `gate` blocks). */ pack?: true }; served?: true }
+export interface ViewScope { mod?: { attrs: readonly string[]; events: readonly string[]; /** A block of the default pack, or a copy of one: its `fresh` may hold a condition. */ pack?: true }; served?: true }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isText = (v: unknown, n = MAX_ROW_TEXT): v is string => typeof v === 'string' && v !== '' && v.length <= n;
@@ -96,14 +92,20 @@ export function viewShapeProblem(v: unknown, scope: ViewScope = {}): string | un
   const extra = extraKey(v, scope.served ? [...VIEW_KEYS, 'trusted'] : VIEW_KEYS);
   if (extra !== undefined) return `\`view\` has ${name(extra)}, which is not part of a view (${VIEW_KEYS.join(', ')}).`;
   if (scope.served && v.trusted !== undefined && v.trusted !== false) return '`view.trusted` is only ever false.';
+  // What only a block of the default pack (or its Customize copy) may do: stop the workflow, draw the row of a core event. The server holds a mod's manifest to
+  // it (`scope.mod.pack`) when it reads it and again when it serves the view; the app gets only views that passed, so a view with neither scope is not held to it.
+  const packed = scope.mod ? scope.mod.pack === true : true;
   if (!isText(v.kind, 40)) return '`view.kind` must be a name.';
   if (v.order !== undefined && (typeof v.order !== 'number' || !Number.isFinite(v.order))) return '`view.order` must be a number.';
   for (const [k, set] of [['colour', COLOURS], ['icon', ICONS], ['slice', SLICES], ['group', GROUPS]] as const) {
     if (v[k] !== undefined && !inSet(set, v[k])) return `\`view.${k}\` is ${name(v[k])}. It must be one of ${oneOf(set)}.`;
   }
   for (const k of ['fails', 'manyNext', 'against', 'cards'] as const) if (v[k] !== undefined && v[k] !== true) return `\`view.${k}\` must be true, or left out.`;
-  // Only the kind named `end` may stop the workflow. A mod can bring that name only as the default pack's own `end` or as a Customize copy of it: the registry refuses a second `end` (M3 Task 3).
-  if (v.stops !== undefined && (v.stops !== true || v.kind !== CAP)) return `\`view.stops\` is only for the \`${CAP}\` block; no other block can end the workflow.`;
+  if (v.stops !== undefined && (v.stops !== true || !packed)) return '`view.stops` is only for a block of the default pack (its `end`); no other block can end the workflow.';
+  if (v.coreRows !== undefined) {
+    if (!packed) return '`view.coreRows` is only for a block of the default pack; no other view can draw the row of an event core logs.';
+    if (!Array.isArray(v.coreRows) || v.coreRows.length > MAX_IS || !v.coreRows.every((t) => goodName(t) && isCoreEvent(t))) return `\`view.coreRows\` must be a list of up to ${MAX_IS} events core logs.`;
+  }
 
   if (!Array.isArray(v.fields) || !Array.isArray(v.line)) return '`view` needs `fields` and `line`.';
   if (v.fields.length > MAX_VIEW_LIST || v.line.length > MAX_VIEW_LIST) return `\`view.fields\` and \`view.line\` hold at most ${MAX_VIEW_LIST} entries.`;
@@ -159,7 +161,7 @@ export function viewShapeProblem(v: unknown, scope: ViewScope = {}): string | un
       if (typeof r.text !== 'string' || r.text.length > MAX_ROW_TEXT) return `${at} needs a \`text\` of at most ${MAX_ROW_TEXT} characters.`;
       if (r.details !== undefined && (typeof r.details !== 'string' || r.details.length > MAX_ROW_DETAILS)) return `${at} has a \`details\` that is not text of at most ${MAX_ROW_DETAILS} characters.`;
       if (r.className !== undefined && !ROW_CLASSES.includes(r.className as string)) return `${at} has \`className\` ${name(r.className)}. It must be one of ${ROW_CLASSES.join(', ')}.`;
-      if (mod && !mayRow(type, v.kind)) return `${at} is an event core logs, and a mod's row cannot cover it.`;
+      if ((mod || scope.served) && !mayRow(type, { coreRows: v.coreRows })) return `${at} is an event core logs, and a mod's row cannot cover it.`;
       if (mod && !isCoreEvent(type) && !mod.events.includes(type)) return `${at} is not in \`provides.events\`.`;
     }
   }

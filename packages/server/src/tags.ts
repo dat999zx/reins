@@ -1,4 +1,4 @@
-import { CARDS, NODES, parseWorkflow, validate, type Diagnostic, type Workflow } from '@reins/core';
+import { ABSENT_KINDS, CARDS, NODES, parseWorkflow, validate, type Diagnostic, type Workflow } from '@reins/core';
 
 export interface Tag { tag: string; arg?: string }
 export type Built = { ok: true; text: string } | { ok: false; error: string };
@@ -47,7 +47,7 @@ export function buildTagged(text: string, tags: Tag[]): Built {
     } else {
       const short = SHORTHAND.get(name);
       const attr = short?.attr ?? name;
-      if (!attrs.includes(attr)) return refuse(`unknown tag "${name}"`);
+      if (!attrs.includes(attr)) return refuse(`unknown tag "${name}"${ABSENT_KINDS.has(name) ? `: ${ABSENT_KINDS.get(name)}` : ''}`);
       if (short && arg !== undefined) return refuse(`#${name} takes no argument`);
       const value = short ? short.value : arg;
       if (value === undefined) return needsArg(name);

@@ -35,7 +35,8 @@ export type KindView = {
   group?: 'kids' | 'kids+else';
   fails?: true;
   manyNext?: true; // the face has the gray `next` handle, and each drag adds a wire
-  stops?: true; // ends the workflow: no links out, drawn as a cap
+  stops?: true; // ends the workflow: no links out, drawn as a cap (the server accepts it only from a pack block)
+  coreRows?: RunEventType[]; // core events whose feed row this view draws (the server accepts it only from a pack block); `rows` may cover a core event only if it is listed here
   against?: true; // has a third wire: the step whose work it compares
   cards?: true;
   fields: Field[];

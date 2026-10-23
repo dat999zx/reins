@@ -22,7 +22,7 @@ export function envelopeBody(file: string, s: EnvelopeSummary, trust: ReadonlySe
 export const envelopeReady = (s: EnvelopeSummary, replace: ReadonlySet<string>) => !s.workflow?.exists && s.mods.every((m) => m.replaces !== 'builtin' || replace.has(m.id));
 
 /** One mod of an envelope: its summary, then ONE choice for its code (the prompt, and a box that is empty until the user ticks it), and the built-in confirm. */
-function EnvelopeMod({ m, trust, replace, flip }: { m: KindSummary; trust: ReadonlySet<string>; replace: ReadonlySet<string>; flip: (set: 'trust' | 'replace', id: string) => void }) {
+export function EnvelopeMod({ m, trust, replace, flip }: { m: KindSummary; trust: ReadonlySet<string>; replace: ReadonlySet<string>; flip: (set: 'trust' | 'replace', id: string) => void }) {
   return (
     <section aria-label={`Mod ${m.id}`}>
       <h4>{showText(m.id)}</h4>
@@ -30,6 +30,7 @@ function EnvelopeMod({ m, trust, replace, flip }: { m: KindSummary; trust: Reado
       {m.hasCode && m.codePrompt && (
         <>
           <p className="pconfirm" role="alert">{m.codePrompt}</p>
+          {m.tracksLine && <p className="pconfirm">{showText(m.tracksLine)}</p>}
           <label><input type="checkbox" checked={trust.has(m.id)} onChange={() => flip('trust', m.id)} /> {TRUST_BUTTON}: {showText(m.id)}{m.trusted ? ' (you trusted this exact code before)' : ''}</label>
         </>
       )}
@@ -142,6 +143,7 @@ export function ImportPanel({ onDone, onCancel, shown, initial }: { onDone: (sai
         </div>
       )}
       {plan.codePrompt && <p className="pconfirm" role="alert">{plan.codePrompt}</p>}
+      {plan.tracksLine && <p className="pconfirm">{showText(plan.tracksLine)}</p>}
       {pending && (
         <div className="pconfirm" role="dialog" aria-label="Replace the built-in provider">
           <p>This mod replaces the built-in {summary?.id}. Your sessions on it will use this mod instead.</p>

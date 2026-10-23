@@ -58,7 +58,7 @@ describe('B1 in the app: setKinds drops an entry of the wrong shape', () => {
     ['a row className outside the list', { rows: { evil_done: { text: 'x', className: 'x y' } } }],
     ['a fresh with a kind', { fresh: { kind: 'run' } }],
     ['a fresh with kids', { fresh: { kids: [] } }],
-    ['stops on a kind that is not end', { stops: true }],
+    // `stops` is held to the default pack by the server (core `viewShapeProblem` with a mod scope, tested in m3-fix-d-view-data.test.ts); the app gets only views that passed, so it keeps no list of kinds that may say it (M3).
     ['a trusted that is true', { trusted: true }],
     ['an unknown key', { onClick: 'x' }],
     ['a line entry naming a missing field', { line: [{ field: 'nope' }] }],

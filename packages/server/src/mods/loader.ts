@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { questionRefusal } from '../questions/index.js';
-import { checkMode, driftFound, globMatcher, isValidGlob, parseCond, policyOf, printCond, register as registerNode, registerCard, registerCondition, relPath, turnInstr } from '@reins/core';
+import { ABSENT_KINDS, NODES, checkMode, driftFound, globMatcher, isValidGlob, parseCond, policyOf, printCond, register as registerNode, registerCard, registerCondition, relPath, turnInstr } from '@reins/core';
 import type { NodeType } from '@reins/core';
 import { cap, HOLDERS, kindIds, kindOf, kindsInOrder, show } from './kinds.js';
 import { Registry } from './registry.js';
@@ -371,9 +371,9 @@ const frozen = <T extends object | undefined>(v: T): T => (v !== null && typeof 
  * The copy carries the mod mark (this mod's id and `provides.events`); only this function sets it, and it overwrites whatever the node said, so
  * core guards the node (guard.ts) and holds a wrapped `vm.log` to those events.
  */
-function nodeCopy(node: NodeType, id: string, provides: Provides, pack: boolean): NodeType {
+function nodeCopy(node: NodeType, id: string, provides: Provides, pack: boolean, builtin: boolean): NodeType {
   if (typeof node !== 'object' || node === null) throw new Error('registerBlock needs a node object.');
-  const n = { ...node, mod: Object.freeze({ id, events: Object.freeze([...(provides.events ?? [])]), ...(pack ? { pack: true as const } : {}) }) };
+  const n = { ...node, mod: Object.freeze({ id, events: Object.freeze([...(provides.events ?? [])]), ...(pack ? { pack: true as const } : {}), ...(pack || builtin ? { builtin: true as const } : {}) }) };
   n.attrs = frozen(n.attrs);
   n.ops = frozen(n.ops);
   n.count = frozen(n.count);
@@ -396,7 +396,8 @@ const viewless = <T extends { view?: unknown }>(v: T): T => {
 /** Each thing a mod can register: the mod kind that may, the copy it is checked and stored from, what `provides` must list, and the core call. */
 interface Door<T> {
   kind: string;
-  copy(item: T, id: string, provides: Provides, pack: boolean): T;
+  /** `builtin`: the mod is the default pack's, or a copy that replaces one and holds the kind of the built-in it replaces. */
+  copy(item: T, id: string, provides: Provides, pack: boolean, builtin: boolean): T;
   /** Throws, in words, for anything `provides` does not list. */
   check(item: T, has: (key: keyof Provides, name: unknown, what: string) => void): void;
   /** `pack`: the mod is one of the default pack (only a bundled manifest can say so). */
@@ -465,7 +466,7 @@ function buildApi(kindId: string, raw: Record<string, unknown>, env: NodeJS.Proc
     Object.entries(DOORS).map(([member, d]) => [member, live((item: never) => {
       const door = d as Door<typeof item>;
       if (door.kind !== kindId) throw new Error(`\`${member}\` is for ${door.kind} mods; this is a ${kindId} mod.`);
-      const copy = door.copy(item, typeof raw.id === 'string' ? raw.id : kindId, provides, raw.pack === 'default');
+      const copy = door.copy(item, typeof raw.id === 'string' ? raw.id : kindId, provides, raw.pack === 'default', may('block-view', String((item as { kind?: unknown }).kind))); // only a block's copy reads the last flag
       door.check(copy, has);
       const undo = door.put(copy, order, may, raw.pack === 'default', typeof raw.id === 'string' ? raw.id : kindId);
       tx.undo.push(undo);
@@ -491,6 +492,7 @@ function thrownLine(e: unknown, id: string): string {
   }
   return ours ? (e as ModError).message : `\`${id}\`: failed while loading: ${errorText(e)}`;
 }
+const KIND_NAME = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
 export async function loadMods(o: LoadOptions): Promise<Mods> {
   const env = o.env ?? process.env;
   const registry = new Registry();
@@ -726,11 +728,24 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
   // Node's own errors (a missing helper, a syntax error) name absolute paths; nothing the loader returns may show the home.
   const scrub = homeScrubber(o.home);
   for (const m of mods) m.problems = m.problems.map(scrub);
+
+  // A block mod that is not in force leaves its kinds out of core. Core's "Unknown step kind" line says where such a kind comes from (`ABSENT_KINDS`).
+  const absent = new Map<string, string>();
+  for (const m of mods) {
+    if (m.kind !== 'block' || (m.enabled && !m.problems.length)) continue;
+    const p = (m.manifest as { provides?: { kinds?: unknown } } | undefined)?.provides;
+    const why = !m.enabled ? 'switched off in Settings' : m.hasCode && !m.trusted ? 'waiting for your trust in Settings' : 'not loaded (Settings says why)';
+    for (const k of Array.isArray(p?.kinds) ? p.kinds : []) {
+      if (typeof k === 'string' && KIND_NAME.test(k) && !NODES.has(k) && !absent.has(k)) absent.set(k, `it comes with the mod ${m.id}, which is ${why}`);
+    }
+  }
+  for (const [k, words] of absent) ABSENT_KINDS.set(k, words);
   return {
     mods,
     registry,
     problems: problems.map(scrub),
     dispose() {
+      for (const [k, words] of absent) if (ABSENT_KINDS.get(k) === words) ABSENT_KINDS.delete(k);
       for (const tx of [...txs.values()].reverse()) stop(tx);
       txs.clear();
       if (!o.carry) dropCarried(carry); // a caller's carry outlives the load; this load's own goes with it

@@ -4,7 +4,7 @@
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { CARDS, CONDS, NODES, hasHiddenChars, parseWorkflow } from '@reins/core';
+import { CARDS, CONDS, NODES, condAtoms, hasHiddenChars, parseWorkflow, type Step } from '@reins/core';
 import { MIN_SECRET, clearKey, envGet, keyStatus, readSecrets, secretsFile, setKey, type KeyStatus } from '../secrets.js';
 import { ConsentNeeded, ProviderChanged, ProviderError } from '../send.js';
 import { readBounded } from '../loop/bounded.js';
@@ -827,6 +827,14 @@ const WIN_RESERVED = /^(nul|con|prn|aux|com[1-9]|lpt[1-9])$/i;
 const NAME_OK = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/;
 /** The words of the second prompt for a mod with code (spec 7.7). */
 export const CODE_PROMPT = 'This mod runs its own code inside Reins, with your rights: it can read your files and your keys, and use the network. Reins cannot limit what it does. Trust it only if you trust its author.';
+/** One more line under the code prompt for a block whose ops may start tracks (spec 9: `starts`, `share`, `usd`). */
+export const TRACKS_LINE = 'This mod may run several sessions at once and spend money on them.';
+/**
+ * Whether a block mod says its ops start tracks (`tracks: true` in the manifest), or its code text calls `tracks.start`. The code is read as text, never run.
+ * ponytail: a mod that hides the call (a computed name) and leaves the manifest silent gets no line; the fence at run time is what stops it, not this.
+ */
+const startsTracks = (raw: Record<string, unknown>, files: FileBytes[]) => raw.kind === 'block' && raw.main !== undefined
+  && (raw.tracks === true || files.some((f) => /\.[cm]?js$/.test(f.rel) && /\btracks\s*\.\s*start\b/.test(f.bytes.toString('utf8'))));
 /** Files Reins keeps in its home; no export ever reads or holds them. */
 const HOME_FILES = new Set(['secrets.json', 'disabled-mods.json', 'mod-trust.json', 'mod-cache']);
 
@@ -917,6 +925,8 @@ export interface ImportSummary {
   hasCode: boolean;
   /** The second prompt, word for word (spec 7.7). Only for a mod with code. */
   codePrompt?: string;
+  /** A block whose ops may start tracks: one more line for the code prompt (`TRACKS_LINE`). */
+  tracksLine?: string;
   /** Code mods: the hash the trust is kept under, and whether it is already trusted. */
   hash?: string;
   trusted?: boolean;
@@ -998,6 +1008,7 @@ function checkImport(env: ModEnv, input: unknown): Checked {
     adds: addsOf(raw),
     hasCode,
     ...(hasCode ? { codePrompt: CODE_PROMPT, hash: hash!, trusted: modTrusted(env.home, id, hash!) } : {}),
+    ...(startsTracks(raw, files) ? { tracksLine: TRACKS_LINE } : {}),
     files: [...files].sort((a, b) => (a.rel < b.rel ? -1 : 1)).map((f) => ({ name: f.rel, bytes: f.bytes.length })),
     warnings: [
       ...clashes(env, raw, id),
@@ -1349,8 +1360,8 @@ function openEnvelope(env: ModEnv, input: unknown): Opened | { reply: Reply } {
 function unknownKinds(text: string, brings: Map<string, string>): string[] {
   const out = new Set<string>();
   for (const d of parseWorkflow(text).diagnostics) {
-    const m = /^Unknown step kind "(.*)"$/.exec(d.message);
-    if (m) out.add(cap(brings.has(`block ${m[1]}`) ? `${d.message}: the mod ${brings.get(`block ${m[1]}`)} brings it` : d.message, 200));
+    const m = /^Unknown step kind "([^"]*)"/.exec(d.message);
+    if (m) out.add(cap(brings.has(`block ${m[1]}`) ? `Unknown step kind "${m[1]}": the mod ${brings.get(`block ${m[1]}`)} brings it` : d.message, 200));
   }
   return [...out];
 }
@@ -1444,23 +1455,49 @@ function applyEnvelope(env: ModEnv, b: Record<string, unknown>): Promise<Reply> 
   });
 }
 
-/** The kinds the steps of a workflow text use (nested steps too). */
-function kindsUsed(text: string): string[] {
-  const out = new Set<string>();
-  const walk = (steps: Array<{ kind: string; kids?: unknown[]; else?: unknown[] }>) => {
+/** What a workflow text uses: the step kinds, the condition atoms (a step's `cond` and the `whenever` autos) and the card kinds, and the files its blocks read from this computer. */
+interface Uses { kinds: Set<string>; conds: Set<string>; cards: Set<string>; reads: Map<string, string> }
+
+/** The `reads` of a block mod's manifest (`{ noun, folder, name: [where the step keeps the file's name] }`), read as plain names only; undefined when it has none. */
+function readsOf(m: LoadedMod | undefined): { noun: string; folder: string; name: string[] } | undefined {
+  const r = isObj(m?.manifest) ? m.manifest.reads : undefined;
+  if (!isObj(r) || typeof r.noun !== 'string' || typeof r.folder !== 'string' || !NAME.test(r.noun) || !NAME.test(r.folder) || !Array.isArray(r.name)) return undefined;
+  return { noun: r.noun, folder: r.folder, name: r.name.filter((k): k is string => typeof k === 'string' && NAME.test(k)).slice(0, 4) };
+}
+
+/** The mod that holds `name` in its `provides.<key>`: the user's first (a Customize copy included), else the bundled one. */
+function holder(env: ModEnv, key: string, name: string): LoadedMod | undefined {
+  const has = (m: LoadedMod) => namesOf(isObj(m.manifest) ? m.manifest.provides : undefined, key).includes(name);
+  return env.mods.mods.find((m) => m.source === 'user' && has(m)) ?? env.mods.mods.find(has);
+}
+
+/** Everything the steps of a workflow text use (nested steps and else branches too). */
+function usesOf(env: ModEnv, text: string): Uses {
+  const out: Uses = { kinds: new Set(), conds: new Set(), cards: new Set(), reads: new Map() };
+  const atoms = (c: Parameters<typeof condAtoms>[0]) => { for (const a of condAtoms(c)) out.conds.add(a.t); };
+  const walk = (steps: Step[]) => {
     for (const s of steps) {
-      out.add(s.kind);
-      walk((s.kids ?? []) as typeof steps);
-      walk((s.else ?? []) as typeof steps);
+      out.kinds.add(s.kind);
+      atoms(s.cond);
+      for (const c of s.cards ?? []) out.cards.add(c.kind);
+      const reads = readsOf(holder(env, 'kinds', s.kind));
+      const file = reads?.name.map((k) => (k === 'title' ? s.title : s.attrs?.[k])).find((v) => typeof v === 'string' && v.trim() !== '');
+      if (reads && file) out.reads.set(`${reads.noun} ${file}`, `The ${reads.noun} ${cap(file, 80)} is a file in your ${reads.folder} folder and is not in this file. Whoever imports the file needs a ${reads.noun} with that name.`);
+      walk(s.kids ?? []);
+      walk(s.else ?? []);
     }
   };
-  walk((parseWorkflow(text).workflow?.steps ?? []) as Parameters<typeof walk>[0]);
-  return [...out];
+  const parsed = parseWorkflow(text).workflow;
+  walk(parsed?.steps ?? []);
+  for (const a of parsed?.autos ?? []) { atoms(a.cond); out.cards.add(a.card.kind); }
+  return out;
 }
 
 /**
- * Exports mods, and optionally a workflow, as one envelope. `ids` are mods to include; the mods the workflow's blocks come from are added: the user's mods
- * and any Customize copy. A block that ships with Reins is never exported. A block no installed mod brings is named in `notes`, and the file still holds the workflow.
+ * Exports mods, and optionally a workflow, as one envelope. `ids` are mods to include; the mods the workflow's blocks, conditions (a step's `cond` and the
+ * `whenever` autos) and cards come from are added: the user's mods and any Customize copy. Something that ships with Reins is never exported. A block no
+ * installed mod brings is named in `notes`, and so is each file a block reads from this computer (a mod's `reads`: the playbook files in `blocks/`), once per
+ * name: those files are not carried. The file still holds the workflow.
  */
 export function exportBundle(env: ModEnv, b: Record<string, unknown>): Reply {
   for (const k of Object.keys(b)) if (k !== 'ids' && k !== 'workflow') return fail(400, `\`${cap(k, 40)}\` is not a field of an export request.`);
@@ -1477,18 +1514,23 @@ export function exportBundle(env: ModEnv, b: Record<string, unknown>): Reply {
     if (m.source === 'bundled') return fail(409, `${id$(id)} ships with Reins, so it is not exported.`);
   }
   if (w) {
-    const bringing = (kind: string) => {
-      const has = (m: LoadedMod) => namesOf(isObj(m.manifest) ? m.manifest.provides : undefined, 'kinds').includes(kind);
-      return env.mods.mods.find((m) => m.source === 'user' && has(m)) ?? env.mods.mods.find(has);
-    };
-    for (const kind of kindsUsed(w.text)) {
-      const m = bringing(kind);
+    const used = usesOf(env, w.text);
+    for (const kind of used.kinds) {
+      const m = holder(env, 'kinds', kind);
       if (m?.source === 'user') want.add(m.id);
       else if (!m && !NODES.has(kind) && !missing.includes(kind)) {
         missing.push(kind);
         notes.push(`The block ${show(kind)} is brought by no mod installed here, so no mod for it is in the file. Whoever imports the file needs that mod.`);
       }
     }
+    // A condition or card mod of the user's goes in the file like a block mod; the ones that ship with Reins never do.
+    for (const [key, names] of [['conditions', used.conds], ['cards', used.cards]] as const) {
+      for (const name of names) {
+        const m = holder(env, key, name);
+        if (m?.source === 'user') want.add(m.id);
+      }
+    }
+    notes.push(...used.reads.values());
   }
   const mods: Record<string, Record<string, string>> = {};
   for (const id of [...want].sort()) {

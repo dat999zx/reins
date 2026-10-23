@@ -106,12 +106,13 @@ describe('the room is shared in equal parts at start', () => {
     await run.close();
   });
 
-  it('a track that did not ask for a share (a plain split) is capped by nothing and has no share', async () => {
+  it('a track that did not ask for a share (a plain split) has no share, and is capped by the room like a main-line subagent (m3 fix A item 2)', async () => {
     const h = m2harness('M12p');
     const body = '## split\nnext: a\nnext: b\n\n## phase main\n> m\n\n## end\n\n' + A_PHASE + '\n\n' + B_PHASE;
     const run = mk(h, body, usdB(1));
     await drive(run);
-    for (const o of h.subagentOpens) { expect(o.maxUsd).toBeUndefined(); expect(o.usdRoom).toBeUndefined(); }
+    expect(h.subagentOpens).toHaveLength(2);
+    for (const o of h.subagentOpens) { expect(o.maxUsd).toBe(1); expect(o.usdRoom!()).toBe(1); }
     await run.close();
   });
 });

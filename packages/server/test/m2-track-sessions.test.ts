@@ -68,7 +68,7 @@ describe('a track session opened through the host', () => {
     const [main, track] = x.t.opens as unknown as [Record<string, unknown>, Record<string, unknown>];
     for (const o of [main, track]) for (const k of ['asks', 'step', 'title']) expect(k in o).toBe(false);
     expect(typeof main.usdRoom).toBe('function');
-    expect(track.usdRoom).toBeUndefined();   // no room to be debited for the compaction
+    expect(typeof track.usdRoom).toBe('function');   // the workflow has usd 5, so a track with no share holds the live room too (m3 fix A item 2); the turn above is still raw
     expect(typeof track.policy).toBe('function');
     expect(x.t.turnsBy.map((b) => b.session === (x.t.turnsBy[0]!.session) ? 'main' : 'track')).toEqual(['main', 'track', 'main']);
     await x.s.shutdown();

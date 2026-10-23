@@ -63,7 +63,7 @@ export interface ProgramCtx extends ValidateCtx {
   members(start: string, nested?: boolean): string[];
 }
 /** Which mod a node came from and the events it declared (`provides.events`). Only the loader sets it, on its frozen copy; `register` then stores the guarded node (guard.ts). */
-export interface ModInfo { readonly id: string; readonly events: readonly string[]; /** A block of the default pack (set by the loader from a bundled manifest): its heading text and default id are not cut. */ readonly pack?: true }
+export interface ModInfo { readonly id: string; readonly events: readonly string[]; /** A block of the default pack (set by the loader from a bundled manifest): its heading text and default id are not cut. */ readonly pack?: true; /** A block of the default pack or a Customize copy of one (set by the loader; `pack` implies it): its heading text and default id are not cut, and Stop waits for its command. Its ops stay fenced. */ readonly builtin?: true }
 export interface NodeType {
   mod?: ModInfo;
   kind: string;
@@ -197,6 +197,14 @@ export const CORE_OPS = ['TURN', 'JUMP', 'END', 'NODE'];
 const KINDS = ordered<NodeType>('kind', (n) => n.kind);
 /** The kinds in `order` (ties by arrival). Read it; add and remove with `register`. */
 export const NODES = KINDS.map;
+
+/**
+ * Kinds a mod brings that are not in force (switched off, did not load, waits for trust), by kind, with the words that say where the kind comes from. The
+ * loader writes it; nothing else reads it but the "Unknown step kind" line (`unknownKind`) and the chat's tags.
+ */
+export const ABSENT_KINDS = new Map<string, string>();
+/** The error for a step of a kind nobody registered; when a mod that is not in force would bring it, the line says which. The one place the words are made. */
+export const unknownKind = (kind: string): string => `Unknown step kind "${kind}"${ABSENT_KINDS.has(kind) ? `: ${ABSENT_KINDS.get(kind)}` : ''}`;
 
 /**
  * Adds a kind and the ops it brings, at `order` (none: after every other). Throws on a known kind, a core op or a taken op,
