@@ -61,8 +61,9 @@ describe('the test setup is the app project\'s only', () => {
   it('vitest.config.ts: the app project has the kinds setup, core has the pack setup (M3 Task 1), the server has none', async () => {
     const { default: config } = await import('../../../vitest.config.js');
     const projects = (config as { test: { projects: Array<{ test: { name: string; setupFiles?: string[] } }> } }).test.projects;
-    expect(projects.map((p) => p.test.name)).toEqual(['core', 'server', 'app']);
-    expect(projects.map((p) => p.test.setupFiles)).toEqual([['packages/core/test/setup-pack.ts'], undefined, ['packages/app/test/setup-kinds.ts']]);
+    // `core-copy` runs the core tests again with every pack block marked as a Customize copy of it (M3 fix round 2, E1): the same setup file.
+    expect(projects.map((p) => p.test.name)).toEqual(['core', 'core-copy', 'server', 'app']);
+    expect(projects.map((p) => p.test.setupFiles)).toEqual([['packages/core/test/setup-pack.ts'], ['packages/core/test/setup-pack.ts'], undefined, ['packages/app/test/setup-kinds.ts']]);
   });
 
   it('in a server test file the app\'s KINDS has not been filled', async () => {

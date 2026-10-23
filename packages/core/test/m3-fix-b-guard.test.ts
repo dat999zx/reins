@@ -1,5 +1,5 @@
 // M3 fix round, group B, item 3 (core half): `builtin` is what the loader sets for the pack's own blocks and for a Customize copy of one. It decides only what a
-// block PRINTS (heading text, default id). A foreign mod's text is still one capped, visible line, and no flag unfences an op.
+// block PRINTS (heading text, default id) and, since fix round 2 (E1, N3), that its ops are not fenced. A foreign mod's text is still one capped, visible line, and its ops stay fenced.
 import { describe, expect, it } from 'vitest';
 import { guardNode, modOfOp } from '../src/guard.js';
 import { NODES, type NodeType } from '../src/nodes/index.js';
@@ -19,7 +19,9 @@ describe('M3 fix B item 7: the core tests register the pack as the loader does',
   it('every pack kind is the guarded copy with the mod mark: id, pack and builtin, frozen', () => {
     for (const k of ['say', 'phase', 'run', 'if', 'playbook']) {
       const n = NODES.get(k)!;
-      expect(n.mod, k).toMatchObject({ id: k, pack: true, builtin: true });
+      // The core-copy project marks every block as a Customize copy of it (builtin, no pack): there the mark has no `pack`.
+      if (process.env.REINS_PACK_MARK === 'copy') { expect(n.mod, k).toMatchObject({ id: k, builtin: true }); expect(n.mod!.pack, k).toBeUndefined(); }
+      else expect(n.mod, k).toMatchObject({ id: k, pack: true, builtin: true });
       expect(Object.isFrozen(n), k).toBe(true);
       expect(Object.isFrozen(n.mod), k).toBe(true);
     }

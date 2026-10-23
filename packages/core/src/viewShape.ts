@@ -23,6 +23,16 @@ export const CORE_EVENTS: Record<string, 1> = {
 export const isCoreEvent = (type: string): boolean => Object.hasOwn(CORE_EVENTS, type);
 /** True when `view` may carry a row for `type`: any event core does not log, or a core event the view lists in its own `coreRows` (the server lets only a pack block list one). */
 export const mayRow = (type: string, view: { coreRows?: unknown }): boolean => !isCoreEvent(type) || (Array.isArray(view.coreRows) && view.coreRows.includes(type));
+/**
+ * What a user mod that takes the place of a built-in may say of the two things only the pack may say: `stops` and `coreRows`. No more than the built-in's own
+ * view says (`was`); less is fine. A Customize copy is a byte copy, so it passes. The one rule for the loader (when it reads the manifest) and the server
+ * (when it serves the view).
+ */
+export function copyViewProblem(v: { stops?: unknown; coreRows?: unknown }, was: { stops?: unknown; coreRows?: unknown } | undefined): string | undefined {
+  if (v.stops !== undefined && was?.stops !== true) return '`view.stops` is not in the built-in this mod replaces; a copy may say only what the built-in says.';
+  if (v.coreRows !== undefined && !(Array.isArray(v.coreRows) && v.coreRows.every((t) => Array.isArray(was?.coreRows) && was.coreRows.includes(t)))) return '`view.coreRows` lists an event the built-in this mod replaces does not list; a copy may say only what the built-in says.';
+  return undefined;
+}
 
 export const MAX_VIEW_LIST = 50;
 export const MAX_ROW_TEXT = 200;
@@ -91,8 +101,7 @@ export function viewShapeProblem(v: unknown, scope: ViewScope = {}): string | un
   const { mod } = scope;
   const extra = extraKey(v, scope.served ? [...VIEW_KEYS, 'trusted'] : VIEW_KEYS);
   if (extra !== undefined) return `\`view\` has ${name(extra)}, which is not part of a view (${VIEW_KEYS.join(', ')}).`;
-  if (scope.served && v.trusted !== undefined && v.trusted !== false) return '`view.trusted` is only ever false.';
-  // What only a block of the default pack (or its Customize copy) may do: stop the workflow, draw the row of a core event. The server holds a mod's manifest to
+  if (scope.served && v.trusted !== undefined && v.trusted !== false) return '`view.trusted` is only ever false.';  // What only a block of the default pack (or its Customize copy) may do: stop the workflow, draw the row of a core event. The server holds a mod's manifest to
   // it (`scope.mod.pack`) when it reads it and again when it serves the view; the app gets only views that passed, so a view with neither scope is not held to it.
   const packed = scope.mod ? scope.mod.pack === true : true;
   if (!isText(v.kind, 40)) return '`view.kind` must be a name.';

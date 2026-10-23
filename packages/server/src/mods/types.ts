@@ -227,6 +227,8 @@ export interface LoadedMod {
   replaces?: 'bundled';
   /** The `version` of the built-in this mod replaces (a user copy of a bundled mod). */
   builtinVersion?: string;
+  /** The `view` of the built-in this mod replaces: a copy's served view may not say more than it (`copyViewProblem`). */
+  builtinView?: unknown;
   /** Part of the default pack (a bundled mod that says so, or the user copy that replaces one). */
   pack?: 'default';
   /** The id cannot be switched off (a bundled mod that says `required`, and the user copy of it). */

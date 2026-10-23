@@ -13,6 +13,7 @@ import { KEY_IN_IDENTITY, KeyInIdentity, type LogRow, type SessionRow, type Stor
 import { KEY_IN_WORKFLOW, StreamRedactor, type Redactor } from './secrets.js';
 import { ProviderChanged } from './send.js';
 import { taggedWorkflow, type Tag, type Tagged } from './tags.js';
+import { shownStep } from './trackKey.js';
 import { loadWorkflow } from './run-cli.js';
 import { isUnder } from './loop/paths.js';
 import type { FolderTrust } from './mods/types.js';
@@ -47,6 +48,8 @@ export interface SessionDeps {
   store: Store; makeEngine: MakeEngine; dir: string; onRow?: (row: LogRow) => void; describeModel?: DescribeModel; describeEffort?: DescribeEffort;
   /** What workflow commands run with: `shellEnvFrom(...)`, worked out when each command starts; no key and no REINS_* var. None = this process's (tests). */
   env?: () => NodeJS.ProcessEnv;
+  /** How long /close and a server stop wait for the work after the stop (default: a little over what the run itself gives a command and a copy's op). Tests only. */
+  workerWaitMs?: number;
   /** `() => kindVersions(mods)`, read when each run starts or resumes (a reload changes it). None = the "saved with other blocks" check is off (tests). */
   kinds?: () => Record<string, string>;
   /** Hides secrets in streamed command output and refuses to save a workflow that holds one. None = nothing is hidden (tests). */
@@ -74,6 +77,8 @@ export type Session = ReturnType<typeof openSession>;
 
 const PLAIN: Policy = { mode: 'write', guards: [], allowShell: true };
 const OK: Ack = { ok: true };
+/** How long /close and a server stop wait for the work after the stop: past the 10 minutes a run gives a command and the 11 it gives an op of a copy of a built-in block. */
+const WORKER_WAIT_MS = 12 * 60_000;
 const conflict = (error: string): Ack => ({ ok: false, code: 409, error });
 const bad = (error: string, diagnostics?: Diagnostic[]): Ack => ({ ok: false, code: 400, error, ...(diagnostics ? { diagnostics } : {}) });
 export const under = (file: string, root: string) => {
@@ -516,7 +521,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     const { provider, model } = r;
     await allowProvider(provider);
     if (stopping) throw new Error('The session was stopped before the subagent started.');
-    const title = `Subagent ${o.title} (\`${o.step}\`)`;
+    const title = `Subagent ${o.title} (\`${shownStep(o.step)}\`)`;
     const e = deps.makeEngine({
       provider,
       ...(model ? { model } : {}), ...(r.effort ? { effort: r.effort } : {}),
@@ -1075,6 +1080,20 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     return OK;
   }
 
+  /**
+   * The work after a stop, for a limited time: the run cuts a command in flight at 10 minutes and an op of a copy of a built-in block at 11 (core `BUILTIN_GRACE_MS`),
+   * so a worker still going after WORKER_WAIT_MS is stuck. It is left behind and the engine below is closed (that ends a turn in flight).
+   * ponytail: the stuck work is not killed, only not waited for; a server stop ends the process anyway.
+   */
+  async function workerEnded() {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([worker, new Promise<void>((res) => { timer = setTimeout(res, deps.workerWaitMs ?? WORKER_WAIT_MS); timer.unref(); })]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   // While it runs, message, card, /run and /resume are 409, so no turn can start between the stop and the engine closing.
   async function endSession() {
     closeQuestions('the session was closed', 'switch');
@@ -1083,7 +1102,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       const stopped = run ? run.stop() : applyStop();
       closeQuestions('the session was closed');
       await stopped;
-      await worker;
+      await workerEnded();
     }
     await live?.close().catch(() => {});
     live = undefined;
@@ -1110,7 +1129,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       const stopped = detaches ? undefined : run ? run.stop() : applyStop();
       closeQuestions('the server stopped');
       await stopped;
-      await worker;
+      await workerEnded();
     }
     await live?.close().catch(() => {});
     live = undefined;

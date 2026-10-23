@@ -9,6 +9,7 @@ import {
   type RunEventRecord, type RunStatus, type SubagentOpen, type SubagentOpened, type ToolRequest, type Workflow,
 } from '@reins/core';
 import { askTool, driveRun, indent, runOptions, type DriveIo } from './drive.js';
+import { shownStep } from './trackKey.js';
 import { StreamRedactor, type Redactor } from './secrets.js';
 import type { Store } from './store.js';
 
@@ -266,8 +267,8 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
     else if (ev.type === 'subagent_started') say(`· ${d.step}: subagent ${d.title} ${d.resumed ? 'resumed' : 'started'} on ${d.label ?? d.model ?? "the CLI's model"}`);
     else if (ev.type === 'subagent_result') say(`· ${d.step}: handed back its result ($${Number(d.cost ?? 0).toFixed(4)}${d.unknown === true ? UNKNOWN_MARK : ''})`);
     else if (ev.type === 'budget_warning') say(`· ${d.text}`);
-    else if (ev.type === 'track_started') say(`track ${d.track} started (${d.title})`);
-    else if (ev.type === 'track_ended') say(`track ${d.track} ended (${d.title}) $${Number(d.cost ?? 0).toFixed(4)}`);
+    else if (ev.type === 'track_started') say(`track ${shownStep(String(d.track))} started (${d.title})`);
+    else if (ev.type === 'track_ended') say(`track ${shownStep(String(d.track))} ended (${d.title}) $${Number(d.cost ?? 0).toFixed(4)}`);
     else if (ev.type === 'run_stopped') say('⏹ run stopped');
   }
 

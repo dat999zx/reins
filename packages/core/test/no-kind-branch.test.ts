@@ -6,329 +6,90 @@ import { fileURLToPath } from 'node:url';
 // Keeps core, the server and the app free of block, condition and card names: only a pack mod's own folder (packages/server/src/mods/<id>/ with "pack" in its
 // mod.json) may name what it brings. The lists of names are built from the pack manifests (`provides.kinds`, `conditions`, `cards`, `ops`, `events`), so a
 // new pack mod is covered the day it is added. A name is a hit only as a WHOLE quoted literal ('x', "x", `x`) or as an object or type key (`x:`, `x?:`),
-// because words like end, run, if, now or done are common JavaScript and English: a longer text that holds the word is not a hit, and neither is a comment.
-// Limits: a computed lookup (KINDS[x]) and a name put together at run time ('en' + 'd') are not seen.
+// because words like end, run, if, now or done are common JavaScript and English: a longer text that holds the word is not a hit.
+// Two kinds of failure:
+//  HARD  the forms that look a block up by name (`step.kind === 'x'`, `['x'].includes(step.kind)`, `{ x: 1 }[step.kind]`, `c.t === 'x'`, `case 'OP'`, `NODES.get('x')`,
+//        `KINDS.x`) fail wherever they stand: no allowlist excuses them.
+//  OTHER a hit of a plain word (end, run, model, ...) must be an entry of no-kind-branch.allow.json: the EXACT TEXT of the line (trimmed), per name and file, with
+//        a reason per name. A changed line, a new line, a copy of an allowed line and a line gone from the code are all found, whatever the counts.
+// A comment that starts a line (`//`, `*`, `/* ... */`) is cut off before the line is read; the rest of the line is read. Every hit counts, not every line.
+// Limits: a computed lookup (KINDS[x]) and a name put together at run time ('en' + 'd') are not seen; a block comment that goes on over lines is read line by line.
 
 const modsDir = fileURLToPath(new URL('../../server/src/mods', import.meta.url));
 interface Manifest { pack?: unknown; provides?: { kinds?: string[]; conditions?: string[]; cards?: string[]; ops?: string[]; events?: string[] } }
 const manifestOf = (d: string): Manifest => JSON.parse(readFileSync(join(modsDir, d, 'mod.json'), 'utf8')) as Manifest;
 const packDirs = (): string[] => readdirSync(modsDir, { withFileTypes: true }).filter((e) => e.isDirectory() && existsSync(join(modsDir, e.name, 'mod.json')) && manifestOf(e.name).pack !== undefined).map((e) => e.name);
+const PACK_DIRS = packDirs();
 const provided = (key: 'kinds' | 'conditions' | 'cards' | 'ops' | 'events'): string[] => [...new Set(packDirs().flatMap((d) => manifestOf(d).provides?.[key] ?? []))];
 
 interface Rule { name: string; re: RegExp }
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const Q = '([\'"`])';   // an opening quote of any of the three kinds; `\1` closes it
 /** A name as a whole quoted literal (any of the three quotes), or as a key: `{ name: 1 }`, `name?: T`, a line that starts with `name:`. */
-const nameRules = (names: string[]): Rule[] => names.flatMap((n) => [{ name: n, re: new RegExp(`(['"\`])${esc(n)}\\1`) }, { name: n, re: new RegExp(`(?:^|[{,;(])\\s*${esc(n)}\\??\\s*:`) }]);
+const nameRules = (names: string[]): Rule[] => names.flatMap((n) => [{ name: n, re: new RegExp(`${Q}${esc(n)}\\1`) }, { name: n, re: new RegExp(`(?:^|[{,;(])\\s*${esc(n)}\\??\\s*:`) }]);
 // The events of the kinds: a quoted name is a read; a name with an underscore is also caught as an object key (`verify_result: ...`), which the common words are not.
 const eventRules = (events: string[]): Rule[] => [
   ...events.map((e) => ({ name: e, re: new RegExp(`['"\`]${esc(e)}['"\`]`) })),
   ...events.filter((e) => e.includes('_')).map((e) => ({ name: e, re: new RegExp(`\\b${esc(e)}\\s*:`) })),
 ];
 // The forms that name a kind without a quoted literal: the app's `KINDS.gate` and `KINDS['gate']`.
-const lookupRules = (kinds: string[]): Rule[] => kinds.map((k) => ({ name: k, re: new RegExp(`KINDS(?:\\.|\\[')${esc(k)}\\b`) }));
+const lookupRules = (kinds: string[]): Rule[] => kinds.map((k) => ({ name: k, re: new RegExp(`KINDS(?:\\.|\\[\\s*['"\`])${esc(k)}\\b`) }));
+// HARD: the receivers that hold a block (`step`, `s`, ...) and a condition (`c`, `cond`, ...). `q.kind === 'gate'` (a question) and `ans.t === 'stop'` (an answer) are
+// other things with the same word, so they are left to the exact-text list; a block or a condition is never looked up by name in core, the server or the app.
+const BLOCK = '(?:step|s|st|node|instr|block|first|prev|next|it|item|b)';
+const COND = '(?:c|cond|atom|a)';
+const hardRules = (kinds: string[], conds: string[], ops: string[]): Rule[] => [
+  ...kinds.flatMap((k) => [
+    { name: k, re: new RegExp(`\\b${BLOCK}\\??\\.kind\\s*[!=]==?\\s*${Q}${esc(k)}\\1`) },
+    { name: k, re: new RegExp(`${Q}${esc(k)}\\1\\s*[!=]==?\\s*${BLOCK}\\??\\.kind\\b`) },
+    { name: k, re: new RegExp(`\\[[^\\]]*${Q}${esc(k)}\\1[^\\]]*\\]\\.includes\\(\\s*${BLOCK}\\??\\.kind\\b`) },
+    { name: k, re: new RegExp(`\\{[^}]*\\b${esc(k)}\\s*:[^}]*\\}\\s*\\[\\s*(?:${BLOCK}\\??\\.)?kind\\s*\\]`) },
+    { name: k, re: new RegExp(`NODES\\.get\\(\\s*${Q}${esc(k)}\\1`) },
+    { name: k, re: new RegExp(`KINDS(?:\\.|\\[\\s*['"\`])${esc(k)}\\b`) },
+  ]),
+  ...conds.flatMap((c) => [
+    { name: c, re: new RegExp(`\\b${COND}\\??\\.t\\s*[!=]==?\\s*${Q}${esc(c)}\\1`) },
+    { name: c, re: new RegExp(`${Q}${esc(c)}\\1\\s*[!=]==?\\s*${COND}\\??\\.t\\b`) },
+  ]),
+  ...ops.map((o) => ({ name: o, re: new RegExp(`\\bcase\\s+${Q}${esc(o)}\\1`) })),
+];
 const KIND_EVENTS = ['gate_paused', 'loop_iteration', 'loop_budget_exceeded', 'verify_result'];
 const NAME_RULES = [...nameRules([...provided('kinds'), ...provided('conditions'), ...provided('cards'), ...provided('ops')]), ...lookupRules(provided('kinds'))];
 const EVENT_RULES = eventRules([...new Set([...KIND_EVENTS, ...provided('events')])]);
+const HARD_RULES = hardRules(provided('kinds'), provided('conditions'), provided('ops'));
 const CSS = /\[data-kind=/;
 
-const skipLine = (l: string) => l.startsWith('//') || l.startsWith('*') || l.startsWith('/*');
-/** The names a line holds (each once). `names` and `events` are off inside a pack mod's own folder. */
+/** The code of a line: a comment that starts it (`//`, `*`, any number of leading block comments on one line) and a trailing ` // ...` are cut off. */
+const codeOf = (line: string): string => {
+  let c = line.trim();
+  while (c.startsWith('/*') && c.includes('*/')) c = c.slice(c.indexOf('*/') + 2).trim();
+  if (c.startsWith('//') || c.startsWith('*') || c.startsWith('/*')) return '';
+  return c.replace(/\s\/\/\s.*$/, '');
+};
+/** The names a line holds (each once per line; the counting is by line text below). `names` and `events` are off inside a pack mod's own folder. */
 const hitNames = (line: string, file: string, names = true, events = true, rules = { name: NAME_RULES, event: EVENT_RULES }): string[] => {
-  if (skipLine(line.trim())) return [];
-  const code = line.trim().replace(/\s\/\/\s.*$/, '');
+  const code = codeOf(line);
   if (file.endsWith('.css')) return CSS.test(code) ? ['[data-kind]'] : [];
   return [...new Set([...(names ? rules.name : []), ...(events ? rules.event : [])].filter((r) => r.re.test(code)).map((r) => r.name))];
 };
 const hit = (line: string, file = 'packages/core/src/a.ts', rules?: { name: Rule[]; event: Rule[] }): boolean => hitNames(line, file, true, true, rules).length > 0;
+/** The names a line looks up by a hard form. */
+const hardNames = (line: string, rules = HARD_RULES): string[] => { const code = codeOf(line); return [...new Set(rules.filter((r) => r.re.test(code)).map((r) => r.name))]; };
 
-/** { name: { file: how many lines hold it } } for one file's text; `rel` is its path from the repo root. Nothing inside a pack mod's own folder. */
-export function hitsIn(text: string, rel: string): Array<{ n: number; name: string; text: string }> {
-  const inPack = packDirs().some((d) => rel.startsWith(`packages/server/src/mods/${d}/`));
-  return text.split('\n').flatMap((raw, i) => hitNames(raw, rel, !inPack, !inPack).map((name) => ({ n: i + 1, name, text: raw.trim() })));
+/** Every hit of one file's text; `rel` is its path from the repo root. Nothing inside a pack mod's own folder. */
+export function hitsIn(text: string, rel: string): Array<{ n: number; name: string; text: string; hard: boolean }> {
+  if (PACK_DIRS.some((d) => rel.startsWith(`packages/server/src/mods/${d}/`))) return [];
+  return text.split('\n').flatMap((raw, i) => {
+    const hard = new Set(hardNames(raw));
+    return [...new Set([...hitNames(raw, rel), ...hard])].map((name) => ({ n: i + 1, name, text: raw.trim(), hard: hard.has(name) }));
+  });
 }
 
-// Exact: for each name, why it may stand in the files listed and how many lines of each hold it. A file or a count that differs fails the test, so a new use is
-// seen and a removed one is taken off the list. Most are plain words of the language: `model` (the model a request names), `stop` (the stop control), `done`,
-// `now`, `run`, `end` (a range end, a stream's `end` event) that also happen to be the name of a pack block, condition or card.
-const ALLOW: Record<string, { reason: string; files: Record<string, number> }> = {
-  now: {
-    reason: "the live-card word `now` (steer / now / stop): core's LiveCardKind and interrupt, the session's card route, the app's composer buttons; also `now` as a clock function (`opts.now`). Control vocabulary, not a lookup of the card mod.",
-    files: {
-      'packages/app/src/Chat.tsx': 1,
-      'packages/app/src/Composer.tsx': 3,
-      'packages/app/src/Rail.tsx': 1,
-      'packages/app/src/RunDock.tsx': 2,
-      'packages/app/src/api.ts': 1,
-      'packages/app/src/feed.ts': 2,
-      'packages/app/src/panelEdit.ts': 1,
-      'packages/app/src/rows.tsx': 1,
-      'packages/app/src/runState.ts': 3,
-      'packages/core/src/cards/index.ts': 1,
-      'packages/core/src/run.ts': 10,
-      'packages/server/src/catalog.ts': 1,
-      'packages/server/src/live-models.ts': 1,
-      'packages/server/src/loop/paths.ts': 1,
-      'packages/server/src/loop/retry.ts': 2,
-      'packages/server/src/loop/tools.ts': 2,
-      'packages/server/src/recover.ts': 1,
-      'packages/server/src/run-cli.ts': 1,
-      'packages/server/src/server.ts': 1,
-      'packages/server/src/session.ts': 5,
-    },
-  },
-  stop: {
-    reason: "the live-card and pause word `stop`: run.stop(), PauseReason 'stop', the stop button and /stop, the answer word of a question. Core's control vocabulary, not a lookup of the card mod.",
-    files: {
-      'packages/app/src/Composer.tsx': 4,
-      'packages/app/src/RunDock.tsx': 4,
-      'packages/app/src/api.ts': 1,
-      'packages/app/src/questions.ts': 1,
-      'packages/core/src/cards/index.ts': 1,
-      'packages/core/src/nodes/index.ts': 1,
-      'packages/core/src/run.ts': 17,
-      'packages/server/src/cli.ts': 2,
-      'packages/server/src/drive.ts': 11,
-      'packages/server/src/loop/engine.ts': 7,
-      'packages/server/src/loop/fileio.ts': 1,
-      'packages/server/src/loop/types.ts': 1,
-      'packages/server/src/questions/budget.ts': 1,
-      'packages/server/src/questions/gate.ts': 1,
-      'packages/server/src/questions/resume.ts': 1,
-      'packages/server/src/questions/usd.ts': 1,
-      'packages/server/src/run-cli.ts': 4,
-      'packages/server/src/serve.ts': 1,
-      'packages/server/src/server.ts': 2,
-      'packages/server/src/session.ts': 16,
-    },
-  },
-  end: {
-    reason: "a position or span called end: a text range, a stream's 'end' event, the canvas drop zone and `top: 'end'` hit (the cap is found by its view's `stops`, never by name), a feed row's end time.",
-    files: {
-      'packages/app/src/BlocksPane.tsx': 2,
-      'packages/app/src/TextTab.tsx': 1,
-      'packages/app/src/Workspace.tsx': 1,
-      'packages/app/src/arrange.ts': 3,
-      'packages/app/src/blocks.ts': 1,
-      'packages/app/src/feed.ts': 4,
-      'packages/app/src/gesture.ts': 3,
-      'packages/app/src/tags.ts': 3,
-      'packages/core/src/viewShape.ts': 1,
-      'packages/server/src/mods/claude-code-cli/hooks.ts': 1,
-      'packages/server/src/mods/claude-code-cli/mcp.ts': 1,
-      'packages/server/src/server.ts': 1,
-    },
-  },
-  model: {
-    reason: "the model a request, setting, usage row or field names (`model:` data, the 'model' field input, JudgeKind): data about the model in use, not the model block.",
-    files: {
-      'packages/app/src/BlockPanel.tsx': 1,
-      'packages/app/src/BlocksPane.tsx': 1,
-      'packages/app/src/Chat.tsx': 1,
-      'packages/app/src/Providers.tsx': 1,
-      'packages/app/src/state.ts': 3,
-      'packages/app/src/stepStatus.ts': 1,
-      'packages/app/src/usage.ts': 4,
-      'packages/core/src/cond.ts': 1,
-      'packages/core/src/fake-engine.ts': 3,
-      'packages/core/src/nodes/fields.ts': 2,
-      'packages/core/src/nodes/index.ts': 1,
-      'packages/core/src/receipt.ts': 1,
-      'packages/core/src/run.ts': 8,
-      'packages/core/src/validate.ts': 1,
-      'packages/core/src/viewShape.ts': 2,
-      'packages/server/src/cli.ts': 1,
-      'packages/server/src/engines.ts': 1,
-      'packages/server/src/loop/store.ts': 4,
-      'packages/server/src/loop/types.ts': 1,
-      'packages/server/src/loop/wire-util.ts': 2,
-      'packages/server/src/models.ts': 3,
-      'packages/server/src/mods/actions.ts': 1,
-      'packages/server/src/mods/anthropic-messages/index.ts': 1,
-      'packages/server/src/mods/claude-code-cli/engine.ts': 1,
-      'packages/server/src/mods/claude-code-cli/index.ts': 1,
-      'packages/server/src/mods/claude-code-cli/stream.ts': 3,
-      'packages/server/src/mods/openai-chat/index.ts': 1,
-      'packages/server/src/mods/types.ts': 1,
-      'packages/server/src/run-checks.ts': 8,
-      'packages/server/src/run-cli.ts': 4,
-      'packages/server/src/server.ts': 6,
-      'packages/server/src/session.ts': 15,
-      'packages/server/src/settings.ts': 4,
-      'packages/server/src/store.ts': 7,
-      'packages/server/src/trust.ts': 2,
-    },
-  },
-  run: {
-    reason: "the word run: the feed piece type 'run', a `run:` thunk or tool field, the run command. Not the run block.",
-    files: {
-      'packages/app/src/Chat.tsx': 2,
-      'packages/app/src/FeedView.tsx': 5,
-      'packages/app/src/RunDock.tsx': 1,
-      'packages/app/src/TextTab.tsx': 1,
-      'packages/app/src/feed.ts': 3,
-      'packages/server/src/cli.ts': 1,
-      'packages/server/src/drive.ts': 2,
-      'packages/server/src/loop/engine.ts': 7,
-      'packages/server/src/loop/tools.ts': 1,
-      'packages/server/src/server.ts': 1,
-    },
-  },
-  cmd: {
-    reason: "`cmd` as a parameter name (a command string), and core's COND_PARAM_KEYS list of condition parameters. Not the cmd condition.",
-    files: {
-      'packages/app/src/condKinds.ts': 1,
-      'packages/core/src/cond.ts': 3,
-      'packages/core/src/nodes/index.ts': 1,
-      'packages/core/src/run.ts': 5,
-      'packages/server/src/commands.ts': 1,
-      'packages/server/src/doctor.ts': 1,
-      'packages/server/src/opener.ts': 1,
-    },
-  },
-  done: {
-    reason: "a status word: run, step or receipt state 'done', a `done?:` flag, an API stop reason. Not the done condition.",
-    files: {
-      'packages/app/src/StepChips.tsx': 1,
-      'packages/app/src/Workspace.tsx': 1,
-      'packages/app/src/feed.ts': 8,
-      'packages/app/src/history.ts': 5,
-      'packages/app/src/runState.ts': 3,
-      'packages/app/src/stepStatus.ts': 6,
-      'packages/core/src/nodes/fields.ts': 1,
-      'packages/core/src/receipt.ts': 3,
-      'packages/core/src/run.ts': 4,
-      'packages/core/src/viewShape.ts': 1,
-      'packages/server/src/drive.ts': 2,
-      'packages/server/src/live-models.ts': 1,
-      'packages/server/src/loop/engine.ts': 1,
-      'packages/server/src/loop/types.ts': 1,
-      'packages/server/src/mods/anthropic-messages/index.ts': 1,
-      'packages/server/src/mods/openai-chat/index.ts': 1,
-      'packages/server/src/run-cli.ts': 3,
-      'packages/server/src/server.ts': 1,
-      'packages/server/src/session.ts': 1,
-    },
-  },
-  say: {
-    reason: "the `say` output callback of the CLI and doctor, the retry table's `say:` function, the chat's 'say' event and its row. Not the say block.",
-    files: {
-      'packages/app/src/feed.ts': 1,
-      'packages/app/src/rows/say.tsx': 1,
-      'packages/app/src/runState.ts': 1,
-      'packages/server/src/doctor.ts': 2,
-      'packages/server/src/loop/retry.ts': 12,
-      'packages/server/src/session.ts': 1,
-    },
-  },
-  phase: {
-    reason: "RunPhase and the ended-phase of the app's run state (live / ended). Not the phase block.",
-    files: {
-      'packages/app/src/StepChips.tsx': 1,
-      'packages/app/src/TextTab.tsx': 1,
-      'packages/app/src/runState.ts': 2,
-    },
-  },
-  attempts: {
-    reason: "`attempts` as a count field of a step's status and the status rule key. Not the attempts condition.",
-    files: {
-      'packages/app/src/stepStatus.ts': 1,
-      'packages/core/src/nodes/fields.ts': 1,
-      'packages/core/src/viewShape.ts': 1,
-    },
-  },
-  gate: {
-    reason: "the pause and question type `gate` core raises (PauseReason, Question.kind, awaiting(track,'gate')), the 'gate' palette colour and status rule key. A pause type, not a lookup of the gate block.",
-    files: {
-      'packages/app/src/stepStatus.ts': 1,
-      'packages/core/src/nodes/fields.ts': 2,
-      'packages/core/src/run.ts': 12,
-      'packages/core/src/viewShape.ts': 3,
-      'packages/server/src/drive.ts': 6,
-      'packages/server/src/questions/gate.ts': 1,
-      'packages/server/src/run-cli.ts': 1,
-      'packages/server/src/session.ts': 1,
-    },
-  },
-  subagent: {
-    reason: "JudgeKind 'subagent' (who judges a condition) and the `subagent:` service run.ts hands a block as vm.subagent. Not a lookup of the subagent block.",
-    files: {
-      'packages/core/src/cond.ts': 1,
-      'packages/core/src/run.ts': 1,
-    },
-  },
-  drift: {
-    reason: "the workflow's `drift:` front-matter key (limits for drift detection). Not the drift condition.",
-    files: {
-      'packages/core/src/format/parse.ts': 1,
-      'packages/core/src/model.ts': 1,
-    },
-  },
-  repeat: {
-    reason: "a `repeat` count inside the workflow's `drift:` key. Not the repeat block.",
-    files: {
-      'packages/core/src/model.ts': 1,
-    },
-  },
-  verify: {
-    reason: "the palette colour name `verify` of a block view (KindView.colour). Not the verify block.",
-    files: {
-      'packages/core/src/nodes/fields.ts': 1,
-      'packages/core/src/viewShape.ts': 1,
-    },
-  },
-  same: {
-    reason: "`same` as an outcome word (SwitchOutcome 'same') and as the key that dedupes tool approvals. Not the same condition.",
-    files: {
-      'packages/core/src/nodes/index.ts': 1,
-      'packages/server/src/loop/engine.ts': 2,
-      'packages/server/src/session.ts': 1,
-    },
-  },
-  recall: {
-    reason: "the `recall` and `store` services (Knowl) core hands a block through vm.services and takes from the host, and the host's `recall` list of a track. Not a lookup of the recall block.",
-    files: {
-      'packages/core/src/nodes/index.ts': 1,
-      'packages/core/src/run.ts': 8,
-    },
-  },
-  store: {
-    reason: "the conversation and settings store objects (`store:` options) and the Knowl `store` service. Not the store block.",
-    files: {
-      'packages/core/src/nodes/index.ts': 1,
-      'packages/core/src/run.ts': 3,
-      'packages/server/src/engines.ts': 1,
-      'packages/server/src/recover.ts': 1,
-      'packages/server/src/run-cli.ts': 1,
-      'packages/server/src/server.ts': 4,
-      'packages/server/src/session.ts': 1,
-      'packages/server/src/settings.ts': 1,
-      'packages/server/src/store.ts': 1,
-    },
-  },
-  guard: {
-    reason: "the reason text of a refusal that the receipt counts as a guard refusal. Not the guard card.",
-    files: {
-      'packages/core/src/receipt.ts': 1,
-    },
-  },
-  approve: {
-    reason: "the answer word 'approve' to a gate question, and the permission decision values of the CLI hooks. Not the approve condition.",
-    files: {
-      'packages/server/src/drive.ts': 3,
-      'packages/server/src/loop/engine.ts': 1,
-      'packages/server/src/mods/claude-code-cli/hooks.ts': 2,
-      'packages/server/src/mods/claude-code-cli/mcp.ts': 2,
-      'packages/server/src/questions/gate.ts': 1,
-      'packages/server/src/run-cli.ts': 1,
-    },
-  },
-  diff: {
-    reason: "`git diff` argument. Not the diff condition.",
-    files: {
-      'packages/server/src/drive.ts': 1,
-    },
-  },
-};
+// For each plain word: why it may stand, and the exact text of every line (trimmed) that holds it, per file. Most are plain words of the language: `model` (the
+// model a request names), `stop` (the stop control), `done`, `now`, `run`, `end` (a range end, a stream's `end` event) that also happen to be the name of a pack block,
+// condition or card. The list is data: packages/core/test/no-kind-branch.allow.json.
+interface Allow { reason: string; files: Record<string, string[]> }
+const loadAllow = (): Record<string, Allow> => JSON.parse(readFileSync(fileURLToPath(new URL('./no-kind-branch.allow.json', import.meta.url)), 'utf8')) as Record<string, Allow>;
 
 const root = fileURLToPath(new URL('../../..', import.meta.url));
 
@@ -342,21 +103,30 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-/** What is wrong with { name: { file: lines } } against the allowlist: uses it does not allow (or counts that differ), entries nothing uses any more, entries with no reason. */
-const judge = (seen: Record<string, Record<string, number>>, allow: typeof ALLOW) => {
-  const bad: string[] = [];
-  for (const [name, files] of Object.entries(seen)) for (const [file, n] of Object.entries(files)) {
-    const allowed = allow[name]?.files[file];
-    if (allowed !== n) bad.push(`${name} in ${file}: ${n} line(s), ${allowed === undefined ? 'not allowed' : `${allowed} allowed`}`);
-  }
-  const stale = Object.entries(allow).flatMap(([name, a]) => Object.keys(a.files).filter((file) => seen[name]?.[file] === undefined).map((file) => `${name} in ${file}`));
-  const noReason = Object.entries(allow).filter(([, a]) => a.reason.length < 20).map(([name]) => name);
-  return { bad, stale, noReason };
-};
-
 /** Every file of the three packages' `src`, as { rel, text } with the line ends made plain. */
-const sources = () => readdirSync(join(root, 'packages')).flatMap((p) => existsSync(join(root, 'packages', p, 'src')) ? walk(join(root, 'packages', p, 'src')) : [])
+export const sources = () => readdirSync(join(root, 'packages')).flatMap((p) => existsSync(join(root, 'packages', p, 'src')) ? walk(join(root, 'packages', p, 'src')) : [])
   .map((f) => ({ rel: relative(root, f).replace(/\\/g, '/'), text: readFileSync(f, 'utf8').replace(/\r/g, '') }));
+
+/** What is wrong with a set of files: lookups by name (`hard`), lines the list does not allow (`bad`), lines in the list that no file holds (`stale`), entries with no reason. */
+export function scan(files: Array<{ rel: string; text: string }>, allow: Record<string, Allow> = loadAllow()) {
+  const hard: string[] = [], bad: string[] = [], seen: Record<string, Record<string, string[]>> = {};
+  for (const { rel, text } of files) for (const h of hitsIn(text, rel)) {
+    if (h.hard) hard.push(`${h.name} in ${rel}:${h.n}: ${h.text}`);
+    else ((seen[h.name] ??= {})[rel] ??= []).push(h.text);
+  }
+  const stale: string[] = [];
+  for (const [name, byFile] of Object.entries(seen)) for (const [file, texts] of Object.entries(byFile)) {
+    const left = [...(allow[name]?.files[file] ?? [])];
+    for (const t of texts) { const i = left.indexOf(t); if (i === -1) bad.push(`${name} in ${file}: ${t}`); else left.splice(i, 1); }
+  }
+  for (const [name, a] of Object.entries(allow)) for (const [file, texts] of Object.entries(a.files)) {
+    const left = [...(seen[name]?.[file] ?? [])];
+    for (const t of texts) { const i = left.indexOf(t); if (i === -1) stale.push(`${name} in ${file}: ${t}`); else left.splice(i, 1); }
+  }
+  const noReason = Object.entries(allow).filter(([, a]) => a.reason.length < 20).map(([name]) => name);
+  return { hard, bad, stale, noReason };
+}
+const clean = { hard: [], bad: [], stale: [], noReason: [] };
 
 describe('no pack names outside the pack folders', () => {
   it('the lists come from the manifests', () => {
@@ -371,6 +141,7 @@ describe('no pack names outside the pack folders', () => {
       "const a = 'subagent';", 'const b = "end";', 'if (xs.includes(\'gate\')) {}', 'const c = { recall: 1 };', "const X = 'verify'",
       'const d = `playbook`;', "if (c.t === 'tests') {}", "case 'LOOP_IN':", "if (k === 'guard') {}", 'x = { done: true };', '  store: Store;', 'f(q, { same: 2 })', 'KINDS.gate',
       "NODES.get('fork')", 'const e = { end?: number };', "return 'approve';", "KINDS['model']",
+      "/* x */ if (step.kind === 'end') continue;", 'if (kind == "recall") {}',
     ];
     for (const p of planted) expect(hit(p), p).toBe(true);
   });
@@ -379,8 +150,20 @@ describe('no pack names outside the pack folders', () => {
     const quiet = [
       "const t = 'the end of the line';", "say('run the tests');", '// the "end" block', ' * a `gate` card', '/* if */', "const x = 'ending';", "const y = 'subagents';",
       'const ended = true;', 'const store: Map<string, number> = new Map();', 'f(end)', 'const run = 1;', "const z = 'done_by';", 'let a = b ? end : now;', 'x = y // the "end"',
+      "/* the 'end' block */ /* and 'gate' */", '/* a */ // "gate"',
     ];
     for (const q of quiet) expect(hit(q), q).toBe(false);
+  });
+
+  it('the hard forms bite, whatever the word, and are quiet on a question or an answer', () => {
+    const hardLines = [
+      "if (step.kind === 'end') continue;", 'if (s.kind !== "gate") {}', "if ('recall' === node?.kind) {}", "['store'].includes(step.kind)", 'const M = { repeat: 1 }[kind];',
+      'const M = { repeat: 1 }[step.kind];', "if (c.t === 'tests') {}", "if (cond.t !== 'approve') {}", "case 'LOOP_IN':", "NODES.get('verify')", 'KINDS.model', "KINDS['subagent']",
+      "/* note */ if (step.kind == 'end') {}", "if (a.t === 'same' || x) {}",
+    ];
+    for (const l of hardLines) expect(hardNames(l).length, l).toBeGreaterThan(0);
+    const soft = ["if (q.kind === 'gate') {}", "if (ans.t === 'approve') run.approve();", "if (kind === 'stop') {}", "if (card.kind === 'now') {}", 'NODES.get(step.kind)', 'const gate = 1;', "// if (step.kind === 'end') {}"];
+    for (const l of soft) expect(hardNames(l), l).toEqual([]);
   });
 
   it('the event matcher bites: a quoted kind event, a keyed one, a double-quoted one; not a core event', () => {
@@ -409,20 +192,56 @@ describe('no pack names outside the pack folders', () => {
     expect(hitsIn("export const k = 'repeat';\n", 'packages/server/src/mods/other/index.ts')).toHaveLength(1);
   });
 
-  it('no file names a pack kind, condition, card, op or event, and the allowlist is exact', () => {
-    const seen: Record<string, Record<string, number>> = {};
-    for (const { rel, text } of sources()) for (const h of hitsIn(text, rel)) { const f = (seen[h.name] ??= {}); f[rel] = (f[rel] ?? 0) + 1; }
-    expect(judge(seen, ALLOW)).toEqual({ bad: [], stale: [], noReason: [] });
+  it('no file looks a block up by name, and every other hit of a plain word is an exact line of the list', () => {
+    expect(scan(sources())).toEqual(clean);
   });
 
-  it('the allowlist is exact: a new use, a changed count, a removed use and a missing reason are all found', () => {
-    const allow = { end: { reason: 'a range end, not the end block', files: { 'a.ts': 2 } }, run: { reason: 'short', files: { 'b.ts': 1 } } };
-    expect(judge({ end: { 'a.ts': 2 }, run: { 'b.ts': 1 } }, allow)).toEqual({ bad: [], stale: [], noReason: ['run'] });
-    expect(judge({ end: { 'a.ts': 3 }, run: { 'b.ts': 1 } }, allow).bad).toEqual(['end in a.ts: 3 line(s), 2 allowed']);
-    expect(judge({ end: { 'a.ts': 1 }, run: { 'b.ts': 1 } }, allow).bad).toEqual(['end in a.ts: 1 line(s), 2 allowed']);
-    expect(judge({ end: { 'a.ts': 2, 'c.ts': 1 }, run: { 'b.ts': 1 } }, allow).bad).toEqual(['end in c.ts: 1 line(s), not allowed']);
-    expect(judge({ gate: { 'a.ts': 1 }, end: { 'a.ts': 2 }, run: { 'b.ts': 1 } }, allow).bad).toEqual(['gate in a.ts: 1 line(s), not allowed']);
-    expect(judge({ end: { 'a.ts': 2 } }, allow).stale).toEqual(['run in b.ts']);
+  it('the list is exact: a new line, a changed line, a copy of a line, a removed line and a missing reason are all found', () => {
+    const allow = { end: { reason: 'a range end, not the end block', files: { 'a.ts': ['x = { end: 1 };', 'f(y, "end");'] } }, run: { reason: 'short', files: { 'b.ts': ['run: () => 1,'] } } };
+    const base = 'x = { end: 1 };\nf(y, "end");\n';
+    const one = (text: string, al = allow) => scan([{ rel: 'a.ts', text }], al);
+    expect(one(base)).toEqual({ hard: [], bad: [], stale: ['run in b.ts: run: () => 1,'], noReason: ['run'] });
+    expect(one(`${base}f(y, "end");\n`).bad).toEqual(['end in a.ts: f(y, "end");']);                       // a copy of an allowed line
+    expect(one('x = { end: 1 };\nf(y, "end"); g();\n').bad).toEqual(['end in a.ts: f(y, "end"); g();']);   // a changed line
+    expect(one('x = { end: 1 };\n').stale).toContain('end in a.ts: f(y, "end");');                         // a removed line
+    expect(scan([{ rel: 'a.ts', text: base }, { rel: 'c.ts', text: 'x = { end: 1 };\n' }], allow).bad).toEqual(['end in c.ts: x = { end: 1 };']);   // the same text in another file
+    expect(one(`${base}const g = "gate";\n`).bad).toEqual(['gate in a.ts: const g = "gate";']);
+    const planted = `${base}if (step.kind === "end") f();\n`;
+    expect(one(planted).hard).toHaveLength(1);                                                               // a hard form is found
+    const excused = { ...allow, end: { ...allow.end, files: { 'a.ts': [...allow.end.files['a.ts']!, 'if (step.kind === "end") f();'] } } };
+    expect(one(planted, excused).hard).toHaveLength(1);                                                      // and no list excuses it
+  });
+
+  it('the plants the re-check used are found, in the real files', () => {
+    const files = sources();
+    const core = (f: string) => `packages/core/src/${f}`;
+    const addTo = (needle: string, extra: string) => (text: string) => {
+      const ls = text.split('\n'), i = ls.findIndex((l) => l.includes(needle));
+      expect(i, needle).toBeGreaterThan(-1);
+      ls[i] = ls[i] + extra;
+      return ls.join('\n');
+    };
+    const addLine = (line: string) => (text: string) => `${line}\n${text}`;
+    const gateLine = "this.awaiting(track, 'gate')";
+    const plants: Array<[string, string, (t: string) => string]> = [
+      ['appended to a line that already holds gate', core('run.ts'), addTo(gateLine, " if ((this.program[this.programCounter] as { kind?: string })?.kind === 'gate') return false;")],
+      ['a new line that starts with a comment', core('validate.ts'), addLine("/* PLANT2 */ if (step.kind === 'end') continue;")],
+      ['a loose equals and a bare kind', core('validate.ts'), addLine('if (kind == "recall") continue;')],
+      ['an array that includes the kind', core('validate.ts'), addLine("if (['store'].includes(step.kind)) continue;")],
+      ['a switch on the kind', core('validate.ts'), addLine("switch (kind) { case 'verify': break; }")],
+      ['an object indexed by the kind', core('validate.ts'), addLine('const M = { repeat: 1 }[kind];')],
+      ['a condition by .t', core('validate.ts'), addLine("if (c.t === 'tests') continue;")],
+      ['a registry lookup', core('validate.ts'), addLine("const n = NODES.get('fork');")],
+      ['a second copy of an allowed line', core('run.ts'), addTo(gateLine, `\n${'const f = this.awaiting(track, \'gate\');'}`)],
+    ];
+    // Only the planted file is scanned, against the list's entries for that file (the whole tree is scanned once, above).
+    for (const [what, rel, edit] of plants) {
+      const file = files.find((f) => f.rel === rel)!;
+      const allowHere = Object.fromEntries(Object.entries(loadAllow()).map(([n, a]) => [n, { ...a, files: Object.fromEntries(Object.entries(a.files).filter(([f]) => f === rel)) }]));
+      expect(scan([file], allowHere), `${what}: untouched`).toEqual(clean);
+      const r = scan([{ ...file, text: edit(file.text) }], allowHere);
+      expect(r.hard.length + r.bad.length, what).toBeGreaterThan(0);
+    }
   });
 });
 

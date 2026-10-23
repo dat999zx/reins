@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { questionRefusal } from '../questions/index.js';
-import { ABSENT_KINDS, NODES, checkMode, driftFound, globMatcher, isValidGlob, parseCond, policyOf, printCond, register as registerNode, registerCard, registerCondition, relPath, turnInstr } from '@reins/core';
+import { ABSENT_KINDS, NODES, checkMode, copyViewProblem, driftFound, globMatcher, isValidGlob, parseCond, policyOf, printCond, register as registerNode, registerCard, registerCondition, relPath, turnInstr } from '@reins/core';
 import type { NodeType } from '@reins/core';
 import { cap, HOLDERS, kindIds, kindOf, kindsInOrder, show } from './kinds.js';
 import { Registry } from './registry.js';
@@ -301,10 +301,17 @@ function commonProblems(raw: Record<string, unknown>, f: Pick<Found, 'folder' | 
 export const isModId = (id: unknown): id is string => typeof id === 'string' && ID.test(id) && !RESERVED.test(id);
 
 /** The loader's whole check of one manifest: the common checks, then the kind's own. The settings actions run the same function before they write. */
-export function validateMod(raw: Record<string, unknown>, f: { folder: string; source: ModSource }, id: string, bundledKinds: Map<string, string>, registry: Registry): Problem[] {
+export function validateMod(raw: Record<string, unknown>, f: { folder: string; source: ModSource }, id: string, bundledKinds: Map<string, string>, registry: Registry, bundledViews?: ReadonlyMap<string, unknown>): Problem[] {
   const common = commonProblems(raw, f, id, bundledKinds);
   if (common.length) return common;
-  return kindOf(raw.kind as string)!.validate(raw, { id, registry, source: f.source, builtin: f.source === 'bundled' || bundledKinds.get(id) === raw.kind }).slice(0, 20); // a hostile file cannot flood the list
+  const copy = f.source === 'user' && bundledKinds.get(id) === raw.kind;
+  const out = kindOf(raw.kind as string)!.validate(raw, { id, registry, source: f.source, builtin: f.source === 'bundled' || copy });
+  // A copy holds the pack's powers (`stops`, the rows of core events) only as far as the built-in it replaces does.
+  if (!out.length && copy && typeof raw.view === 'object' && raw.view !== null) {
+    const why = copyViewProblem(raw.view, bundledViews?.get(id) as object | undefined);
+    if (why) out.push(`\`${id}\`: ${why}`);
+  }
+  return out.slice(0, 20); // a hostile file cannot flood the list
 }
 
 /** Everything one mod must undo: its registry entries and whatever else a kind handed back. */
@@ -493,6 +500,12 @@ function thrownLine(e: unknown, id: string): string {
   return ours ? (e as ModError).message : `\`${id}\`: failed while loading: ${errorText(e)}`;
 }
 const KIND_NAME = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
+/** The "not in force" words of every load that is not disposed yet, oldest first. `ABSENT_KINDS` holds those of the last. */
+const LOADS: Array<Map<string, string>> = [];
+const showAbsent = () => {
+  ABSENT_KINDS.clear();
+  for (const [k, words] of LOADS[LOADS.length - 1] ?? []) ABSENT_KINDS.set(k, words);
+};
 export async function loadMods(o: LoadOptions): Promise<Mods> {
   const env = o.env ?? process.env;
   const registry = new Registry();
@@ -508,6 +521,7 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
   const all = [...b.found, ...u.found];
   const bundledKinds = new Map<string, string>();
   for (const f of b.found) if (typeof f.raw?.kind === 'string') bundledKinds.set(f.folder, f.raw.kind);
+  const bundledViews = new Map(b.found.map((f): [string, unknown] => [f.folder, f.raw?.view]));
   // The ids that cannot be switched off: only a bundled manifest can say so (a user mod that says it is refused by `commonProblems`).
   const required = new Set(b.found.filter((f) => f.raw?.required === true).map((f) => f.folder));
   const forced = new Set<string>(); // required ids a hand-edited off list named: they stay on, and say so
@@ -534,6 +548,7 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
   const carry = o.carry ?? new Map<string, Carried>();
   const held = new Set<string>(); // carried keys this load met
   const carriedBefore = new Set(carry.keys()); // what an earlier load of this process left in core
+  const waiting = new Set<LoadedMod>(); // sound mods with code that only wait for trust
   const previews: Array<() => void> = []; // untrusted mods' manifest-only views, recorded after every activation
 
   const load = async (f: Found, kindId: string) => {
@@ -560,6 +575,7 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
         const version = (was!.manifest as { version?: unknown } | undefined)?.version;
         if (typeof version === 'string') mod.builtinVersion = version;
         if (was!.pack) mod.pack = was!.pack;
+        mod.builtinView = (was!.manifest as { view?: unknown } | undefined)?.view; // what the server holds the served view to (`copyViewProblem`)
       };
       // A carried mod is not activated again: its registry entries are recorded anew, from what it registered under. Anything but "same and in force" says so.
       const keep = (stale: boolean) => {
@@ -592,7 +608,7 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
         mod.manifest = raw;
         mod.hasCode = raw.main !== undefined;
       }
-      mod.problems.push(...validateMod(raw, f, id, bundledKinds, registry));
+      mod.problems.push(...validateMod(raw, f, id, bundledKinds, registry, bundledViews));
       if (mod.problems.length) return;
 
       // A user mod replaces a bundled one of the same kind by shadowing it: the built-in is never touched while
@@ -612,6 +628,7 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
         mod.hash = hashFiles(files);
         mod.trusted = o.trusted(id, mod.hash) === true;
         if (!carried && !mod.trusted) {
+          waiting.add(mod);
           mod.problems.push(`\`${id}\`: needs trust. Its code is new, or a file changed since you trusted it. It has not run.`);
           // What the manifest alone shows (a block's view) is recorded without running anything; a mod that would replace a built-in records nothing.
           // It waits until every mod has activated: a preview must never take a name a trusted mod is about to register.
@@ -730,22 +747,25 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
   for (const m of mods) m.problems = m.problems.map(scrub);
 
   // A block mod that is not in force leaves its kinds out of core. Core's "Unknown step kind" line says where such a kind comes from (`ABSENT_KINDS`).
+  // Only a mod with a real id is named (a broken manifest leaves the folder name as the id), and "waiting for your trust" only for a mod trust would load.
   const absent = new Map<string, string>();
   for (const m of mods) {
-    if (m.kind !== 'block' || (m.enabled && !m.problems.length)) continue;
+    if (m.kind !== 'block' || (m.enabled && !m.problems.length) || !isModId(m.id)) continue;
     const p = (m.manifest as { provides?: { kinds?: unknown } } | undefined)?.provides;
-    const why = !m.enabled ? 'switched off in Settings' : m.hasCode && !m.trusted ? 'waiting for your trust in Settings' : 'not loaded (Settings says why)';
+    const why = !m.enabled ? 'switched off in Settings' : waiting.has(m) ? 'waiting for your trust in Settings' : 'not loaded (Settings says why)';
     for (const k of Array.isArray(p?.kinds) ? p.kinds : []) {
       if (typeof k === 'string' && KIND_NAME.test(k) && !NODES.has(k) && !absent.has(k)) absent.set(k, `it comes with the mod ${m.id}, which is ${why}`);
     }
   }
-  for (const [k, words] of absent) ABSENT_KINDS.set(k, words);
+  LOADS.push(absent);
+  showAbsent();
   return {
     mods,
     registry,
     problems: problems.map(scrub),
     dispose() {
-      for (const [k, words] of absent) if (ABSENT_KINDS.get(k) === words) ABSENT_KINDS.delete(k);
+      if (LOADS.includes(absent)) LOADS.splice(LOADS.indexOf(absent), 1); // the newest load still in force speaks (a reload loads the new set, then disposes the old)
+      showAbsent();
       for (const tx of [...txs.values()].reverse()) stop(tx);
       txs.clear();
       if (!o.carry) dropCarried(carry); // a caller's carry outlives the load; this load's own goes with it

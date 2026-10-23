@@ -301,7 +301,7 @@ Reins registers each block, condition and card in core once, when the server sta
 - A mod that is registered and unchanged stays as it is.
 - A mod whose `mod.json` or code changed, that was switched off, that is no longer trusted, or that was removed keeps its old registration. Settings says `` `<id>`: applies after a restart. ``
 - A mod that was not registered yet (a new one, or one trusted or turned on after start) registers at once. It does not wait for a restart.
-- A user mod with the id of a bundled block, condition or card mod replaces it (that is what Customize makes: see `PACK.md`). The copy may cover only what the bundled mod itself `provides`: a copy of `say` may replace `say`, never `end` or `gate`. Reins enforces this (`mayShadow` in `loader.ts`). A copy of a built-in waits for a restart.
+- A user mod with the id of a bundled block, condition or card mod replaces it (that is what Customize makes: see `PACK.md`). The copy may cover only what the bundled mod itself `provides`: a copy of `say` may replace `say`, never `end` or `gate`. Reins enforces this (`mayShadow` in `loader.ts`). The copy's `view` may also say `stops` and `coreRows` (the feed rows of events core logs) only as far as the built-in's view does; see `PACK.md`. A copy of a built-in waits for a restart.
 
 ### Trust
 

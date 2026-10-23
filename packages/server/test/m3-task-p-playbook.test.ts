@@ -132,9 +132,10 @@ describe('a hostile playbook file, through the guarded block', () => {
     const deepCond = project('## playbook deep', { deep: BLOCK('## gate\nuntil: ' + 'not '.repeat(20_000) + 'you approve') });
     const a = deepCond.load();
     expect(a.workflow).toBeUndefined();   // not trusted, not run
-    // Which frame overflows depends on the stack in use (the thread pool is deeper than a fork), so the words around the overflow differ: refused, shown once, and named.
+    // Which frame overflows depends on the stack in use (the thread pool is deeper than a fork), so the words around the overflow differ: refused, shown once, and the line
+    // names the playbook whichever frame it was.
     expect(errs(a)).toHaveLength(1);
-    expect(errs(a)[0]).toMatch(/Maximum call stack size exceeded/);
+    expect(errs(a)[0]).toMatch(/Playbook "deep".*Maximum call stack size exceeded/);
     const heads = Array.from({ length: 300 }, (_, k) => `${'#'.repeat(k + 2)} repeat\nmax: 2\nuntil: you approve\n`).join('\n');
     const b = project('## playbook heads', { heads: BLOCK(heads) }).load();
     expect(Array.isArray(b.diagnostics)).toBe(true);   // it came back; what it says is the file's own
@@ -194,8 +195,9 @@ describe('reins run on a file with a playbook', () => {
   it('an own playbook is a track, titled, and prints the same lines', async () => {
     const r = await run('## playbook review-pass\ninput: target = src/a.ts\nsession: own\nusd: 1.00\noutput: findings\n\n## phase after\n> after\n\n## end', { 'review-pass': REVIEW });
     expect(r.exit).toBe(0);
-    expect(r.out).toContain('track playbook-1#own started (Playbook review-pass)');
-    expect(r.out).toMatch(/track playbook-1#own ended \(Playbook review-pass\) \$0\.0\d00/);
+    expect(r.out).toContain('track playbook-1 started (Playbook review-pass)');   // M3 fix round 2 (N8): the playbook's step, not its track key `playbook-1#own`
+    expect(r.out).toMatch(/track playbook-1 ended \(Playbook review-pass\) \$0\.0\d00/);
+    expect(r.out).not.toContain('#own');
     expect(r.out).toContain('· playbook playbook-1: review-pass started');
     expect(r.out.split('\n')).toContain('playbooks 1');
   });

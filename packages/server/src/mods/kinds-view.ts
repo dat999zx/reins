@@ -1,4 +1,4 @@
-import { BUILTIN_VIEWS, CARDS, CONDS, hasHiddenChars, viewShapeProblem, type CardView, type CondView, type KindView } from '@reins/core';
+import { BUILTIN_VIEWS, CARDS, CONDS, copyViewProblem, hasHiddenChars, viewShapeProblem, type CardView, type CondView, type KindView } from '@reins/core';
 import { QUESTIONS, type QuestionCard } from '../questions/index.js';
 import type { LoadedMod, Mods, Provides } from './types.js';
 
@@ -51,16 +51,18 @@ export function servedKinds(mods?: Pick<Mods, 'mods' | 'registry'>): KindsReply 
     if (strings(copy).some(hasHiddenChars)) return void problems.push(`${plain(who)}: the view holds a control, line-break or direction-changing character, so it is not served.`);
     return copy;
   };
-  const take = (view: unknown, who: string, fallbackOrder?: number, trusted = true, provides?: Provides, builtin = false) => {
+  const take = (view: unknown, who: string, fallbackOrder?: number, trusted = true, provides?: Provides, builtin = false, replaced?: LoadedMod) => {
     const copy = clean<ServedKind>(view, who);
     if (!copy) return;
     delete copy.trusted;
+    // A copy of a built-in is served with the pack's powers only as far as the built-in has them (the loader holds the manifest to the same rule).
+    const over = replaced && copyViewProblem(copy, replaced.builtinView as object | undefined);
+    if (over) return void problems.push(`${plain(who)}: ${over.replaceAll('`', '')} It is not served.`);
     // The mod's own check ran on the manifest; this is the same shape check on what is served, so a view that got here some other way is left out too.
     const why = viewShapeProblem(copy, provides && { mod: { attrs: provides.attrs ?? [], events: provides.events ?? [], ...(builtin ? { pack: true as const } : {}) } });
     if (why !== undefined) return void problems.push(`${plain(who)}: ${why.replaceAll('`', '')} It is not served.`);
     if (typeof copy.order !== 'number' && fallbackOrder !== undefined) copy.order = fallbackOrder;
-    if (!trusted) copy.trusted = false;
-    kinds.push(copy);
+    if (!trusted) copy.trusted = false;    kinds.push(copy);
   };
   for (const v of BUILTIN_VIEWS) take(v, v.kind);
   for (const kind of mods?.registry.ids('block-view') ?? []) {
@@ -71,7 +73,7 @@ export function servedKinds(mods?: Pick<Mods, 'mods' | 'registry'>): KindsReply 
     const mod = mods!.mods.find((m: LoadedMod) => m.kind === 'block' && (m.manifest as { view?: { kind?: unknown } } | undefined)?.view?.kind === kind);
     // `trusted: false` is for a block with code that has not been trusted; a data block has no code to trust, so it is not marked.
     const manifest = mod?.manifest as { order?: number; provides?: Provides } | undefined;
-    take(mods!.registry.get('block-view', kind), kind, manifest?.order, mod === undefined ? false : mod.trusted === true || !mod.hasCode, manifest && (manifest.provides ?? {}), mod?.pack === 'default' || mod?.replaces === 'bundled');
+    take(mods!.registry.get('block-view', kind), kind, manifest?.order, mod === undefined ? false : mod.trusted === true || !mod.hasCode, manifest && (manifest.provides ?? {}), mod?.pack === 'default' || mod?.replaces === 'bundled', mod?.replaces === 'bundled' ? mod : undefined);
   }
 
   // Only what is in core now is offered: an atom or card of a mod that did not load has no entry here.

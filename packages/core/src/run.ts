@@ -340,6 +340,8 @@ const LOG_MAX = 100;
 /** The pauses a mod's op may raise: the ones the run's own answers (approve, allow more, resume) handle for any step. */
 const MOD_PAUSES: readonly string[] = ['gate', 'budget-used', 'link-budget-used', 'agent-blocked', 'stop'];
 const PAUSE_TEXT_MAX = 200;
+/** How long Stop or close waits for the op of a block of the pack, or of its copy, that has not settled: a little over the 10 minutes the built-in's command is given (server `commands.ts`). */
+const BUILTIN_GRACE_MS = 11 * 60_000;
 
 /** A pause a mod's op raised, rebuilt from plain parts: an allowed `type`, `tame`d strings, finite numbers; never a track, a title, a condition or anything else the mod holds. */
 function modPause(mod: ModInfo, p: unknown, length: number, cut: (text: string) => never): PauseReason {
@@ -577,14 +579,15 @@ export class Run {
     if (taken !== undefined) throw new Error(`track "${taken}" is live`);
     this.groups.set(group, { parent, keys, results: new Map() });
     // The room (workflow and the slice open on the starter) is split in equal parts among the tracks that ask for a share; no limit, no share.
-    const sharing = list.filter((s) => s.share).length;
-    const room = sharing ? this.usdRoom(parent) : undefined;
+    // A track started by a track that has a share always has one: an equal part of what that share has left, so the starter's limit holds for all it starts (any `usd:` too).
+    const sharing = parent.share === undefined ? list.filter((s) => s.share).length : list.length;
+    const room = sharing ? this.startRoom(parent) : undefined;
     const share = room === undefined ? undefined : capOf(Math.max(0, room) / sharing);
     // Every track exists before the first row is logged: a snapshot saved inside that row's onEvent must list the whole group.
     const started = list.map((s): Track => ({
       key: s.key, title: s.title, parent: parent.key, group, pc: s.at, state: 'running', turnInFlight: false, capped: false,
       handback: [...(s.seed ?? [])], policy: { mode: 'write', guards: [], allowShell: true }, recall: [],
-      ...(share !== undefined && s.share ? { share } : {}),
+      ...(share !== undefined && (s.share || parent.share !== undefined) ? { share } : {}),
       // A track with a `usd` of its own gets that slice (held to what its starter's share has left) and counts under its own key; any other copies its starter's slice
       // with what the starter had spent on it, and from then on each track counts its own spend under its own key (siblings must not share a counter).
       ...(typeof s.usd === 'number' && Number.isFinite(s.usd) && s.usd > 0
@@ -607,6 +610,7 @@ export class Run {
     const g = this.groups.get(group);
     if (!g || g.results.size < g.keys.length) return undefined;
     this.groups.delete(group);
+    if (g.parent.share !== undefined) this.dropProcess(g.parent);   // what its tracks spent is now off its share: a process that holds its cap reopens under the rest
     return g.keys.map((k) => g.results.get(k)!);
   }
 
@@ -697,6 +701,13 @@ export class Run {
     return left === undefined ? room : room === undefined ? left : Math.min(room, left);
   }
 
+  /** What a track may hand to the tracks it starts: the room, or what its own share has left if that is less. */
+  private startRoom(t: Track): number | undefined {
+    const left = this.shareRest(t);
+    const room = this.usdRoom(t);
+    return left === undefined ? room : Math.min(room ?? Infinity, Math.max(0, left));
+  }
+
   /** The cap of the next process of a track with a share: `share - spent` (never `total + share`), or the room if that is less; none without a share. */
   private shareFor(t: Track): number | undefined {
     const left = this.shareRest(t);
@@ -704,11 +715,24 @@ export class Run {
     return capOf(Math.max(0, Math.min(this.usdRoom(t) ?? Infinity, left)));
   }
 
-  /** What the other live tracks with a share still hold: each its share less its spend. */
+  /** The tracks a track started that have a share: what they hold is part of the starter's own rest (its spend counts their cost), so it is not held twice. */
+  private sharers(x: Track): Track[] {
+    return [...this.tracks.values()].filter((y) => y.parent === x.key && y.share !== undefined);
+  }
+
+  /** What the other live tracks with a share still hold: each its share less its spend, and less what the tracks it started hold. */
   private held(except: Track): number {
     let sum = 0;
-    for (const x of this.tracks.values()) if (x !== except) sum += Math.max(0, this.shareRest(x) ?? 0);
+    for (const x of this.tracks.values()) {
+      if (x === except || x.share === undefined) continue;
+      sum += Math.max(0, this.shareRest(x)! - this.sharers(x).reduce((a, y) => a + Math.max(0, this.shareRest(y)!), 0));
+    }
     return sum;
+  }
+
+  /** A track's share grew: every track above it that has a share keeps at least what it has left (it spends their share too). */
+  private lift(t: Track) {
+    for (let p = this.tracks.get(t.parent); p; p = this.tracks.get(p.parent)) if (p.share !== undefined) p.share = r6(Math.max(p.share, this.spentBy(p) + Math.max(0, this.shareRest(t)!)));
   }
 
   private handleTurnResult(result: TurnResult, t: Track) {
@@ -864,12 +888,14 @@ export class Run {
    * so it reopens under the new cap; one in flight keeps it (its next cut reply re-shares again).
    */
   private regrow(only?: Track) {
-    const live = [...this.tracks.values()].filter((x) => x.share !== undefined);
+    // Only the tracks that spend are shared out: one that started tracks with a share holds theirs (it is lifted to them below).
+    const live = [...this.tracks.values()].filter((x) => x.share !== undefined && !this.sharers(x).length);
     for (const x of only ? live.filter((y) => y === only) : live) {
       const room = this.usdRoom(x);
       if (room === undefined) continue;
       const to = only ? this.spentBy(x) + Math.max(0, room - this.held(x)) : this.spentBy(x) + room / live.length;
       x.share = r6(Math.max(0, to));
+      this.lift(x);
       this.dropProcess(x);
     }
   }
@@ -902,8 +928,26 @@ export class Run {
 
   /** The ends of the mod instructions in flight (Stop and close call them: an instruction that never settles holds neither). */
   private aborts = new Map<() => void, ModInfo>();
-  /** Stop leaves a Customize copy of a built-in block (`builtin`) to finish its command, as the built-in does; close cuts every one. */
-  private cutMods(stopping = false) { for (const [a, mod] of [...this.aborts]) if (!(stopping && mod.builtin)) a(); }
+  /** Stop and close cut every other mod's instruction at once; a block of the pack, or its copy (`builtin`), is left to finish its command as the built-in does, and cut only after a grace. */
+  private cutMods() { for (const [a, mod] of [...this.aborts]) if (mod.builtin) setTimeout(a, BUILTIN_GRACE_MS).unref(); else a(); }
+
+  /**
+   * Runs the code of a `builtin` block as the built-in ran: no fence, no pause rebuilt, the run waits for it. The one difference is a time limit: Stop and close give up
+   * on it after BUILTIN_GRACE_MS (the built-in's command has its own, so a copy's op that never settles must not hold the run for ever).
+   * ponytail: the op is not stopped, only left behind; a late call of it is not refused (as before the cut it was not fenced either).
+   */
+  private async holdStop<R>(mod: ModInfo, go: () => Promise<R>): Promise<R | undefined> {
+    let end!: () => void;
+    const lost = new Promise<undefined>((res) => { end = () => res(undefined); });
+    this.aborts.set(end, mod);
+    const work = (async () => go())();
+    work.catch(() => {});   // a rejection that comes after the cut is nobody's
+    try {
+      return await Promise.race([work, lost]);
+    } finally {
+      this.aborts.delete(end);
+    }
+  }
 
   /**
    * Runs code a mod brought. Stop and close win the race, so an instruction that never settles holds nothing; once it is over (settled, cut, or lost to Stop)
@@ -1149,6 +1193,7 @@ export class Run {
     const free = room - this.held(t);
     if (free < 0.01 - 1e-9) return this.usdCard(t, text);
     t.share = r6(this.spentBy(t) + free);
+    this.lift(t);
     this.dropProcess(t);
     this.logEvent('budget_warning', { step: t.key, text: `${t.title} used its share of the USD budget; it goes on with $${usdText(r6(free))} the others left unused.` }, t);
     return true;
@@ -1751,7 +1796,7 @@ export class Run {
     for (const t of this.tracks.values()) t.changeRequest = undefined;
     this.logEvent('run_stopped', {}, this.main);
     this.notify();
-    this.cutMods(true);
+    this.cutMods();
     // Every track's turn in flight is interrupted; with no track this is the one awaited interrupt it always was.
     await Promise.all([this.main, ...this.tracks.values()].map((t) => (t.turnSession ?? t.session)?.interrupt()));
   }
@@ -1894,8 +1939,10 @@ export class Run {
     const op = opOf(instr.op);
     if (op) {
       const mod = modOfOp(op);
-      // A block of the default pack is the product's own code: its ops run exactly as core's did (the run waits for a command in flight, as for a core op). Only another mod's ops are fenced and raced with Stop.
-      if (!mod || mod.pack) await op.exec(instr, this.vm(t));
+      // A block of the default pack, or a Customize copy of one (`builtin`), is the same block: its ops run exactly as core's did (the run waits for a command in flight, as for a core op).
+      // Only another mod's ops are fenced and raced with Stop.
+      if (!mod) await op.exec(instr, this.vm(t));
+      else if (mod.builtin) await this.holdStop(mod, () => op.exec(instr, this.vm(t)));
       else {
         const stepId = (instr as { step?: string }).step ?? instr.op;
         const from = t.pc;
@@ -1990,11 +2037,12 @@ export class Run {
         if (!n) { this.pauseForStop(t, `no block brings the instruction \`${instr.kind}\`; Resume tries again`, instr.step); return this.status; }
         const mod = n.mod;
         const out = !n.exec ? 'next'
-          : !mod || mod.pack ? await n.exec(instr.src, this.execCtx(t, instr.step))   // the default pack's own block: not fenced, not raced with Stop (as its ops, above)
+          : !mod ? await n.exec(instr.src, this.execCtx(t, instr.step))
+          : mod.builtin ? await this.holdStop(mod, async () => n.exec!(instr.src, this.execCtx(t, instr.step)))   // the pack's own block, or its copy: not fenced (as its ops, above)
           : await this.modRun(t, mod, instr.step, `block ${instr.kind}`, (live, cut) => n.exec!(structuredClone(instr.src), fence(this.execCtx(t, instr.step), live, { log: this.logGate(mod, cut) })));
         if (!this.alive(t)) return this.status;
         if (out === 'next') t.pc++;
-        else if (mod && !mod.pack) this.pauseForStop(t, `The block "${mod.id}" did not move on; Resume tries again`, instr.step);   // 'stay' while the run goes on: the next pass would do the same
+        else if (mod && !mod.builtin) this.pauseForStop(t, `The block "${mod.id}" did not move on; Resume tries again`, instr.step);   // 'stay' while the run goes on: the next pass would do the same
         return this.status;
       }
 

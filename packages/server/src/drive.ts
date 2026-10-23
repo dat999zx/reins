@@ -7,6 +7,7 @@ import {
 } from '@reins/core';
 import { runCommand } from './commands.js';
 import type { Mods } from './mods/types.js';
+import { shownStep } from './trackKey.js';
 
 export interface Question { id: string; kind: 'gate' | 'budget' | 'resume' | 'tool' | 'judge' | 'trust' | 'switch' | 'usd'; prompt: string; detail?: string;
   /** Who asks, when not the run's own agent (a subagent, D); the card shows it. */
@@ -149,10 +150,11 @@ async function onPause(run: Run, io: DriveIo, p: PauseReason): Promise<boolean> 
     // measured dollars (a float sum, a long tail) are rounded to 4 decimals before they are printed
     const r4 = (x: number) => usdText(Math.round(x * 1e4) / 1e4);
     const limit = r4(p.limit!), spent = r4(p.spent!);
-    io.say(p.stepId ? `⏸ block ${p.stepId} used its $${limit} budget ($${spent} spent)` : `⏸ the run used its $${limit} USD budget ($${spent} spent)`);
+    const block = p.stepId && shownStep(p.stepId);
+    io.say(block ? `⏸ block ${block} used its $${limit} budget ($${spent} spent)` : `⏸ the run used its $${limit} USD budget ($${spent} spent)`);
     const left = run.usdLeft();
-    const detail = p.stepId
-      ? `Block \`${p.stepId}\` has used $${spent} of its $${limit}.${left === undefined ? '' : ` The workflow's USD budget has $${r4(Math.max(left, 0))} left.`}`
+    const detail = block
+      ? `Block \`${block}\` has used $${spent} of its $${limit}.${left === undefined ? '' : ` The workflow's USD budget has $${r4(Math.max(left, 0))} left.`}`
       : `The run has used $${spent} of its $${limit} USD budget.`;
     // The engine's own words when it stopped for a budget it cannot hold (an unknown spend, a missing price): the figures alone would not say why.
     const why = p.text ? ` ${p.text}` : '';

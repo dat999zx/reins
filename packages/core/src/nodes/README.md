@@ -19,7 +19,7 @@ A block is a kind of step in a workflow, like `run` or `gate`. **A block is a mo
 | `conds/index.ts` | The condition registry (`CONDS`, `registerCondition`). It starts empty. | The parser needs it; the 11 conditions are `cond-*` mods. |
 | `cards/index.ts` | The card registry (`CARDS`, `registerCard`). It starts empty. | The 3 cards are `card-*` mods. |
 
-Nothing in core, in the server outside a pack mod's folder, or in the app may name a block, a condition, a card, one of their instructions or one of their events: `no-kind-branch.test.ts` builds the list of names from the pack manifests and scans for them. A new block never needs an edit in core.
+Nothing in core, in the server outside a pack mod's folder, or in the app may look a block, a condition, a card, one of their instructions or one of their events up by name: `no-kind-branch.test.ts` builds the list of names from the pack manifests and scans for them. The forms that look a block up (`step.kind === 'x'`, `['x'].includes(step.kind)`, `NODES.get('x')`, `KINDS.x`, `c.t === 'x'`, `case 'OP'`) fail anywhere, and no list excuses them. Some names are also plain words (`end`, `run`, `model`, `now`, `stop`, `done`, `gate` and a few more), so those uses are allowed one line at a time: `packages/core/test/no-kind-branch.allow.json` holds the exact text of each allowed line, per word and file, with a reason per word. A new line with such a word fails until you either use another word or add the line there; a line you change must be changed there too. A new block never needs an edit in core.
 
 Core's tests get the pack from `packages/core/test/setup-pack.ts` and `pack.ts` (they activate each pack mod with a test `api`, at the `order` its manifest gives). The server's tests use `usePack()` (`packages/server/test/pack-helper.ts`) and the app's use `packages/app/test/setup-kinds.ts`. A test that needs a toy kind registers it straight with `register`: `packages/core/test/fixtures/beep.ts` and `split.ts` are two.
 
@@ -186,6 +186,7 @@ The test fixtures `split` (`packages/core/test/fixtures/split.ts`) and `split-sh
 A view is plain JSON. It holds no function. In a mod it is the `view` object of `mod.json`. The keys are these.
 
 - `kind`, `order`, `colour` (`soft`, `hard`, `gate`, `loop`, `verify`, `hand`, `mem` or `mine`), `icon` (`round`), `slice`, `group`, `fails`, `manyNext`, `stops`, `against` and `cards`: how the face looks and behaves.
+- `coreRows`: a list of events that core itself logs (`subagent_started`, `refusal`, `run_paused`, ...) whose feed row this view draws. A view may cover such an event in `rows` only if it lists the event here; any other event is free. Only a block of the default pack may use `coreRows` (and `stops`). A mod that takes the place of a built-in, which is what a Customize copy is, may list only the events the built-in lists (fewer is fine) and may say `stops` only if the built-in does; a mod with an id of its own that has either key is refused. The shipped use is `subagent`: `"coreRows": ["subagent_started", "subagent_result"]`.
 - `fields`: the editable lines.
 - `line`: what the face shows. A word prints as it is, and `{ field: 'times' }` prints the value.
 - `card`: the palette card's `label` and `section` (`Flow` or `Memory`).

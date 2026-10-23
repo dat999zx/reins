@@ -154,7 +154,9 @@ const chain: string[] = [];
 
 const stepOf = (ins: Instr | undefined): string | undefined => (ins && 'step' in ins ? (ins.step as string | undefined) : undefined);
 /** The key of an own playbook's track. A branch of a fork is keyed by the id of its first block, which can be this very playbook; the key must not be that id. */
-const ownKey = (step: string): string => `${step}#own`;
+const ownKey = (step: string): string => `${step}${OWN_SUFFIX}`;
+/** The end of that key. The server shows the step without any `#<word>` ending (`shownStep` in `trackKey.ts`); it does not read this constant. */
+const OWN_SUFFIX = '#own';
 
 const PLAYBOOK: OpType<PlaybookInstr> = {
   async exec(i, vm) {
@@ -319,6 +321,11 @@ export default function activate(api: Pick<ModApi, 'registerBlock'>): void {
       playbook_started: (d) => `· playbook ${d.step}: ${d.playbook} started`,
       playbook_done: (d) => `· playbook ${d.step}: ${d.playbook} finished`,
     },
+  };
+  // A file that nests too deep can overflow the stack in any frame of the early check; whichever frame it was, the line names the playbook (the guard's own line does not).
+  const early = playbook.validate!.early!;
+  playbook.validate!.early = (step, ctx) => {
+    try { early(step, ctx); } catch (e) { ctx.push({ severity: 'error', message: `Playbook "${show(nameOf(step), 80)}": ${show((e as Error)?.message ?? e)}`, pos: ctx.pos }); }
   };
   api.registerBlock(playbook);
 }

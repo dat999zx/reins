@@ -1,5 +1,5 @@
-// M3 fix round, group B, item 8: a Customize copy of a built-in block is "the same block, tweaked". Its ops stay fenced (log only what provides.events lists, close cuts it),
-// but Stop waits for the command it has in flight, as for the built-in. Any other mod's op (not a loader-made copy) is still raced with Stop.
+// M3 fix round, group B, item 8: a Customize copy of a built-in block is "the same block, tweaked". Fix round 2 (E1, N3): it runs exactly as the built-in does (not fenced),
+// and Stop waits for the command it has in flight. Any other mod's op (not a loader-made copy) is still fenced and raced with Stop.
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseWorkflow } from '../src/format/parse.js';
 import { FakeEngine } from '../src/fake-engine.js';
@@ -76,13 +76,15 @@ describe('M3 fix B item 7: the pack\'s NODE blocks run as before (found by marki
     expect(b.run.pauseReason?.text).toContain('did not move on');
   });
 
-  it('a pack block\'s exec is not fenced: it logs an event no provides.events lists; the same exec from a copy or another mod is refused', async () => {
-    regNode({ pack: true }, async (_s, ctx) => { ctx.log('fb_ev', {}); return 'next'; });
-    const a = start();
-    await a.stepping;
-    expect(a.run.status).toBe('done');
-    disposers.pop()!();
-    for (const flags of [{ builtin: true as const }, {}]) {
+  it('a pack block\'s exec, and a copy\'s, is not fenced: it logs an event no provides.events lists; the same exec from another mod is refused', async () => {
+    for (const flags of [{ pack: true as const }, { builtin: true as const }]) {
+      regNode(flags, async (_s, ctx) => { ctx.log('fb_ev', {}); return 'next'; });
+      const a = start();
+      await a.stepping;
+      expect(a.run.status, JSON.stringify(flags)).toBe('done');
+      disposers.pop()!();
+    }
+    for (const flags of [{}]) {
       regNode(flags, async (_s, ctx) => { ctx.log('fb_ev', {}); return 'next'; });
       const b = start();
       await b.stepping;
@@ -130,20 +132,20 @@ describe('M3 fix B item 8: Stop and a Customize copy', () => {
     expect(await stopped({})).toEqual({ counter: 0, status: 'stopped' });
   });
 
-  it('a copy stays fenced: it may not log an event its provides.events does not list', async () => {
+  it('a copy is not fenced, as the built-in is: it logs an event its provides.events does not list', async () => {
     reg({ builtin: true }, async (_i, vm) => { vm.log('fb_ev', {}); vm.next(); });
     const { run, stepping } = start();
     await stepping;
-    expect(run.status).toBe('paused');
-    expect(run.pauseReason?.text).toContain('may not log "fb_ev"');
+    expect(run.status).toBe('done');
   });
 
-  it('a copy that never settles does not hold Stop, and close cuts it', async () => {
-    reg({ builtin: true }, () => new Promise<void>(() => {}));
-    const { run, stepping } = start();
+  it('a copy that never settles does not hold stop() itself; the run is cut after the grace (see m3-fix2-e1-copy)', async () => {
+    let release!: () => void;
+    reg({ builtin: true }, () => new Promise<void>((r) => { release = r; }));
+    const { run } = start();
     await wait(5);
     await Promise.race([run.stop(), wait(500).then(() => { throw new Error('stop() hung'); })]);
     expect(run.status).toBe('stopped');
-    await Promise.race([run.close().then(() => stepping), wait(500).then(() => { throw new Error('close() did not cut the copy'); })]);
+    release();   // the op ends here so the run can close; the cut itself is m3-fix2-e1-copy
   });
 });

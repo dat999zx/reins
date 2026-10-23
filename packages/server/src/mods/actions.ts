@@ -194,10 +194,13 @@ const catalogIds = (env: ModEnv): string[] => {
   }
 };
 
-const bundledKinds = (mods: Mods) => new Map(mods.mods.filter((m) => m.source === 'bundled').map((m): [string, string] => [m.id, m.kind]));
+/** The built-ins by id: a bundled mod, or the copy that stands in its place. */
+const builtIns = (mods: Mods) => mods.mods.filter((m) => m.source === 'bundled' || m.replaces === 'bundled');
+const bundledKinds = (mods: Mods) => new Map(builtIns(mods).map((m): [string, string] => [m.id, m.kind]));
+const bundledViews = (mods: Mods) => new Map(builtIns(mods).map((m): [string, unknown] => [m.id, m.replaces ? m.builtinView : (m.manifest as { view?: unknown } | undefined)?.view]));
 /** What is wrong with a provider manifest that would be saved as `<mods>/<id>`, in plain words: the loader's checks plus the rules for data. */
 function problemsOf(env: ModEnv, raw: Record<string, unknown>, id: string): string[] {
-  const out = validateMod(raw, { folder: id, source: 'user' }, id, bundledKinds(env.mods), env.mods.registry);
+  const out = validateMod(raw, { folder: id, source: 'user' }, id, bundledKinds(env.mods), env.mods.registry, bundledViews(env.mods));
   if (out.length) return out;
   if (raw.kind !== 'provider' || raw.main !== undefined) return [`${id$(id)}: only a provider with no code of its own can be added here.`];
   return addressProblems(raw, id);
@@ -960,7 +963,7 @@ function checkImport(env: ModEnv, input: unknown): Checked {
   if (!isModId(raw.id)) return { reply: refusal(['The id must be lowercase letters, digits and dashes, start with a letter or digit, be at most 40 long, and not be a name Windows reserves.']) };
   const id = raw.id;
   const problems = [
-    ...validateMod(raw, { folder: id, source: 'user' }, id, bundledKinds(env.mods), env.mods.registry),
+    ...validateMod(raw, { folder: id, source: 'user' }, id, bundledKinds(env.mods), env.mods.registry, bundledViews(env.mods)),
     ...addressProblems(raw, id),
   ];
   const main = raw.main === undefined ? undefined : canonMain(raw.main);

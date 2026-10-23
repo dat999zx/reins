@@ -65,7 +65,8 @@ export async function registerPack(dir: string): Promise<() => void> {
       const api = {
         env: process.env,
         // The loader's mark (`nodeCopy`): the mod's id and `provides.events`, `pack` and `builtin`. So `register` guards the node as it does in production.
-        registerBlock: (n: Parameters<typeof register>[0]) => { const d = register({ ...n, mod: { id: mod.id, events: mod.manifest.provides?.events ?? [], pack: true, builtin: true } }, order); undo.push(d); return d; },
+        // `REINS_PACK_MARK=copy` marks every block as the loader marks a Customize copy of one (`builtin`, no `pack`): the whole core project then runs the copy's path (vitest.config.ts `core-copy`).
+        registerBlock: (n: Parameters<typeof register>[0]) => { const d = register({ ...n, mod: { id: mod.id, events: mod.manifest.provides?.events ?? [], ...(process.env.REINS_PACK_MARK === 'copy' ? {} : { pack: true }), builtin: true } }, order); undo.push(d); return d; },
         registerCondition: (c: Parameters<typeof registerCondition>[0]) => { const d = registerCondition(c, order, { pack: true }); undo.push(d); return d; },
         registerCard: (c: Parameters<typeof registerCard>[0]) => { const d = registerCard(c, order); undo.push(d); return d; },
         core: Object.freeze({ checkMode, driftFound, globMatcher, isValidGlob, parseCond, policyOf, printCond, relPath, turnInstr }),

@@ -64,9 +64,12 @@ describe('receipt tracks rows', () => {
 
   it('a track still going is not ended', async () => {
     const events = await record(BODY, SCRIPTS);
-    const cut = events.findIndex((e) => e.type === 'track_ended' && e.data.track === 'b');
+    // Which of the two tracks ends second depends on how many ticks each instruction takes, so the cut is made at the second end, whichever track it is.
+    const ends = events.map((e, i) => [e, i] as const).filter(([e]) => e.type === 'track_ended' && (e.data.track === 'a' || e.data.track === 'b'));
+    const [[first], [last, cut]] = [ends[0]!, ends[1]!];
     const r = receipt(events.slice(0, cut));
-    expect(r.tracks!.map((t) => [t.key, t.ended])).toEqual([['a', true], ['b', false]]);
+    expect(r.tracks!.map((t) => [t.key, t.ended])).toEqual(['a', 'b'].map((k) => [k, k === first.data.track]));
+    expect(first.data.track).not.toBe(last.data.track);
   });
 
   it('a run with no tracks has no tracks row and the same keys as before', async () => {

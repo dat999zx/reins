@@ -33,6 +33,22 @@ They live in `packages/server/src/mods/<id>/` and ship in the `reins-ai` package
 - It takes the built-in's place after a restart. The built-in stays installed underneath: a copy may cover only the names the built-in's own `provides` lists, so a copy of `say` can replace `say` and nothing else.
 - Remove the copy (Settings, Remove) and the built-in is back after a restart.
 - A copy of `phase` or `end` is required too. Required follows the id, so the copy has no off switch either.
+- A copy runs the way the built-in runs. A user mod that has the id and the kind of a built-in is a copy (the import dialog asks "this replaces a built-in" first), and Reins treats a copy of a pack block as that block: its code is not fenced the way the code of a mod of your own is. So a copy of `gate` pauses with the gate's condition, title and track, a copy of `subagent` closes a track as the built-in does, and the run waits for a command of the copy to finish, as it waits for the built-in's.
+- The one difference is Stop. The built-in's own commands are cut after 10 minutes, so Stop never waits long for them. A copy has no such limit, so if its code never ends, Stop and closing the run give up on it after 11 minutes and leave it behind, and closing the session or shutting down stops waiting for it after 12 minutes.
+- A copy may say only what the built-in says in its `view` about two things that only the pack may say (below).
+
+#### `stops` and `coreRows`: the two view keys of the pack
+
+A block's view may draw the feed row of an event that core itself logs (`refusal`, `run_paused`, `judge`, `subagent_started`, ...) only if the view lists that event in `coreRows`. The shipped use is `subagent`, which draws its own start and result:
+
+```
+"coreRows": ["subagent_started", "subagent_result"]
+```
+
+The other key is `"stops": true`, which says the block ends the workflow, so the canvas draws it as a cap with no links out (`end` has it). Both keys are for the pack:
+
+- A block of the pack, or your copy of it, may use them. The copy may list the same events or fewer, and say `stops` only if the built-in does. A copy that lists one more event, or says `stops` when the built-in does not, is refused, and the row says why (`a copy may say only what the built-in says`). A copy made by Customize is a byte copy, so it passes.
+- A mod with an id of its own that has either key is refused too. A row for an event core logs, with no `coreRows` entry for it, is refused.
 
 Change the copy's `mod.json` or `index.js` by hand, then restart. Keep the `version` you copied, or raise it.
 
@@ -295,7 +311,7 @@ The lines of a `playbook` block:
 | `## playbook <name>` | The file `blocks/<name>.reins.md`. |
 | `input:` | `name = value; name = value`. Each `{{name}}` in the file is replaced by its value: in prompts, titles, attributes, card texts and conditions, before anything is compiled. So the commands you are asked to trust are the commands that will run. A `{{name}}` with no input is an error. An input the file never uses is a warning. A value is filled in one pass: a value that holds `{{other}}` stays as it is. |
 | `session: own` | The playbook runs as a track of its own: its own conversation, its own approvals, its own Stop. Without it the steps are compiled into your workflow and run in the same conversation. No other value is allowed. |
-| `usd:` | A USD budget for the playbook alone. An amount above 0, like `2.50`, and only with `session: own`. The run ignores anything else, and the playbook then has no budget of its own. |
+| `usd:` | A USD budget for the playbook alone. An amount above 0, like `2.50`, and only with `session: own`. Any other value is ignored, and the playbook is then capped as if it had none. Without it the playbook is capped at what is left of the workflow's budget (inside a fork branch, at what is left of the branch's share), and has no cap only when no budget is set anywhere. With it the cap is that amount, and never more than what is left. |
 | `output:` | Step ids of the file, separated by commas, only with `session: own`. Only those steps' last replies go back to the block under the playbook, each quoted as data. Without `output:` the track's last reply goes back. A named step that never ran says `<id> did not run.` |
 
 How the steps are named: an inline playbook puts its steps in your workflow with the id of the playbook step in front, so the first step above is `review/look` (`playbook-1/look` if you give the block no `id:`). That is the id you see in the run and the id that `output:` names without the prefix. An `end` inside an inline playbook ends only the playbook. In a playbook with `session: own`, an `end` ends the track.
@@ -356,6 +372,7 @@ Money: each branch has its own spend and its own share.
 
 - The share is the room divided equally: the room is what the workflow's USD budget has left, or the budget of the `model` block that is open at the fork (the smaller of the two, when there are both). `$1.00` over 3 branches is `0.333334` each, and `0.50` over 3 is `0.166667`: the share is rounded up to a millionth of a dollar.
 - With no budget anywhere, a branch has no cap of its own.
+- A track a branch starts, such as an own playbook, spends from that branch's share: with no `usd:` it is capped at what the branch's share has left, and with a `usd:` at that amount or what the share has left, whichever is less. So the branches together stay inside the room, and what a branch's playbook spends is off that branch's share.
 - A branch that uses up its share is given what the other branches have not used, when that is a cent or more. Less than that, and the run pauses once, on the USD card for the whole run.
 - Each branch has its own row in the receipt, with its turns and dollars; the run total counts every reply once.
 
