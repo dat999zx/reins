@@ -1,13 +1,14 @@
 import type { LogRow } from '@reins/server/store.js';
 import { showText } from '../../core/src/display.js';
+import type { StatusRule, StatusState } from '../../core/src/nodes/fields.js';
+import { holds, own, statusOf } from './viewEvents.js';
 
-export type StepState = 'active' | 'done' | 'waiting' | 'stuck' | 'failed';
+export type StepState = StatusState;
 // One vocabulary for a step's state: the feed's knots, the block chips, the dock and the Text list all read it.
 export const STATE_WORDS: Record<StepState | 'stopped' | 'paused', string> =
   { active: 'running', done: 'done', waiting: 'waiting for you', stuck: 'out of attempts', failed: 'failed', stopped: 'stopped', paused: 'left paused' };
-/** `model` is the model the step's reply ran on, as the provider reported it (turn_ended.model), labelled when the run's own model_switched rows gave a label. */
+/** `model` is the model the step's reply ran on, as the provider reported it (turn_ended.model), labelled when the run's own switch rows gave a label (a view's `status` rule with `label`). */
 export interface StepInfo { state?: StepState; attempts?: number; refusals: number; cost: number; why?: string; model?: string }
-const MODEL_WHY: Record<string, string> = { switched: 'now', same: 'already on', kept: 'kept' };
 export type StepMap = Record<string, StepInfo>;
 
 /** A track's title as the dock and the receipt show it: at most 40 characters, hidden ones written out (the cut comes first, so an escape is never cut). */
@@ -67,9 +68,6 @@ const handlers: Record<string, Handler> = {
   command_result: (m, _cur, d) => {
     if (typeof d.step === 'string' && typeof d.exitCode === 'number' && d.exitCode !== 0) Object.assign(at(m, d.step), { state: 'failed', why: `exit ${d.exitCode}` });
   },
-  verify_result: (m, cur, d) => {
-    if (d.pass === false && cur.step) Object.assign(at(m, cur.step), { state: 'failed', why: 'verify' });
-  },
   turn_started: (m, cur, d, sh) => {
     if (typeof d.step !== 'string') return;
     if (cur.v2 && d.step === cur.step) { at(m, d.step).state = 'active'; return; }
@@ -85,34 +83,12 @@ const handlers: Record<string, Handler> = {
     if (typeof d.model === 'string') i.model = Object.hasOwn(sh.labels, d.model) ? sh.labels[d.model]! : d.model;
     i.state = d.step === cur.gate ? 'waiting' : 'done';
   },
-  gate_paused: (m, cur, d) => {
-    if (typeof d.step !== 'string') return;
-    cur.gate = d.step;
-    cur.step = d.step;
-    at(m, d.step).state = 'waiting';
-  },
   gate_approved: (m, cur) => {
     if (cur.gate && m[cur.gate]) m[cur.gate]!.state = 'done';
     delete cur.gate;
   },
   question: (m, cur, d) => {
     if ((d.kind === 'resume' || d.kind === 'switch') && cur.step) at(m, cur.step).state = 'waiting';
-  },
-  // done at once: step_started moves only `active` steps on, so a `waiting` model step would stay waiting
-  model_switched: (m, _cur, d, sh) => {
-    if (typeof d.step !== 'string') return;
-    const i = at(m, d.step);
-    i.state = 'done';
-    const label = typeof d.label === 'string' ? d.label : undefined;
-    const words = label && MODEL_WHY[d.how as string];
-    if (words) i.why = `${words} ${label}`; else delete i.why;
-    if (label && typeof d.model === 'string' && (d.how === 'switched' || d.how === 'same')) sh.labels[d.model] = label;
-  },
-  loop_iteration: (m, _cur, d) => {
-    if (typeof d.step === 'string' && typeof d.attempts === 'number') at(m, d.step).attempts = d.attempts;
-  },
-  loop_budget_exceeded: (m, _cur, d) => {
-    if (typeof d.step === 'string') at(m, d.step).state = 'stuck';
   },
   // a track's own resume moves only that track's steps; any gate still open on a track stays waiting
   run_resumed: (m, cur, _d, sh) => {
@@ -128,17 +104,45 @@ const handlers: Record<string, Handler> = {
   run_detached: (m) => retag(m, 'active', undefined),
 };
 
+// A kind's event, by its view's rule (`view.status`): plain data, so a block that is not built in marks the run the same way.
+const applyRule = (m: StepMap, cur: Cursor, d: Data, sh: Shared, r: StatusRule) => {
+  if (r.when && !holds(d, r.when)) return;
+  let id: string;
+  if (r.step === 'track') { if (!cur.step) return; id = cur.step; } else { if (typeof d.step !== 'string') return; id = d.step; }
+  if (r.attempts !== undefined) {
+    const a = own(d, r.attempts);
+    if (typeof a === 'number') at(m, id).attempts = a;
+  }
+  if (r.state !== undefined) at(m, id).state = r.state;
+  if (typeof r.why === 'string') at(m, id).why = r.why;
+  else if (r.why) {
+    const i = at(m, id);
+    const how = own(d, r.why.key);
+    const words = typeof how === 'string' && Object.hasOwn(r.why.words, how) ? r.why.words[how] : undefined;
+    const add = r.why.add === undefined ? '' : own(d, r.why.add);
+    if (words && (r.why.add === undefined || (typeof add === 'string' && add))) i.why = r.why.add === undefined ? words : `${words} ${add}`; else delete i.why;
+  }
+  if (r.label && (!r.label.when || holds(d, r.label.when))) {
+    const name = own(d, r.label.name), model = own(d, r.label.model);
+    if (typeof name === 'string' && name && typeof model === 'string') sh.labels[model] = name;
+  }
+  if (r.gate) cur.gate = id;
+  if (r.cursor) cur.step = id;
+};
+
 /** Fold the rows of ONE run. */
 export function stepStatus(rows: LogRow[]): StepMap {
   const m: StepMap = Object.create(null); // keyed by step id, which may be `__proto__`: no prototype to write through
   const sh: Shared = { cursors: new Map(), own: new Map(), groups: new Map(), labels: Object.create(null) };
   for (const r of rows) {
-    if (!Object.hasOwn(handlers, r.type)) continue;
+    const handler = Object.hasOwn(handlers, r.type) ? handlers[r.type] : undefined;
+    const rule = handler ? undefined : statusOf(r.type);
+    if (!handler && !rule) continue;
     const d = (r.data ?? {}) as Data;
     const track = typeof d.track === 'string' ? d.track : '';
     let cur = sh.cursors.get(track);
     if (!cur) sh.cursors.set(track, (cur = { track }));
-    handlers[r.type]!(m, cur, d, sh);
+    if (handler) handler(m, cur, d, sh); else applyRule(m, cur, d, sh, rule!);
   }
   return m;
 }

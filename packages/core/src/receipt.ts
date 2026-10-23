@@ -53,6 +53,16 @@ export function receipt(events: RunEventRecord[]): Receipt {
   const byModel = new Map<string, { usd: number; turns: number; unknown?: true }>();
   const seen = (m: string) => byModel.get(m) ?? (byModel.set(m, { usd: 0, turns: 0 }), byModel.get(m)!);
 
+  // The fixed fields a kind's `count` may name (the receipt's contract); any other name it returns goes to `counts`.
+  const FIXED: Record<string, () => void> = {
+    gatesHeld: () => { gatesHeld++; },
+    loopAttempts: () => { loopAttempts++; },
+    'verifyResults.passed': () => { verifyResults.passed++; },
+    'verifyResults.failed': () => { verifyResults.failed++; },
+    knowlRecalls: () => { knowlRecalls++; },
+    knowlStores: () => { knowlStores++; },
+    knowlSkipped: () => { knowlSkipped++; },
+  };
   const subs = new Map<string, { title: string; usd: number; turns: number; unknown?: true }>();
   const counts = new Map<string, number>();   // a count key is a name a mod chose: `constructor` must not find an Object member
   // A Map: a track key is a name somebody chose. Rows are read from the `track` tag the Run puts on a track's own events.
@@ -113,9 +123,6 @@ export function receipt(events: RunEventRecord[]): Receipt {
       case 'subagent_started':
         if (!subs.has(ev.data?.step)) subs.set(ev.data?.step, { title: ev.data?.title ?? ev.data?.step, usd: 0, turns: 0 });
         break;
-      case 'gate_paused':
-        gatesHeld++;
-        break;
       case 'refusal':
         totalRefusals++;
         if (ev.data?.reason?.includes('guard')) {
@@ -125,29 +132,11 @@ export function receipt(events: RunEventRecord[]): Receipt {
           readOnlyRefusals++;
         }
         break;
-      case 'loop_iteration':
-        loopAttempts++;
-        break;
       case 'card_queued':
         if (ev.data?.source !== 'live') autoCardsFired++;
         break;
       case 'card_delivered':
         liveCardsDelivered++;
-        break;
-      case 'verify_result':
-        if (ev.data?.pass) {
-          verifyResults.passed++;
-        } else {
-          verifyResults.failed++;
-        }
-        break;
-      case 'recall':
-        if (ev.data?.skipped) knowlSkipped++;
-        else knowlRecalls++;
-        break;
-      case 'store':
-        if (ev.data?.skipped) knowlSkipped++;
-        else knowlStores++;
         break;
       case 'engine_cost':
         // A call that failed and left a spend nobody knows (no reply came back to price): a reply with no price, on its step if it was a subagent's.
@@ -162,7 +151,9 @@ export function receipt(events: RunEventRecord[]): Receipt {
     }
     for (const n of NODES.values()) {
       const k = n.count && Object.hasOwn(n.count, ev.type) ? n.count[ev.type]?.(ev.data) : undefined;
-      if (k) counts.set(k, (counts.get(k) ?? 0) + 1);
+      if (!k) continue;
+      const fixed = Object.hasOwn(FIXED, k) ? FIXED[k] : undefined;   // `constructor` is a count name, not Object's member
+      if (fixed) fixed(); else counts.set(k, (counts.get(k) ?? 0) + 1);
     }
   }
 

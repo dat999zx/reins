@@ -5,7 +5,7 @@ import path from 'node:path';
 import {
   Run, receipt, showText,
   type Decision, type Diagnostic, type Engine, type EngineEvent, type EngineSession, type Policy,
-  type Receipt, type RunEventRecord, type RunOptions, type SubagentOpen, type SubagentOpened, type SwitchOutcome, type ToolRequest, type TurnResult, type Workflow,
+  type Receipt, type RunEventRecord, type RunOptions, type RunSnapshot, type SubagentOpen, type SubagentOpened, type SwitchOutcome, type ToolRequest, type TurnResult, type Workflow,
 } from '@reins/core';
 import { askTool, driveRun, questionId, runOptions, type DriveIo, type Question } from './drive.js';
 import { contextSize, contextWindow, detachedRuns, modelWithoutWindow, readSetting, stillOverAfterCompaction, switchCheck, type SwitchCheck } from './settings.js';
@@ -19,6 +19,15 @@ import type { FolderTrust } from './mods/types.js';
 import { parseModel } from './models.js';
 import { crossWords, missingProviderWords, noKeyWords, providerStatus, resolveSubagent, runChecks, type CheckEnv } from './run-checks.js';
 import { commandsOf, hashCommands } from './trust.js';
+
+/** What a run's last model step chose, as the host recorded it: the name the step gave and the label shown. */
+interface Chose { model: string; label?: string }
+/** The record from a saved run; anything but a name and an optional label (a damaged or older snapshot) reads as none. */
+const readChose = (v: unknown): Chose | undefined => {
+  if (typeof v !== 'object' || v === null) return undefined;
+  const { model, label } = v as { model?: unknown; label?: unknown };
+  return typeof model === 'string' && (label === undefined || typeof label === 'string') ? { model, ...(label === undefined ? {} : { label }) } : undefined;
+};
 
 export type MakeEngine = (o: {
   /** The id of the provider whose engine this is. */
@@ -174,6 +183,10 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   let pendingSwitch: { from: string | undefined; to: string; fromEngine: string; fromEffort: string | undefined } | undefined;
   let run: Run | undefined;
   let runId: string | undefined;
+  // The host's own record of the model the run's last model step chose (the name the step gave, the label shown): kept beside the saved run, so a resume can say
+  // when the session has moved on since. It is not read from the run's events: no event of a block is named here.
+  let chose: Chose | undefined;
+  const withChose = (snap: RunSnapshot): RunSnapshot => (chose ? { ...snap, hostChose: chose } as RunSnapshot : snap);
   let worker: Promise<void> = Promise.resolve();
   const queue: string[] = [];
   let intent: { kind: 'now'; text: string } | { kind: 'stop' } | undefined;
@@ -350,7 +363,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     const model = p.model;
     const moving = p.provider !== cur.engine;
     const d = describe(p.provider, model, used);
-    if (!moving && (cur.model ?? '') === model) return { to: 'same', label: d.label };
+    if (!moving && (cur.model ?? '') === model) { chose = { model: name, label: d.label }; return { to: 'same', label: d.label }; }
     const c = switchCheck({
       busy: false, detached: false, hasSession: !!cur.engineSessionId, used, target: model, label: d.label,
       estimate: d.estimate, ...(d.source ? { source: d.source } : {}), limits: limits(),
@@ -366,6 +379,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       }
     }
     applySwitch(cur.model, model, d.label, p.provider);
+    chose = { model: name, label: d.label };
     return { to: 'switched', label: d.label };
   }
 
@@ -701,7 +715,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     if (run) {
       run.queueCard(text, kind);
       // The run logs card_queued before it stores the card, so its own snapshot save misses it (spec 1322).
-      store.saveSnapshot(runId!, run.snapshot());
+      store.saveSnapshot(runId!, withChose(run.snapshot()));
       return;
     }
     log('card_queued', { card: text, kind });
@@ -783,14 +797,15 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       ...(deps.kinds ? { kinds: deps.kinds() } : {}),
       onEvent: (ev) => {
         store.appendEvent(rid, ev);
-        if (run) store.saveSnapshot(rid, run.snapshot());
+        if (run) store.saveSnapshot(rid, withChose(run.snapshot()));
         logRunEvent(ev, rid);
       },
     });
+    chose = undefined;   // a resume's `make` puts the saved record back
     const r = make(opts);
     run = r;
     for (const c of queue.splice(0)) r.queueCard(c, 'steer');
-    const save = () => store.saveSnapshot(rid, r.snapshot());
+    const save = () => store.saveSnapshot(rid, withChose(r.snapshot()));
     save();
     let out: Awaited<ReturnType<typeof driveRun>>;
     try {
@@ -895,11 +910,11 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
         const r = Run.restore(snapshot, o);
         log('note', { text: `Resumed run ${rid}.` }, rid);
         // The session's model may have changed since the run's last model step (another run, a detached header switch).
-        const chose = [...snapshot.events].reverse().find((e) => e.type === 'model_switched' && (e.data?.how === 'switched' || e.data?.how === 'same'));
+        chose = readChose((snapshot as { hostChose?: unknown }).hostChose);
         const cur = store.getSession(id)!;
-        if (chose && chose.data.model !== (cur.model ?? '')) {
+        if (chose && chose.model !== (cur.model ?? '')) {
           const now = cur.model ? describe(cur.engine, cur.model, undefined).label : 'the default model';
-          log('note', { text: `This run's model block chose ${chose.data.label ?? chose.data.model}; the session is on ${now}, so the next steps run on it.` }, rid);
+          log('note', { text: `This run's model block chose ${chose.label ?? chose.model}; the session is on ${now}, so the next steps run on it.` }, rid);
         }
         return r;
       });

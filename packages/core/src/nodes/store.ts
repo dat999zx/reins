@@ -44,5 +44,7 @@ const store: NodeType = {
   attrs: ['knowl'],
   compile(step, ctx) { ctx.push({ op: 'STORE', step: step.id, what: step.attrs.knowl || 'decisions' }); },
   ops: { STORE },
+  count: { store: (d) => (d?.skipped ? 'knowlSkipped' : 'knowlStores') },
+  print: { store: (d) => (d.skipped ? '· store skipped: Knowl is not wired up until Phase 6' : undefined) },
 };
 export default store;

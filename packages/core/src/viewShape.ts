@@ -1,5 +1,5 @@
 import { showText } from './display.js';
-import type { Field, KindView } from './nodes/fields.js';
+import type { Field, KindView, StatusState } from './nodes/fields.js';
 
 // The one check of what a served block view may hold. The server runs it on a mod's manifest (with `mod`: what the mod provides), the app on
 // every entry it is served (without), so a view that got through is still harmless in the page. Browser-safe: `import type` lines and display.ts only.
@@ -27,7 +27,14 @@ export const MAX_ROW_TEXT = 200;
 export const MAX_ROW_DETAILS = 400;
 /** The kind that ends the workflow: the only view that may say `stops`. */
 const CAP = 'end';
-const VIEW_KEYS = ['kind', 'order', 'colour', 'icon', 'slice', 'group', 'fails', 'manyNext', 'stops', 'against', 'cards', 'fields', 'line', 'card', 'sub', 'fresh', 'rows'];
+const VIEW_KEYS = ['kind', 'order', 'colour', 'icon', 'slice', 'group', 'fails', 'manyNext', 'stops', 'against', 'cards', 'fields', 'line', 'card', 'sub', 'fresh', 'rows', 'status', 'hidden'];
+const STATES: Record<StatusState, 1> = { active: 1, done: 1, waiting: 1, stuck: 1, failed: 1 };
+const RULE_KEYS = ['when', 'step', 'state', 'why', 'attempts', 'cursor', 'gate', 'opens', 'label'];
+const MAX_WORDS = 8;
+const MAX_IS = 8;
+/** An event or data name: letters, digits, dash and underscore; never one every JavaScript object has. */
+const NAME = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
+const goodName = (v: unknown): v is string => typeof v === 'string' && NAME.test(v) && !(v in Object.prototype) && v !== 'prototype';
 const FIELD_KEYS = ['key', 'label', 'input', 'error', 'inherits', 'ph', 'required', 'check', 'unset'];
 
 /** What the mod providing the view may use (its `provides`). Without it the view is core's or one the server already checked. */
@@ -39,6 +46,44 @@ const inSet = (set: object, v: unknown): boolean => typeof v === 'string' && Obj
 const name = (v: unknown) => `\`${showText(typeof v === 'string' ? v.slice(0, 40) : String(typeof v))}\``;
 const oneOf = (set: object) => Object.keys(set).join(', ');
 const extraKey = (e: Record<string, unknown>, allowed: string[]) => Object.keys(e).find((k) => !allowed.includes(k));
+
+const when = (w: unknown, at: string): string | undefined => {
+  if (!isObj(w) || extraKey(w, ['key', 'is']) !== undefined || !goodName(w.key)) return `${at} must be { "key": a data name, "is": a list of values }.`;
+  if (!Array.isArray(w.is) || w.is.length < 1 || w.is.length > MAX_IS) return `${at} needs an \`is\` list of 1 to ${MAX_IS} values.`;
+  if (!w.is.every((x) => (typeof x === 'string' && x.length <= 40) || (typeof x === 'number' && Number.isFinite(x)) || typeof x === 'boolean')) return `${at} has an \`is\` value that is not short text, a number or true or false.`;
+  return undefined;
+};
+
+/** An event a view names in `status` or `hidden`: a plain name, one the mod provides, and never one core logs (for a mod). */
+function eventProblem(type: unknown, at: string, mod: ViewScope['mod']): string | undefined {
+  if (!goodName(type)) return `${at} names an event with a bad name (letters, digits, dash and underscore, starting with a letter).`;
+  if (mod && isCoreEvent(type)) return `${at} is an event core logs, and a mod's view cannot cover it.`;
+  if (mod && !mod.events.includes(type)) return `${at} is not in \`provides.events\`.`;
+  return undefined;
+}
+
+function ruleProblem(r: unknown, at: string): string | undefined {
+  if (!isObj(r)) return `${at} must be an object.`;
+  const bad = extraKey(r, RULE_KEYS);
+  if (bad !== undefined) return `${at} has ${name(bad)}, which is not part of a status rule (${RULE_KEYS.join(', ')}).`;
+  if (r.when !== undefined) { const p = when(r.when, `${at}.when`); if (p) return p; }
+  if (r.step !== undefined && r.step !== 'track') return `${at}.step must be "track", or left out.`;
+  if (r.state !== undefined && !inSet(STATES, r.state)) return `${at}.state is ${name(r.state)}. It must be one of ${oneOf(STATES)}.`;
+  for (const k of ['cursor', 'gate', 'opens'] as const) if (r[k] !== undefined && r[k] !== true) return `${at}.${k} must be true, or left out.`;
+  if (r.attempts !== undefined && !goodName(r.attempts)) return `${at}.attempts must be a data name.`;
+  const y = r.why;
+  if (y !== undefined && typeof y !== 'string') {
+    if (!isObj(y) || extraKey(y, ['key', 'words', 'add']) !== undefined || !goodName(y.key) || (y.add !== undefined && !goodName(y.add))) return `${at}.why must be text or { "key": a data name, "words": ..., "add": a data name }.`;
+    if (!isObj(y.words) || Object.keys(y.words).length < 1 || Object.keys(y.words).length > MAX_WORDS) return `${at}.why.words must be an object of 1 to ${MAX_WORDS} words.`;
+    for (const [k, w] of Object.entries(y.words)) if (!goodName(k) || !isText(w, 40)) return `${at}.why.words has an entry that is not a name and short text.`;
+  } else if (y !== undefined && !isText(y)) return `${at}.why must be text of 1 to ${MAX_ROW_TEXT} characters.`;
+  if (r.label !== undefined) {
+    const l = r.label;
+    if (!isObj(l) || extraKey(l, ['model', 'name', 'when']) !== undefined || !goodName(l.model) || !goodName(l.name)) return `${at}.label must be { "model": a data name, "name": a data name }.`;
+    if (l.when !== undefined) { const p = when(l.when, `${at}.label.when`); if (p) return p; }
+  }
+  return undefined;
+}
 
 /** What is wrong with the first thing in a view, in words, or undefined when its whole shape is fine. */
 export function viewShapeProblem(v: unknown, scope: ViewScope = {}): string | undefined {
@@ -112,6 +157,23 @@ export function viewShapeProblem(v: unknown, scope: ViewScope = {}): string | un
       if (mod && isCoreEvent(type)) return `${at} is an event core logs, and a mod's row cannot cover it.`;
       if (mod && !mod.events.includes(type)) return `${at} is not in \`provides.events\`.`;
     }
+  }
+  if (v.status !== undefined) {
+    if (!isObj(v.status)) return '`view.status` must be an object with one rule for each event type.';
+    if (Object.keys(v.status).length > MAX_VIEW_LIST) return `\`view.status\` holds at most ${MAX_VIEW_LIST} rules.`;
+    for (const [type, r] of Object.entries(v.status)) {
+      const at = `\`view.status.${showText(type.slice(0, 40))}\``;
+      const p = eventProblem(type, at, mod) ?? ruleProblem(r, at);
+      if (p) return p;
+    }
+  }
+  if (v.hidden !== undefined) {
+    if (!Array.isArray(v.hidden) || v.hidden.length > MAX_VIEW_LIST) return `\`view.hidden\` must be a list of at most ${MAX_VIEW_LIST} event types.`;
+    for (const type of v.hidden) {
+      const p = eventProblem(type, `\`view.hidden\` entry ${name(type)}`, mod);
+      if (p) return p;
+    }
+    if (new Set(v.hidden).size !== v.hidden.length) return '`view.hidden` lists an event twice.';
   }
   return undefined;
 }

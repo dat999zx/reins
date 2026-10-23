@@ -1,5 +1,6 @@
-import type { NodeType, OpType } from './index.js';
+import { NODES, type NodeType, type OpType } from './index.js';
 import type { Instr } from '../compile.js';
+import { CONDS } from '../conds/index.js';
 
 declare module '../model.js' {
   interface NodeKinds { repeat: true }
@@ -75,13 +76,14 @@ const repeat: NodeType = {
       }
     }
 
+    // Looked up by name in the registries, so this file holds no kind or condition of its own: the first child runs a command (its op says so)
+    // and the loop's condition is judged by that same command (its atom says so). A throwing atom hook is "no".
     const firstKid = step.kids?.[0];
+    const kidRuns = firstKid !== undefined && Object.values(NODES.get(firstKid.kind)?.ops ?? {}).some((o) => o.ranCommand === true);
     const isRunMatch =
-      firstKid?.kind === 'run' &&
+      kidRuns &&
       step.cond !== undefined &&
-      ((step.cond.t === 'cmd' && step.cond.cmd === (firstKid.attrs.cmd || '')) ||
-        (step.cond.t === 'tests' &&
-          (firstKid.attrs.cmd === 'npm test' || !firstKid.attrs.cmd)));
+      (() => { try { return CONDS.get(step.cond!.t)?.sameAsRun?.(step.cond, firstKid.attrs.cmd || '') === true; } catch { return false; } })();
 
     if (isRunMatch) {
       const runInstr = ctx.get(bodyStart);
@@ -98,5 +100,7 @@ const repeat: NodeType = {
     });
   },
   ops: { LOOP_IN, LOOP_BK },
+  count: { loop_iteration: () => 'loopAttempts' },
+  print: { loop_iteration: (d) => `↻ ${d.step}: attempt ${d.attempts}` },
 };
 export default repeat;

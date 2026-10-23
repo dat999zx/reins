@@ -33,5 +33,6 @@ const gate: NodeType = {
   },
   compile(step, ctx) { ctx.push({ op: 'GATE', step: step.id, cond: step.cond || { t: 'approve' } }); },
   ops: { GATE },
+  count: { gate_paused: () => 'gatesHeld' },
 };
 export default gate;

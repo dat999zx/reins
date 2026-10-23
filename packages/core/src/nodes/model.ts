@@ -44,5 +44,6 @@ const model: NodeType = {
     ctx.slice(step.id, step.attrs.usd === undefined ? undefined : Number(step.attrs.usd));
     return 'next';
   },
+  print: { model_switched: (d) => (d.how === 'unsupported' ? `· ${d.step}: this runner cannot switch models; the steps run on the CLI's model` : undefined) },
 };
 export default model;

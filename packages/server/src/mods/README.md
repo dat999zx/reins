@@ -192,6 +192,7 @@ Each list holds at most **50 names**. A name starts with a letter, and holds onl
 
 `view` is an object of at most **32 KB** of JSON text. Its `kind` must be one of `provides.kinds`. Its `fields` and `line` lists are required, with at most 50 entries each. `fresh` (an object) and `order` (a number) are optional. No text in the view may hold a control, line-break or direction-changing character. A zero-width one counts too. Keys count as text.
 
+A view may also carry `status` (what an event of the block does to the run's marks, one rule for each event in `provides.events`: `state`, `why`, `attempts`, `cursor`, `gate`, `opens`, `label`, `when`; the types are `StatusRule` in `packages/core/src/nodes/fields.ts`) and `hidden` (a list of the block's events that draw no row). Both are plain data, checked by the same shared check as the rest of the view, and an event core logs itself cannot be named in either. An event with a `status` rule draws no row of its own (the feed takes it as part of the step's knot); an event you want drawn gets a `rows` entry and no `status` rule.
 The server checks the fields above. It does not check the other view keys (`colour`, `card`, `sub`, `rows`). Those are the `KindView` type in `packages/core/src/nodes/fields.ts`.
 
 A manifest that fails a check is listed with the reason, in plain words. Its code is never read.

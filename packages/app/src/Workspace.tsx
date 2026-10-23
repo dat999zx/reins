@@ -9,7 +9,7 @@ import { KINDS } from './canvasKinds.js';
 import { flatSteps, marksOf, removeLinks, setLink, type WireKind } from './canvas.js';
 import { lanes, linksToDraw, taken } from './arrows.js';
 import { LinkLayer } from './LinkLayer.js';
-import { freshCond } from './condKinds.js';
+import { freshCond, standInCond } from './condKinds.js';
 import { LOOSE_MAX, type Layout } from './editorState.js';
 import { cx } from './generic.js';
 import { DRAG_PX, pickGesture, type Press } from './gesture.js';
@@ -407,7 +407,10 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, models, ef
   const drag = useDrag({
     view, ghosts, cam: () => camRef.current, setCam: (c, save) => (save ? commit(c) : set(c)),
     legal: (src, t) => {
-      if ('hex' in t) return 'cond' in src && setCond(w, t.hex.id, t.hex.path, { t: 'approve' }) !== w;
+      if ('hex' in t) {
+        const stand = standInCond();   // the first condition the server offers stands in for the dragged one; none before its reply
+        return 'cond' in src && stand !== undefined && setCond(w, t.hex.id, t.hex.path, stand) !== w;
+      }
       if ('move' in src) {
         const free = src.move.filter((k) => k.startsWith('s:')).map((k) => k.slice(2)), to = 'hit' in t ? dropPlace(w, t.hit) : undefined;
         if (free.length) return 'hit' in t && free.every((id) => attach(w, id, t.hit));

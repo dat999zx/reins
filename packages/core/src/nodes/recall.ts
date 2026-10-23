@@ -31,5 +31,7 @@ const recall: NodeType = {
     ctx.push({ op: 'RECALL', step: step.id, topics });
   },
   ops: { RECALL },
+  count: { recall: (d) => (d?.skipped ? 'knowlSkipped' : 'knowlRecalls') },
+  print: { recall: (d) => (d.skipped ? '· recall skipped: Knowl is not wired up until Phase 6' : undefined) },
 };
 export default recall;

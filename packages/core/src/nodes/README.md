@@ -147,7 +147,7 @@ The only op that uses `starts` today is the test fixture `split` (`packages/core
 
 `count` and `print` are tables keyed by event type, like `beeped`.
 
-- `count` feeds the receipt. Return a name, here `'beeps'`, and the receipt counts one for each event. The receipt then shows `beeps 1`, in the app and as the last line before `run id` in the terminal. Return `undefined` to skip an event. A run with no counted event has no counts at all.
+- `count` feeds the receipt. Return a name, here `'beeps'`, and the receipt counts one for each event. The receipt then shows `beeps 1`, in the app and as the last line before `run id` in the terminal. Return `undefined` to skip an event. A run with no counted event has no counts at all. The receipt also has fixed fields; a name that is one of `gatesHeld`, `loopAttempts`, `verifyResults.passed`, `verifyResults.failed`, `knowlRecalls`, `knowlStores`, `knowlSkipped` adds one to that field instead of going to `counts`.
 - `print` is the terminal line of `reins run`. Return the text to print for the event (here `  beeped x2`). Return `undefined` to keep the default.
 
 ## The view

@@ -6,6 +6,7 @@ import { openQuestions, type Sess } from './state.js';
 import { runRows, stepStatus, type StepMap } from './stepStatus.js';
 import { dollars } from './unknown.js';
 import { trackTitle } from './stepStatus.js';
+import { statusOf } from './viewEvents.js';
 
 // What the view of a step in the run says about its usage slice (see KindView.slice).
 const sliceOf = (v: RunView, id?: string) => KINDS[v.stepsAtStart?.find((s) => s.id === id)?.kind as StepKind]?.slice;
@@ -116,7 +117,6 @@ const FOLD: Record<string, Fold> = {
     if (!a.track && sliceOf(v, x.step) === 'opens') delete v.slice;
   },
   turn_started: (r, x, v, a) => { setStep(r, x, v, a); a.inTurn = true; },
-  gate_paused: setStep,
   track_started: (_r, x, v) => {
     if (typeof x.track === 'string') (v.tracks ??= []).push({ key: x.track, title: typeof x.title === 'string' ? x.title : x.track, paused: false, ended: false });
   },
@@ -204,7 +204,8 @@ export function runView(s: Sess): RunView {
     // a track's row folds against the track's own path and leaves the main line's as it was
     const main = track ? { current: v.current, endedAt: v.endedAt } : undefined;
     if (main) { v.current = paths.get(track) ?? []; delete v.endedAt; }
-    FOLD[r.type]?.(r, x, v, a);
+    // a kind's event whose view rule says `cursor` moves the current step like a turn does (the view carries the name, not this file)
+    (Object.hasOwn(FOLD, r.type) ? FOLD[r.type] : statusOf(r.type)?.cursor ? setStep : undefined)?.(r, x, v, a);
     const at = v.current.at(-1);
     if (at && (a.v2 || a.inTurn)) v.stepOf.set(r.seq, at);
     if (main) {

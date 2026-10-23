@@ -16,6 +16,7 @@ const tests: CondType<{ t: 'tests' }> = {
   view: { label: 'tests pass', fresh: { t: 'tests' } },
   auto: false,
   needsTestCmd: true,
+  sameAsRun: (_c, cmd) => cmd === 'npm test' || !cmd,
   async evaluate(_c, ctx) {
     const cmd = ctx.testCmd;
     const last = ctx.commandResults[ctx.commandResults.length - 1];

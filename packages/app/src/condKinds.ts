@@ -31,6 +31,9 @@ export function setConds(list: unknown): void {
 /** A new atom of kind `t`, or undefined when the app has no such condition. A copy each call. */
 export const freshCond = (t: string): Cond | undefined => (COND_VIEWS[t] ? (structuredClone(COND_VIEWS[t].fresh) as unknown as Cond) : undefined);
 
+/** A condition to try a drop with: the first one the server offers (a new copy), or undefined before its reply. */
+export const standInCond = (): Cond | undefined => freshCond(Object.keys(COND_VIEWS)[0] ?? '');
+
 // A new atom with the value set, or undefined when the value would not print back.
 export function applyParam(c: Cond, v: string): Cond | undefined {
   const p = COND_VIEWS[c.t]?.param;

@@ -67,5 +67,7 @@ const verify: NodeType = {
     if (onFail) ctx.linkLater(v, onFail.to);
   },
   ops: { VERIFY },
+  count: { verify_result: (d) => (d?.pass ? 'verifyResults.passed' : 'verifyResults.failed') },
+  print: { verify_result: (d) => (d.pass ? '✓ verify: pass' : '✗ verify: fail') },
 };
 export default verify;

@@ -11,6 +11,23 @@ export type Field = {
   check?: 'count' | 'usd'; unset?: string;
 };
 export type Token = string | 'cond' | 'sub' | { field: string };
+/** The states a step can be in on the run's marks (the app's `StepState`). */
+export type StatusState = 'active' | 'done' | 'waiting' | 'stuck' | 'failed';
+/** Applies only when the event's data holds `key` itself and its value is one of `is`. */
+export type StatusWhen = { key: string; is: Array<string | number | boolean> };
+/**
+ * What one of this kind's events does to the marks of the run, as data (the app's stepStatus and feed read it; no code). Without `step` the rule
+ * is about the step the event names in its `step`; `step: 'track'` is the step the event's track is on. `state` sets the step's state; `why` its
+ * words (text, or a word picked by the data's `key` from `words`, then a space and the data's `add`; no such word, no `add`: the words are cleared);
+ * `attempts` copies the number in that data key; `cursor` makes it the track's current step; `gate` its open gate; `opens` opens its knot in a log
+ * that has no `step_started` rows; `label` remembers the label the data's `name` gives the model in `model`.
+ */
+export type StatusRule = {
+  when?: StatusWhen; step?: 'track'; state?: StatusState;
+  why?: string | { key: string; words: Record<string, string>; add?: string };
+  attempts?: string; cursor?: true; gate?: true; opens?: true;
+  label?: { model: string; name: string; when?: StatusWhen };
+};
 export type KindView = {
   kind: string; order: number; colour: 'soft' | 'hard' | 'gate' | 'loop' | 'verify' | 'hand' | 'mem' | 'mine';
   icon?: 'round'; // the palette card's mark is a circle
@@ -30,6 +47,10 @@ export type KindView = {
   fresh?: Partial<Step>;
   // feed rows this kind brings, by event type; a row file of the same type wins. `details` filled empty means a plain row.
   rows?: Partial<Record<RunEventType, { text: string; details?: string; className?: 'sx-sub' | 'faint' }>>;
+  // what this kind's events do to the run's marks and the feed (see StatusRule); an event with a rule is structure, not a row, unless it is in `hidden`
+  status?: Partial<Record<RunEventType, StatusRule>>;
+  // events of this kind that draw no row at all
+  hidden?: RunEventType[];
 };
 
 export const USD_ERROR = 'USD must be an amount above 0, like 2.50. Leave it empty for no USD limit.';

@@ -263,11 +263,6 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
     if (ev.type === 'turn_started') say(`\n── ${d.step} ──`);
     else if (ev.type === 'card_queued') say(`▶ ${d.source === 'auto' ? 'auto ' : ''}${d.kind} card queued: ${d.card}`);
     else if (ev.type === 'card_delivered' && d.channel !== 'mid-turn') say(`▶ card delivered (${d.channel}): ${d.card}`);
-    else if (ev.type === 'recall' && d.skipped) say('· recall skipped: Knowl is not wired up until Phase 6');
-    else if (ev.type === 'store' && d.skipped) say('· store skipped: Knowl is not wired up until Phase 6');
-    else if (ev.type === 'verify_result') say(d.pass ? '✓ verify: pass' : '✗ verify: fail');
-    else if (ev.type === 'loop_iteration') say(`↻ ${d.step}: attempt ${d.attempts}`);
-    else if (ev.type === 'model_switched' && d.how === 'unsupported') say(`· ${d.step}: this runner cannot switch models; the steps run on the CLI's model`);
     else if (ev.type === 'subagent_started') say(`· ${d.step}: subagent ${d.title} ${d.resumed ? 'resumed' : 'started'} on ${d.label ?? d.model ?? "the CLI's model"}`);
     else if (ev.type === 'subagent_result') say(`· ${d.step}: handed back its result ($${Number(d.cost ?? 0).toFixed(4)}${d.unknown === true ? UNKNOWN_MARK : ''})`);
     else if (ev.type === 'budget_warning') say(`· ${d.text}`);

@@ -77,6 +77,8 @@ export interface CondType<C extends { t: string } = any> {
   commands?(c: C): string[];
   /** Warn when the workflow sets no `test:` command. */
   needsTestCmd?: boolean;
+  /** True when this atom is judged by the very command `cmd` a block runs ('' when the block names none): the loop around that block then leaves as soon as the command passes. */
+  sameAsRun?(c: C, cmd: string): boolean;
 }
 
 export function judgeOf(cond: Cond): JudgeKind {

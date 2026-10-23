@@ -8,4 +8,5 @@ export default {
   fails: true,
   against: true,
   card: { label: 'verify against', section: 'Flow' }, fresh: {},
+  status: { verify_result: { when: { key: 'pass', is: [false] }, step: 'track', state: 'failed', why: 'verify' } },
 } satisfies KindView;

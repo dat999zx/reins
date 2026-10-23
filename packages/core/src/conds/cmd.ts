@@ -29,6 +29,7 @@ const cmd: CondType<{ t: 'cmd'; cmd: string }> = {
   judge: 'command',
   view: { label: 'command passes', fresh: { t: 'cmd', cmd: 'npm run lint' }, param: { key: 'cmd', look: 'code' } },
   auto: false,
+  sameAsRun: (c, cmd) => c.cmd === cmd,
   async evaluate(c, ctx) {
     const last = ctx.commandResults[ctx.commandResults.length - 1];
     if (
