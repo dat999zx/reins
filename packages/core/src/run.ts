@@ -1882,7 +1882,7 @@ export class Run {
           return op.exec(own, this.modVm(t, mod, op, instr, live, cut));
         });
         // `alive` is false for a paused, stopped or parked track: still alive with the counter where it was means the op forgot `vm.next()`, and the next pass would do the same.
-        if (this.alive(t) && t.pc === from) this.pauseForStop(t, `The block "${mod.id}" did not move on; Resume tries again`, stepId);
+        if (this.alive(t) && !this.parked(t) && t.pc === from) this.pauseForStop(t, `The block "${mod.id}" did not move on; Resume tries again`, stepId);
       }
       return this.status;
     }

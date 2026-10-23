@@ -201,6 +201,8 @@ export interface WorldOptions {
   budget?: number;
   /** The provider's catalog manifest has no price for this model: the test-local copy gets this one (so the Budget and the cost rows can work). */
   assumePrice?: Price;
+  /** Runs once the folders exist and before the mods load: a test writes a mod of its own into <dir>/mods (and its trust) here. */
+  prepare?: (c: { root: string; dir: string; proj: string; userHome: string }) => void;
 }
 
 const ASSUMED: Price = { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 };
@@ -319,6 +321,8 @@ export async function startWorld(o: WorldOptions): Promise<World> {
   const manifest = localManifest({ provider: o.provider, id: o.provider, keyVar: spec.keyVar, ...(fake ? { fakeUrl: fake.url } : {}), model: o.model, assumePrice, ...(o.edit ? { edit: o.edit } : {}) });
   install(o.provider, manifest);
   for (const c of o.copies ?? []) install(c.id, localManifest({ provider: o.provider, id: c.id, keyVar: c.keyVar, ...(fake ? { fakeUrl: fake.url } : {}), model: o.model, assumePrice, ...(c.edit ? { edit: c.edit } : {}) }));
+
+  o.prepare?.({ root, dir, proj, userHome });
 
   const seen = capture();
   // Built as cli.ts builds it: the mods first, then the one Redactor, then the store behind it, then the engine factory and the probe.
