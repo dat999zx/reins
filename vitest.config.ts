@@ -14,9 +14,9 @@ export default defineConfig({
     // outruns vitest's 5 s default and flakes. Nothing here should need more than this.
     testTimeout: 30_000,
     // One project per package, so a setup file runs for ONE package only (a global `setupFiles` would run in every test file).
-    // The app's setup fills its kinds from the same builder the server's `GET /api/kinds` uses; core and server have none yet.
+    // The app's setup fills its kinds from the same builder the server's `GET /api/kinds` uses; core's registers the default pack (M3 Task 1); the server has none.
     projects: [
-      { extends: true, test: { name: 'core', include: ['packages/core/test/**/*.test.ts'] } },
+      { extends: true, test: { name: 'core', include: ['packages/core/test/**/*.test.ts'], setupFiles: ['packages/core/test/setup-pack.ts'] } },
       { extends: true, test: { name: 'server', include: ['packages/server/test/**/*.test.ts', 'test/**/*.test.ts'] } },
       { extends: true, test: { name: 'app', include: ['packages/app/test/**/*.test.ts'], setupFiles: ['packages/app/test/setup-kinds.ts'] } },
     ],
