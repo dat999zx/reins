@@ -1,0 +1,796 @@
+{
+  "bugFix": {
+    "parse": [],
+    "printed": "---\nreins: 1\nname: bug-fix\ntask: \"fix: uploads over 5 GB fail\"\nbudget: { turns: 80, minutes: 60, usd: 4.00 }\nalways:\n  - Reproduce the bug before changing code.\n---\n\n## phase reproduce\n> Write a test that reproduces the bug. It must fail for the right reason.\n\n## gate\nuntil: not tests pass\n\n## repeat\nuntil: tests pass\nmax: 4\n\n### phase fix\n> Make the smallest change that makes the test pass.\n\n### run `npm test`\n\n## if diff > 300 lines or touches src/core/**\n\n### gate\nuntil: you approve\n\n### else\n\n### say\n> Small fix. Explain the root cause in two sentences.\n",
+    "validate": [
+      {
+        "severity": "warning",
+        "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+        "pos": {
+          "line": 13,
+          "col": 1
+        }
+      },
+      {
+        "severity": "warning",
+        "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+        "pos": {
+          "line": 16,
+          "col": 1
+        }
+      }
+    ],
+    "program": [
+      {
+        "op": "TURN",
+        "step": "reproduce",
+        "policy": {
+          "mode": "write",
+          "guards": [],
+          "allowShell": true
+        },
+        "src": {
+          "id": "reproduce",
+          "kind": "phase",
+          "attrs": {},
+          "cards": [],
+          "links": [],
+          "pos": {
+            "line": 10,
+            "col": 1
+          },
+          "title": "reproduce",
+          "prompt": "Write a test that reproduces the bug. It must fail for the right reason."
+        },
+        "top": 0
+      },
+      {
+        "op": "GATE",
+        "step": "gate-1",
+        "cond": {
+          "t": "not",
+          "a": {
+            "t": "tests"
+          }
+        },
+        "top": 1
+      },
+      {
+        "op": "LOOP_IN",
+        "step": "repeat-1",
+        "max": 4,
+        "top": 2
+      },
+      {
+        "op": "TURN",
+        "step": "fix",
+        "policy": {
+          "mode": "write",
+          "guards": [],
+          "allowShell": true
+        },
+        "src": {
+          "id": "fix",
+          "kind": "phase",
+          "attrs": {},
+          "cards": [],
+          "links": [],
+          "pos": {
+            "line": 20,
+            "col": 1
+          },
+          "title": "fix",
+          "prompt": "Make the smallest change that makes the test pass."
+        },
+        "top": 2
+      },
+      {
+        "op": "RUN",
+        "step": "run-1",
+        "cmd": "npm test",
+        "repeatCond": {
+          "t": "tests"
+        },
+        "loopExit": 6,
+        "top": 2
+      },
+      {
+        "op": "LOOP_BK",
+        "step": "repeat-1",
+        "target": 3,
+        "top": 2
+      },
+      {
+        "op": "IF",
+        "step": "if-1",
+        "cond": {
+          "t": "or",
+          "a": {
+            "t": "diff",
+            "n": 300
+          },
+          "b": {
+            "t": "touches",
+            "glob": "src/core/**"
+          }
+        },
+        "elseJump": 9,
+        "top": 3
+      },
+      {
+        "op": "GATE",
+        "step": "gate-2",
+        "cond": {
+          "t": "approve"
+        },
+        "top": 3
+      },
+      {
+        "op": "JUMP",
+        "target": 10,
+        "top": 3
+      },
+      {
+        "op": "TURN",
+        "step": "say-1",
+        "policy": {
+          "mode": "write",
+          "guards": [],
+          "allowShell": true
+        },
+        "src": {
+          "id": "say-1",
+          "kind": "say",
+          "attrs": {},
+          "cards": [],
+          "links": [],
+          "pos": {
+            "line": 32,
+            "col": 1
+          },
+          "prompt": "Small fix. Explain the root cause in two sentences."
+        },
+        "top": 3
+      },
+      {
+        "op": "END"
+      }
+    ],
+    "loaded": [
+      {
+        "severity": "warning",
+        "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+        "pos": {
+          "line": 13,
+          "col": 1
+        }
+      },
+      {
+        "severity": "warning",
+        "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+        "pos": {
+          "line": 16,
+          "col": 1
+        }
+      }
+    ]
+  },
+  "safeRefactor": {
+    "parse": [],
+    "printed": "---\nreins: 1\nname: safe-refactor\ntask: split billing.ts into modules\nbudget: { turns: 60, minutes: 60, usd: 3.00 }\nalways:\n  - Behaviour must not change.\n  - No public API changes.\n---\n\n## run `npm test`\n\n## phase plan\n> List every move you will make. No code yet.\n\n## gate\nuntil: you approve\n\n## phase refactor\nguard: src/api/**\n> Move code as planned. Do not change behaviour.\n\n## repeat\nuntil: tests pass and `npm run typecheck` passes\nmax: 3\n\n### run `npm test`\n\n### phase fix\n> Restore the old behaviour. Do not change the tests.\n\n## verify\nagainst: plan\n\n## whenever diff > 400 lines\nnow: too big. split the refactor.\n",
+    "validate": [
+      {
+        "severity": "warning",
+        "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+        "pos": {
+          "line": 23,
+          "col": 1
+        }
+      }
+    ],
+    "program": [
+      {
+        "op": "RUN",
+        "step": "run-1",
+        "cmd": "npm test",
+        "top": 0
+      },
+      {
+        "op": "TURN",
+        "step": "plan",
+        "policy": {
+          "mode": "write",
+          "guards": [],
+          "allowShell": true
+        },
+        "src": {
+          "id": "plan",
+          "kind": "phase",
+          "attrs": {},
+          "cards": [],
+          "links": [],
+          "pos": {
+            "line": 13,
+            "col": 1
+          },
+          "title": "plan",
+          "prompt": "List every move you will make. No code yet."
+        },
+        "top": 1
+      },
+      {
+        "op": "GATE",
+        "step": "gate-1",
+        "cond": {
+          "t": "approve"
+        },
+        "top": 2
+      },
+      {
+        "op": "TURN",
+        "step": "refactor",
+        "policy": {
+          "mode": "write",
+          "guards": [
+            "src/api/**"
+          ],
+          "allowShell": true
+        },
+        "src": {
+          "id": "refactor",
+          "kind": "phase",
+          "attrs": {},
+          "cards": [
+            {
+              "kind": "guard",
+              "text": "src/api/**",
+              "pos": {
+                "line": 20,
+                "col": 7
+              }
+            }
+          ],
+          "links": [],
+          "pos": {
+            "line": 19,
+            "col": 1
+          },
+          "title": "refactor",
+          "prompt": "Move code as planned. Do not change behaviour."
+        },
+        "top": 3
+      },
+      {
+        "op": "LOOP_IN",
+        "step": "repeat-1",
+        "max": 3,
+        "top": 4
+      },
+      {
+        "op": "RUN",
+        "step": "run-2",
+        "cmd": "npm test",
+        "repeatCond": {
+          "t": "and",
+          "a": {
+            "t": "tests"
+          },
+          "b": {
+            "t": "cmd",
+            "cmd": "npm run typecheck"
+          }
+        },
+        "loopExit": 8,
+        "top": 4
+      },
+      {
+        "op": "TURN",
+        "step": "fix",
+        "policy": {
+          "mode": "write",
+          "guards": [],
+          "allowShell": true
+        },
+        "src": {
+          "id": "fix",
+          "kind": "phase",
+          "attrs": {},
+          "cards": [],
+          "links": [],
+          "pos": {
+            "line": 29,
+            "col": 1
+          },
+          "title": "fix",
+          "prompt": "Restore the old behaviour. Do not change the tests."
+        },
+        "top": 4
+      },
+      {
+        "op": "LOOP_BK",
+        "step": "repeat-1",
+        "target": 5,
+        "top": 4
+      },
+      {
+        "op": "VERIFY",
+        "step": "verify-1",
+        "against": "plan",
+        "top": 5
+      },
+      {
+        "op": "END"
+      }
+    ],
+    "loaded": [
+      {
+        "severity": "warning",
+        "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+        "pos": {
+          "line": 23,
+          "col": 1
+        }
+      }
+    ]
+  },
+  "slashIds": {
+    "parse": [],
+    "printed": "---\nreins: 1\nname: slash\nbudget: { turns: 20, minutes: 9, usd: 4.00 }\nalways: []\n---\n\n## phase a\nid: x/y\n> a\n\n## phase b\nid: x/z\nnext: x/y (max 2)\n> b\n\n## end\n",
+    "validate": [],
+    "program": [
+      {
+        "op": "TURN",
+        "step": "x/y",
+        "policy": {
+          "mode": "write",
+          "guards": [],
+          "allowShell": true
+        },
+        "src": {
+          "id": "x/y",
+          "kind": "phase",
+          "attrs": {},
+          "cards": [],
+          "links": [],
+          "pos": {
+            "line": 8,
+            "col": 1
+          },
+          "title": "a",
+          "prompt": "a"
+        },
+        "top": 0
+      },
+      {
+        "op": "TURN",
+        "step": "x/z",
+        "policy": {
+          "mode": "write",
+          "guards": [],
+          "allowShell": true
+        },
+        "src": {
+          "id": "x/z",
+          "kind": "phase",
+          "attrs": {},
+          "cards": [],
+          "links": [
+            {
+              "kind": "next",
+              "to": "x/y",
+              "max": 2,
+              "pos": {
+                "line": 14,
+                "col": 6
+              }
+            }
+          ],
+          "pos": {
+            "line": 12,
+            "col": 1
+          },
+          "title": "b",
+          "prompt": "b"
+        },
+        "top": 1
+      },
+      {
+        "op": "JUMP",
+        "target": 0,
+        "step": "x/z",
+        "linkMax": 2,
+        "top": 1
+      },
+      {
+        "op": "END",
+        "top": 2
+      },
+      {
+        "op": "END"
+      }
+    ],
+    "loaded": []
+  },
+  "dupId": {
+    "parse": [],
+    "printed": "---\nreins: 1\nname: dup\nbudget: { turns: 20, minutes: 9, usd: 4.00 }\nalways: []\n---\n\n## phase a\nid: same\n> a\n\n## phase b\nid: same\n> b\n",
+    "validate": [
+      {
+        "severity": "error",
+        "message": "Duplicate id \"same\"",
+        "pos": {
+          "line": 12,
+          "col": 1
+        }
+      }
+    ],
+    "program": [
+      {
+        "op": "TURN",
+        "step": "same",
+        "policy": {
+          "mode": "write",
+          "guards": [],
+          "allowShell": true
+        },
+        "src": {
+          "id": "same",
+          "kind": "phase",
+          "attrs": {},
+          "cards": [],
+          "links": [],
+          "pos": {
+            "line": 8,
+            "col": 1
+          },
+          "title": "a",
+          "prompt": "a"
+        },
+        "top": 0
+      },
+      {
+        "op": "TURN",
+        "step": "same",
+        "policy": {
+          "mode": "write",
+          "guards": [],
+          "allowShell": true
+        },
+        "src": {
+          "id": "same",
+          "kind": "phase",
+          "attrs": {},
+          "cards": [],
+          "links": [],
+          "pos": {
+            "line": 12,
+            "col": 1
+          },
+          "title": "b",
+          "prompt": "b"
+        },
+        "top": 1
+      },
+      {
+        "op": "END"
+      }
+    ],
+    "loaded": [
+      {
+        "severity": "error",
+        "message": "Duplicate id \"same\"",
+        "pos": {
+          "line": 12,
+          "col": 1
+        }
+      }
+    ]
+  },
+  "badLinks": {
+    "parse": [],
+    "printed": "---\nreins: 1\nname: links\nbudget: { turns: 20, minutes: 9, usd: 4.00 }\nalways: []\n---\n\n## phase a\nnext: nowhere\n> a\n\n## phase b\nnext: a\n> b\n",
+    "validate": [
+      {
+        "severity": "error",
+        "message": "Link target \"nowhere\" not found",
+        "pos": {
+          "line": 9,
+          "col": 6
+        }
+      },
+      {
+        "severity": "error",
+        "message": "Backward link to \"a\" requires max",
+        "pos": {
+          "line": 13,
+          "col": 6
+        }
+      }
+    ],
+    "program": [
+      {
+        "op": "TURN",
+        "step": "a",
+        "policy": {
+          "mode": "write",
+          "guards": [],
+          "allowShell": true
+        },
+        "src": {
+          "id": "a",
+          "kind": "phase",
+          "attrs": {},
+          "cards": [],
+          "links": [
+            {
+              "kind": "next",
+              "to": "nowhere",
+              "pos": {
+                "line": 9,
+                "col": 6
+              }
+            }
+          ],
+          "pos": {
+            "line": 8,
+            "col": 1
+          },
+          "title": "a",
+          "prompt": "a"
+        },
+        "top": 0
+      },
+      {
+        "op": "JUMP",
+        "target": 2,
+        "step": "a",
+        "top": 0
+      },
+      {
+        "op": "TURN",
+        "step": "b",
+        "policy": {
+          "mode": "write",
+          "guards": [],
+          "allowShell": true
+        },
+        "src": {
+          "id": "b",
+          "kind": "phase",
+          "attrs": {},
+          "cards": [],
+          "links": [
+            {
+              "kind": "next",
+              "to": "a",
+              "pos": {
+                "line": 13,
+                "col": 6
+              }
+            }
+          ],
+          "pos": {
+            "line": 12,
+            "col": 1
+          },
+          "title": "b",
+          "prompt": "b"
+        },
+        "top": 1
+      },
+      {
+        "op": "JUMP",
+        "target": 0,
+        "step": "b",
+        "top": 1
+      },
+      {
+        "op": "END"
+      }
+    ],
+    "loaded": [
+      {
+        "severity": "error",
+        "message": "Link target \"nowhere\" not found",
+        "pos": {
+          "line": 9,
+          "col": 6
+        }
+      },
+      {
+        "severity": "error",
+        "message": "Backward link to \"a\" requires max",
+        "pos": {
+          "line": 13,
+          "col": 6
+        }
+      }
+    ]
+  },
+  "loops": {
+    "parse": [],
+    "printed": "---\nreins: 1\nname: loops\nbudget: { turns: 20, minutes: 9, usd: 4.00 }\nalways: []\n---\n\n## repeat\nuntil: you approve\nmax: 3\n\n### phase work\n> work\n\n### run `npm test`\n\n## if tests pass\n\n### phase yes\n> y\n\n### else\n\n### phase no\n> n\n\n## verify\nagainst: work\n\n## end\n",
+    "validate": [
+      {
+        "severity": "warning",
+        "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+        "pos": {
+          "line": 17,
+          "col": 1
+        }
+      }
+    ],
+    "program": [
+      {
+        "op": "LOOP_IN",
+        "step": "repeat-1",
+        "max": 3,
+        "top": 0
+      },
+      {
+        "op": "TURN",
+        "step": "work",
+        "policy": {
+          "mode": "write",
+          "guards": [],
+          "allowShell": true
+        },
+        "src": {
+          "id": "work",
+          "kind": "phase",
+          "attrs": {},
+          "cards": [],
+          "links": [],
+          "pos": {
+            "line": 12,
+            "col": 1
+          },
+          "title": "work",
+          "prompt": "work"
+        },
+        "top": 0
+      },
+      {
+        "op": "RUN",
+        "step": "run-1",
+        "cmd": "npm test",
+        "repeatCond": {
+          "t": "approve"
+        },
+        "loopExit": 4,
+        "top": 0
+      },
+      {
+        "op": "LOOP_BK",
+        "step": "repeat-1",
+        "target": 1,
+        "top": 0
+      },
+      {
+        "op": "IF",
+        "step": "if-1",
+        "cond": {
+          "t": "tests"
+        },
+        "elseJump": 7,
+        "top": 1
+      },
+      {
+        "op": "TURN",
+        "step": "yes",
+        "policy": {
+          "mode": "write",
+          "guards": [],
+          "allowShell": true
+        },
+        "src": {
+          "id": "yes",
+          "kind": "phase",
+          "attrs": {},
+          "cards": [],
+          "links": [],
+          "pos": {
+            "line": 20,
+            "col": 1
+          },
+          "title": "yes",
+          "prompt": "y"
+        },
+        "top": 1
+      },
+      {
+        "op": "JUMP",
+        "target": 8,
+        "top": 1
+      },
+      {
+        "op": "TURN",
+        "step": "no",
+        "policy": {
+          "mode": "write",
+          "guards": [],
+          "allowShell": true
+        },
+        "src": {
+          "id": "no",
+          "kind": "phase",
+          "attrs": {},
+          "cards": [],
+          "links": [],
+          "pos": {
+            "line": 25,
+            "col": 1
+          },
+          "title": "no",
+          "prompt": "n"
+        },
+        "top": 1
+      },
+      {
+        "op": "VERIFY",
+        "step": "verify-1",
+        "against": "work",
+        "top": 2
+      },
+      {
+        "op": "END",
+        "top": 3
+      },
+      {
+        "op": "END"
+      }
+    ],
+    "loaded": [
+      {
+        "severity": "warning",
+        "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+        "pos": {
+          "line": 17,
+          "col": 1
+        }
+      }
+    ]
+  },
+  "blockFile": {
+    "parse": [],
+    "printed": "---\nreins: 1\nblock: tiny\n---\n\n## phase one\n> one\n\n## gate\nuntil: you approve\n",
+    "validate": [],
+    "program": [
+      {
+        "op": "TURN",
+        "step": "one",
+        "policy": {
+          "mode": "write",
+          "guards": [],
+          "allowShell": true
+        },
+        "src": {
+          "id": "one",
+          "kind": "phase",
+          "attrs": {},
+          "cards": [],
+          "links": [],
+          "pos": {
+            "line": 6,
+            "col": 1
+          },
+          "title": "one",
+          "prompt": "one"
+        },
+        "top": 0
+      },
+      {
+        "op": "GATE",
+        "step": "gate-1",
+        "cond": {
+          "t": "approve"
+        },
+        "top": 1
+      },
+      {
+        "op": "END"
+      }
+    ],
+    "loaded": []
+  }
+}

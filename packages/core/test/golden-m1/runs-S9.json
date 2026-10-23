@@ -9,8 +9,8 @@
             "title": "one"
           },
           {
-            "id": "use-1",
-            "kind": "use",
+            "id": "playbook-1",
+            "kind": "playbook",
             "title": "review-pass"
           },
           {
@@ -50,28 +50,36 @@
     {
       "data": {
         "parents": [],
-        "step": "use-1"
+        "step": "playbook-1"
       },
       "type": "step_started"
+    },
+    {
+      "data": {
+        "playbook": "review-pass",
+        "session": "inline",
+        "step": "playbook-1"
+      },
+      "type": "playbook_started"
     },
     {
       "data": {
         "parents": [
-          "use-1"
+          "playbook-1"
         ],
-        "step": "review-pass/review"
+        "step": "playbook-1/review"
       },
       "type": "step_started"
     },
     {
       "data": {
-        "step": "review-pass/review"
+        "step": "playbook-1/review"
       },
       "type": "turn_started"
     },
     {
       "data": {
-        "step": "review-pass/review",
+        "step": "playbook-1/review",
         "text": "REINS: done"
       },
       "type": "turn_ended"
@@ -79,21 +87,21 @@
     {
       "data": {
         "parents": [
-          "use-1"
+          "playbook-1"
         ],
-        "step": "review-pass/fix"
+        "step": "playbook-1/fix"
       },
       "type": "step_started"
     },
     {
       "data": {
-        "step": "review-pass/fix"
+        "step": "playbook-1/fix"
       },
       "type": "turn_started"
     },
     {
       "data": {
-        "step": "review-pass/fix",
+        "step": "playbook-1/fix",
         "text": "REINS: done"
       },
       "type": "turn_ended"
@@ -101,9 +109,9 @@
     {
       "data": {
         "parents": [
-          "use-1"
+          "playbook-1"
         ],
-        "step": "review-pass/gate-1"
+        "step": "playbook-1/gate-1"
       },
       "type": "step_started"
     },
@@ -119,6 +127,13 @@
     },
     {
       "data": {
+        "playbook": "review-pass",
+        "step": "playbook-1"
+      },
+      "type": "playbook_done"
+    },
+    {
+      "data": {
         "parents": [],
         "step": "end-1"
       },
@@ -131,6 +146,9 @@
   ],
   "receipt": {
     "autoCardsFired": 0,
+    "counts": {
+      "playbooks": 1
+    },
     "gatesHeld": 0,
     "guardRefusals": 0,
     "knowlRecalls": 0,
@@ -142,7 +160,7 @@
     "status": "done",
     "totalCostUsd": 0,
     "totalRefusals": 0,
-    "totalTimeMs": 14000,
+    "totalTimeMs": 16000,
     "totalTurns": 3,
     "verifyResults": {
       "failed": 0,

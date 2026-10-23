@@ -59,6 +59,15 @@ export default function activate(api: Pick<ModApi, 'registerBlock'>): void {
           ctx.push({ severity: 'error', message: `verify against target "${step.attrs.against}" not found`, pos: ctx.pos });
         }
       },
+      // F11: a verify in one branch against a step in another branch, which may not have finished (the main line only runs after every branch ended).
+      program(step, ctx) {
+        const target = step.attrs.against;
+        const mine = ctx.trackOf(step.id);
+        const theirs = target ? ctx.trackOf(target) : undefined;
+        if (mine !== undefined && theirs !== undefined && mine !== theirs) {
+          ctx.push({ severity: 'warning', message: `\`${step.id}\` checks \`${target}\`, which runs in another branch and may not have finished`, pos: ctx.pos });
+        }
+      },
     },
     defaultPrompt(step) {
       const target = step.attrs.against || 'plan';

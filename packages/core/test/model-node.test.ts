@@ -121,11 +121,12 @@ describe('model step: compile', () => {
     expect(prog[0]).toMatchObject({ op: 'NODE', step: 'model-1', kind: 'model', src: w.steps[0] });
   });
 
-  it('a model step inside use keeps the prefixed id in src', () => {
+  it('a model step inside a playbook keeps the prefixed id in src', () => {
     const block = parseWorkflow('---\nreins: 1\nblock: b\n---\n\n## model m\n').workflow!;
-    const w = ok(wf('## use b\n'));
+    const w = ok(wf('## playbook b\n'));
     const prog = compileProgram(w, (n) => (n === 'b' ? block : undefined));
-    expect(prog[0]).toMatchObject({ op: 'NODE', step: 'b/model-1', src: { id: 'b/model-1' } });
+    expect(prog.map((i) => i.op)).toEqual(['PLAYBOOK', 'NODE', 'PLAYBOOK_END', 'END']);
+    expect(prog[1]).toMatchObject({ op: 'NODE', step: 'playbook-1/model-1', src: { id: 'playbook-1/model-1' } });
   });
 });
 

@@ -17,6 +17,7 @@ import { flatSteps } from './canvas.js';
 import { KINDS } from './canvasKinds.js';
 import { Workspace, type EditOpts } from './Workspace.js';
 import { Palette } from './Palette.js';
+import { ShareButton, shareName } from './ShareWorkflow.js';
 import type { Start } from './useDrag.js';
 import { ENDED, StatusCtx, StepChips } from './StepChips.js';
 import { EARLIER } from './FeedView.js';
@@ -385,6 +386,7 @@ export function TextTab({ view, onView, sess, models, efforts, sessionModel, ses
               {dock}
               <span className="grow" />
               <button onClick={() => void save()} disabled={!dirty}>Save</button>
+              <ShareButton name={shareName(file)} text={text} disabled={dirty} />
               {view === 'text' && run.phase === 'waiting' && <><span role="status">Waiting for you. Answer in Blocks or Chat.</span><button onClick={() => onView('blocks')}>Blocks</button></>}
               <button className="primary" onClick={() => void startRun()} disabled={dirty || sessionBusy}
                 title={dirty ? 'Save first: a run uses the saved file.' : sessionBusy ? 'A run or a chat turn is going. Stop it first.' : undefined}>Run</button>
@@ -438,7 +440,7 @@ export function TextTab({ view, onView, sess, models, efforts, sessionModel, ses
                 {(prev?.steps ?? []).map((s) => (
                   <li key={s.id} className={s.id === now ? 'sx-now-step' : undefined} aria-current={s.id === now ? 'step' : undefined} style={{ paddingLeft: s.depth * 14 }}>
                     <button aria-pressed={s.id === stepId} onClick={() => setStepId(s.id)}>{s.kind}{s.title ? ` ${s.title}` : ''}</button>
-                    {/* ponytail: a use step gets no chip; its inlined steps run as block/id, which no listed id matches */}
+                    {/* ponytail: a playbook step gets no chip; its inlined steps run as step/id, which no listed id matches */}
                     {showStatus && run.steps[s.id] && <StepChips i={run.steps[s.id]!} />}
                   </li>
                 ))}

@@ -38,9 +38,9 @@ describe('Task 1.6: The Compiler', () => {
     // 6  TURN     step=fix       policy=write
     // 7  LOOP_BK  step=repeat-1  → 5
     // 8  VERIFY   step=verify-1  against=plan  → on fail: JUMP 3 (link max 2)
-    // 9  USE ...  (inlined review-pass: review, fix, gate-1)
-    // 12 STORE    step=store-1
-    // 13 END
+    // 9  PLAYBOOK step=playbook-1 (review-pass, inline); 10-12 its steps: review, fix, gate-1; 13 PLAYBOOK_END
+    // 14 STORE    step=store-1
+    // 15 END
 
     expect(instrs[0]).toMatchObject({
       op: 'RECALL',
@@ -99,46 +99,59 @@ describe('Task 1.6: The Compiler', () => {
       linkMax: 2,
     });
 
-    // Inlined review-pass with prefixed IDs:
+    // The inline playbook review-pass: PLAYBOOK, its steps with ids prefixed by the playbook step's id, PLAYBOOK_END:
     expect(instrs[9]).toMatchObject({
-      op: 'TURN',
-      step: 'review-pass/review',
-      policy: { mode: 'write' },
+      op: 'PLAYBOOK',
+      step: 'playbook-1',
+      playbook: 'review-pass',
+      session: 'inline',
+      after: 13,
     });
 
     expect(instrs[10]).toMatchObject({
       op: 'TURN',
-      step: 'review-pass/fix',
+      step: 'playbook-1/review',
       policy: { mode: 'write' },
     });
 
     expect(instrs[11]).toMatchObject({
-      op: 'GATE',
-      step: 'review-pass/gate-1',
-      cond: { t: 'llm', q: 'no blocking issues left' },
+      op: 'TURN',
+      step: 'playbook-1/fix',
+      policy: { mode: 'write' },
     });
 
     expect(instrs[12]).toMatchObject({
+      op: 'GATE',
+      step: 'playbook-1/gate-1',
+      cond: { t: 'llm', q: 'no blocking issues left' },
+    });
+
+    expect(instrs[13]).toMatchObject({
+      op: 'PLAYBOOK_END',
+      step: 'playbook-1',
+    });
+
+    expect(instrs[14]).toMatchObject({
       op: 'STORE',
       step: 'store-1',
       what: 'decisions',
     });
 
-    expect(instrs[13]).toMatchObject({
+    expect(instrs[15]).toMatchObject({
       op: 'END',
     });
   });
 
-  it('use inlines the block with prefixed ids', () => {
+  it('a playbook compiles the block in with ids prefixed by its own step id', () => {
     const instrs = compileProgram(uploadRetry!, (name) => blocks[name]);
     const inlinedSteps = instrs
-      .filter((i) => 'step' in i && typeof i.step === 'string' && i.step.startsWith('review-pass/'))
+      .filter((i) => 'step' in i && typeof i.step === 'string' && i.step.startsWith('playbook-1/'))
       .map((i: any) => i.step);
 
     expect(inlinedSteps).toEqual([
-      'review-pass/review',
-      'review-pass/fix',
-      'review-pass/gate-1',
+      'playbook-1/review',
+      'playbook-1/fix',
+      'playbook-1/gate-1',
     ]);
   });
 

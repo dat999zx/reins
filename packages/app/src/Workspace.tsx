@@ -3,7 +3,7 @@ import type { Diagnostic, Step, Workflow } from '@reins/core';
 import { BlocksPane } from './BlocksPane.js';
 import { ContextMenu } from './ContextMenu.js';
 import { itemsFor, type MenuCtx, type MenuTarget } from './menus.js';
-import { addLoose, attach, detach, ensureEnd, freedBy, FULL, HOME, moveItems, park, removeLoose, selfContained, splitAtEnd, unpark } from './arrange.js';
+import { addLoose, attach, detachApart, ensureEnd, freedBy, FULL, HOME, moveItems, park, removeLoose, selfContained, splitAtEnd, unpark } from './arrange.js';
 import { addStepAt, capBackward, dropPlace, dropSteps, duplicateSteps, moveStep, nestPlace, newId, newStep, placeOf, setCond, stackEnd, takeSteps, type Hit, type Place } from './blocks.js';
 import { KINDS } from './canvasKinds.js';
 import { flatSteps, marksOf, removeLinks, setLink, type WireKind } from './canvas.js';
@@ -95,7 +95,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, models, ef
     setRects((p) => (JSON.stringify([...p]) === JSON.stringify([...next]) ? p : next));
   };
   const wires = useMemo(() => marksOf(w, diags, text).wires, [w, diags, text]);
-  const { arrows, missing, then } = useMemo(() => linksToDraw(w, wires), [w, wires]);
+  const { arrows, missing, then } = useMemo(() => linksToDraw(w, wires, new Set(splitAtEnd(w).tail.filter((s) => !lay.free?.[s.id]).map((s) => s.id))), [w, wires, lay.free]);
   const tail = useMemo(() => splitAtEnd(w).tail, [w]);
   const freeIds = useMemo(() => new Set(tail.map((s) => s.id)), [tail]);
   // A free block sits outside the script's box, so it is observed itself: a pill typed into it moves its arrows.
@@ -379,7 +379,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, models, ef
       const q = (s: string) => view.current!.querySelector(s)?.getBoundingClientRect(), vr = view.current!.getBoundingClientRect();
       const s = q('.sx-script'), b = q(`.blk[data-id="${CSS.escape(id)}"]`);
       const at = s && b && toWorld(camRef.current, { x: s.right - vr.left + 40, y: b.top - vr.top }), others = Object.fromEntries(freePlaces());
-      flow([id], detach, `\`${id}\` is now a free block: it runs only when a link points to it.`, at && ((l) => ({ ...l, free: { ...others, ...l.free, [id]: at } })));
+      flow([id], detachApart, `\`${id}\` is now a free block: it runs only when a link points to it.`, at && ((l) => ({ ...l, free: { ...others, ...l.free, [id]: at } })));
     },
     attach: (id) => flow([id], attach, `\`${id}\` is back in the stack.`),
     putEnd: () => { const keys = [...sel].filter((k) => k.startsWith('l:')); if (keys.length) unparkTo(keys, { top: 'end' }); },

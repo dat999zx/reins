@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 // Limits: it checks a finite list of names and spellings. It misses double quotes, template
 // strings, computed lookups (KINDS[x]) and future kind names.
 
-const KINDS = 'phase|say|run|gate|repeat|if|verify|use|recall|store|model|subagent|end';
-const OPS = 'RECALL|GATE|IF|LOOP_IN|RUN|LOOP_BK|VERIFY|STORE';
+const KINDS = 'phase|say|run|gate|repeat|if|verify|recall|store|model|subagent|end|fork';
+const OPS = 'RECALL|GATE|IF|LOOP_IN|RUN|LOOP_BK|VERIFY|STORE|FORK';
 const ANY: RegExp[] = [
   new RegExp(`kind\\s*[!=]==\\s*'(${KINDS})'`),
   new RegExp(`case '(${OPS})'`),
@@ -119,14 +119,13 @@ describe('no block names outside core/src/nodes', () => {
 //  nodes/index.ts   the registry and the shared types of a block
 //  nodes/fields.ts  the view types the registry and the app share
 //  nodes/turn.ts    `turnInstr`, `policyOf`, `checkMode`: the helpers a block gets through `api.core`
-//  nodes/use.ts, nodes/use.view.ts   the `use` block (the plan keeps it in core)
 //  nodes/README.md  the recipe
 //  conds/index.ts, cards/index.ts   the registries (`CONDS`, `registerCondition`, `CARDS`, `registerCard`)
 // The shared types of conditions and cards are cond.ts and the cards/index.ts interface; the registries hold no atom or card of their own.
 describe('no kind, condition or card file under core/src', () => {
   const src = join(root, 'packages/core/src');
   const STAYS = [
-    'nodes/README.md', 'nodes/fields.ts', 'nodes/index.ts', 'nodes/turn.ts', 'nodes/use.ts', 'nodes/use.view.ts',
+    'nodes/README.md', 'nodes/fields.ts', 'nodes/index.ts', 'nodes/turn.ts',
     'conds/index.ts', 'cards/index.ts',
   ];
   const under = (dir: string): string[] => (existsSync(join(src, dir)) ? walkAll(join(src, dir)).map((f) => relative(src, f).replace(/\\/g, '/')) : []);
@@ -143,7 +142,7 @@ describe('no kind, condition or card file under core/src', () => {
     expect(left(['conds/tests.ts', 'nodes/say.ts', 'cards/guard.ts', 'nodes/index.ts'])).toEqual(['conds/tests.ts', 'nodes/say.ts', 'cards/guard.ts']);
   });
 
-  it('nodes/, conds/ and cards/ hold only the registries, the shared pieces and the use block', () => {
+  it('nodes/, conds/ and cards/ hold only the registries and the shared pieces', () => {
     const files = [...under('nodes'), ...under('conds'), ...under('cards')].sort();
     expect(files).toEqual([...STAYS].sort());
   });

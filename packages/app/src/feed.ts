@@ -27,7 +27,7 @@ export type Piece =
       end: LogRow[] };                                  // the receipt
 export interface Feed { pieces: Piece[]; now?: Knot; cards: Map<number, CardState> }
 
-// ponytail: re-walks every row once per 16 ms batch (as mergeOutput does); make it incremental if a 5,000-row log is slow. A loop's passes are separate knots ("2nd time"); a `use` block's inner steps are knots named by their prefixed ids; rows are placed by the cursor (the strand's current knot).
+// ponytail: re-walks every row once per 16 ms batch (as mergeOutput does); make it incremental if a 5,000-row log is slow. A loop's passes are separate knots ("2nd time"); an inline playbook's inner steps are knots named by their prefixed ids; rows are placed by the cursor (the strand's current knot).
 type Data = Record<string, any>;
 type Run = Extract<Piece, { type: 'run' }>;
 type Ended = { state: 'done' | 'stopped' | 'paused' | 'failed'; why?: string; ts: number };

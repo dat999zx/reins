@@ -58,10 +58,6 @@
       ]
     },
     {
-      "kind": "use",
-      "ops": []
-    },
-    {
       "kind": "recall",
       "ops": [
         "RECALL"
@@ -84,6 +80,19 @@
     {
       "kind": "end",
       "ops": []
+    },
+    {
+      "kind": "fork",
+      "ops": [
+        "FORK"
+      ]
+    },
+    {
+      "kind": "playbook",
+      "ops": [
+        "PLAYBOOK",
+        "PLAYBOOK_END"
+      ]
     }
   ]
 }

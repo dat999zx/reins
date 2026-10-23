@@ -8,8 +8,8 @@ const files = readdirSync(new URL('../src/nodes/', import.meta.url))
   .filter((f) => f.endsWith('.ts') && !['index.ts', 'turn.ts', 'fields.ts'].includes(f) && !f.endsWith('.view.ts'));
 
 describe('every nodes/*.ts file is in NODES', () => {
-  it('finds the node files', () => {
-    expect(files).toContain('use.ts');
+  it('finds no node file: every kind is a mod of the default pack (M3 Task 11 removed the last one, `use`)', () => {
+    expect(files).toEqual([]);
   });
   for (const f of files) {
     it(f, async () => {

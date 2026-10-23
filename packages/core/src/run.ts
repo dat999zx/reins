@@ -49,6 +49,8 @@ export interface Track {
   share?: number;
   /** The track's last reply was cut off at its share: its next turn sends `CARRY_ON` instead of the step text. */
   carryOn?: true;
+  /** `openSlice` is the track's own (`TrackSpec.usd`), counted under the track's key: not one it inherited, and not one a `model` step on it opened. */
+  ownSlice?: true;
   /** Its session holds the room live (`SubagentOpened.cap`), so a re-share reopens nothing. Not saved: a restored track opens a new session. */
   liveCap?: true;
   /** What this track's turns cost, and the totals of its own session (not a subagent's); absent until a turn is counted. */
@@ -236,6 +238,7 @@ export interface TrackSnap {
   notes?: string[];
   share?: number;
   carryOn?: true;
+  ownSlice?: true;
 }
 
 /** A group an op started and has not taken. */
@@ -543,7 +546,7 @@ export class Run {
   private async ensureTrackSession(t: Track): Promise<EngineSession> {
     if (!t.session) {
       const m = t.money;
-      const cap = this.shareFor(t);
+      const cap = this.shareFor(t) ?? this.sliceCap(t);
       const o: SubagentOpen = {
         step: t.key, title: t.title, asks: t.title, policy: () => t.policy, ...(this.cwd !== undefined ? { cwd: this.cwd } : {}),
         // A track with a share: the cap of this process, and the live room for an engine that reads it before every call (the host answers which holds).
@@ -558,6 +561,12 @@ export class Run {
       if (opened.cap === 'live') t.liveCap = true; else delete t.liveCap;
     }
     return t.session;
+  }
+
+  /** The cap of the next process of a track that has a slice of its own and no share: the room (the workflow's and the slice's, the smaller); none for any other track. */
+  private sliceCap(t: Track): number | undefined {
+    const room = t.ownSlice && t.openSlice ? this.usdRoom(t) : undefined;
+    return room === undefined ? undefined : capOf(Math.max(0, room));
   }
 
   /** Starts the tracks of `group` in order and parks `parent` on its instruction until every one ended. Nothing is started when a check fails. */
@@ -576,12 +585,18 @@ export class Run {
       key: s.key, title: s.title, parent: parent.key, group, pc: s.at, state: 'running', turnInFlight: false, capped: false,
       handback: [...(s.seed ?? [])], policy: { mode: 'write', guards: [], allowShell: true }, recall: [],
       ...(share !== undefined && s.share ? { share } : {}),
-      // The slice is copied with what its starter had spent on it; from here each track counts its own spend under its own key (siblings must not share a counter).
-      ...(parent.openSlice ? { openSlice: { ...parent.openSlice }, spendKey: trackSpendKey(s.key, parent.openSlice.step) } : {}),
+      // A track with a `usd` of its own gets that slice (held to what its starter's share has left) and counts under its own key; any other copies its starter's slice
+      // with what the starter had spent on it, and from then on each track counts its own spend under its own key (siblings must not share a counter).
+      ...(typeof s.usd === 'number' && Number.isFinite(s.usd) && s.usd > 0
+        ? { openSlice: { step: s.key, usd: r6(Math.min(s.usd, parent.share === undefined ? Infinity : Math.max(0, this.shareRest(parent)!))) }, ownSlice: true as const }
+        : parent.openSlice ? { openSlice: { ...parent.openSlice }, spendKey: trackSpendKey(s.key, parent.openSlice.step) } : {}),
     }));
     // Always set, 0 included: a key that an earlier track of the same name used must not carry its spend into this one.
     const was = parent.openSlice ? this.spentOn(parent, parent.openSlice) : 0;
-    for (const t of started) if (t.spendKey !== undefined) { this.dropSpend(t.spendKey); this.usdSpent[t.spendKey] = was; }
+    for (const t of started) {
+      if (t.spendKey !== undefined) { this.dropSpend(t.spendKey); this.usdSpent[t.spendKey] = was; }
+      else if (t.ownSlice) { this.dropSpend(t.key); this.usdSpent[t.key] = 0; }
+    }
     for (const t of started) this.tracks.set(t.key, t);
     for (const t of started) this.logEvent('track_started', { track: t.key, parent: parent.key, group, title: t.title }, t);
     this.notify();
@@ -875,6 +890,7 @@ export class Run {
       ...(t === this.main && this.setReasoning ? { setReasoning: this.setReasoning } : {}),
       slice: (id, usd) => {
         t.openSlice = usd === undefined ? undefined : { step: id, usd };
+        t.ownSlice = undefined;
         if (t.spendKey !== undefined) { this.dropSpend(t.spendKey); t.spendKey = undefined; }   // the inherited slice is left: its counter and allowance go with it
       },
       log: (type, data) => this.logEvent(type, data, t),
@@ -1238,6 +1254,8 @@ export class Run {
     if (t !== this.main) {   // a track's record holds all it cost (its subagents too); the totals only of its own session
       const m = (t.money ??= { cost: 0 });
       m.cost += result.cost ?? 0;   // the raw sum: rounded where it is shown, so sub-micro charges add up
+      // A track started inside another (an own playbook in a branch) spends its starter's share too: every track above it counts the cost.
+      for (let p = this.tracks.get(t.parent); p; p = this.tracks.get(p.parent)) (p.money ??= { cost: 0 }).cost += result.cost ?? 0;
       if (!sub && result.total !== undefined) {
         m.total = result.total;
         if (result.totals) m.totals = result.totals; else delete m.totals;
@@ -1561,6 +1579,7 @@ export class Run {
       ...(t.notes?.length ? { notes: [...t.notes] } : {}),
       ...(t.share !== undefined ? { share: t.share } : {}),
       ...(t.carryOn ? { carryOn: true as const } : {}),
+      ...(t.ownSlice ? { ownSlice: true as const } : {}),
     };
   }
 
@@ -1580,6 +1599,7 @@ export class Run {
       ...(s.notes?.length ? { notes: [...s.notes] } : {}),
       ...(s.share !== undefined ? { share: s.share } : {}),
       ...(s.carryOn ? { carryOn: true as const } : {}),
+      ...(s.ownSlice ? { ownSlice: true as const } : {}),
     };
   }
 
@@ -1627,6 +1647,7 @@ export class Run {
       if (t.notes !== undefined && (!Array.isArray(t.notes) || t.notes.some((n) => typeof n !== 'string'))) bad(`track "${t.key}" has notes that are not texts`);
       if (t.share !== undefined && !num(t.share)) bad(`track "${t.key}" has a share that is not an amount`);
       if (t.carryOn !== undefined && t.carryOn !== true) bad(`track "${t.key}" has a carry-on flag that is not true`);
+      if (t.ownSlice !== undefined && (t.ownSlice !== true || !t.openSlice)) bad(`track "${t.key}" has an own-slice flag with no slice`);
     }
     const byName = new Map<string, NonNullable<RunSnapshot['groups']>[number]>();
     for (const g of groups) {
@@ -1835,6 +1856,7 @@ export class Run {
     this.ended.push({ key: t.key, text });
     const cost = money6(t.money?.cost ?? 0);   // the run's cost already holds it; from here it lives in the result and the row
     if (t.spendKey !== undefined) this.dropSpend(t.spendKey);   // so do not keep its counter or its allowance
+    else if (t.ownSlice) this.dropSpend(t.key);
     this.groups.get(t.group)?.results.set(t.key, { key: t.key, title: t.title, text, cost });
     // State first, then the row (a snapshot is saved inside onEvent), then the close.
     this.logEvent('track_ended', { track: t.key, group: t.group, title: t.title, text, cost }, t);

@@ -238,6 +238,9 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .sx-free.sx-placed { position: absolute; width: max-content; }
 .sx-free.sx-moving { pointer-events: none; opacity: 0.85; }
 .sx-free > .sx-stack > .sx-blk::after, .sx-free > .sx-stack > .sx-c > .sx-cfoot::after { content: none; }
+/* A chain of free blocks runs as one: the blocks stand together and each joins the one under it, as in the stack. The last one (an end, or a block that goes elsewhere) has no notch. */
+.sx-chain { display: flex; flex-direction: column; align-items: flex-start; }
+.sx-chain > .sx-free:not(:last-child) > .sx-stack > .sx-blk::after, .sx-chain > .sx-free:not(:last-child) > .sx-stack > .sx-c > .sx-cfoot::after { content: ''; }
 
 [data-colour='soft'] { --c: var(--soft); }
 [data-colour='hard'] { --c: var(--hard); }
@@ -339,6 +342,8 @@ select.sx-pill { cursor: pointer; }
 .sx-handle[data-lk='against'] { background: #5aa9e6; }
 .sx-handle.sx-two[data-lk='next'] { top: calc(50% - 10px); }
 .sx-handle.sx-two[data-lk='on-fail'] { top: calc(50% + 1px); }
+.sx-handle.sx-two[data-lk='against'] { top: calc(50% + 1px); }
+.sx-handle.sx-two[data-lk='on-fail']:has(+ [data-lk='against']) { top: calc(50% - 10px); }
 .sx-handle.sx-three[data-lk='next'] { top: calc(50% - 15px); }
 .sx-handle.sx-three[data-lk='on-fail'] { top: calc(50% - 4.5px); }
 .sx-handle.sx-three[data-lk='against'] { top: calc(50% + 6px); }

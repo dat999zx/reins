@@ -5,7 +5,7 @@ import { NODES, CONDS, CARDS } from '../src/index.js';
 // (m2-pins.test.ts Q14 pins the same lists and the ops of each kind in golden-m2/pin-q14-registry.json.)
 describe('the built-in order is today\'s order', () => {
   it('kinds', () => {
-    expect([...NODES.keys()]).toEqual(['phase', 'say', 'run', 'gate', 'repeat', 'if', 'verify', 'use', 'recall', 'store', 'model', 'subagent', 'end']);
+    expect([...NODES.keys()]).toEqual(['phase', 'say', 'run', 'gate', 'repeat', 'if', 'verify', 'recall', 'store', 'model', 'subagent', 'end', 'fork', 'playbook']);
   });
 
   it('conditions', () => {

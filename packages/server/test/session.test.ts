@@ -526,7 +526,7 @@ describe('tagged prompts (3b.5)', () => {
 
 const FRONT = '---\nreins: 1\nname: t\nbudget: { turns: 30, minutes: 30 }\nalways: []\n---\n\n';
 const ECHO = `${FRONT}## run \`echo hi\`\n\n## phase go\n> do it\n`;
-const WITH_BLOCK = `${FRONT}## use rp\n\n## gate\nuntil: you approve\n\n## phase go\n> do it\n`;
+const WITH_BLOCK = `${FRONT}## playbook rp\n\n## gate\nuntil: you approve\n\n## phase go\n> do it\n`;
 const rp = (cmd: string) => `---\nreins: 1\nblock: rp\n---\n\n## run \`${cmd}\`\n`;
 const put = (dir: string, name: string, text: string) => {
   const f = path.join(dir, name);

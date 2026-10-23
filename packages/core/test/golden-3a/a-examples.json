@@ -387,6 +387,14 @@
         "top": 1
       },
       {
+        "after": 11,
+        "op": "PLAYBOOK",
+        "playbook": "review-pass",
+        "session": "inline",
+        "step": "playbook-1",
+        "top": 2
+      },
+      {
         "op": "TURN",
         "policy": {
           "allowShell": true,
@@ -396,7 +404,7 @@
         "src": {
           "attrs": {},
           "cards": [],
-          "id": "review-pass/review",
+          "id": "playbook-1/review",
           "kind": "phase",
           "links": [],
           "pos": {
@@ -406,7 +414,7 @@
           "prompt": "Review the full diff as a harsh reviewer. List real problems only.",
           "title": "review"
         },
-        "step": "review-pass/review",
+        "step": "playbook-1/review",
         "top": 2
       },
       {
@@ -419,7 +427,7 @@
         "src": {
           "attrs": {},
           "cards": [],
-          "id": "review-pass/fix",
+          "id": "playbook-1/fix",
           "kind": "phase",
           "links": [],
           "pos": {
@@ -429,7 +437,7 @@
           "prompt": "Fix the problems from the review. Nothing else.",
           "title": "fix"
         },
-        "step": "review-pass/fix",
+        "step": "playbook-1/fix",
         "top": 2
       },
       {
@@ -438,7 +446,13 @@
           "t": "llm"
         },
         "op": "GATE",
-        "step": "review-pass/gate-1",
+        "step": "playbook-1/gate-1",
+        "top": 2
+      },
+      {
+        "op": "PLAYBOOK_END",
+        "playbook": "review-pass",
+        "step": "playbook-1",
         "top": 2
       },
       {
@@ -586,6 +600,14 @@
         "top": 5
       },
       {
+        "after": 13,
+        "op": "PLAYBOOK",
+        "playbook": "review-pass",
+        "session": "inline",
+        "step": "playbook-1",
+        "top": 6
+      },
+      {
         "op": "TURN",
         "policy": {
           "allowShell": true,
@@ -595,7 +617,7 @@
         "src": {
           "attrs": {},
           "cards": [],
-          "id": "review-pass/review",
+          "id": "playbook-1/review",
           "kind": "phase",
           "links": [],
           "pos": {
@@ -605,7 +627,7 @@
           "prompt": "Review the full diff as a harsh reviewer. List real problems only.",
           "title": "review"
         },
-        "step": "review-pass/review",
+        "step": "playbook-1/review",
         "top": 6
       },
       {
@@ -618,7 +640,7 @@
         "src": {
           "attrs": {},
           "cards": [],
-          "id": "review-pass/fix",
+          "id": "playbook-1/fix",
           "kind": "phase",
           "links": [],
           "pos": {
@@ -628,7 +650,7 @@
           "prompt": "Fix the problems from the review. Nothing else.",
           "title": "fix"
         },
-        "step": "review-pass/fix",
+        "step": "playbook-1/fix",
         "top": 6
       },
       {
@@ -637,7 +659,13 @@
           "t": "llm"
         },
         "op": "GATE",
-        "step": "review-pass/gate-1",
+        "step": "playbook-1/gate-1",
+        "top": 6
+      },
+      {
+        "op": "PLAYBOOK_END",
+        "playbook": "review-pass",
+        "step": "playbook-1",
         "top": 6
       },
       {

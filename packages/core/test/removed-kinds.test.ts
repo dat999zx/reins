@@ -13,6 +13,14 @@ describe('what a file with a removed block, card, link or front-matter key does'
     expect(() => { validate(p.workflow!); compileProgram(p.workflow!); }).not.toThrow();
   });
 
+  it('a `## use review-pass` heading is an unknown step kind in the parser and in validate (a file is reused with `## playbook`); nothing crashes', () => {
+    const p = parseWorkflow(FM + '## phase a\n> a\n\n## use review-pass\n');
+    expect(p.diagnostics.map((d) => `${d.severity}: ${d.message}`)).toEqual(['error: Unknown step kind "use"']);
+    expect(validate(p.workflow!, () => parseWorkflow('---\nreins: 1\nblock: review-pass\n---\n\n## phase x\n> x\n').workflow).map((d) => `${d.severity}: ${d.message}`)).toEqual(['error: Unknown step kind "use"']);
+    expect(() => compileProgram(p.workflow!)).not.toThrow();
+    expect(compileProgram(p.workflow!).map((i) => i.op)).toEqual(['TURN', 'END']);
+  });
+
   it('a `nudge:` line on a step is an unknown attribute and no card', () => {
     const p = parseWorkflow(FM + '## phase a\nnudge: slow down\n> a\n');
     expect(p.diagnostics.map((d) => `${d.severity}: ${d.message}`)).toEqual(['error: Unknown attribute "nudge"']);

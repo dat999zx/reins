@@ -232,10 +232,10 @@ describe('what the terminal runner needs from Run', () => {
     expect(run.getEvents().find((e) => e.type === 'judge')?.data).toEqual({ cond: { t: 'llm', q: 'ok' }, answer: false });
   });
 
-  it('a step inlined from a use block reaches the agent with its own prompt and cards', async () => {
+  it('a step inlined from a playbook reaches the agent with its own prompt and cards', async () => {
     const block = parseWorkflow('---\nreins: 1\nblock: rp\n---\n\n## phase review\nguard: src/api/**\n> Review the full diff.\n').workflow!;
     const eng = new FakeEngine();
-    const run = new Run({ workflow: wf('## phase one\n> first\n\n## use rp'), engine: eng, resolveBlock: (n) => (n === 'rp' ? block : undefined) });
+    const run = new Run({ workflow: wf('## phase one\n> first\n\n## playbook rp'), engine: eng, resolveBlock: (n) => (n === 'rp' ? block : undefined) });
     await drive(run);
     expect(eng.receivedTexts[1]).toContain('Review the full diff.');
     expect(eng.receivedTexts[1]).toContain('Do not touch src/api/**.');

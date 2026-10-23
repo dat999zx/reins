@@ -8,16 +8,15 @@ import { fill } from '../src/template.js';
 
 const HEAD_FRESH: Record<string, unknown> = {
   phase: {}, say: {}, run: { attrs: { cmd: 'npm test' } }, gate: { cond: { t: 'approve' } }, repeat: { attrs: { max: '3' }, cond: { t: 'approve' } },
-  if: { cond: { t: 'approve' } }, verify: {}, recall: {}, store: {}, model: {}, subagent: {}, end: {},
+  if: { cond: { t: 'approve' } }, verify: {}, recall: {}, store: {}, model: {}, subagent: {}, end: {}, fork: {}, playbook: {},   // fork and playbook: pack blocks added in M3 (Tasks 9 and 10), not ones of HEAD's
 };
 
 describe('built-in fresh', () => {
-  it('is the object HEAD\'s function returned, for each of the 12 kinds that have one', () => {
+  it('is the object HEAD\'s function returned, for each of the 14 kinds that have one (every kind)', () => {
     const have = Object.keys(KINDS).filter((k) => KINDS[k as StepKind].fresh !== undefined).sort();
     expect(have).toEqual(Object.keys(HEAD_FRESH).sort());
     for (const [k, want] of Object.entries(HEAD_FRESH)) expect(KINDS[k as StepKind].fresh, k).toEqual(want);
   });
-  it('use has none', () => { expect(KINDS.use.fresh).toBeUndefined(); });
   it('survives a JSON round trip unchanged', () => {
     for (const k of Object.keys(HEAD_FRESH)) expect(JSON.parse(JSON.stringify(KINDS[k as StepKind].fresh)), k).toEqual(KINDS[k as StepKind].fresh);
   });
@@ -52,16 +51,16 @@ describe('built-in fresh', () => {
   });
 });
 
-describe('use sub', () => {
-  const sub = (s: Partial<Step>) => fill(KINDS.use.sub as string, { id: 'use-1', attrs: {}, ...s });
-  it('is a template, and the only one among the built-ins', () => {
-    expect(KINDS.use.sub).toBe('{title|attrs.use|id}');
-    expect(Object.values(KINDS).slice(0, 13).filter((v) => v.sub !== undefined).map((v) => v.kind)).toEqual(['use']);
+describe('playbook sub', () => {
+  const sub = (s: Partial<Step>) => fill(KINDS.playbook.sub as string, { id: 'playbook-1', attrs: {}, ...s });
+  it('is a template; the fork has one too, and no other built-in', () => {
+    expect(KINDS.playbook.sub).toBe('{title|attrs.playbook|id}');
+    expect(Object.values(KINDS).filter((v) => v.sub !== undefined).map((v) => v.kind)).toEqual(['fork', 'playbook']);
   });
-  it('gives the title, else attrs.use, else the id', () => {
-    expect(sub({ title: 'My title', attrs: { use: 'lint-fix' } })).toBe('My title');
-    expect(sub({ attrs: { use: 'lint-fix' } })).toBe('lint-fix');
-    expect(sub({})).toBe('use-1');
+  it('gives the title, else attrs.playbook, else the id', () => {
+    expect(sub({ title: 'My title', attrs: { playbook: 'lint-fix' } })).toBe('My title');
+    expect(sub({ attrs: { playbook: 'lint-fix' } })).toBe('lint-fix');
+    expect(sub({})).toBe('playbook-1');
   });
 });
 

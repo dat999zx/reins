@@ -4,7 +4,7 @@ import { CARDS } from './cards/index.js';
 import { CONDS } from './conds/index.js';
 import { NODES, opOf, nodeAttrs, headingOwns, type ValidateCtx, type ProgramCtx } from './nodes/index.js';
 import { condAtoms } from './cond.js';
-import { compileProgram, programProblem, type Instr } from './compile.js';
+import { compileProgram, programProblem, type Instr, type StepStart } from './compile.js';
 import { usdText } from './format/print.js';
 
 /** The instructions reached from `from`. END stops, JUMP goes to its target, an op with `next` goes where it says, else on one. With `skipStarts`, the places an op starts tracks at are left out (one each: a wire to the next instruction does not hide it). */
@@ -59,7 +59,8 @@ export function validate(
 
   const allIds = new Set<string>();
   const orderMap = new Map<string, number>();
-  const checkBlock = (b: Workflow) => validate({ ...b, block: b.block || 'block' }, resolveBlock);
+  // What the parser said about a block file (set by the host that read it) comes first, then what validate says about it on its own.
+  const checkBlock = (b: Workflow) => [...(b.problems ?? []), ...validate({ ...b, block: b.block || 'block' }, resolveBlock)];
   const vctx = (pos: Pos): ValidateCtx => ({ push: (d) => diagnostics.push(d), pos, resolveBlock, allIds, checkBlock });
 
   // Check step kinds, attributes, duplicate IDs, and build order
@@ -173,7 +174,7 @@ export function validate(
   }
 
   // D5: block budgets (`usd:` on a kind that owns it) are carved out of the workflow's USD budget; with none set, they are caps of their own.
-  // ponytail: a block file's slices (`use`) are not counted here: the run enforces them anyway; count through resolveBlock if it bites.
+  // ponytail: a block file's slices (a playbook's file) are not counted here: the run enforces them anyway; count through resolveBlock if it bites.
   const owns = (s: Step) => NODES.get(s.kind)?.attrs.includes('usd') === true;
   const validUsd = (s: Step) => /^\d+(\.\d{1,2})?$/.test(s.attrs.usd!.trim()) && Number(s.attrs.usd) > 0;   // the app's parseBudget rule (panelEdit.ts:60)
   for (const s of allSteps) {
@@ -293,9 +294,22 @@ export function validate(
 
   // Unknown kinds and missing targets compile to nothing or fall through, so only judge a clean workflow.
   if (!diagnostics.some((d) => d.severity === 'error')) {
-    const program = compileProgram(w, resolveBlock);
+    const starts = new Map<number, StepStart[]>();
+    const program = compileProgram(w, resolveBlock, starts);
     const broken = programProblem(program, true);
     if (broken) diagnostics.push({ severity: 'error', message: broken, pos: { line: 1, col: 1 } });
+    // A step id that starts at two places in the program: a block that puts steps in (a playbook) made an id the file already has. Every id is checked, and none is named here.
+    const startsAt = new Map<string, number>();
+    const twice = new Set<string>();
+    for (const [index, here] of starts) {
+      for (const { step } of here) {
+        if (startsAt.has(step) && startsAt.get(step) !== index) twice.add(step);
+        else startsAt.set(step, index);
+      }
+    }
+    for (const id of twice) {
+      diagnostics.push({ severity: 'error', message: `\`${id}\` would appear twice once the playbooks are put in; give one of the steps another id`, pos: allSteps.find((s) => s.id === id)?.pos || { line: 1, col: 1 } });
+    }
     const seen = walk(program, 0, false);
     for (const step of allSteps) {
       const entry = program.findIndex((i) => 'step' in i && i.step === step.id);

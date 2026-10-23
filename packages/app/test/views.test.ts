@@ -56,13 +56,13 @@ describe('view files', () => {
 describe('colour', () => {
   const COLOUR: Record<string, string> = {
     phase: 'soft', say: 'soft', run: 'hard', gate: 'gate', repeat: 'loop', if: 'loop', verify: 'verify', end: 'hand',
-    recall: 'mem', store: 'mem', use: 'mine', model: 'mine', subagent: 'mine',
+    recall: 'mem', store: 'mem', model: 'mine', subagent: 'mine',
   };
   // before the move the table is read from the css, after it from the views
   const fromCss = () => Object.fromEntries([...css().matchAll(/^((?:\[data-kind='\w+'\](?:, )?)+) \{ --c: var\(--(\w+)\); \}$/gm)]
     .flatMap((m) => [...m[1]!.matchAll(/data-kind='(\w+)'/g)].map((k) => [k[1]!, m[2]!])));
   const table = () => (css().includes('[data-kind=') ? fromCss() : Object.fromEntries(Object.entries(KINDS).map(([k, v]) => [k, v.colour])));
-  // the 13 built-ins keep their colour; a kind added later is only checked to have one
+  // the 12 built-ins keep their colour; a kind added later is only checked to have one
   const builtIn = <T,>(o: Record<string, T>) => Object.fromEntries(Object.entries(o).filter(([k]) => k in COLOUR));
   it('every kind keeps its colour', () => { expect(builtIn(table())).toEqual(COLOUR); });
   it('every node kind has some colour', () => { for (const k of NODES.keys()) expect(table()[k], k).toBeTruthy(); });

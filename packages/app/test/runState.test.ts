@@ -25,8 +25,8 @@ describe('dock facts', () => {
     expect(view([started(), text('agent'), row('say', { text: 'budget used' })]).last?.text).toBe('budget used');
     expect(view([started(), row('turn_failed', { error: 'engine died' })]).last?.text).toBe('engine died');
   });
-  const w = parseWorkflow('---\nreins: 1\nname: demo\nbudget: { turns: 40, minutes: 30, usd: 4 }\nalways: []\n---\n\n## phase plan\n> Plan.\n\n## repeat\nid: loop\nuntil: tests pass\nmax: 2\n\n### phase build\n> Build.\n\n## use demo\nid: use-1\n\n## end\n').workflow!;
-  it('counts top-level headers, including containers, use and end', () => {
+  const w = parseWorkflow('---\nreins: 1\nname: demo\nbudget: { turns: 40, minutes: 30, usd: 4 }\nalways: []\n---\n\n## phase plan\n> Plan.\n\n## repeat\nid: loop\nuntil: tests pass\nmax: 2\n\n### phase build\n> Build.\n\n## playbook demo\nid: use-1\n\n## end\n').workflow!;
+  it('counts top-level headers, including containers, playbook and end', () => {
     expect(stepPos(w, ['plan'])).toEqual({ n: 1, m: 4 });
     expect(stepPos(w, ['loop', 'build'])).toEqual({ n: 2, m: 4 });
     expect(stepPos(w, ['build'])).toEqual({ n: 2, m: 4 });

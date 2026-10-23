@@ -13,8 +13,8 @@ describe('KINDS', () => {
     expect(Object.keys(KINDS).sort()).toEqual([...NODES.keys()].sort());
   });
   it('lists the kinds in the palette order', () => {
-    expect(Object.keys(KINDS).slice(0, 13)).toEqual(['phase', 'say', 'run', 'gate', 'repeat', 'if', 'verify', 'recall', 'store', 'model', 'subagent', 'end', 'use']);
-    for (const k of Object.keys(KINDS).slice(13)) expect(KINDS[k as StepKind].order, k).toBeGreaterThan(130);
+    expect(Object.keys(KINDS).slice(0, 12)).toEqual(['phase', 'say', 'run', 'gate', 'repeat', 'if', 'verify', 'recall', 'store', 'model', 'subagent', 'end']);
+    for (const k of Object.keys(KINDS).slice(12)) expect(KINDS[k as StepKind].order, k).toBeGreaterThan(130);
   });
   it('mirrors fails and container from core', () => {
     for (const k of NODES.keys()) {
@@ -34,11 +34,11 @@ describe('KINDS', () => {
     expect(CARD_KINDS).toEqual([...CARDS.values()].filter((c) => !c.delivery).map((c) => c.kind));
   });
   it('only end stops the workflow', () => {
-    expect((Object.keys(KINDS) as StepKind[]).slice(0, 13).filter((k) => KINDS[k].stops)).toEqual(['end']);
+    expect((Object.keys(KINDS) as StepKind[]).slice(0, 12).filter((k) => KINDS[k].stops)).toEqual(['end']);
   });
-  it('only use has sub', () => {
-    expect((Object.keys(KINDS) as StepKind[]).slice(0, 13).filter((k) => KINDS[k].sub)).toEqual(['use']);
-    expect(fill(KINDS.use.sub!, step('use', { attrs: { use: 'lint-fix' } }))).toBe('lint-fix');
+  it('only the fork and the playbook have sub; the playbook\'s is the file name', () => {
+    expect((Object.keys(KINDS) as StepKind[]).filter((k) => KINDS[k].sub)).toEqual(['fork', 'playbook']);
+    expect(fill(KINDS.playbook.sub!, step('playbook', { attrs: { playbook: 'lint-fix' } }))).toBe('lint-fix');
   });
 });
 
@@ -85,8 +85,8 @@ describe('field hints', () => {
 });
 
 describe('fresh', () => {
-  const withFresh = [...NODES.keys()].filter((k) => k !== 'use').sort();
-  it('exists for every kind but use', () => {
+  const withFresh = [...NODES.keys()].sort();
+  it('exists for every kind', () => {
     expect((Object.keys(KINDS) as StepKind[]).filter((k) => KINDS[k].fresh).sort()).toEqual(withFresh);
   });
   for (const k of withFresh) {
@@ -97,7 +97,8 @@ describe('fresh', () => {
       const text = printWorkflow(w);
       const r = parseWorkflow(text);
       expect(r.diagnostics).toEqual([]);
-      expect(validate(r.workflow!).filter((d) => d.severity === 'error')).toEqual([]);
+      // a new fork has no wires yet: "has no branches" is its one error until the first wire is drawn (M3 Task 9)
+      expect(validate(r.workflow!).filter((d) => d.severity === 'error' && !(k === 'fork' && d.message.includes('has no branches')))).toEqual([]);
       expect(printWorkflow(r.workflow!)).toBe(text);
       expect(r.workflow!.steps[1]!.id).toBe(`${k}-1`);
       expect(text).not.toContain('\nid:');

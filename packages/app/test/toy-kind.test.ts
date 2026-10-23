@@ -31,7 +31,7 @@ describe('a toy block view: one registerView call', () => {
     // a real kind added later may sit after the toy (order 150 vs 140), so look at the kinds up to the toy's order
     expect(keys.filter((k) => KINDS[k as keyof typeof KINDS].order! <= beepView.order).at(-1)).toBe('beep');
     expect(KINDS.beep!.order).toBe(beepView.order);
-    expect(keys.indexOf('beep')).toBeGreaterThan(keys.indexOf('use'));
+    expect(keys.indexOf('beep')).toBeGreaterThan(keys.indexOf('end'));
   });
 
   it('the face draws its tokens', () => {

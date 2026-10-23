@@ -38,8 +38,8 @@ const palette = () => renderToStaticMarkup(createElement(Palette, { onAdd: () =>
 const RLO = '\u202e';
 
 describe('the app builds its kinds from the served list', () => {
-  it('starts from the setup file\'s list: the 13 built-ins, no glob', () => {
-    expect(Object.keys(KINDS)).toHaveLength(13);
+  it('starts from the setup file\'s list: the 14 built-ins, no glob', () => {
+    expect(Object.keys(KINDS)).toHaveLength(14);
     expect(Object.getPrototypeOf(KINDS)).toBeNull();
   });
 
@@ -118,9 +118,9 @@ describe('a kind the app does not know draws the unknown block face', () => {
     }
   });
 
-  it('wires: the unknown block has only `next`', () => {
-    expect(wiresOf('nonesuch' as never)).toEqual(['next']);
-    expect(face(step('nonesuch'))).toContain('data-lk="next"');
+  it('wires: the unknown block has no handle (the gray `next` is the fork\'s only)', () => {
+    expect(wiresOf('nonesuch' as never)).toEqual([]);
+    expect(face(step('nonesuch'))).not.toContain('data-lk=');
   });
 
   it('the readers in blocks, arrows, editor state and the palette do not throw', () => {
@@ -165,7 +165,7 @@ describe('before the first reply KINDS is empty and nothing throws', () => {
     expect(setCond(w, 'repeat-1', [], { t: 'approve' } as never)).toBe(w);
     expect(() => linksToDraw(w, new Map())).not.toThrow();
     expect(cleanStep({ id: 'a', kind: 'say', attrs: {}, cards: [], links: [] })).toBeUndefined();
-    expect(wiresOf('say')).toEqual(['next']);
+    expect(wiresOf('say')).toEqual([]);
   });
 
   it('then the list arrives and the same workflow draws its real faces', () => {

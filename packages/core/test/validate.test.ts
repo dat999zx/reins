@@ -166,13 +166,13 @@ describe('Task 1.5: The Validator', () => {
     expect(err).toBeDefined();
   });
 
-  it('Rule 7: use naming a block that cannot be found', () => {
+  it('Rule 7: a playbook naming a block that cannot be found', () => {
     const wf = baseWorkflow();
     wf.steps.push({
-      id: 'use1',
-      kind: 'use',
+      id: 'playbook1',
+      kind: 'playbook',
       title: 'missing-block',
-      attrs: {},
+      attrs: { playbook: 'missing-block' },
       cards: [],
       links: [],
       pos: { line: 20, col: 1 },

@@ -97,9 +97,9 @@ The `declare module` blocks teach the types about the new kind, the new instruct
 
 ## Order
 
-Built-in blocks use these numbers: phase 10, say 20, run 30, gate 40, repeat 50, if 60, verify 70, use 80, recall 90, store 100, model 110, subagent 120, end 130. The number is the block's place in core's registry. A mod block's place is its manifest's `order`.
+The blocks of the default pack use these numbers: phase 10, say 20, run 30, gate 40, repeat 50, if 60, verify 70, recall 90, store 100, model 110, subagent 120, end 130, fork 135, playbook 140. The number is the block's place in core's registry. A mod block's place is its manifest's `order`; a new block picks a free number above 140.
 
-The palette order comes from the view's `order`, and it is not always the same number. `use` is 80 in core's registry and 130 in its view.
+The palette order comes from the view's `order`, and it is not always the same number. `end` is 130 in core's registry and 120 in its view, `playbook` is 140 and 150.
 
 ## Ops and VmCtx
 

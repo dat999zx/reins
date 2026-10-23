@@ -289,7 +289,7 @@ describe('Q8: the snapshot keys at the end of every scenario of m1-behaviour.tes
     }
     {
       const h = harness('S9');
-      const run = new Run({ ...base(h, wf('## phase one\n> first\n\n## use review-pass\n\n## end\n\n## phase free\n> free')), resolveBlock: exBlock });
+      const run = new Run({ ...base(h, wf('## phase one\n> first\n\n## playbook review-pass\n\n## end\n\n## phase free\n> free')), resolveBlock: exBlock });
       await drive(run);
       all.S9 = keys(run);
     }
@@ -410,7 +410,7 @@ describe('Q14: the registry after start', () => {
       conds: [...CONDS.keys()],
       cards: [...CARDS.keys()],
     });
-    expect([...NODES.keys()]).toEqual(['phase', 'say', 'run', 'gate', 'repeat', 'if', 'verify', 'use', 'recall', 'store', 'model', 'subagent', 'end']);
+    expect([...NODES.keys()]).toEqual(['phase', 'say', 'run', 'gate', 'repeat', 'if', 'verify', 'recall', 'store', 'model', 'subagent', 'end', 'fork', 'playbook']);
     expect([...CONDS.keys()]).toEqual(['approve', 'tests', 'cmd', 'llm', 'review', 'done', 'diff', 'touches', 'attempts', 'same', 'drift']);
     expect([...CARDS.keys()]).toEqual(['guard', 'now', 'stop']);
   });

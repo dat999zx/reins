@@ -285,6 +285,14 @@
     "compiled": {
       "program": [
         {
+          "after": 3,
+          "op": "PLAYBOOK",
+          "playbook": "vblock",
+          "session": "inline",
+          "step": "playbook-1",
+          "top": 0
+        },
+        {
           "op": "TURN",
           "policy": {
             "allowShell": true,
@@ -294,7 +302,7 @@
           "src": {
             "attrs": {},
             "cards": [],
-            "id": "vblock/plan",
+            "id": "playbook-1/plan",
             "kind": "phase",
             "links": [],
             "pos": {
@@ -304,15 +312,21 @@
             "prompt": "p",
             "title": "plan"
           },
-          "step": "vblock/plan",
+          "step": "playbook-1/plan",
           "top": 0
         },
         {
-          "against": "plan",
+          "against": "playbook-1/plan",
           "linkMax": 1,
-          "onFailJump": 0,
+          "onFailJump": 1,
           "op": "VERIFY",
-          "step": "vblock/verify-1",
+          "step": "playbook-1/verify-1",
+          "top": 0
+        },
+        {
+          "op": "PLAYBOOK_END",
+          "playbook": "vblock",
+          "step": "playbook-1",
           "top": 0
         },
         {

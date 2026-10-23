@@ -46,10 +46,10 @@ export const viewOf = (kind: string): ServedView => kinds[kind] ?? unknownView(k
 
 // The one kind that ends the workflow. Empty (no block can be made of it) until the list has come.
 export const capKind = (): StepKind => (Object.values(KINDS).find((v) => v.stops)?.kind ?? '') as StepKind;
-// The handles on a block, top to bottom.
+// The handles on a block, top to bottom. The gray `next` handle is the fork's only (a view with `manyNext`); a loop that goes back uses `repeat until`.
 export const wiresOf = (kind: StepKind): WireKind[] => {
   const k = viewOf(kind);
-  return k.stops ? [] :['next', ...(k.fails ? ['on-fail' as const] : []), ...(k.against ? ['against' as const] : [])];
+  return k.stops ? [] : [...(k.manyNext ? ['next' as const] : []), ...(k.fails ? ['on-fail' as const] : []), ...(k.against ? ['against' as const] : [])];
 };
 
 // The card kinds a block holds, and the words the panel uses for each; both come from the server (`GET /api/kinds`) in core's order and are empty

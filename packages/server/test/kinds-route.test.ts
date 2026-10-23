@@ -18,7 +18,7 @@ const FIXTURE = fileURLToPath(new URL('./fixtures/mods/toy-beep/', import.meta.u
 const manifest = () => JSON.parse(fs.readFileSync(path.join(FIXTURE, 'mod.json'), 'utf8')) as Record<string, any>;
 const code = () => fs.readFileSync(path.join(FIXTURE, 'index.js'), 'utf8');
 // The palette order of the views (their order), as the app sorts them today.
-const BUILT_IN_ORDER = ['phase', 'say', 'run', 'gate', 'repeat', 'if', 'verify', 'recall', 'store', 'model', 'subagent', 'end', 'use'];
+const BUILT_IN_ORDER = ['phase', 'say', 'run', 'gate', 'repeat', 'if', 'verify', 'recall', 'store', 'model', 'subagent', 'end', 'fork', 'playbook'];
 
 const homes: Array<ReturnType<typeof tempHome>> = [];
 afterEach(async () => {
@@ -48,7 +48,7 @@ describe('GET /api/kinds: the built-in views', () => {
     // M3 Task 3: say, phase and end are pack mods now; their views are the `view` of their mod.json.
     const pack = packMods(PACK_DIR).filter((p) => (p.manifest as unknown as { kind?: string }).kind === 'block').map((p) => (p.manifest as unknown as { view: { order: number } }).view);
     expect(r.json.kinds).toEqual(JSON.parse(JSON.stringify([...BUILTIN_VIEWS, ...pack].sort((a, b) => a.order - b.order))));
-    expect(BUILTIN_VIEWS.length + pack.length).toBe(13);   // each kind moved to the pack leaves core's list and joins the pack's: the sum stays
+    expect(BUILTIN_VIEWS.length + pack.length).toBe(14);   // each kind moved to the pack leaves core's list and joins the pack's: the sum stays
   });
 
   it('needs the token like every other route', async () => {
@@ -76,9 +76,11 @@ describe('GET /api/kinds: a block mod', () => {
     const w = await withBeep(true);
     const { kinds, problems } = await kindsOf(w);
     expect(problems).toEqual([]);
-    expect(kinds.map((k) => k.kind)).toEqual([...BUILT_IN_ORDER, 'beep']);
-    expect(kinds.at(-1)).toEqual(manifest().view);
-    expect('trusted' in kinds.at(-1)!).toBe(false);
+    // the toy's view order (140) is after fork's (135) and before playbook's (150)
+    expect(kinds.map((k) => k.kind)).toEqual(BUILT_IN_ORDER.flatMap((k) => (k === 'playbook' ? ['beep', k] : [k])));
+    const beep = kinds.find((k) => k.kind === 'beep')!;
+    expect(beep).toEqual(manifest().view);
+    expect('trusted' in beep).toBe(false);
     expect(NODES.has('beep')).toBe(true); // it really loaded
   });
 
@@ -88,7 +90,7 @@ describe('GET /api/kinds: a block mod', () => {
     expect(code()).toContain('registerBlock');
     for (const word of ['registerBlock', 'activate', 'BEEP', 'TOY_MARKER']) expect(text, word).not.toContain(word);
     // every key of the served view is a key the manifest's view holds
-    const served = (await kindsOf(w)).kinds.at(-1)!;
+    const served = (await kindsOf(w)).kinds.find((k) => k.kind === 'beep')!;
     for (const k of Object.keys(served)) expect(Object.keys(manifest().view), k).toContain(k);
   });
 
@@ -96,7 +98,7 @@ describe('GET /api/kinds: a block mod', () => {
     const w = await withBeep(false);
     const { kinds } = await kindsOf(w);
     expect(NODES.has('beep')).toBe(false); // its code did not run
-    expect(kinds.at(-1)).toEqual({ ...manifest().view, trusted: false });
+    expect(kinds.find((k) => k.kind === 'beep')).toEqual({ ...manifest().view, trusted: false });
   });
 
   // Task 25a (B1): a `trusted` key in a mod's view is not part of a view, so the mod is refused and not served. (This pin said the key was ignored.)
@@ -164,16 +166,15 @@ describe('the builder refuses what it must not send', () => {
     mods.dispose();
   });
 
-  it('a mod view cannot take the place of a built-in kind', async () => {
+  it('a mod view cannot take the place of a block of the default pack', async () => {
     const { mods, add } = await reg();
-    add(view({ kind: 'use', colour: 'hard', line: ['evil'] }));
-    // M3 Task 3: a pack kind (say, phase, end) is protected by the registry itself: its view is already recorded, so a second one is refused at once.
-    expect(() => add(view({ kind: 'say', colour: 'hard', line: ['evil'] }))).toThrow('block-view "say" is already registered');
+    // M3 Task 11: core holds no view of its own any more (`use` was the last); a pack kind is protected by the registry itself: its view is already recorded, so a second one is refused at once.
+    for (const kind of ['say', 'end', 'playbook']) expect(() => add(view({ kind, colour: 'hard', line: ['evil'] })), kind).toThrow(`block-view "${kind}" is already registered`);
     const out = servedKinds(mods);
-    expect(out.kinds.filter((k) => k.kind === 'use')).toEqual([BUILTIN_VIEWS.find((v) => v.kind === 'use')]);
+    expect(out.kinds.filter((k) => k.kind === 'playbook')).toHaveLength(1);
     expect(out.kinds.filter((k) => k.kind === 'say')).toHaveLength(1);
-    expect(out.kinds).toHaveLength(13);
-    expect(out.problems).toEqual(['use: a mod cannot give a view to a built-in block, so it is not served.']);
+    expect(out.kinds).toHaveLength(14);
+    expect(out.problems).toEqual([]);
     mods.dispose();
   });
 
@@ -187,7 +188,7 @@ describe('the builder refuses what it must not send', () => {
     delete (noOrder as Record<string, unknown>).order;
     add(noOrder);
     expect(servedKinds(mods).kinds.map((k) => k.kind)).toEqual([
-      'a-early', 'phase', 'say', 'run', 'gate', 'repeat', 'if', 'verify', 'recall', 'store', 'model', 'subagent', 'end', 'm-mid', 'n-mid', 'use', 'z-late', 'o-none',
+      'a-early', 'phase', 'say', 'run', 'gate', 'repeat', 'if', 'verify', 'recall', 'store', 'model', 'subagent', 'end', 'm-mid', 'n-mid', 'fork', 'playbook', 'z-late', 'o-none',
     ]);
     mods.dispose();
   });

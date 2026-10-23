@@ -14,7 +14,7 @@ export interface Policy {
 
 // The instruction shapes, keyed by op. A kind adds its own by merging into this interface.
 export interface Instrs {
-  // src: the step as compiled (block steps prefixed), so a step inlined by `use` keeps its prompt.
+  // src: the step as compiled (block steps prefixed), so a step inlined by a playbook keeps its prompt.
   TURN: { step: string; policy: Policy; src: Step };
   // A kind's own instruction (P12): run by `NodeType.exec` of `kind`, `src` the step as compiled.
   NODE: { step: string; kind: string; src: Step };
@@ -23,7 +23,7 @@ export interface Instrs {
 }
 
 // top: index of the top-level step this instruction belongs to (a repeat's inner steps and
-// steps inlined by `use` report their parent), so "step N of M" always counts the same things.
+// steps inlined by a playbook report their parent), so "step N of M" always counts the same things.
 type AllInstrs = Instrs & ModInstrs;
 export type Instr = { [K in keyof AllInstrs]: { op: K } & AllInstrs[K] }[keyof AllInstrs] & { top?: number };
 
@@ -106,9 +106,22 @@ export function compileProgram(
   const links: Array<{ apply(index: number): void; target: string; fallback: number }> = [];
   /** Where the step being compiled began, innermost last: `loopBody` reaches no instruction before it. */
   const stepFrom: number[] = [];
+  /** The ENDs pushed inside each open `endsOf`, innermost last. */
+  const endScopes: number[][] = [];
   const ctx: CompileCtx = {
     at: () => instrs.length,
-    push: (i) => { instrs.push(i); return i; },
+    push: (i) => { instrs.push(i); if (i.op === 'END') endScopes.at(-1)?.push(instrs.length - 1); return i; },
+    endsOf: (body) => {
+      const mine: number[] = [];
+      endScopes.push(mine);
+      try { body(); } finally { endScopes.pop(); }
+      return mine;
+    },
+    endsTo: (ends, to) => {
+      for (const k of ends) {
+        if (Number.isInteger(k) && k >= (stepFrom.at(-1) ?? 0) && instrs[k]?.op === 'END') instrs[k] = { op: 'JUMP', target: to };
+      }
+    },
     get: (i) => instrs[i],
     compile: (steps) => { for (const s of steps) compileStep(s); },
     linkTo: (target, apply, fallback = -1) => { links.push({ apply, target, fallback }); },

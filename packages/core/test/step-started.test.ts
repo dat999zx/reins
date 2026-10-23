@@ -82,15 +82,15 @@ describe('step_started', () => {
     expect(startsOf(fail).map((s) => s.step)).toEqual(['run-1', 'fix']);
   });
 
-  it('use reports itself, then the block step with the use step as parent, before that step\'s turn', async () => {
+  it('a playbook reports itself, then the block step with the playbook step as parent, before that step\'s turn', async () => {
     const run = new Run({
-      workflow: ok('## use blk\n'), engine: new FakeEngine(),
+      workflow: ok('## playbook blk\n'), engine: new FakeEngine(),
       resolveBlock: (n) => (n === 'blk' ? block('## phase plan\n> P.') : undefined),
     });
     await drive(run);
-    expect(startsOf(run)).toEqual([{ step: 'use-1', parents: [] }, { step: 'blk/plan', parents: ['use-1'] }]);
+    expect(startsOf(run)).toEqual([{ step: 'playbook-1', parents: [] }, { step: 'playbook-1/plan', parents: ['playbook-1'] }]);
     const types = run.getEvents().map((e) => `${e.type}:${e.data.step ?? ''}`);
-    expect(types.indexOf('step_started:blk/plan')).toBeLessThan(types.indexOf('turn_started:blk/plan'));
+    expect(types.indexOf('step_started:playbook-1/plan')).toBeLessThan(types.indexOf('turn_started:playbook-1/plan'));
   });
 
   it('a stop card during a turn, then resume(), reports the step again', async () => {
@@ -138,6 +138,6 @@ describe('step_started', () => {
     const starts = new Map();
     expect(compileProgram(w, rb, starts)).toEqual(compileProgram(w, rb));
     expect(compileProgram(w, undefined, new Map())).toEqual(compileProgram(w));
-    expect([...starts.values()].flat().map((s) => s.step)).toContain('review-pass/review');
+    expect([...starts.values()].flat().map((s) => s.step)).toContain('playbook-1/review');
   });
 });

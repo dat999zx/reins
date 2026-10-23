@@ -124,7 +124,7 @@ describe('NODES, CONDS and CARDS are ordered and shadowable', () => {
 
   it('a kind with no order goes after the last built-in, in the order it came', () => {
     disposers.push(register(bare('zk2')), register(bare('zk1')));
-    expect(keys().slice(-3)).toEqual(['end', 'zk2', 'zk1']);
+    expect(keys().slice(-3)).toEqual(['playbook', 'zk2', 'zk1']);
   });
 
   it('disposing puts the list back as it was', () => {

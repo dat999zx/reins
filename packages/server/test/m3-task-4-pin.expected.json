@@ -2144,7 +2144,8 @@
   "model",
   "subagent",
   "end",
-  "use"
+  "fork",
+  "playbook"
  ],
  "views": [
   {

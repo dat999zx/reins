@@ -174,3 +174,37 @@ describe('marksOf notes', () => {
     expect(notes.has('a')).toBe(false);
   });
 });
+
+// M3 Task 12: a block whose view takes many `next` wires (the fork) keeps every wire; every other block keeps one.
+describe('setLink on a fork', () => {
+  const FORK = `---\nreins: 1\nname: demo\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n## fork\nnext: x\n\n## end\n\n## phase x\n\n## phase y\n\n## run \`ls\`\nid: r\non-fail: x\n`;
+  const fork = () => parseWorkflow(FORK).workflow!;
+  const nexts = (w: Workflow, id: string) => flatSteps(w.steps).find((s) => s.id === id)!.links.filter((l) => l.kind === 'next').map((l) => l.to);
+  it('two wires from a fork stay two, in the order they were drawn, with no max (they point forward)', () => {
+    const w = setLink(fork(), 'fork-1', 'next', 'y');
+    expect(nexts(w, 'fork-1')).toEqual(['x', 'y']);
+    expect(flatSteps(w.steps).find((s) => s.id === 'fork-1')!.links.every((l) => l.max === undefined)).toBe(true);
+    expect(printWorkflow(w)).toContain('## fork\nnext: x\nnext: y\n');
+  });
+  it('a second wire to the same block changes nothing (the same workflow comes back)', () => {
+    const w = fork();
+    expect(setLink(w, 'fork-1', 'next', 'x')).toBe(w);
+    expect(setLink(setLink(w, 'fork-1', 'next', 'y'), 'fork-1', 'next', 'y')).toEqual(setLink(w, 'fork-1', 'next', 'y'));
+  });
+  it('a wire from the fork to itself is refused as before', () => {
+    const w = fork();
+    expect(setLink(w, 'fork-1', 'next', 'fork-1')).toBe(w);
+  });
+  it('next on a phase still replaces, on-fail still replaces', () => {
+    const w = setLink(setLink(fork(), 'x', 'next', 'y'), 'x', 'next', 'r');
+    expect(nexts(w, 'x')).toEqual(['r']);
+    const f = setLink(fork(), 'r', 'on-fail', 'y');
+    expect(flatSteps(f.steps).find((s) => s.id === 'r')!.links.filter((l) => l.kind === 'on-fail').map((l) => l.to)).toEqual(['y']);
+  });
+  it('an old file with a `next:` line on a phase still draws its arrow, and removeLinks deletes it', async () => {
+    const { linksToDraw } = await import('../src/arrows.js');
+    const w = parseWorkflow(`---\nreins: 1\nname: demo\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n## phase a\nnext: b\n\n## phase b\n`).workflow!;
+    expect(linksToDraw(w, new Map()).arrows.map((a) => [a.from, a.kind, a.to])).toEqual([['a', 'next', 'b']]);
+    expect(nexts(removeLinks(w, [{ from: 'a', index: 0 }]), 'a')).toEqual([]);
+  });
+});

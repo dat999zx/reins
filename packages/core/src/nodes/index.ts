@@ -4,7 +4,6 @@ import type { EngineSession, TurnResult } from '../fake-engine.js';
 import type { CommandOutcome, PauseReason, RunEventRecord, RunEventType } from '../run.js';
 import { ordered } from '../registry.js';
 import { guardNode } from '../guard.js';
-import use from './use.js';
 
 /** What the host did with a model step. `label` names the model in use afterwards. One member per `to`, so `r.label` narrows. */
 export type SwitchOutcome = { to: 'switched' | 'same' | 'kept'; label: string } | { to: 'stop' } | { to: 'closed' };
@@ -38,6 +37,13 @@ export interface CompileCtx {
    * and takes the patch it returns. The step's own instructions only. True when one took the loop's condition, so the loop need not judge it itself.
    */
   loopBody(step: Step, from: number, exit: number): boolean;
+  /**
+   * Runs `body` (which compiles steps) and returns the indices of the END instructions it pushed through `push`. The ENDs of a nested `endsOf` belong to that one,
+   * so a block that ends its own track keeps them.
+   */
+  endsOf(body: () => void): number[];
+  /** Turns each of those END instructions that the step being compiled pushed into a JUMP to `to`: an `end` inside a block that goes on after it. Any other instruction is left. */
+  endsTo(ends: readonly number[], to: number): void;
   resolveBlock?: (name: string) => Workflow | undefined;
 }
 export interface ValidateCtx {
@@ -158,6 +164,8 @@ export interface TrackSpec {
   title: string;
   /** Texts its first turn carries (the caller quotes them). */
   seed?: string[];
+  /** A USD slice of its own, counted under `key` (an own playbook's `usd:`): the track pauses on the USD card at it. Held to the starter's share left. Not a number above 0: none. */
+  usd?: number;
   /** Shares the USD room equally with the other tracks of the same `start` that say so (spec 4.6). No room (no workflow limit, no open slice): no share. */
   share?: true;
 }
@@ -205,9 +213,6 @@ export function register(given: NodeType, order?: number, opts?: { shadow?: bool
   }
   return KINDS.add(n, { order, shadow: opts?.shadow });
 }
-// The numbers are today's order, with room between them.
-for (const [n, order] of [[use, 80]] as const) register(n, order);
-
 export function opOf(op: string): OpType<any> | undefined {
   for (const n of NODES.values()) if (n.ops && Object.hasOwn(n.ops, op)) return n.ops[op];
   return undefined;
@@ -224,4 +229,3 @@ export function nodeAttrs(): Set<string> { return new Set([...NODES.values()].fl
 export function headingOwns(): Set<string> { return new Set([...NODES.values()].flatMap((n) => n.heading?.owns ?? [])); }
 
 export { checkMode, turnInstr, policyOf } from './turn.js';
-export { default as useNode } from './use.js';

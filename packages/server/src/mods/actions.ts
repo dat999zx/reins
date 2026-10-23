@@ -4,7 +4,7 @@
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { CARDS, CONDS, NODES, hasHiddenChars } from '@reins/core';
+import { CARDS, CONDS, NODES, hasHiddenChars, parseWorkflow } from '@reins/core';
 import { MIN_SECRET, clearKey, envGet, keyStatus, readSecrets, secretsFile, setKey, type KeyStatus } from '../secrets.js';
 import { ConsentNeeded, ProviderChanged, ProviderError } from '../send.js';
 import { readBounded } from '../loop/bounded.js';
@@ -1008,8 +1008,9 @@ function checkImport(env: ModEnv, input: unknown): Checked {
   return { ok: { id, files, summary } };
 }
 
-/** Spec 7.7: reads a mod file and says what importing it would do. Writes nothing. */
+/** Spec 7.7: reads a mod file (or a `reinsMods` envelope) and says what importing it would do. Writes nothing. */
 export function importPreview(env: ModEnv, file: unknown): Reply {
+  if (isEnvelope(file)) return previewEnvelope(env, file);
   const got = checkImport(env, file);
   return 'reply' in got ? got.reply : { status: 200, body: { ok: true, summary: got.ok.summary } };
 }
@@ -1038,86 +1039,110 @@ function stagedMatches(stage: string, files: FileBytes[]): boolean {
   });
 }
 
+/** One mod placed in the home. `undo` takes all of it back (folder, old copy, trust line, on/off mark) and `commit` makes it final; both return lines for what could not be done. */
+interface Placed {
+  had: boolean;
+  undo(): string[];
+  commit(): string[];
+}
+
+/**
+ * Puts one checked mod in the mods folder: the steps and their order of an import. Nothing is final until `commit`, and `undo` works until then, so an
+ * envelope of several mods takes every placed mod back when a later one fails. A failure inside is undone here and comes back as the reply.
+ */
+function placeMod(env: ModEnv, got: { id: string; files: FileBytes[]; summary: ImportSummary }, trust: boolean): { placed: Placed } | { reply: Reply } {
+  const { id, files, summary } = got;
+  const home = env.home;
+  const final = path.join(modsDir(home), id);
+  let had = false;
+  try {
+    const st = fs.lstatSync(final);
+    if (st.isSymbolicLink() || !st.isDirectory()) return { reply: fail(409, `${id$(id)} is a link or a file in the mods folder, so it was not replaced. Remove it first.`) };
+    had = true;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException)?.code !== 'ENOENT') return { reply: fail(409, `${id$(id)} could not be checked. Nothing was changed.`) };
+  }
+  const stage = scratch(home, 'new');
+  const old = scratch(home, `old-${id}`); // the id is in the name so a start after a crash can put the old install back (sweepScratch)
+  const before = readTrust(home).get(id);
+  const trustFileWas = there(trustFile(home));
+  const marked = readDisabled(home);
+  let moved = false;
+  let placed = false;
+  let trustSet = false;
+  let markCleared = false;
+  let phase: 'build' | 'finish' = 'build';
+  const undo = (): string[] => {
+    const stuck: string[] = [];
+    if (placed) {
+      try { fs.renameSync(final, stage); placed = false; } catch { stuck.push('the new copy is still in the mods folder'); }
+    }
+    if (!placed) {
+      const gone = removeReport(stage);
+      if (gone) stuck.push(gone);
+    }
+    if (moved && !placed) {
+      try { fs.renameSync(old, final); moved = false; } catch { stuck.push(`your old copy is in ${path.basename(old)} in the Reins folder`); }
+    }
+    if (trustSet) {
+      try {
+        setTrust(home, id, before);
+        trustSet = false;
+        if (!trustFileWas && readTrust(home).size === 0) fs.rmSync(trustFile(home), { force: true }); // no trust file before, none now
+      } catch { stuck.push('the trust line could not be put back'); }
+    }
+    if (markCleared) {
+      try { writeWhole(home, disabledFile(home), JSON.stringify([...marked].sort(), null, 2) + '\n'); markCleared = false; } catch { stuck.push('the on/off mark could not be put back'); }
+    }
+    return stuck;
+  };
+  // Order: build and check the new folder, move the old one aside, move the new one in, and only THEN the trust line and the other
+  // state. A crash before the trust line leaves the new code untrusted ("needs trust"), never trusted-but-missing. The backup is
+  // deleted last, so any failure up to then puts everything back.
+  try {
+    fs.mkdirSync(stage);
+    for (const f of files) writeInside(stage, f.rel, f.bytes);
+    if (!stagedMatches(stage, files)) throw new Error('the staged files differ');
+    fs.mkdirSync(modsDir(home), { recursive: true });
+    if (had) { fs.renameSync(final, old); moved = true; }
+    fs.renameSync(stage, final);
+    placed = true;
+    phase = 'finish';
+    if (summary.hasCode && trust) { setTrust(home, id, summary.hash); trustSet = true; }
+    if (!had && marked.has(id)) {
+      const off = new Set(marked);
+      off.delete(id);
+      writeWhole(home, disabledFile(home), JSON.stringify([...off].sort(), null, 2) + '\n');
+      markCleared = true;
+    }
+    env.consent.revoke(id); // a new manifest asks again, as Re-install does
+  } catch {
+    const stuck = undo();
+    const base = `${id$(id)} could not be imported`;
+    return { reply: { status: phase === 'build' ? 409 : 500, body: { error: stuck.length ? `${base} and could not be fully undone: ${stuck.join('; ')}.` : `${base}. Nothing was changed.` } } };
+  }
+  return { placed: { had, undo, commit: () => { const gone = moved ? removeReport(old) : undefined; return gone ? [gone] : []; } } };
+}
+
 /**
  * Spec 7.7: installs a mod file. Every check of the preview runs again on `b.file`. The files are built whole in a scratch folder in the
  * home and renamed in; an old copy is moved aside and put back when anything fails. A code mod runs only when `b.trust` is true (its hash is
- * recorded) or the same bytes were trusted before; a mod that shadows a built-in one needs `b.replaceBuiltin` true.
+ * recorded) or the same bytes were trusted before; a mod that shadows a built-in one needs `b.replaceBuiltin` true. A `reinsMods` envelope goes to `applyEnvelope`.
  */
 export function importApply(env: ModEnv, b: Record<string, unknown>): Promise<Reply> {
+  if (isEnvelope(b.file)) return applyEnvelope(env, b);
   for (const k of ['trust', 'replaceBuiltin', 'newOnly'] as const) if (b[k] !== undefined && typeof b[k] !== 'boolean') return Promise.resolve(fail(400, `\`${k}\` must be true or false.`));
   return serial(env.home, async () => {
     const got = checkImport(env, b.file);
     if ('reply' in got) return got.reply;
-    const { id, files, summary } = got.ok;
+    const { id, summary } = got.ok;
     // Customize: the check "there is no copy of yours" is made here, inside the same turn as the write, so a copy made in between is never replaced.
     if (b.newOnly === true && summary.replaces === 'your') return fail(409, OWN_COPY(id));
     if (summary.replaces === 'builtin' && b.replaceBuiltin !== true) return fail(409, `This ${summary.replacesLine}. Import it again with replaceBuiltin true to go on.`);
-    const home = env.home;
-    const final = path.join(modsDir(home), id);
-    let had = false;
-    try {
-      const st = fs.lstatSync(final);
-      if (st.isSymbolicLink() || !st.isDirectory()) return fail(409, `${id$(id)} is a link or a file in the mods folder, so it was not replaced. Remove it first.`);
-      had = true;
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException)?.code !== 'ENOENT') return fail(409, `${id$(id)} could not be checked. Nothing was changed.`);
-    }
-    const stage = scratch(home, 'new');
-    const old = scratch(home, `old-${id}`); // the id is in the name so a start after a crash can put the old install back (sweepScratch)
-    const before = readTrust(home).get(id);
-    const marked = readDisabled(home);
-    let moved = false;
-    let placed = false;
-    let trustSet = false;
-    let markCleared = false;
-    let phase: 'build' | 'finish' = 'build';
-    // Order: build and check the new folder, move the old one aside, move the new one in, and only THEN the trust line and the other
-    // state. A crash before the trust line leaves the new code untrusted ("needs trust"), never trusted-but-missing. The backup is
-    // deleted last, so any failure up to then puts everything back.
-    try {
-      fs.mkdirSync(stage);
-      for (const f of files) writeInside(stage, f.rel, f.bytes);
-      if (!stagedMatches(stage, files)) throw new Error('the staged files differ');
-      fs.mkdirSync(modsDir(home), { recursive: true });
-      if (had) { fs.renameSync(final, old); moved = true; }
-      fs.renameSync(stage, final);
-      placed = true;
-      phase = 'finish';
-      if (summary.hasCode && b.trust === true) { setTrust(home, id, summary.hash); trustSet = true; }
-      if (!had && marked.has(id)) {
-        const off = new Set(marked);
-        off.delete(id);
-        writeWhole(home, disabledFile(home), JSON.stringify([...off].sort(), null, 2) + '\n');
-        markCleared = true;
-      }
-      env.consent.revoke(id); // a new manifest asks again, as Re-install does
-    } catch {
-      const stuck: string[] = [];
-      if (placed) {
-        try { fs.renameSync(final, stage); placed = false; } catch { stuck.push('the new copy is still in the mods folder'); }
-      }
-      if (!placed) {
-        const gone = removeReport(stage);
-        if (gone) stuck.push(gone);
-      }
-      if (moved && !placed) {
-        try { fs.renameSync(old, final); } catch { stuck.push(`your old copy is in ${path.basename(old)} in the Reins folder`); }
-      }
-      if (trustSet) {
-        try { setTrust(home, id, before); } catch { stuck.push('the trust line could not be put back'); }
-      }
-      if (markCleared) {
-        try { writeWhole(home, disabledFile(home), JSON.stringify([...marked].sort(), null, 2) + '\n'); } catch { stuck.push('the on/off mark could not be put back'); }
-      }
-      const base = `${id$(id)} could not be imported`;
-      return { status: phase === 'build' ? 409 : 500, body: { error: stuck.length ? `${base} and could not be fully undone: ${stuck.join('; ')}.` : `${base}. Nothing was changed.` } };
-    }
-    const left: string[] = [];
-    if (moved) {
-      const gone = removeReport(old);
-      if (gone) left.push(gone);
-    }
-    const r = await reloaded(env, { id, replaced: had });
+    const done = placeMod(env, got.ok, b.trust === true);
+    if ('reply' in done) return done.reply;
+    const left = done.placed.commit();
+    const r = await reloaded(env, { id, replaced: done.placed.had });
     const body = r.body as Record<string, unknown>;
     if (left.length) body.problems = [...(Array.isArray(body.problems) ? body.problems : []), ...left];
     const now = entry(env, id);
@@ -1228,4 +1253,253 @@ export function exportMod(env: ModEnv, id: unknown): Reply {
     return no('its files could not be read.');
   }
   return { status: 200, body: { reinsMod: 1, files }, headers: { 'content-disposition': `attachment; filename="${id}.reins-mod.json"` } };
+}
+
+// ---- the shareable envelope: { reinsMods: 1, mods: { <id>: files }, workflow?: { name, text } } (M3 Task 14)
+// One file with a workflow and the mods it needs. Every mod goes through the single-mod checks (`checkImport`), the whole file is checked before a byte is
+// written, one trust choice is made per code mod (by the hash that was shown), and the install is all or nothing.
+
+const MAX_MODS = 20;
+const MAX_WORKFLOW = 256 * 1024;
+const WORKFLOW_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,59}$/;
+const workflowFile = (home: string, name: string) => path.join(home, 'workflows', `${name}.reins.md`);
+const noReply = (why: string) => ({ reply: refusal([why]) });
+
+/** Whether a file (an object, or the text of one) is an envelope: it has a top-level `reinsMods`. Only a file no bigger than an import is parsed to find out. */
+function isEnvelope(input: unknown): boolean {
+  let v = input;
+  if (typeof input === 'string') {
+    if (Buffer.byteLength(input) > MAX_TOTAL || !input.includes('"reinsMods"')) return false;
+    try { v = JSON.parse(input); } catch { return false; }
+  }
+  return isObj(v) && Object.hasOwn(v, 'reinsMods');
+}
+
+/** A workflow of an envelope: a name (never a path) and its text. Returns the words when it cannot be taken. */
+function workflowOf(env: ModEnv, w: unknown): { name: string; text: string } | string {
+  if (!isObj(w)) return '`workflow` must be { "name": ..., "text": ... }.';
+  for (const k of Object.keys(w)) if (k !== 'name' && k !== 'text') return `\`${cap(k, 40)}\` is not a field of the workflow; it holds a name and a text, never a path.`;
+  const { name, text } = w;
+  if (typeof name !== 'string' || !WORKFLOW_NAME.test(name) || WIN_RESERVED.test(name)) return 'The workflow name may hold only letters, digits, dash and underscore (at most 60), must start with a letter or digit, and is a name, never a path.';
+  if (typeof text !== 'string' || text === '') return 'The workflow text must be text that is not empty.';
+  if (Buffer.byteLength(text) > MAX_WORKFLOW) return `The workflow text is larger than ${MAX_WORKFLOW / 1024} KB.`;
+  if (hasHiddenChars(text.replace(/[\n\r\t]/g, ''))) return 'The workflow text holds a hidden character (a control, zero-width or direction-changing one), so it was refused.';
+  if (env.holdsSecret(text)) return KEY_IN_MOD;
+  return { name, text };
+}
+
+interface Opened {
+  mods: Array<{ id: string; files: FileBytes[]; summary: ImportSummary }>;
+  workflow?: { name: string; text: string };
+  /** Block, condition and card name (with its noun) to the id of the mod of this file that brings it. */
+  brings: Map<string, string>;
+}
+
+/** ALL the checks of an envelope, with no write. Preview and apply both call this with the file as given. */
+function openEnvelope(env: ModEnv, input: unknown): Opened | { reply: Reply } {
+  let v = input;
+  if (typeof input === 'string') {
+    if (Buffer.byteLength(input) > MAX_TOTAL) return noReply('The file is larger than 1 MB.');
+    try { v = JSON.parse(input); } catch { return noReply('The file is not valid JSON.'); }
+  }
+  if (!isObj(v)) return noReply('The file must hold one JSON object: { "reinsMods": 1, "mods": { ... } }.');
+  for (const k of Object.keys(v)) if (k !== 'reinsMods' && k !== 'mods' && k !== 'workflow') return noReply(`\`${cap(k, 40)}\` is not a field of a mods file.`);
+  if (v.reinsMods !== 1) return noReply(`\`reinsMods\` is ${show(v.reinsMods)}; this Reins reads mods files with \`reinsMods\` 1.`);
+  if (v.mods !== undefined && !isObj(v.mods)) return noReply('`mods` must be an object of mod ids and their files.');
+  const entries = Object.entries(v.mods ?? {});
+  if (entries.length > MAX_MODS) return noReply(`The file holds ${entries.length} mods; the most is ${MAX_MODS}.`);
+  if (!entries.length && v.workflow === undefined) return noReply('The file holds no mods and no workflow.');
+  // The whole file: the text of every mod file and the workflow together. (A mod with too many files is refused below, by its own check.)
+  let total = isObj(v.workflow) && typeof v.workflow.text === 'string' ? Buffer.byteLength(v.workflow.text) : 0;
+  for (const [, files] of entries) {
+    if (isObj(files) && Object.keys(files).length <= MAX_FILES) for (const t of Object.values(files)) if (typeof t === 'string') total += Buffer.byteLength(t);
+  }
+  if (total > MAX_TOTAL) return noReply('The mods and the workflow are larger than 1 MB together.');
+  if (holdsDeep(env, v)) return { reply: fail(400, KEY_IN_MOD) };
+  const mods: Opened['mods'] = [];
+  const brings = new Map<string, string>();
+  for (const [key, files] of entries) {
+    if (!isModId(key)) return noReply('A mod id in the file must be lowercase letters, digits and dashes, start with a letter or digit, be at most 40 long, and not be a name Windows reserves.');
+    const got = checkImport(env, { reinsMod: 1, files });
+    if ('reply' in got) {
+      const body = got.reply.body as { error?: string; problems?: string[] };
+      return { reply: { status: got.reply.status, body: { error: `The mod ${id$(key)} was refused, so nothing was installed.`, problems: (body.problems ?? [String(body.error)]).map((p) => `mod ${id$(key)}: ${p}`) } } };
+    }
+    if (got.ok.id !== key) return noReply(`The file lists a mod as ${id$(key)}, but its mod.json says ${id$(got.ok.id)}.`);
+    let raw: unknown;
+    try { raw = JSON.parse(got.ok.files.find((f) => f.rel === 'mod.json')!.bytes.toString('utf8')); } catch { raw = undefined; }
+    for (const b of BRINGS) {
+      for (const n of namesOf(isObj(raw) ? raw.provides : undefined, b.key)) {
+        const other = brings.get(`${b.noun} ${n}`);
+        if (other) return noReply(`Two mods in the file bring the ${b.noun} \`${n}\`: ${id$(other)} and ${id$(key)}.`);
+        brings.set(`${b.noun} ${n}`, key);
+      }
+    }
+    if (got.ok.summary.replaces === 'builtin') {
+      got.ok.summary.warnings.push(`${id$(key)} is part of what ships with Reins. The copy in this file takes its place after a restart. Import it only if you made it or trust who did.`);
+    }
+    mods.push(got.ok);
+  }
+  if (v.workflow === undefined) return { mods, brings };
+  const w = workflowOf(env, v.workflow);
+  return typeof w === 'string' ? noReply(w) : { mods, workflow: w, brings };
+}
+
+/** The "Unknown step kind" lines of a workflow text; when a mod of the envelope brings the kind, the line says which. */
+function unknownKinds(text: string, brings: Map<string, string>): string[] {
+  const out = new Set<string>();
+  for (const d of parseWorkflow(text).diagnostics) {
+    const m = /^Unknown step kind "(.*)"$/.exec(d.message);
+    if (m) out.add(cap(brings.has(`block ${m[1]}`) ? `${d.message}: the mod ${brings.get(`block ${m[1]}`)} brings it` : d.message, 200));
+  }
+  return [...out];
+}
+
+/** The preview of an envelope: one summary of every mod (its `adds` and its code prompt), and what the workflow would do. Writes nothing. */
+function previewEnvelope(env: ModEnv, file: unknown): Reply {
+  const o = openEnvelope(env, file);
+  if ('reply' in o) return o.reply;
+  const workflow = o.workflow && { name: o.workflow.name, exists: there(workflowFile(env.home, o.workflow.name)), diagnostics: unknownKinds(o.workflow.text, o.brings) };
+  const summary = {
+    envelope: true,
+    mods: o.mods.map((m) => m.summary),
+    adds: o.mods.flatMap((m) => m.summary.adds.map((a) => `${m.id}: ${a}`)),
+    ...(workflow ? { workflow } : {}),
+    warnings: workflow?.exists ? [`A workflow named ${workflow.name} is already saved, so this file cannot be imported until it is renamed or removed.`] : [],
+  };
+  return { status: 200, body: { ok: true, summary } };
+}
+
+/** Writes the workflow into the user's workflows folder (a new file only). Returns how to take it back, or the words. */
+function saveWorkflow(home: string, w: { name: string; text: string }): { undo(): void } | string {
+  const dir = path.join(home, 'workflows');
+  const file = workflowFile(home, w.name);
+  let made = false;
+  try {
+    try {
+      const st = fs.lstatSync(dir);
+      if (st.isSymbolicLink() || !st.isDirectory()) return 'The workflows folder is a link or a file, so the workflow was not saved.';
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException)?.code !== 'ENOENT') throw e;
+      fs.mkdirSync(dir, { recursive: true });
+      made = true;
+    }
+    fs.writeFileSync(file, w.text, { flag: 'wx' });
+  } catch (e) {
+    if (made) { try { fs.rmdirSync(dir); } catch { /* not empty or gone */ } }
+    return (e as NodeJS.ErrnoException)?.code === 'EEXIST' ? `A workflow named ${w.name} is already saved.` : 'The workflow could not be saved.';
+  }
+  return { undo: () => { quietRm(file); if (made) { try { fs.rmdirSync(dir); } catch { /* not empty */ } } } };
+}
+
+/**
+ * Imports an envelope. `b.trust` is { <mod id>: <hash the preview showed> }: a code mod is trusted only when its id is named with its hash now (a
+ * changed mod asks again, and `true` trusts nothing). `b.replaceBuiltin` lists the ids that may take a built-in's place. Everything is checked first;
+ * then every mod and the workflow are placed, and when one fails the ones placed before it are taken back, so a refused or failed file leaves nothing.
+ */
+function applyEnvelope(env: ModEnv, b: Record<string, unknown>): Promise<Reply> {
+  for (const k of Object.keys(b)) if (k !== 'file' && k !== 'trust' && k !== 'replaceBuiltin') return Promise.resolve(fail(400, `\`${cap(k, 40)}\` is not a field of an envelope import.`));
+  if (b.trust !== undefined && (!isObj(b.trust) || Object.keys(b.trust).length > MAX_MODS || !Object.values(b.trust).every((h) => typeof h === 'string'))) {
+    return Promise.resolve(fail(400, '`trust` must name each mod you trust with the hash the preview showed: { "<mod id>": "<hash>" }.'));
+  }
+  const rb = b.replaceBuiltin;
+  if (rb !== undefined && (!Array.isArray(rb) || rb.length > MAX_MODS || !rb.every((x) => typeof x === 'string'))) return Promise.resolve(fail(400, '`replaceBuiltin` must be a list of mod ids.'));
+  const trust = new Map(Object.entries((b.trust ?? {}) as Record<string, string>));
+  const replace = new Set((rb ?? []) as string[]);
+  return serial(env.home, async () => {
+    const o = openEnvelope(env, b.file);
+    if ('reply' in o) return o.reply;
+    const ids = new Set(o.mods.map((m) => m.id));
+    for (const id of [...trust.keys(), ...replace]) if (!ids.has(id)) return fail(400, `${id$(id)} is named in your choices but is not a mod in the file. Nothing was installed.`);
+    for (const m of o.mods) {
+      if (m.summary.replaces === 'builtin' && !replace.has(m.id)) return fail(409, `This ${m.summary.replacesLine}. Import it again with ${id$(m.id)} in replaceBuiltin to go on. Nothing was installed.`);
+      if (!trust.has(m.id)) continue;
+      if (!m.summary.hasCode) return fail(400, `${id$(m.id)} has no code, so there is nothing to trust. Nothing was installed.`);
+      if (trust.get(m.id) !== m.summary.hash) return fail(409, `${id$(m.id)} is not the code you were shown. Look at it again. Nothing was installed.`);
+    }
+    if (o.workflow && there(workflowFile(env.home, o.workflow.name))) return fail(409, `A workflow named ${o.workflow.name} is already saved. Nothing was installed.`);
+    const placed: Placed[] = [];
+    const back = () => placed.reverse().flatMap((p) => p.undo());
+    const stop = (status: number, error: string): Reply => {
+      const stuck = back();
+      return fail(stuck.length ? 500 : status, stuck.length ? `${error} Taking back what was installed failed: ${stuck.join('; ')}.` : `${error} Nothing from this file was installed.`);
+    };
+    for (const m of o.mods) {
+      const r = placeMod(env, m, trust.has(m.id));
+      if ('reply' in r) return stop(r.reply.status, String((r.reply.body as { error?: unknown }).error));
+      placed.push(r.placed);
+    }
+    if (o.workflow) {
+      const s = saveWorkflow(env.home, o.workflow);
+      if (typeof s === 'string') return stop(409, s);
+      placed.push({ had: false, undo: () => { s.undo(); return []; }, commit: () => [] });
+    }
+    const left = placed.flatMap((p) => p.commit());
+    const r = await reloaded(env, { ids: o.mods.map((m) => m.id) });
+    const body = r.body as Record<string, unknown>;
+    if (left.length) body.problems = [...(Array.isArray(body.problems) ? body.problems : []), ...left];
+    body.trust = Object.fromEntries(o.mods.filter((m) => m.summary.hasCode).map((m) => { const now = entry(env, m.id); return [m.id, now ? trustOf(env, now) : 'none']; }));
+    if (o.workflow) body.workflow = { name: o.workflow.name, diagnostics: unknownKinds(o.workflow.text, o.brings) };
+    return r;
+  });
+}
+
+/** The kinds the steps of a workflow text use (nested steps too). */
+function kindsUsed(text: string): string[] {
+  const out = new Set<string>();
+  const walk = (steps: Array<{ kind: string; kids?: unknown[]; else?: unknown[] }>) => {
+    for (const s of steps) {
+      out.add(s.kind);
+      walk((s.kids ?? []) as typeof steps);
+      walk((s.else ?? []) as typeof steps);
+    }
+  };
+  walk((parseWorkflow(text).workflow?.steps ?? []) as Parameters<typeof walk>[0]);
+  return [...out];
+}
+
+/**
+ * Exports mods, and optionally a workflow, as one envelope. `ids` are mods to include; the mods the workflow's blocks come from are added: the user's mods
+ * and any Customize copy. A block that ships with Reins is never exported. A block no installed mod brings is named in `notes`, and the file still holds the workflow.
+ */
+export function exportBundle(env: ModEnv, b: Record<string, unknown>): Reply {
+  for (const k of Object.keys(b)) if (k !== 'ids' && k !== 'workflow') return fail(400, `\`${cap(k, 40)}\` is not a field of an export request.`);
+  if (b.ids !== undefined && (!Array.isArray(b.ids) || b.ids.length > MAX_MODS || !b.ids.every(isModId))) return fail(400, '`ids` must be a list of mod ids (at most 20).');
+  const w = b.workflow === undefined ? undefined : workflowOf(env, b.workflow);
+  if (typeof w === 'string') return fail(400, w);
+  const want = new Set<string>((b.ids ?? []) as string[]);
+  if (!want.size && !w) return fail(400, 'Say which mods or which workflow to export.');
+  const notes: string[] = [];
+  const missing: string[] = [];
+  for (const id of want) {
+    const m = entry(env, id);
+    if (!m) return fail(404, `No mod ${id$(id)} is installed.`);
+    if (m.source === 'bundled') return fail(409, `${id$(id)} ships with Reins, so it is not exported.`);
+  }
+  if (w) {
+    const bringing = (kind: string) => {
+      const has = (m: LoadedMod) => namesOf(isObj(m.manifest) ? m.manifest.provides : undefined, 'kinds').includes(kind);
+      return env.mods.mods.find((m) => m.source === 'user' && has(m)) ?? env.mods.mods.find(has);
+    };
+    for (const kind of kindsUsed(w.text)) {
+      const m = bringing(kind);
+      if (m?.source === 'user') want.add(m.id);
+      else if (!m && !NODES.has(kind) && !missing.includes(kind)) {
+        missing.push(kind);
+        notes.push(`The block ${show(kind)} is brought by no mod installed here, so no mod for it is in the file. Whoever imports the file needs that mod.`);
+      }
+    }
+  }
+  const mods: Record<string, Record<string, string>> = {};
+  for (const id of [...want].sort()) {
+    const r = exportMod(env, id);
+    if (r.status !== 200) return r;
+    mods[id] = (r.body as { files: Record<string, string> }).files;
+  }
+  const file = { reinsMods: 1, mods, ...(w ? { workflow: { name: w.name, text: w.text } } : {}) };
+  const text = JSON.stringify(file, null, 2) + '\n';
+  if (Buffer.byteLength(text) > MAX_TOTAL) return fail(409, 'The file would be larger than 1 MB, so nothing was exported.');
+  const check = openEnvelope(env, text);
+  if ('reply' in check) return fail(409, `The file would not import (${String((check.reply.body as { error?: unknown }).error)}), so nothing was exported.`);
+  return { status: 200, body: { text, ids: Object.keys(mods), notes, missing }, headers: { 'content-disposition': 'attachment; filename="workflow.reins-mods.json"' } };
 }

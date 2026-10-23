@@ -1,4 +1,5 @@
 import type { Diagnostic, Step, Workflow } from '@reins/core';
+import { viewOf } from './canvasKinds.js';
 
 export type WireKind = 'next' | 'on-fail' | 'against';
 
@@ -49,8 +50,13 @@ const asLink = (kind: string) => (s: Step, to: string, backward: boolean) => {
   s.links = s.links.filter((l) => l.kind !== kind);
   s.links.push({ kind, to, ...(backward ? { max: 3 } : {}) } as Step['links'][number]);
 };
-const WRITERS: Record<WireKind, (s: Step, to: string, backward: boolean) => void> = {
-  next: asLink('next'),
+// A block whose view takes many `next` wires (the fork) keeps every wire: a drag adds one, and a second wire to the same block changes nothing (false: refused).
+const addNext = (s: Step, to: string) => {
+  if (s.links.some((l) => l.kind === 'next' && l.to === to)) return false;
+  s.links.push({ kind: 'next', to });
+};
+const WRITERS: Record<WireKind, (s: Step, to: string, backward: boolean) => void | boolean> = {
+  next: (s, to, backward) => (viewOf(s.kind).manyNext ? addNext(s, to) : asLink('next')(s, to, backward)),
   'on-fail': asLink('on-fail'),
   against: (s, to) => { s.attrs.against = to; },
 };

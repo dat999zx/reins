@@ -826,30 +826,36 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await workspace.focus();
     await page.keyboard.press('Escape');
     await expect.poll(() => selected.count(), { timeout: W }).toBe(0);
-    // 8e.5. draw a link from a handle (backward, so it gets max 3); delete it from its menu; draw it again; select the arrow and press Delete
+    // 8e.5. draw a wire from the FORK's gray handle (a block above `ship`, so the wire goes forward and gets no max); delete it from its menu; draw it again; select the arrow and press Delete
     const centre = (b: { x: number; y: number; width: number; height: number }) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
-    const arrow = page.locator('[data-link="ship/0"]');
-    // the middle of the arrow's path, in client pixels
+    await row('build').locator('.sx-row').first().click();
+    await card('fork').click();
+    await row('fork-1').waitFor({ timeout: W });
+    await textTab.click();
+    const textWithFork = await editor.inputValue();
+    await blocksTab.click();
+    const arrow = page.locator('[data-link="fork-1/0"]');
+    // a point of the arrow's path just right of its own block, in client pixels (further out it runs side by side with the arrows of `build` and `plan`, which overlap its middle)
     const arrowAt = async () => (await page.evaluate(`(() => {
-      const p = document.querySelector('[data-link="ship/0"] .sx-hit'), q = p.getPointAtLength(p.getTotalLength() / 2), m = p.getScreenCTM();
+      const p = document.querySelector('[data-link="fork-1/0"] .sx-hit'), q = p.getPointAtLength(14), m = p.getScreenCTM();
       return { x: m.a * q.x + m.c * q.y + m.e, y: m.b * q.x + m.d * q.y + m.f };
     })()`)) as { x: number; y: number };
     const draw = async () => {
-      await row('ship').locator('.sx-row').first().hover();
-      const hb = (await row('ship').locator('.sx-handle[data-lk="next"]').boundingBox())!;
-      await drag(centre(hb), centre((await row('plan').locator('.sx-row').first().boundingBox())!));
+      await row('fork-1').locator('.sx-row').first().hover();
+      const hb = (await row('fork-1').locator('.sx-handle[data-lk="next"]').boundingBox())!;
+      await drag(centre(hb), centre((await row('ship').locator('.sx-row').first().boundingBox())!));
       await arrow.waitFor({ state: 'attached', timeout: W });
     };
     await draw();
     await textTab.click();
-    expect(await editor.inputValue()).toContain('## phase ship\nnext: plan (max 3)\n');
+    expect(await editor.inputValue()).toContain('## fork\nnext: ship\n');
     await blocksTab.click();
     const at1 = await arrowAt();
     await page.mouse.click(at1.x, at1.y, { button: 'right' });
     await menu.getByRole('menuitem', { name: 'Delete link' }).click();
     await expect.poll(() => arrow.count(), { timeout: W }).toBe(0);
     await textTab.click();
-    expect(await editor.inputValue()).toBe(textBeforeHat);
+    expect(await editor.inputValue()).toBe(textWithFork);
     await blocksTab.click();
     await draw();
     // a block is the primary step when the arrow is clicked: the arrow must stay selected (it was dropped when the primary went away)
@@ -861,10 +867,17 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await page.mouse.click(at2.x, at2.y);
     await reply;
     await page.evaluate('new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))');
-    expect(await page.locator('[data-link="ship/0"].sx-lsel').count()).toBe(1);
+    expect(await page.locator('[data-link="fork-1/0"].sx-lsel').count()).toBe(1);
     expect(await selected.count()).toBe(0);
     await page.keyboard.press('Delete');
     await expect.poll(() => arrow.count(), { timeout: W }).toBe(0);
+    await textTab.click();
+    expect(await editor.inputValue()).toBe(textWithFork);
+    await blocksTab.click();
+    // the fork goes again, so the rest of the test starts from the file it had
+    await row('fork-1').locator('.sx-row').first().click();
+    await page.keyboard.press('Delete');
+    await expect.poll(() => row('fork-1').count(), { timeout: W }).toBe(0);
     await textTab.click();
     expect(await editor.inputValue()).toBe(textBeforeHat);
     await blocksTab.click();
@@ -924,30 +937,42 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await textTab.click();
     expect(await editor.inputValue()).toBe(textBeforeHat);
     await blocksTab.click();
-    // 8e.7. a link drawn onto a loose copy of `plan` (the same id as a file step) makes it a free block with a fresh id; Ctrl+Z puts it back as loose
+    // 8e.7. a wire drawn from the fork's gray handle onto a loose copy of `plan` (the same id as a file step) makes it a free block with a fresh id; Ctrl+Z puts it back as loose
     await row('plan').locator('.sx-row').first().click();
     await page.keyboard.press('ControlOrMeta+C');
     const spot2 = await empty();
     await page.mouse.move(spot2.x, spot2.y);
     await page.keyboard.press('ControlOrMeta+V');
     await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(1);
-    await row('ship').locator('.sx-row').first().hover();
-    const sb = (await row('ship').locator('.sx-handle[data-lk="next"]').boundingBox())!;
+    await row('build').locator('.sx-row').first().click();
+    await card('fork').click();
+    await row('fork-1').waitFor({ timeout: W });
+    await textTab.click();
+    const textWithFork2 = await editor.inputValue();
+    await blocksTab.click();
+    await row('fork-1').locator('.sx-row').first().hover();
+    const sb = (await row('fork-1').locator('.sx-handle[data-lk="next"]').boundingBox())!;
     await drag(centre(sb), centre((await looseBlocks.locator('.sx-row').first().boundingBox())!));
     await expect.poll(() => page.locator('.sx-free').count(), { timeout: W }).toBe(1);
     await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(0);
     await textTab.click();
-    expect(await editor.inputValue()).toMatch(/## phase ship\nnext: phase-\d+\n/);
+    expect(await editor.inputValue()).toMatch(/## fork\nnext: phase-\d+\n/);
     await blocksTab.click();
     await workspace.focus();
     await page.keyboard.press('ControlOrMeta+Z');
     await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(1);
     await textTab.click();
-    expect(await editor.inputValue()).toBe(textBeforeHat);
+    expect(await editor.inputValue()).toBe(textWithFork2);
     await blocksTab.click();
     await looseBlocks.locator('.sx-row').first().click();
     await page.keyboard.press('Delete');
     await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(0);
+    await row('fork-1').locator('.sx-row').first().click();
+    await page.keyboard.press('Delete');
+    await expect.poll(() => row('fork-1').count(), { timeout: W }).toBe(0);
+    await textTab.click();
+    expect(await editor.inputValue()).toBe(textBeforeHat);
+    await blocksTab.click();
     // 8e.8. keyboard: blocks are named groups; the arrows walk the reading order; Shift+arrow extends; a pasted loose block takes the focus and Alt+arrows nudge it; Delete focuses the block before it (the last one in reading order)
     const focused = (prop: string) => page.evaluate(`document.activeElement && document.activeElement.dataset.${prop}`);
     await workspace.focus();

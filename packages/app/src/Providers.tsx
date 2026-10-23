@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ApiError, del, get, post, put } from './api.js';
 import { cx } from './generic.js';
 import { ImportPanel } from './ImportSummary.js';
+import { ExportMine } from './ShareWorkflow.js';
 import { editBody, emptyForm, emptyModel, errorsByField, formToManifest, manifestToForm, type AuthStyle, type ProviderForm } from './providerForm.js';
 import { AGENTS_LINE, apiProtocols, keysLine, otherMeta, rowInfo, stopsLine, usedBy, type ModRow } from './providersStatus.js';
 
@@ -271,6 +272,7 @@ export function Providers({ onClose }: { onClose: () => void }) {
       <div className="pactions">
         <button className="primary" onClick={() => setForm({ initial: emptyForm(protocols[0]?.id ?? ''), editing: false })}>Add custom endpoint</button>
         <button onClick={() => setImporting(true)}>Import</button>
+        <ExportMine ids={rows.filter((r) => !r.bundled).map((r) => r.id)} />
       </div>
       {said && <p className="pmsg" role="status">{said}</p>}
       {importing && <ImportPanel onCancel={() => setImporting(false)} onDone={(m) => { setImporting(false); setSaid(m); void reload(); }} />}

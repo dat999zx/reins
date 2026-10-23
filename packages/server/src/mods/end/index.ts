@@ -7,7 +7,7 @@ declare module '@reins/core' {
 }
 
 export default function activate(api: Pick<ModApi, 'registerBlock'>): void {
-  // ponytail: the turn header's "step N of M" counts every top-level step, the end and free blocks included (run.ts); an end inside a block used by `use` ends the calling workflow.
+  // ponytail: the turn header's "step N of M" counts every top-level step, the end and free blocks included (run.ts); an end inside a playbook ends only the playbook (the playbook jumps to its own close).
   const end: NodeType = {
     kind: 'end',
     attrs: [],

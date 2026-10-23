@@ -137,11 +137,12 @@ describe('m1 behaviour: scripted runs', () => {
     rec('S8', shape(run, h));
   });
 
-  it('S9 use review-pass, end, a free phase', async () => {
+  it('S9 playbook review-pass, end, a free phase', async () => {
     const h = harness('S9');
-    const run = new Run({ ...base(h, wf('## phase one\n> first\n\n## use review-pass\n\n## end\n\n## phase free\n> free')), resolveBlock: exBlock });
+    const run = new Run({ ...base(h, wf('## phase one\n> first\n\n## playbook review-pass\n\n## end\n\n## phase free\n> free')), resolveBlock: exBlock });
     await drive(run);
-    // BASELINE: the block's review and fix run, its gate is judged by the harness judge (true), END finishes the run; the free phase after the end never runs
+    // BASELINE: the playbook's review and fix run, its gate is judged by the harness judge (true), the top-level END finishes the run; the free phase after the end never runs
+    // (nothing links to it; that is not an effect of the block). This was `## use review-pass` until M3 Task 11 (the block was removed); the ids and the playbook's own markers changed, nothing else.
     rec('S9', shape(run, h));
   });
 

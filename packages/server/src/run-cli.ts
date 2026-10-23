@@ -309,13 +309,36 @@ export function loadWorkflowText(text: string, file: string): Loaded {
   return { ...(ok ? { workflow: parsed.workflow } : {}), diagnostics, resolveBlock };
 }
 
+/** The longest block file Reins reads (bytes), and what a block's name may be: one plain file name, no path. */
+const BLOCK_MAX = 100_000;
+const BLOCK_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+const DEVICE_NAME = /^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i;   // Windows opens these as devices, whatever the extension
+
+/**
+ * The file `<name>.reins.md` in the `blocks/` folder next to the workflow. Undefined: no such file. Throws, with the reason in plain words, for a name that is not a plain
+ * file name, a file that is not a plain file inside the folder (a link out of it, a folder), one over `BLOCK_MAX`, or text that is not a workflow. What the parser said
+ * about the file goes on the result as `problems`, so a playbook can show it.
+ */
+function readBlock(dir: string, name: string): Workflow | undefined {
+  if (typeof name !== 'string' || !BLOCK_NAME.test(name) || DEVICE_NAME.test(name)) throw new Error('its name must be one plain file name (letters, digits, - _ and . only), not a path');
+  const p = path.join(dir, `${name}.reins.md`);
+  if (!fs.existsSync(p)) return undefined;
+  const real = fs.realpathSync(p);
+  const inside = path.join(fs.realpathSync(dir), path.sep);
+  if (!real.startsWith(inside) || path.dirname(real) !== inside.slice(0, -1)) throw new Error('the file is a link to somewhere outside the blocks folder');
+  const st = fs.statSync(real);
+  if (!st.isFile()) throw new Error('it is not a file');
+  if (st.size > BLOCK_MAX) throw new Error(`the file is larger than ${BLOCK_MAX / 1000} KB`);
+  const parsed = parseWorkflow(fs.readFileSync(real, 'utf8'));
+  if (!parsed.workflow) throw new Error(`the file is not a workflow${parsed.diagnostics[0] ? `: ${parsed.diagnostics[0].message}` : ''}`);
+  return parsed.diagnostics.length ? { ...parsed.workflow, problems: parsed.diagnostics } : parsed.workflow;
+}
+
 function blockResolver(file: string) {
   const blocks = new Map<string, Workflow | undefined>();
+  const dir = path.join(path.dirname(file), 'blocks');
   const resolveBlock = (name: string) => {
-    if (!blocks.has(name)) {
-      const p = path.join(path.dirname(file), 'blocks', `${name}.reins.md`);
-      blocks.set(name, fs.existsSync(p) ? parseWorkflow(fs.readFileSync(p, 'utf8')).workflow : undefined);
-    }
+    if (!blocks.has(name)) blocks.set(name, readBlock(dir, name));   // a throw is not remembered: the next call reads again
     return blocks.get(name);
   };
   return resolveBlock;

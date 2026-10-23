@@ -178,7 +178,7 @@ A block has code (`main`) or no code at all (`turn`, see Data blocks). A conditi
 | `description` | Optional text. |
 | `main` | The code file, inside the folder. A block has `main` or `turn`, never both. |
 | `turn`, `statusLine` | Data blocks only (see below). |
-| `order` | Required, a number. It sets where the kind or condition sits in core's registry. Built-in blocks use 10 to 130, and built-in conditions use 10 to 110. |
+| `order` | Required, a number. It sets where the kind or condition sits in core's registry. Built-in blocks use 10 to 140, and built-in conditions use 10 to 110. |
 | `provides` | Required. It lists everything the mod may add (below). |
 | `view` | Blocks only. The block's face, as JSON (below). |
 
@@ -228,7 +228,7 @@ The eight question cards belong to core. They are not in the card registry, so n
 Two places use a template. Both use `{...}` placeholders. Neither runs code.
 
 - A data block's `turn`, in the manifest. `{attr}` is replaced by the step's attribute of that name. `{a|b}` uses `a` if the step sets it, and `b` if not. Each name must be in `provides.attrs`. A filled value is one line of at most 1000 characters, and the whole prompt is at most 16 KB. A turn has no formats.
-- A view's `sub` (the small text on the face) and `rows` (feed rows). `{path}` reads a value by dots, such as `{attrs.use}`. `{a|b|c}` takes the first one that has text. `{path:usd}` shows dollars, such as `$0.0123`. `{path:count}` shows a number with separators, such as `1,234`. A template that does not parse is shown as its own text. The filler reads only the object's own values, never a getter.
+- A view's `sub` (the small text on the face) and `rows` (feed rows). `{path}` reads a value by dots, such as `{attrs.playbook}`. `{a|b|c}` takes the first one that has text. `{path:usd}` shows dollars, such as `$0.0123`. `{path:count}` shows a number with separators, such as `1,234`. A template that does not parse is shown as its own text. The filler reads only the object's own values, never a getter.
 
 ### Data blocks
 

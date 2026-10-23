@@ -9,7 +9,7 @@ import { fill } from './template.js';
 import { applyField, budgetCount, budgetPatch, BUDGET_OVER, fieldValue, MODES, type BudgetKey } from './panelEdit.js';
 import type { Pt } from './surface.js';
 import { stepKey, type Key } from './selection.js';
-import { splitAtEnd } from './arrange.js';
+import { chains, splitAtEnd } from './arrange.js';
 import { zoneAttrs, zoneKey, type Zone } from './gesture.js';
 import type { Over } from './useDrag.js';
 import { pickFor, usdText, type SessionModel } from './BlockPanel.js';
@@ -21,7 +21,7 @@ import { ENDED, StatusCtx, StepChips } from './StepChips.js';
 const LOOK = { code: 'code', str: 'pill', num: 'num', pill: 'pill' } as const satisfies Record<CondParam['look'], string>;
 
 const HANDLE_TITLE: Record<string, string> = {
-  next: 'Runs next when this block finishes. Drag to a block to link.',
+  next: 'Starts a branch at the block you drag this to. Drag to a block to link.',
   'on-fail': 'Runs if this block fails. Drag to a block to link.',
   against: "Compares this block's work against the block you drag this to. Drag to a block to link.",
 };
@@ -221,7 +221,7 @@ export function BlocksPane({ w, diags, text, sel, primary, rev, models, efforts,
         </div>
         {stack(cap ? [...inStack, cap] : inStack, undefined, 'kids')}
         <div {...end} className={cx('sx-endstrip', end.className)} />
-        <div className="sx-autofree">{tail.filter((s) => !place(s)).map(freeBlock)}</div>
+        <div className="sx-autofree">{chains(tail, new Set(tail.filter(place).map((s) => s.id))).filter((c) => !place(c[0]!)).map((c) => <div key={c[0]!.id} className="sx-chain">{c.map(freeBlock)}</div>)}</div>
       </div>
       {tail.filter(place).map(freeBlock)}
     </>

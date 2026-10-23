@@ -432,6 +432,20 @@
       "top": 1
     },
     {
+      "after": 8,
+      "op": "PLAYBOOK",
+      "playbook": "review-pass",
+      "session": "inline",
+      "step": "playbook-1",
+      "top": 2
+    },
+    {
+      "op": "PLAYBOOK_END",
+      "playbook": "review-pass",
+      "step": "playbook-1",
+      "top": 2
+    },
+    {
       "op": "END"
     }
   ],
@@ -566,6 +580,20 @@
       "op": "VERIFY",
       "step": "verify-1",
       "top": 5
+    },
+    {
+      "after": 10,
+      "op": "PLAYBOOK",
+      "playbook": "review-pass",
+      "session": "inline",
+      "step": "playbook-1",
+      "top": 6
+    },
+    {
+      "op": "PLAYBOOK_END",
+      "playbook": "review-pass",
+      "step": "playbook-1",
+      "top": 6
     },
     {
       "op": "STORE",
