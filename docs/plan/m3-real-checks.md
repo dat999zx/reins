@@ -49,3 +49,40 @@
 - swept: 0 hits (25 files)
 - both homes are in-process worlds of the harness, talked to over their real HTTP routes (POST /api/mods/bundle, /api/mods/import/preview, /api/mods/import); home 2 started with no mod, no trust file and no workflow
 
+## Row M3-1 fork over two engines (API + claude CLI) | 2026-10-23 | real | claude-haiku-5-5 | PASS
+- cost by the Budget's own count: $0.0051
+- counts: forkStarted=1, forkDone=1, trackStarted=2, trackEnded=2, sessionsSeen=2, mainSessionDifferent=true, aReply="ALPHA branch acknowledged.", bReply="BRAVO branch acknowledged.\n\nResult of subagent \"Bravo branch", finalReply="BOTH THE ALPHA AND BRAVO BRANCHES HAVE ACKNOWLEDGED.\n\nREINS: DONE", trackAUsd=0.002285, trackBUsd=0.008169, finalTurnUsd=0.002831, totalCostUsd=0.0133, budgetOwnCountUsd=0.005116, runMs=40323, processesLeft=none
+- swept: 0 hits (9 files)
+- the API branch's price: claude-haiku-5-5: {"input":1,"output":5,"cacheRead":0.1,"cacheWrite":1.25} USD per million, ASSUMED by this harness (the catalog manifest has no price for it)
+- branch b (subagent step with model claude-code:claude-haiku-5-5) ran on the CLI; its dollars come from the CLI, not from a conversation file
+
+## Row M3-2 fork with a failed branch (API + claude CLI with an unknown model) | 2026-10-23 | real | claude-haiku-5-5 | PASS
+- cost by the Budget's own count: $0.0023
+- counts: branchAEnded=true, forkDone=0, finalTurns=0, pauseRowsOfOtherTracks=0, resumeCardsOpen=1, reason="reply was an error (There's an issue with the selected model (claude-no-such-model-0). It may not exist or you may not have access to it. Run --model to pick a ", stopToEndMs=20, runEnded=run_stopped, openQuestionsAfter=0, newClaudeProcessesDuringRun=0, processesLeftAfter=none
+- swept: 0 hits (7 files)
+- branch b asked the model claude-code:claude-no-such-model-0, which its provider does not have
+
+## Row M3-3 inline playbook with an input (Haiku 5.5 on the API) | 2026-10-23 | real | claude-haiku-5-5 | PASS
+- cost by the Budget's own count: $0.0022
+- counts: stepIds=["pb","pb/hello","pb/say"], playbookStarted=1, playbookDone=1, tracks=0, trustListed=["echo hi Ann","npm test"], hashChangesWithInput=true, injectedCommandListed=true, replyMentionsAnn=true, receiptTotalUsd=0.0022, ownCountUsd=0.002238
+- swept: 0 hits (9 files)
+- price: claude-haiku-5-5: {"input":1,"output":5,"cacheRead":0.1,"cacheWrite":1.25} USD per million, ASSUMED by this harness (the catalog manifest has no price for it)
+
+## Row M3-4 playbook session: own, usd 0.05 (Haiku 5.5 on the API) | 2026-10-23 | real | claude-haiku-5-5 | PASS
+- cost by the Budget's own count: $0.0047
+- counts: capUsd=0.05, trackUsd=0.002283, trackTurns=1, afterTurnUsd=0.002425, receiptTotalUsd=0.0047, ownCountUsd=0.004708, trackSessionDiffersFromMain=true, processesLeft=none
+- swept: 0 hits (10 files)
+- price: claude-haiku-5-5: {"input":1,"output":5,"cacheRead":0.1,"cacheWrite":1.25} USD per million, ASSUMED by this harness (the catalog manifest has no price for it)
+
+## Row M3-5 envelope round trip between two homes (Haiku 5.5 on the API for the one turn) | 2026-10-23 | real | claude-haiku-5-5 | PASS
+- cost by the Budget's own count: $0.0031
+- counts: modsInFile=2, summaries=1, codeModsToTrust=1, codePromptShown=true, trustAnswer={"m3tag":"trusted"}, workflowSaved=true, previewWroteNothing=true, wrongHashStatus=409, trustOnNoCodeModStatus=400, ranThere=true, m3tagranRows=1, tamperedHashDiffers=true, tamperedTrustedBefore=false, oldHashOnTamperedStatus=409, homeAfterRefusal=unchanged, receiptTotalUsd=0.0031
+- swept: 0 hits (25 files)
+- both homes are in-process worlds of the harness, talked to over their real HTTP routes (POST /api/mods/bundle, /api/mods/import/preview, /api/mods/import); home 2 started with no mod, no trust file and no workflow
+
+## Row M3-6 restore mid-fork after a hard server kill (Haiku 5.5 on the API) | 2026-10-23 | real | claude-haiku-5-5 | PASS
+- cost by the Budget's own count: $0.0195
+- counts: forkStarted=1, forkDone=1, trackStarted=2, trackEnded=2, stepsAnswered=["a/a","b/b","main/after"], afterTurnStarted=1, turnsEndedBeforeKill=0, costBeforeKillUsd=0.004918, requestsAfterResume=n/a, resumeToEndMs=6355, receiptTotalUsd=0.0195, sumOfTurnCostsUsd=0.01951, ownCountUsd=0.01951, cutOffCallsUsd=0.00001, trackUsd=[["a",0.008129],["b",0.008069]]
+- swept: 0 hits (12 files)
+- the server was killed with taskkill /F /T while both branches had a tool card open (a turn in flight in each); the second process was started on the same home and the run resumed through POST /resume
+
