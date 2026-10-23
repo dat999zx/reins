@@ -9,6 +9,9 @@ import { openSession } from '../src/session.js';
 import { openStore } from '../src/store.js';
 import { split } from '../../core/test/fixtures/split.js';
 import { testEngine, type TestTurn } from './test-engine.js';
+import { usePack } from './pack-helper.js';
+
+usePack(); // M3 Task 3: the built-in kinds are the default pack's mods; this file loads the pack once
 
 const tmps: string[] = [];
 const tmp = () => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'reins-m2tsf-')); tmps.push(d); return d; };

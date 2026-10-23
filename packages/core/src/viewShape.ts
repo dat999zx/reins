@@ -25,7 +25,7 @@ export const isCoreEvent = (type: string): boolean => Object.hasOwn(CORE_EVENTS,
 export const MAX_VIEW_LIST = 50;
 export const MAX_ROW_TEXT = 200;
 export const MAX_ROW_DETAILS = 400;
-/** The kind that ends the workflow: the only view that may say `stops`. */
+/** The kind that ends the workflow (the default pack's `end`): the only view that may say `stops`. */
 const CAP = 'end';
 const VIEW_KEYS = ['kind', 'order', 'colour', 'icon', 'slice', 'group', 'fails', 'manyNext', 'stops', 'against', 'cards', 'fields', 'line', 'card', 'sub', 'fresh', 'rows', 'status', 'hidden'];
 const STATES: Record<StatusState, 1> = { active: 1, done: 1, waiting: 1, stuck: 1, failed: 1 };
@@ -98,7 +98,8 @@ export function viewShapeProblem(v: unknown, scope: ViewScope = {}): string | un
     if (v[k] !== undefined && !inSet(set, v[k])) return `\`view.${k}\` is ${name(v[k])}. It must be one of ${oneOf(set)}.`;
   }
   for (const k of ['fails', 'manyNext', 'against', 'cards'] as const) if (v[k] !== undefined && v[k] !== true) return `\`view.${k}\` must be true, or left out.`;
-  if (v.stops !== undefined && (v.stops !== true || mod || v.kind !== CAP)) return `\`view.stops\` is only for core's \`${CAP}\` block; a mod's block cannot end the workflow.`;
+  // Only the kind named `end` may stop the workflow. A mod can bring that name only as the default pack's own `end` or as a Customize copy of it: the registry refuses a second `end` (M3 Task 3).
+  if (v.stops !== undefined && (v.stops !== true || v.kind !== CAP)) return `\`view.stops\` is only for the \`${CAP}\` block; no other block can end the workflow.`;
 
   if (!Array.isArray(v.fields) || !Array.isArray(v.line)) return '`view` needs `fields` and `line`.';
   if (v.fields.length > MAX_VIEW_LIST || v.line.length > MAX_VIEW_LIST) return `\`view.fields\` and \`view.line\` hold at most ${MAX_VIEW_LIST} entries.`;

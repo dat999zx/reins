@@ -4,8 +4,6 @@ import type { EngineSession, TurnResult } from '../fake-engine.js';
 import type { CommandOutcome, PauseReason, RunEventRecord, RunEventType } from '../run.js';
 import { ordered } from '../registry.js';
 import { guardNode } from '../guard.js';
-import phase from './phase.js';
-import say from './say.js';
 import run from './run.js';
 import gate from './gate.js';
 import repeat from './repeat.js';
@@ -16,7 +14,6 @@ import recall from './recall.js';
 import store from './store.js';
 import model from './model.js';
 import subagent from './subagent.js';
-import end from './end.js';
 
 /** What the host did with a model step. `label` names the model in use afterwards. One member per `to`, so `r.label` narrows. */
 export type SwitchOutcome = { to: 'switched' | 'same' | 'kept'; label: string } | { to: 'stop' } | { to: 'closed' };
@@ -64,7 +61,7 @@ export interface ProgramCtx extends ValidateCtx {
   members(start: string, nested?: boolean): string[];
 }
 /** Which mod a node came from and the events it declared (`provides.events`). Only the loader sets it, on its frozen copy; `register` then stores the guarded node (guard.ts). */
-export interface ModInfo { readonly id: string; readonly events: readonly string[] }
+export interface ModInfo { readonly id: string; readonly events: readonly string[]; /** A block of the default pack (set by the loader from a bundled manifest): its heading text and default id are not cut. */ readonly pack?: true }
 export interface NodeType {
   mod?: ModInfo;
   kind: string;
@@ -103,6 +100,8 @@ export interface NodeType {
   print?: Partial<Record<RunEventType, (data: any) => string | undefined>>;
   defaultPrompt?(step: Step): string | undefined;
   statusLine?: string;
+  /** True on the kind a chat message is wrapped in: the chat's tags build `## <kind> prompt` and read this kind's `attrs` as attribute tags. The first such kind in `order` is used. */
+  chatTurn?: true;
   /** How a chat tag of this kind builds a step (3b.5). `arg` names the attribute the tag's argument fills. */
   tag?: { place: 'after' | 'wrap'; arg?: string; argRequired?: boolean; lines?: string[] };
 }
@@ -206,7 +205,7 @@ export function register(given: NodeType, order?: number, opts?: { shadow?: bool
   return KINDS.add(n, { order, shadow: opts?.shadow });
 }
 // The numbers are today's order, with room between them.
-for (const [n, order] of [[phase, 10], [say, 20], [run, 30], [gate, 40], [repeat, 50], [ifNode, 60], [verify, 70], [use, 80], [recall, 90], [store, 100], [model, 110], [subagent, 120], [end, 130]] as const) register(n, order);
+for (const [n, order] of [[run, 30], [gate, 40], [repeat, 50], [ifNode, 60], [verify, 70], [use, 80], [recall, 90], [store, 100], [model, 110], [subagent, 120]] as const) register(n, order);
 
 export function opOf(op: string): OpType<any> | undefined {
   for (const n of NODES.values()) if (n.ops && Object.hasOwn(n.ops, op)) return n.ops[op];
@@ -224,8 +223,6 @@ export function nodeAttrs(): Set<string> { return new Set([...NODES.values()].fl
 export function headingOwns(): Set<string> { return new Set([...NODES.values()].flatMap((n) => n.heading?.owns ?? [])); }
 
 export { checkMode, turnInstr, policyOf } from './turn.js';
-export { default as phaseNode } from './phase.js';
-export { default as sayNode } from './say.js';
 export { default as runNode } from './run.js';
 export { default as gateNode } from './gate.js';
 export { default as repeatNode } from './repeat.js';
@@ -236,4 +233,3 @@ export { default as recallNode } from './recall.js';
 export { default as storeNode } from './store.js';
 export { default as modelNode } from './model.js';
 export { default as subagentNode } from './subagent.js';
-export { default as endNode } from './end.js';

@@ -11,6 +11,9 @@ import { startMods } from '../src/engines.js';
 import { loadMods } from '../src/mods/loader.js';
 import type { LoadedMod, Mods } from '../src/mods/types.js';
 import { tempHome } from './mods-harness.js';
+import { usePack } from './pack-helper.js';
+
+usePack(); // M3 Task 3: the built-in kinds are the default pack's mods; this file loads the pack once
 
 const FIXTURE = fileURLToPath(new URL('./fixtures/mods/toy-ask/', import.meta.url));
 const askManifest = () => JSON.parse(fs.readFileSync(path.join(FIXTURE, 'mod.json'), 'utf8')) as Record<string, any>;

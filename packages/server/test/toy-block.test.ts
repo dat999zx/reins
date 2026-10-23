@@ -18,6 +18,9 @@ import { openStore } from '../src/store.js';
 import { claudeEngine } from '../src/mods/claude-code-cli/engine.js';
 import { FAKE_CLAUDE, fakeSetup } from './helpers.js';
 import { tempHome } from './mods-harness.js';
+import { usePack } from './pack-helper.js';
+
+usePack(); // M3 Task 3: the built-in kinds are the default pack's mods; this file loads the pack once
 
 const FIXTURE = fileURLToPath(new URL('./fixtures/mods/toy-beep/', import.meta.url));
 const beepManifest = () => JSON.parse(fs.readFileSync(path.join(FIXTURE, 'mod.json'), 'utf8')) as Record<string, any>;
@@ -366,7 +369,8 @@ describe('the kinds', () => {
 // ---- Task 16b: the server's own `startMods`, which owns the carry. Trust is the real `<home>/mod-trust.json`.
 const trust = (...ids: string[]) => fs.writeFileSync(path.join(h.home, 'mod-trust.json'), JSON.stringify(Object.fromEntries(ids.map((id) => [id, hashFiles(readFolder(path.join(h.modsDir, id), id))]))));
 const start = async () => {
-  const m = await startMods({ dir: h.home, env: {} });
+  // M3 Task 3: the pack is loaded once for the file (`usePack`); this loader reads only the home's own mods, so the carry tests see what they saw before the pack existed.
+  const m = await startMods({ dir: h.home, env: {}, bundledDir: path.join(h.home, 'no-bundled') });
   loaded.push(m);
   return m;
 };

@@ -371,9 +371,9 @@ const frozen = <T extends object | undefined>(v: T): T => (v !== null && typeof 
  * The copy carries the mod mark (this mod's id and `provides.events`); only this function sets it, and it overwrites whatever the node said, so
  * core guards the node (guard.ts) and holds a wrapped `vm.log` to those events.
  */
-function nodeCopy(node: NodeType, id: string, provides: Provides): NodeType {
+function nodeCopy(node: NodeType, id: string, provides: Provides, pack: boolean): NodeType {
   if (typeof node !== 'object' || node === null) throw new Error('registerBlock needs a node object.');
-  const n = { ...node, mod: Object.freeze({ id, events: Object.freeze([...(provides.events ?? [])]) }) };
+  const n = { ...node, mod: Object.freeze({ id, events: Object.freeze([...(provides.events ?? [])]), ...(pack ? { pack: true as const } : {}) }) };
   n.attrs = frozen(n.attrs);
   n.ops = frozen(n.ops);
   n.count = frozen(n.count);
@@ -396,10 +396,11 @@ const viewless = <T extends { view?: unknown }>(v: T): T => {
 /** Each thing a mod can register: the mod kind that may, the copy it is checked and stored from, what `provides` must list, and the core call. */
 interface Door<T> {
   kind: string;
-  copy(item: T, id: string, provides: Provides): T;
+  copy(item: T, id: string, provides: Provides, pack: boolean): T;
   /** Throws, in words, for anything `provides` does not list. */
   check(item: T, has: (key: keyof Provides, name: unknown, what: string) => void): void;
-  put(item: T, order: number, may: May): () => void;
+  /** `pack`: the mod is one of the default pack (only a bundled manifest can say so). */
+  put(item: T, order: number, may: May, pack: boolean): () => void;
 }
 const DOORS: { [M in 'registerBlock' | 'registerCondition' | 'registerCard']: Door<Parameters<ModApi[M]>[0]> } = {
   registerBlock: {
@@ -414,7 +415,8 @@ const DOORS: { [M in 'registerBlock' | 'registerCondition' | 'registerCard']: Do
       for (const ev of Object.keys(n.count ?? {})) has('events', ev, 'the counted event');
       for (const ev of Object.keys(n.print ?? {})) has('events', ev, 'the printed event');
     },
-    put: (n, order, may) => registerNode(n, order, { shadow: may('block-view', n.kind) }),
+    // `chatTurn` names the block every chat message is wrapped in: only the default pack, or a copy of one of its blocks, may claim it.
+    put: (n, order, may, pack) => registerNode(n.chatTurn === true && !pack && !may('block-view', n.kind) ? Object.freeze({ ...n, chatTurn: undefined }) : n, order, { shadow: may('block-view', n.kind) }),
   },
   registerCondition: {
     kind: 'condition',
@@ -451,9 +453,9 @@ function buildApi(kindId: string, raw: Record<string, unknown>, env: NodeJS.Proc
     Object.entries(DOORS).map(([member, d]) => [member, live((item: never) => {
       const door = d as Door<typeof item>;
       if (door.kind !== kindId) throw new Error(`\`${member}\` is for ${door.kind} mods; this is a ${kindId} mod.`);
-      const copy = door.copy(item, typeof raw.id === 'string' ? raw.id : kindId, provides);
+      const copy = door.copy(item, typeof raw.id === 'string' ? raw.id : kindId, provides, raw.pack === 'default');
       door.check(copy, has);
-      const undo = door.put(copy, order, may);
+      const undo = door.put(copy, order, may, raw.pack === 'default');
       tx.undo.push(undo);
       return undo;
     })]),

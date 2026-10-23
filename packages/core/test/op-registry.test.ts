@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { register, opOf, NODES, phaseNode, parseWorkflow, validate, compileProgram, receipt, Run } from '../src/index.js';
+import { register, opOf, NODES, parseWorkflow, validate, compileProgram, receipt, Run } from '../src/index.js';
 import type { NodeType } from '../src/index.js';
 import { harness } from './m1-harness.js';
 
@@ -178,6 +178,7 @@ describe('register', () => {
   const noop = { async exec() {} };
 
   it('throws on a kind that is already known, and leaves the first one in place', () => {
+    const phaseNode = NODES.get('phase')!;   // the pack's (M3 Task 3): core no longer exports it
     expect(() => register({ ...phaseNode })).toThrow(/kind "phase"/);
     expect(NODES.get('phase')).toBe(phaseNode);
   });

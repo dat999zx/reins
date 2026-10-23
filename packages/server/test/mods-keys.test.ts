@@ -512,6 +512,7 @@ describe('(b) Test connection asks before it sends (spec 7.6, 7.8)', () => {
       expect(r.json).toMatchObject({ result: 'needs-consent', host: hostOf(w.a) });
       await pause(50);
       expect(w.a.requests).toHaveLength(0);
+      w.mods.dispose(); // M3 Task 3: the next boot registers the default pack again; a loaded set must be gone first
     }
   });
 });
@@ -611,6 +612,7 @@ describe('Test connection: the five results (spec 7.6)', () => {
       w.a.list.errorBody = `nope ${KEY}`;
       expect(await test(w)).toEqual({ result: 'bad-key', message: 'The key was refused.', host: hostOf(w.a) });
       expect(w.a.requests).toHaveLength(1);
+      w.mods.dispose(); // M3 Task 3: as above
     }
   });
 

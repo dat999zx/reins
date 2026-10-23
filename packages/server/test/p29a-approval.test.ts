@@ -12,6 +12,7 @@ import { cleanIds } from '../src/live-models.js';
 import { importPreview, type ModEnv } from '../src/mods/actions.js';
 import { startMods } from '../src/engines.js';
 import { startRunCli } from '../src/run-cli.js';
+import { usePack } from './pack-helper.js';
 import { openSession } from '../src/session.js';
 import { openStore } from '../src/store.js';
 import type { Mods } from '../src/mods/types.js';
@@ -114,6 +115,7 @@ describe('the question the app receives', () => {
 });
 
 describe('the terminal prints the whole command under the question', () => {
+  usePack(); // M3 Task 3: the run needs the default pack's kinds; the describe below starts the loader itself
   async function terminal(command: string) {
     const file = path.join(tmp, 'a.reins.md');
     fs.writeFileSync(file, '---\nreins: 1\nname: a\nbudget: { turns: 5, minutes: 5 }\nalways: []\n---\n\n## phase one\n> Do it.\n');

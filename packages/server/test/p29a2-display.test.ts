@@ -11,6 +11,9 @@ import { listModels } from '../src/models.js';
 import { startRunCli } from '../src/run-cli.js';
 import { HELD_MARKER, Redactor, StreamRedactor } from '../src/secrets.js';
 import { openStore } from '../src/store.js';
+import { usePack } from './pack-helper.js';
+
+usePack(); // M3 Task 3: the built-in kinds are the default pack's mods; this file loads the pack once
 
 const ch = (n: number) => String.fromCodePoint(n);
 const range = (a: number, b: number) => Array.from({ length: b - a + 1 }, (_, i) => a + i);

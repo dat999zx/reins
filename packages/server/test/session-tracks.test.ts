@@ -12,6 +12,9 @@ import { openStore } from '../src/store.js';
 import { split } from '../../core/test/fixtures/split.js';
 import { openQuestions } from './http-helpers.js';
 import { testEngine, type TestTurn } from './test-engine.js';
+import { usePack } from './pack-helper.js';
+
+usePack(); // M3 Task 3: the built-in kinds are the default pack's mods; this file loads the pack once
 
 const disposers: Array<() => void> = [];
 beforeAll(() => { disposers.push(register(split)); });

@@ -8,6 +8,9 @@ import { PassThrough } from 'node:stream';
 import { FakeEngine, type ScriptedTurn } from '@reins/core';
 import { startRunCli } from '../src/run-cli.js';
 import { openStore } from '../src/store.js';
+import { usePack } from './pack-helper.js';
+
+usePack(); // M3 Task 3: the built-in kinds are the default pack's mods; this file loads the pack once
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });

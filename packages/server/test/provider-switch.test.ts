@@ -390,7 +390,8 @@ describe('the live model list (spec 7.2)', () => {
     const env: NodeJS.ProcessEnv = { ...process.env, REINS_HOME: root };
     delete env.KZ_API_KEY;
     const mods = await startMods({ dir, env });
-    expect(mods.mods.flatMap((m) => m.problems)).toEqual([]);
+    // M3 Task 3: the file's first world (the top-level beforeAll) is still loaded and holds the default pack's kinds, so this second load cannot register them again: the pack's own rows are left out.
+    expect(mods.mods.filter((m) => !m.pack).flatMap((m) => m.problems)).toEqual([]);
     // The list answers: the curated id again (deduped), a key (dropped), new ids.
     z!.list.data = [{ id: 'zm' }, { id: KEY }, { id: 'zlive-b' }, { id: 'zlive-a' }];
     kl!.list.data = [{ id: 'kl-m' }, { id: 'kl-live-2' }, { id: 'kl-live-1' }];

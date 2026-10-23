@@ -12,6 +12,9 @@ import type { LoadedMod, Mods } from '../src/mods/types.js';
 import { startRunCli } from '../src/run-cli.js';
 import { openStore } from '../src/store.js';
 import { tempHome } from './mods-harness.js';
+import { usePack } from './pack-helper.js';
+
+usePack(); // M3 Task 3: the built-in kinds are the default pack's mods; this file loads the pack once
 
 declare module '../../core/src/model.js' {
   interface NodeKinds { flag: true }

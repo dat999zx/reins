@@ -2,6 +2,9 @@
 import { describe, it, expect } from 'vitest';
 import { CARDS } from '@reins/core';
 import { buildTagged, tagCatalogue, taggedWorkflow, type Tag } from '../src/tags.js';
+import { usePack } from './pack-helper.js';
+
+usePack(); // M3 Task 3: the built-in kinds are the default pack's mods; this file loads the pack once
 
 const t = (tag: string, arg?: string): Tag => ({ tag, ...(arg !== undefined ? { arg } : {}) });
 const head = ['---', 'reins: 1', 'name: chat', 'always: []', 'budget: { turns: 20, minutes: 30 }', '---', ''];

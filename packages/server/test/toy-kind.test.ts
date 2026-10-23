@@ -11,6 +11,9 @@ import { openStore } from '../src/store.js';
 import { commandsOf } from '../src/trust.js';
 import { claudeEngine } from '../src/mods/claude-code-cli/engine.js';
 import { FAKE_CLAUDE, fakeSetup } from './helpers.js';
+import { usePack } from './pack-helper.js';
+
+usePack(); // M3 Task 3: the built-in kinds are the default pack's mods; this file loads the pack once
 
 const disposers: Array<() => void> = [];
 afterEach(() => { for (const d of disposers.splice(0).reverse()) d(); });

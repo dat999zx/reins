@@ -4,6 +4,9 @@ import { FakeEngine, Run, parseWorkflow, register, validate, type Cond, type Scr
 import { askJudge, askTool, driveRun, parseAnswer, runOptions, type DriveIo, type Question } from '../src/drive.js';
 import { m2harness } from '../../core/test/m2-harness.js';
 import { split } from '../../core/test/fixtures/split.js';
+import { usePack } from './pack-helper.js';
+
+usePack(); // M3 Task 3: the built-in kinds are the default pack's mods; this file loads the pack once
 
 const step = (id: string, kind: Step['kind'], over: Partial<Step> = {}): Step => ({ id, kind, attrs: {}, cards: [], links: [], ...over });
 const phase = (id: string) => step(id, 'phase', { title: id, prompt: 'do it' });

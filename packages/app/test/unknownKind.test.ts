@@ -6,6 +6,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Registry, type Step, type Workflow } from '@reins/core';
 import { servedKinds } from '../../server/src/mods/kinds-view.js';
+import { served as packServed } from './app-pack.js';
 import { linksToDraw } from '../src/arrows.js';
 import { ensureEnd } from '../src/arrange.js';
 import { addStep, dropPlace, freshOf, insertSteps, moveStep, nestPlace, setCond, stackEnd } from '../src/blocks.js';
@@ -23,7 +24,7 @@ const served = (trusted = true) => {
   const mods = { registry, mods: [{ id: 'toy-beep', kind: 'block', trusted, hasCode: true, manifest: { order: 140, provides: beepManifest.provides, view: beepView } }] };
   return JSON.parse(JSON.stringify(servedKinds(mods as never).kinds));
 };
-afterEach(() => setKinds(servedKinds().kinds)); // what the setup file made
+afterEach(() => setKinds(packServed().kinds)); // what the setup file made
 
 const models = [{ id: 'm1', label: 'Model One' }];
 const efforts = [{ id: 'medium', label: 'Medium' }];
@@ -170,7 +171,7 @@ describe('before the first reply KINDS is empty and nothing throws', () => {
   it('then the list arrives and the same workflow draws its real faces', () => {
     setKinds([]);
     expect(face(step('say'))).toContain('unknown block say');
-    setKinds(servedKinds().kinds);
+    setKinds(packServed().kinds);
     expect(face(step('say'))).not.toContain('unknown block');
     expect(face(step('say'))).toContain('data-colour="soft"');
     expect(capKind()).toBe('end');

@@ -13,6 +13,9 @@ import { FAKE_CLAUDE, fakeSetup, alive, until } from './helpers.js';
 
 import { register, type Decision, type Engine, type NodeType, type ToolRequest } from '@reins/core';
 import { split } from '../../core/test/fixtures/split.js';
+import { usePack } from './pack-helper.js';
+
+usePack(); // M3 Task 3: the built-in kinds are the default pack's mods; this file loads the pack once
 
 // The toy kind of core's op-registry.test.ts, declared again for this program (same types, so the merge holds).
 declare module '../../core/src/model.js' {

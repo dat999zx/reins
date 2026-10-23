@@ -6,7 +6,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { LogRow } from '@reins/server/store.js';
 import type { Step, Workflow } from '@reins/core';
-import { servedKinds } from '../../server/src/mods/kinds-view.js';
+import { served } from './app-pack.js';
 import { addStepAt, newStep } from '../src/blocks.js';
 import { capKind, KINDS, registerView, setKinds } from '../src/canvasKinds.js';
 import { generic } from '../src/generic.js';
@@ -17,8 +17,8 @@ import { stepStatus } from '../src/stepStatus.js';
 import { initial, reduce } from '../src/state.js';
 
 const RLO = String.fromCharCode(0x202e);
-const base = () => JSON.parse(JSON.stringify(servedKinds().kinds)) as Array<Record<string, any>>;
-afterEach(() => setKinds(servedKinds().kinds)); // what the setup file made
+const base = () => JSON.parse(JSON.stringify(served().kinds)) as Array<Record<string, any>>;
+afterEach(() => setKinds(served().kinds)); // what the setup file made
 
 const say = { id: 'say-1', kind: 'say', attrs: {}, cards: [], links: [] } as unknown as Step;
 const wf = { name: 't', budget: { turns: 1, minutes: 1 }, always: [], steps: [] } as unknown as Workflow;

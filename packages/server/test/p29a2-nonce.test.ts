@@ -5,12 +5,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { nonceOf } from '../src/cards.js';
 import { claudeEngine } from '../src/mods/claude-code-cli/engine.js';
 import { projectFolderWords, TOO_WIDE_WORDS } from '../src/session.js';
 import { rig, type Rig } from './loop-harness.js';
 import { FAKE_CLAUDE, fakeSetup, until } from './helpers.js';
+import { usePack } from './pack-helper.js';
+
+usePack(); // M3 Task 3: the built-in kinds are the default pack's mods; this file loads the pack once
 
 let tmp = '';
 const rigs: Rig[] = [];
@@ -105,6 +108,9 @@ describe('item 8: the worker is plain too when an identity write is refused afte
     const { openStore, redactingStore } = await import('../src/store.js');
     const { openSession } = await import('../src/session.js');
     const { testEngine } = await import('./test-engine.js');
+    // An earlier test of this file reset the modules, so the core these imports use is a new copy: it gets its own pack (the file's `usePack` filled the old copy).
+    const pack = await (await import('./pack-helper.js')).loadPack();
+    onTestFinished(() => pack.off());
     const home = path.join(tmp, '.reins');
     const cwd = path.join(tmp, 'proj');
     fs.mkdirSync(cwd);

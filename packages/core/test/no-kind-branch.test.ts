@@ -36,8 +36,6 @@ const EVENT_RULES = eventRules([...new Set([...KIND_EVENTS, ...packEvents()])]);
 const hit = (line: string, file: string, events = true) => ANY.some((r) => r.test(line)) || (events && EVENT_RULES.some((r) => r.test(line))) || (file.endsWith('.css') && CSS.test(line));
 
 const ALLOW = [
-  { file: 'packages/server/src/tags.ts', text: "const attrs = NODES.get('phase')?.attrs ?? [];", reason: 'a chat tag wraps a phase' },
-  { file: 'packages/server/src/tags.ts', text: "for (const a of NODES.get('phase')?.attrs ?? []) out.push({ name: a, place: 'attr', arg: a, argRequired: true, enforced: true });", reason: 'a chat tag wraps a phase' },
   // The reserved event names: RunEvents is the type of every event type, CORE_EVENTS the list a mod's row can not cover (m2-fix-25a-a pins the two equal).
   // Each kind's names leave both with the kind (M3 Tasks 3 to 8), where its mod declares them in `provides.events`.
   ...['gate_paused', 'loop_iteration', 'loop_budget_exceeded', 'verify_result', 'model_switched'].map((e) => ({ file: 'packages/core/src/run.ts', text: `${e}: unknown;`, reason: 'the event type list, until the kind moves' })),

@@ -95,7 +95,10 @@ export function guardNode(src: NodeType): NodeType {
   const n = { ...src };
   const mod = n.mod;
   if (!mod || typeof mod.id !== 'string' || !Array.isArray(mod.events) || mod.events.some((e) => typeof e !== 'string')) throw new Error('a node from a mod needs the loader\'s mod mark');
-  const info: ModInfo = Object.freeze({ id: mod.id, events: Object.freeze([...mod.events]) });
+  const info: ModInfo = Object.freeze({ id: mod.id, events: Object.freeze([...mod.events]), ...(mod.pack === true ? { pack: true as const } : {}) });
+  // What a block of the default pack prints in a heading or makes an id from is the user's own data (a phase's title, the id made from it, which links in saved files name):
+  // it is not cut. The same text from any other mod is one capped line. Only the loader sets `pack`, from a bundled manifest.
+  const fit = (v: unknown, max: number): string | undefined => (info.pack ? (typeof v === 'string' ? v : undefined) : tame(v, max));
   const where = (what: string) => `block ${info.id}, ${what}`;
   const out: NodeType = { ...n, mod: info, attrs: Array.isArray(n.attrs) ? Object.freeze([...n.attrs]) as string[] : [] };
 
@@ -114,7 +117,7 @@ export function guardNode(src: NodeType): NodeType {
       print: (step) => {
         try {
           const r = print.call(h, structuredClone(step));
-          return { text: tame(r.text, HEAD_MAX) ?? n.kind, condInHeading: r.condInHeading === true };
+          return { text: fit(r.text, HEAD_MAX) ?? n.kind, condInHeading: r.condInHeading === true };
         } catch {
           return { text: n.kind, condInHeading: false };
         }
@@ -150,7 +153,7 @@ export function guardNode(src: NodeType): NodeType {
   };
 
   const { defaultId, defaultPrompt } = n;
-  if (defaultId) out.defaultId = (s) => { try { return tame(defaultId.call(n, structuredClone(s)), 80); } catch { return undefined; } };
+  if (defaultId) out.defaultId = (s) => { try { return fit(defaultId.call(n, structuredClone(s)), 80); } catch { return undefined; } };
   if (defaultPrompt) out.defaultPrompt = (s) => { try { const r = defaultPrompt.call(n, structuredClone(s)); return typeof r === 'string' ? r : undefined; } catch { return undefined; } };
   if (n.tag) { try { out.tag = structuredClone(n.tag); } catch { delete out.tag; } }
 

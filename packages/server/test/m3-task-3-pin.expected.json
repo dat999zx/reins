@@ -1,0 +1,1272 @@
+{
+ "main": {
+  "diagnostics": [],
+  "steps": [
+   {
+    "id": "plan-the-work",
+    "kind": "phase",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 8,
+     "col": 1
+    },
+    "title": "Plan the work",
+    "prompt": "plan it"
+   },
+   {
+    "id": "say-1",
+    "kind": "say",
+    "attrs": {
+     "mode": "read-only"
+    },
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 11,
+     "col": 1
+    },
+    "prompt": "say hello"
+   },
+   {
+    "id": "write-the-migration-for-the-user-table-and-then-update-every-caller-of-the-old-programming-interface-in-the-whole-code-base",
+    "kind": "phase",
+    "attrs": {
+     "mode": "write"
+    },
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 15,
+     "col": 1
+    },
+    "title": "Write the migration for the user table and then update every caller of the old programming interface in the whole code base",
+    "prompt": "long one"
+   },
+   {
+    "id": "odd-title-v2",
+    "kind": "phase",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 19,
+     "col": 1
+    },
+    "title": "Odd -- Title!! (v2) ##",
+    "prompt": "odd"
+   },
+   {
+    "id": "end-1",
+    "kind": "end",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 22,
+     "col": 1
+    }
+   },
+   {
+    "id": "never",
+    "kind": "phase",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 24,
+     "col": 1
+    },
+    "title": "never",
+    "prompt": "after the end"
+   }
+  ],
+  "printed": "---\nreins: 1\nname: pin3\nbudget: { turns: 20, minutes: 9 }\nalways: []\n---\n\n## phase Plan the work\n> plan it\n\n## say\nmode: read-only\n> say hello\n\n## phase Write the migration for the user table and then update every caller of the old programming interface in the whole code base\nmode: write\n> long one\n\n## phase Odd -- Title!! (v2) ##\n> odd\n\n## end\n\n## phase never\n> after the end\n",
+  "validate": [
+   {
+    "severity": "warning",
+    "message": "step `never` is never reached",
+    "pos": {
+     "line": 24,
+     "col": 1
+    }
+   }
+  ],
+  "program": [
+   {
+    "op": "TURN",
+    "step": "plan-the-work",
+    "policy": {
+     "mode": "write",
+     "guards": [],
+     "allowShell": true
+    },
+    "src": {
+     "id": "plan-the-work",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 8,
+      "col": 1
+     },
+     "title": "Plan the work",
+     "prompt": "plan it"
+    },
+    "top": 0
+   },
+   {
+    "op": "TURN",
+    "step": "say-1",
+    "policy": {
+     "mode": "read-only",
+     "guards": [],
+     "allowShell": true
+    },
+    "src": {
+     "id": "say-1",
+     "kind": "say",
+     "attrs": {
+      "mode": "read-only"
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 11,
+      "col": 1
+     },
+     "prompt": "say hello"
+    },
+    "top": 1
+   },
+   {
+    "op": "TURN",
+    "step": "write-the-migration-for-the-user-table-and-then-update-every-caller-of-the-old-programming-interface-in-the-whole-code-base",
+    "policy": {
+     "mode": "write",
+     "guards": [],
+     "allowShell": true
+    },
+    "src": {
+     "id": "write-the-migration-for-the-user-table-and-then-update-every-caller-of-the-old-programming-interface-in-the-whole-code-base",
+     "kind": "phase",
+     "attrs": {
+      "mode": "write"
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 15,
+      "col": 1
+     },
+     "title": "Write the migration for the user table and then update every caller of the old programming interface in the whole code base",
+     "prompt": "long one"
+    },
+    "top": 2
+   },
+   {
+    "op": "TURN",
+    "step": "odd-title-v2",
+    "policy": {
+     "mode": "write",
+     "guards": [],
+     "allowShell": true
+    },
+    "src": {
+     "id": "odd-title-v2",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 19,
+      "col": 1
+     },
+     "title": "Odd -- Title!! (v2) ##",
+     "prompt": "odd"
+    },
+    "top": 3
+   },
+   {
+    "op": "END",
+    "top": 4
+   },
+   {
+    "op": "TURN",
+    "step": "never",
+    "policy": {
+     "mode": "write",
+     "guards": [],
+     "allowShell": true
+    },
+    "src": {
+     "id": "never",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 24,
+      "col": 1
+     },
+     "title": "never",
+     "prompt": "after the end"
+    },
+    "top": 5
+   },
+   {
+    "op": "END"
+   }
+  ]
+ },
+ "sayOnly": {
+  "diagnostics": [],
+  "steps": [
+   {
+    "id": "say-1",
+    "kind": "say",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 8,
+     "col": 1
+    },
+    "prompt": "just say"
+   }
+  ],
+  "printed": "---\nreins: 1\nname: say-only\nbudget: { turns: 20, minutes: 9 }\nalways: []\n---\n\n## say\n> just say\n",
+  "validate": [],
+  "program": [
+   {
+    "op": "TURN",
+    "step": "say-1",
+    "policy": {
+     "mode": "write",
+     "guards": [],
+     "allowShell": true
+    },
+    "src": {
+     "id": "say-1",
+     "kind": "say",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 8,
+      "col": 1
+     },
+     "prompt": "just say"
+    },
+    "top": 0
+   },
+   {
+    "op": "END"
+   }
+  ]
+ },
+ "inRepeat": {
+  "diagnostics": [],
+  "steps": [
+   {
+    "id": "repeat-1",
+    "kind": "repeat",
+    "attrs": {
+     "max": "3"
+    },
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 8,
+     "col": 1
+    },
+    "cond": {
+     "t": "approve"
+    },
+    "kids": [
+     {
+      "id": "work",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 12,
+       "col": 1
+      },
+      "title": "work",
+      "prompt": "work"
+     },
+     {
+      "id": "end-1",
+      "kind": "end",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 15,
+       "col": 1
+      }
+     }
+    ]
+   }
+  ],
+  "printed": "---\nreins: 1\nname: end-in-repeat\nbudget: { turns: 20, minutes: 9 }\nalways: []\n---\n\n## repeat\nuntil: you approve\nmax: 3\n\n### phase work\n> work\n\n### end\n",
+  "validate": [],
+  "program": [
+   {
+    "op": "LOOP_IN",
+    "step": "repeat-1",
+    "max": 3,
+    "top": 0
+   },
+   {
+    "op": "TURN",
+    "step": "work",
+    "policy": {
+     "mode": "write",
+     "guards": [],
+     "allowShell": true
+    },
+    "src": {
+     "id": "work",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 12,
+      "col": 1
+     },
+     "title": "work",
+     "prompt": "work"
+    },
+    "top": 0
+   },
+   {
+    "op": "END",
+    "top": 0
+   },
+   {
+    "op": "LOOP_BK",
+    "step": "repeat-1",
+    "target": 1,
+    "cond": {
+     "t": "approve"
+    },
+    "top": 0
+   },
+   {
+    "op": "END"
+   }
+  ]
+ },
+ "bad": {
+  "diagnostics": [],
+  "steps": [
+   {
+    "id": "a",
+    "kind": "phase",
+    "attrs": {
+     "mode": "readonly"
+    },
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 8,
+     "col": 1
+    },
+    "title": "a",
+    "prompt": "a"
+   },
+   {
+    "id": "say-1",
+    "kind": "say",
+    "attrs": {
+     "mode": "readonly"
+    },
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 12,
+     "col": 1
+    },
+    "prompt": "b"
+   },
+   {
+    "id": "empty",
+    "kind": "phase",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 16,
+     "col": 1
+    },
+    "title": "empty"
+   },
+   {
+    "id": "end-1",
+    "kind": "end",
+    "attrs": {},
+    "cards": [],
+    "links": [
+     {
+      "kind": "next",
+      "to": "a",
+      "max": 2,
+      "pos": {
+       "line": 19,
+       "col": 6
+      }
+     }
+    ],
+    "pos": {
+     "line": 18,
+     "col": 1
+    },
+    "prompt": "text on an end"
+   },
+   {
+    "id": "same",
+    "kind": "phase",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 22,
+     "col": 1
+    },
+    "title": "same",
+    "prompt": "x"
+   },
+   {
+    "id": "same",
+    "kind": "phase",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 25,
+     "col": 1
+    },
+    "title": "same",
+    "prompt": "y"
+   }
+  ],
+  "printed": "---\nreins: 1\nname: bad\nbudget: { turns: 20, minutes: 9 }\nalways: []\n---\n\n## phase a\nmode: readonly\n> a\n\n## say\nmode: readonly\n> b\n\n## phase empty\n\n## end\nnext: a (max 2)\n> text on an end\n\n## phase same\n> x\n\n## phase same\n> y\n",
+  "validate": [
+   {
+    "severity": "error",
+    "message": "mode must be read-only or write, not \"readonly\" (step \"a\")",
+    "pos": {
+     "line": 8,
+     "col": 1
+    }
+   },
+   {
+    "severity": "error",
+    "message": "mode must be read-only or write, not \"readonly\" (step \"say-1\")",
+    "pos": {
+     "line": 12,
+     "col": 1
+    }
+   },
+   {
+    "severity": "warning",
+    "message": "Phase step \"empty\" has no prompt",
+    "pos": {
+     "line": 16,
+     "col": 1
+    }
+   },
+   {
+    "severity": "warning",
+    "message": "an end step stops the workflow; its links, cards and prompt do nothing",
+    "pos": {
+     "line": 18,
+     "col": 1
+    }
+   },
+   {
+    "severity": "error",
+    "message": "Duplicate id \"same\"",
+    "pos": {
+     "line": 25,
+     "col": 1
+    }
+   }
+  ],
+  "program": [
+   {
+    "op": "TURN",
+    "step": "a",
+    "policy": {
+     "mode": "write",
+     "guards": [],
+     "allowShell": true
+    },
+    "src": {
+     "id": "a",
+     "kind": "phase",
+     "attrs": {
+      "mode": "readonly"
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 8,
+      "col": 1
+     },
+     "title": "a",
+     "prompt": "a"
+    },
+    "top": 0
+   },
+   {
+    "op": "TURN",
+    "step": "say-1",
+    "policy": {
+     "mode": "write",
+     "guards": [],
+     "allowShell": true
+    },
+    "src": {
+     "id": "say-1",
+     "kind": "say",
+     "attrs": {
+      "mode": "readonly"
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 12,
+      "col": 1
+     },
+     "prompt": "b"
+    },
+    "top": 1
+   },
+   {
+    "op": "TURN",
+    "step": "empty",
+    "policy": {
+     "mode": "write",
+     "guards": [],
+     "allowShell": true
+    },
+    "src": {
+     "id": "empty",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 16,
+      "col": 1
+     },
+     "title": "empty"
+    },
+    "top": 2
+   },
+   {
+    "op": "END",
+    "top": 3
+   },
+   {
+    "op": "JUMP",
+    "target": 0,
+    "step": "end-1",
+    "linkMax": 2,
+    "top": 3
+   },
+   {
+    "op": "TURN",
+    "step": "same",
+    "policy": {
+     "mode": "write",
+     "guards": [],
+     "allowShell": true
+    },
+    "src": {
+     "id": "same",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 22,
+      "col": 1
+     },
+     "title": "same",
+     "prompt": "x"
+    },
+    "top": 4
+   },
+   {
+    "op": "TURN",
+    "step": "same",
+    "policy": {
+     "mode": "write",
+     "guards": [],
+     "allowShell": true
+    },
+    "src": {
+     "id": "same",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 25,
+      "col": 1
+     },
+     "title": "same",
+     "prompt": "y"
+    },
+    "top": 5
+   },
+   {
+    "op": "END"
+   }
+  ]
+ },
+ "runMain": {
+  "status": "done",
+  "texts": [
+   "[Reins · workflow \"pin3\" · step 1 of 6: Plan the work]\n\nplan it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · workflow \"pin3\" · step 2 of 6: say]\n\nsay hello\n\nFor this step:\n- Step is read-only. (Enforced: no file edits or write commands are permitted.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · workflow \"pin3\" · step 3 of 6: Write the migration for the user table and then update every caller of the old programming interface in the whole code base]\n\nlong one\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · workflow \"pin3\" · step 4 of 6: Odd -- Title!! (v2) ##]\n\nodd\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+  ],
+  "events": [
+   {
+    "id": "ev-1",
+    "timestamp": 1000,
+    "type": "run_started",
+    "data": {
+     "workflow": "pin3",
+     "steps": [
+      {
+       "id": "plan-the-work",
+       "kind": "phase",
+       "title": "Plan the work"
+      },
+      {
+       "id": "say-1",
+       "kind": "say"
+      },
+      {
+       "id": "write-the-migration-for-the-user-table-and-then-update-every-caller-of-the-old-programming-interface-in-the-whole-code-base",
+       "kind": "phase",
+       "title": "Write the migration for the user table and then update every caller of the old programming interface in the whole code base"
+      },
+      {
+       "id": "odd-title-v2",
+       "kind": "phase",
+       "title": "Odd -- Title!! (v2) ##"
+      },
+      {
+       "id": "end-1",
+       "kind": "end"
+      },
+      {
+       "id": "never",
+       "kind": "phase",
+       "title": "never"
+      }
+     ]
+    }
+   },
+   {
+    "id": "ev-2",
+    "timestamp": 2000,
+    "type": "step_started",
+    "data": {
+     "step": "plan-the-work",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-3",
+    "timestamp": 3000,
+    "type": "turn_started",
+    "data": {
+     "step": "plan-the-work"
+    }
+   },
+   {
+    "id": "ev-4",
+    "timestamp": 4000,
+    "type": "engine_cost",
+    "data": {
+     "usd": 0.01
+    }
+   },
+   {
+    "id": "ev-5",
+    "timestamp": 5000,
+    "type": "turn_ended",
+    "data": {
+     "step": "plan-the-work",
+     "text": "reply 1\nREINS: done",
+     "cost": 0.01
+    }
+   },
+   {
+    "id": "ev-6",
+    "timestamp": 6000,
+    "type": "step_started",
+    "data": {
+     "step": "say-1",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-7",
+    "timestamp": 7000,
+    "type": "turn_started",
+    "data": {
+     "step": "say-1"
+    }
+   },
+   {
+    "id": "ev-8",
+    "timestamp": 8000,
+    "type": "engine_cost",
+    "data": {
+     "usd": 0.01
+    }
+   },
+   {
+    "id": "ev-9",
+    "timestamp": 9000,
+    "type": "turn_ended",
+    "data": {
+     "step": "say-1",
+     "text": "reply 2\nREINS: done",
+     "cost": 0.01
+    }
+   },
+   {
+    "id": "ev-10",
+    "timestamp": 10000,
+    "type": "step_started",
+    "data": {
+     "step": "write-the-migration-for-the-user-table-and-then-update-every-caller-of-the-old-programming-interface-in-the-whole-code-base",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-11",
+    "timestamp": 11000,
+    "type": "turn_started",
+    "data": {
+     "step": "write-the-migration-for-the-user-table-and-then-update-every-caller-of-the-old-programming-interface-in-the-whole-code-base"
+    }
+   },
+   {
+    "id": "ev-12",
+    "timestamp": 12000,
+    "type": "engine_cost",
+    "data": {
+     "usd": 0.01
+    }
+   },
+   {
+    "id": "ev-13",
+    "timestamp": 13000,
+    "type": "turn_ended",
+    "data": {
+     "step": "write-the-migration-for-the-user-table-and-then-update-every-caller-of-the-old-programming-interface-in-the-whole-code-base",
+     "text": "reply 3\nREINS: done",
+     "cost": 0.01
+    }
+   },
+   {
+    "id": "ev-14",
+    "timestamp": 14000,
+    "type": "step_started",
+    "data": {
+     "step": "odd-title-v2",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-15",
+    "timestamp": 15000,
+    "type": "turn_started",
+    "data": {
+     "step": "odd-title-v2"
+    }
+   },
+   {
+    "id": "ev-16",
+    "timestamp": 16000,
+    "type": "engine_cost",
+    "data": {
+     "usd": 0.01
+    }
+   },
+   {
+    "id": "ev-17",
+    "timestamp": 17000,
+    "type": "turn_ended",
+    "data": {
+     "step": "odd-title-v2",
+     "text": "reply 4\nREINS: done",
+     "cost": 0.01
+    }
+   },
+   {
+    "id": "ev-18",
+    "timestamp": 18000,
+    "type": "step_started",
+    "data": {
+     "step": "end-1",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-19",
+    "timestamp": 19000,
+    "type": "run_finished",
+    "data": {}
+   }
+  ],
+  "receipt": {
+   "workflow": "pin3",
+   "status": "done",
+   "totalTurns": 4,
+   "totalTimeMs": 18000,
+   "totalCostUsd": 0.04,
+   "gatesHeld": 0,
+   "guardRefusals": 0,
+   "readOnlyRefusals": 0,
+   "totalRefusals": 0,
+   "loopAttempts": 0,
+   "autoCardsFired": 0,
+   "liveCardsDelivered": 0,
+   "verifyResults": {
+    "passed": 0,
+    "failed": 0
+   },
+   "knowlRecalls": 0,
+   "knowlStores": 0,
+   "knowlSkipped": 0
+  },
+  "counter": 4
+ },
+ "runSay": {
+  "status": "done",
+  "texts": [
+   "[Reins · workflow \"say-only\" · step 1 of 1: say]\n\njust say\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+  ],
+  "events": [
+   {
+    "id": "ev-1",
+    "timestamp": 1000,
+    "type": "run_started",
+    "data": {
+     "workflow": "say-only",
+     "steps": [
+      {
+       "id": "say-1",
+       "kind": "say"
+      }
+     ]
+    }
+   },
+   {
+    "id": "ev-2",
+    "timestamp": 2000,
+    "type": "step_started",
+    "data": {
+     "step": "say-1",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-3",
+    "timestamp": 3000,
+    "type": "turn_started",
+    "data": {
+     "step": "say-1"
+    }
+   },
+   {
+    "id": "ev-4",
+    "timestamp": 4000,
+    "type": "engine_cost",
+    "data": {
+     "usd": 0.01
+    }
+   },
+   {
+    "id": "ev-5",
+    "timestamp": 5000,
+    "type": "turn_ended",
+    "data": {
+     "step": "say-1",
+     "text": "reply 1\nREINS: done",
+     "cost": 0.01
+    }
+   },
+   {
+    "id": "ev-6",
+    "timestamp": 6000,
+    "type": "run_finished",
+    "data": {}
+   }
+  ],
+  "receipt": {
+   "workflow": "say-only",
+   "status": "done",
+   "totalTurns": 1,
+   "totalTimeMs": 5000,
+   "totalCostUsd": 0.01,
+   "gatesHeld": 0,
+   "guardRefusals": 0,
+   "readOnlyRefusals": 0,
+   "totalRefusals": 0,
+   "loopAttempts": 0,
+   "autoCardsFired": 0,
+   "liveCardsDelivered": 0,
+   "verifyResults": {
+    "passed": 0,
+    "failed": 0
+   },
+   "knowlRecalls": 0,
+   "knowlStores": 0,
+   "knowlSkipped": 0
+  },
+  "counter": 1
+ },
+ "runRepeat": {
+  "status": "done",
+  "texts": [
+   "[Reins · workflow \"end-in-repeat\" · step 1 of 1: work]\n\nwork\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+  ],
+  "events": [
+   {
+    "id": "ev-1",
+    "timestamp": 1000,
+    "type": "run_started",
+    "data": {
+     "workflow": "end-in-repeat",
+     "steps": [
+      {
+       "id": "repeat-1",
+       "kind": "repeat"
+      },
+      {
+       "id": "work",
+       "kind": "phase",
+       "title": "work"
+      },
+      {
+       "id": "end-1",
+       "kind": "end"
+      }
+     ]
+    }
+   },
+   {
+    "id": "ev-2",
+    "timestamp": 2000,
+    "type": "step_started",
+    "data": {
+     "step": "repeat-1",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-3",
+    "timestamp": 3000,
+    "type": "step_started",
+    "data": {
+     "step": "work",
+     "parents": [
+      "repeat-1"
+     ]
+    }
+   },
+   {
+    "id": "ev-4",
+    "timestamp": 4000,
+    "type": "turn_started",
+    "data": {
+     "step": "work"
+    }
+   },
+   {
+    "id": "ev-5",
+    "timestamp": 5000,
+    "type": "engine_cost",
+    "data": {
+     "usd": 0.01
+    }
+   },
+   {
+    "id": "ev-6",
+    "timestamp": 6000,
+    "type": "turn_ended",
+    "data": {
+     "step": "work",
+     "text": "reply 1\nREINS: done",
+     "cost": 0.01
+    }
+   },
+   {
+    "id": "ev-7",
+    "timestamp": 7000,
+    "type": "step_started",
+    "data": {
+     "step": "end-1",
+     "parents": [
+      "repeat-1"
+     ]
+    }
+   },
+   {
+    "id": "ev-8",
+    "timestamp": 8000,
+    "type": "run_finished",
+    "data": {}
+   }
+  ],
+  "receipt": {
+   "workflow": "end-in-repeat",
+   "status": "done",
+   "totalTurns": 1,
+   "totalTimeMs": 7000,
+   "totalCostUsd": 0.01,
+   "gatesHeld": 0,
+   "guardRefusals": 0,
+   "readOnlyRefusals": 0,
+   "totalRefusals": 0,
+   "loopAttempts": 0,
+   "autoCardsFired": 0,
+   "liveCardsDelivered": 0,
+   "verifyResults": {
+    "passed": 0,
+    "failed": 0
+   },
+   "knowlRecalls": 0,
+   "knowlStores": 0,
+   "knowlSkipped": 0
+  },
+  "counter": 2
+ },
+ "tagged": [
+  {
+   "ok": true,
+   "text": "---\nreins: 1\nname: chat\nalways: []\nbudget: { turns: 20, minutes: 30 }\n---\n\n## phase prompt\n> hello\n> world\n"
+  },
+  {
+   "ok": true,
+   "text": "---\nreins: 1\nname: chat\nalways: []\nbudget: { turns: 20, minutes: 30 }\n---\n\n## phase prompt\nmode: read-only\n> hello\n> world\n"
+  },
+  {
+   "ok": true,
+   "text": "---\nreins: 1\nname: chat\nalways: []\nbudget: { turns: 20, minutes: 30 }\n---\n\n## phase prompt\nmode: write\n> hello\n> world\n"
+  },
+  {
+   "ok": true,
+   "text": "---\nreins: 1\nname: chat\nalways: []\nbudget: { turns: 20, minutes: 30 }\n---\n\n## phase prompt\nmode: readonly\n> hello\n> world\n"
+  },
+  {
+   "ok": false,
+   "error": "unknown tag \"bogus\""
+  },
+  {
+   "ok": false,
+   "error": "#mode needs an argument"
+  },
+  {
+   "ok": false,
+   "error": "#read-only takes no argument"
+  },
+  {
+   "ok": false,
+   "error": "repeated tag \"mode\""
+  },
+  {
+   "ok": false,
+   "error": "bad tag name \"Bad Name\""
+  }
+ ],
+ "taggedWorkflow": {
+  "ok": true,
+  "text": "---\nreins: 1\nname: chat\nalways: []\nbudget: { turns: 20, minutes: 30 }\n---\n\n## phase prompt\nmode: read-only\n> hi\n",
+  "workflow": {
+   "version": 1,
+   "name": "chat",
+   "budget": {
+    "turns": 20,
+    "minutes": 30
+   },
+   "always": [],
+   "steps": [
+    {
+     "id": "prompt",
+     "kind": "phase",
+     "attrs": {
+      "mode": "read-only"
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 8,
+      "col": 1
+     },
+     "title": "prompt",
+     "prompt": "hi"
+    }
+   ],
+   "autos": []
+  },
+  "warnings": []
+ },
+ "catalogue": [
+  {
+   "name": "gate",
+   "place": "after",
+   "enforced": true
+  },
+  {
+   "name": "repeat",
+   "place": "wrap",
+   "arg": "until",
+   "argRequired": true,
+   "enforced": true
+  },
+  {
+   "name": "verify",
+   "place": "after",
+   "enforced": true
+  },
+  {
+   "name": "guard",
+   "place": "card",
+   "arg": "guard",
+   "argRequired": true,
+   "enforced": true
+  },
+  {
+   "name": "mode",
+   "place": "attr",
+   "arg": "mode",
+   "argRequired": true,
+   "enforced": true
+  },
+  {
+   "name": "read-only",
+   "place": "attr",
+   "argRequired": false,
+   "enforced": true
+  }
+ ],
+ "order": [
+  "phase",
+  "say",
+  "run",
+  "gate",
+  "repeat",
+  "if",
+  "verify",
+  "recall",
+  "store",
+  "model",
+  "subagent",
+  "end",
+  "use"
+ ],
+ "views": [
+  {
+   "kind": "phase",
+   "order": 10,
+   "colour": "soft",
+   "fields": [
+    {
+     "key": "title",
+     "label": "Title",
+     "input": "text"
+    },
+    {
+     "key": "prompt",
+     "label": "Prompt",
+     "input": "textarea",
+     "required": true
+    },
+    {
+     "key": "mode",
+     "label": "Mode",
+     "input": "mode",
+     "unset": "write"
+    }
+   ],
+   "line": [
+    {
+     "field": "title"
+    },
+    {
+     "field": "prompt"
+    }
+   ],
+   "cards": true,
+   "card": {
+    "label": "phase",
+    "section": "Flow"
+   },
+   "fresh": {}
+  },
+  {
+   "kind": "say",
+   "order": 20,
+   "colour": "soft",
+   "fields": [
+    {
+     "key": "prompt",
+     "label": "Prompt",
+     "input": "textarea"
+    },
+    {
+     "key": "mode",
+     "label": "Mode",
+     "input": "mode",
+     "unset": "write"
+    }
+   ],
+   "line": [
+    "say",
+    {
+     "field": "prompt"
+    }
+   ],
+   "cards": true,
+   "card": {
+    "label": "custom prompt",
+    "section": "Flow"
+   },
+   "fresh": {}
+  },
+  {
+   "kind": "end",
+   "order": 120,
+   "colour": "hand",
+   "stops": true,
+   "fields": [],
+   "line": [
+    "end"
+   ],
+   "card": {
+    "label": "end",
+    "section": "Flow"
+   },
+   "fresh": {}
+  }
+ ]
+}

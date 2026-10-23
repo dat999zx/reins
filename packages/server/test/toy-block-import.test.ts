@@ -380,7 +380,7 @@ describe('a hostile mod file is refused in words and writes nothing', () => {
     expect(r.json.problems.join(' ')).toMatch(words);
     expect(state()).toBe(before);
     expect(fs.existsSync(path.join(w.dir, 'mod-trust.json'))).toBe(false);
-    expect((await list(w)).filter((m) => m.kind === 'block')).toEqual([]);
+    expect((await list(w)).filter((m) => m.kind === 'block' && !m.pack)).toEqual([]); // M3 Task 3: the default pack's blocks are always there
     expect(marked()).toEqual([]);
   });
 

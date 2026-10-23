@@ -40,6 +40,10 @@ describe('the claude mods', () => {
     const mods = await start();
     expect(mods.problems).toEqual([]);
     expect(mods.mods.map((m) => [m.id, m.kind, m.source, m.problems])).toEqual([
+      // M3 Task 3: the default pack's blocks load first (blocks come after conditions and cards, before protocols and providers)
+      ['end', 'block', 'bundled', []],
+      ['phase', 'block', 'bundled', []],
+      ['say', 'block', 'bundled', []],
       ['anthropic-messages', 'protocol', 'bundled', []],
       ['claude-code-cli', 'protocol', 'bundled', []],
       ['openai-chat', 'protocol', 'bundled', []],

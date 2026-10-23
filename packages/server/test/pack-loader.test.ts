@@ -10,6 +10,9 @@ import { dropCarried, loadMods } from '../src/mods/loader.js';
 import type { Carried, LoadedMod, Mods } from '../src/mods/types.js';
 import { registerPack } from '../../core/test/pack.js';
 import { tempHome } from './mods-harness.js';
+import { usePack } from './pack-helper.js';
+
+usePack(); // M3 Task 3: the built-in kinds are the default pack's mods; this file loads the pack once
 
 let h: ReturnType<typeof tempHome>;
 let bundled: string;

@@ -5,6 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { Run, FakeEngine, parseWorkflow } from '@reins/core';
 import { openStore } from '../src/store.js';
+import { usePack } from './pack-helper.js';
+
+usePack(); // M3 Task 3: the built-in kinds are the default pack's mods; this file loads the pack once
 
 const WF = parseWorkflow('---\nreins: 1\nname: s\nbudget: { turns: 9, minutes: 9 }\n---\n\n## phase one\n> a\n\n## gate\nuntil: you approve\n\n## phase two\n> b\n').workflow!;
 

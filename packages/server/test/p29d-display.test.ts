@@ -13,6 +13,9 @@ import { Redactor } from '../src/secrets.js';
 import { openSession } from '../src/session.js';
 import { openStore } from '../src/store.js';
 import { testEngine } from './test-engine.js';
+import { usePack } from './pack-helper.js';
+
+usePack(); // M3 Task 3: the built-in kinds are the default pack's mods; this file loads the pack once
 
 const ch = (n: number) => String.fromCodePoint(n);
 const KEY = `SYNTHETIC_${ch(0xad)}KEY${ch(0x200b)}_0123456789`;

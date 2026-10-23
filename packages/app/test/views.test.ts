@@ -9,6 +9,7 @@ import { applyField } from '../src/panelEdit.js';
 import { renderRow, rowTypes } from '../src/rows.js';
 import { initial, reduce } from '../src/state.js';
 import type { LogRow } from '@reins/server/store.js';
+import { PACK_DIR, packMods } from '../../core/test/pack.js';
 
 const step = (): Step => ({ id: 'x', kind: 'toy', attrs: {}, cards: [], links: [] }) as unknown as Step;
 const toy = { kind: 'toy', fields: [{ key: 'toytimes', label: 'Times', input: 'number' as const, check: 'count' as const }], line: ['toy'] };
@@ -24,22 +25,27 @@ describe('fields.ts', () => {
 
 const nodesDir = new URL('../../core/src/nodes/', import.meta.url);
 const viewFiles = () => readdirSync(nodesDir).filter((f) => f.endsWith('.view.ts'));
+// M3: a kind of the default pack has its view in its mod.json, not in a core file; every other kind keeps its <kind>.view.ts in core.
+const packKinds = new Set(packMods(PACK_DIR).flatMap((p) => (p.manifest as { provides?: { kinds?: string[] } }).provides?.kinds ?? []));
+const inCore = () => [...NODES.keys()].filter((k) => !packKinds.has(k));
 const css = () => readFileSync(new URL('../src/app.css', import.meta.url), 'utf8');
 
 describe('view files', () => {
   it('(a) every node kind has <kind>.view.ts and the folder holds exactly those', () => {
-    for (const k of NODES.keys()) expect(existsSync(new URL(`${k}.view.ts`, nodesDir)), k).toBe(true);
-    expect(viewFiles()).toHaveLength(NODES.size);
+    for (const k of inCore()) expect(existsSync(new URL(`${k}.view.ts`, nodesDir)), k).toBe(true);
+    for (const k of packKinds) expect(existsSync(new URL(`${k}.view.ts`, nodesDir)), `pack kind ${k} has no core view file`).toBe(false);
+    expect(packKinds.size).toBeGreaterThan(0);
+    expect(viewFiles()).toHaveLength(inCore().length);
   });
   it('(b) each default export names the kind of its file', async () => {
-    expect(viewFiles()).toHaveLength(NODES.size);
+    expect(viewFiles()).toHaveLength(inCore().length);
     for (const f of viewFiles()) {
       const mod = (await import(/* @vite-ignore */ new URL(f, nodesDir).href)) as { default: { kind: string } };
       expect(mod.default.kind, f).toBe(f.replace('.view.ts', ''));
     }
   });
   it('(c) imports are `import type` or from ./fields.js', () => {
-    expect(viewFiles()).toHaveLength(NODES.size);
+    expect(viewFiles()).toHaveLength(inCore().length);
     for (const f of viewFiles()) {
       const imports = readFileSync(new URL(f, nodesDir), 'utf8').split(/\r?\n/).filter((l) => /^\s*import\b/.test(l));
       for (const l of imports) expect(l, f).toMatch(/^import type |from '\.\/fields\.js';$/);

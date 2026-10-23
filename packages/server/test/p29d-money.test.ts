@@ -12,6 +12,9 @@ import { openStore, type Store } from '../src/store.js';
 import type { FakeReply } from './fake-provider.js';
 import { rig, WIRES, type Rig, type WireId } from './loop-harness.js';
 import { testEngine } from './test-engine.js';
+import { usePack } from './pack-helper.js';
+
+usePack(); // M3 Task 3: the built-in kinds are the default pack's mods; this file loads the pack once
 
 const rigs: Rig[] = [];
 const dirs: string[] = [];

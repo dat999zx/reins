@@ -1,0 +1,25 @@
+{
+  "reins": 1,
+  "id": "say",
+  "kind": "block",
+  "version": "1.0.0",
+  "label": "Say",
+  "description": "A turn with your own prompt",
+  "main": "index.js",
+  "order": 20,
+  "pack": "default",
+  "provides": { "kinds": ["say"], "attrs": ["mode"] },
+  "view": {
+    "kind": "say",
+    "order": 20,
+    "colour": "soft",
+    "fields": [
+      { "key": "prompt", "label": "Prompt", "input": "textarea" },
+      { "key": "mode", "label": "Mode", "input": "mode", "unset": "write" }
+    ],
+    "line": ["say", { "field": "prompt" }],
+    "cards": true,
+    "card": { "label": "custom prompt", "section": "Flow" },
+    "fresh": {}
+  }
+}

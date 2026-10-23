@@ -7,6 +7,9 @@ import { startRunCli } from '../src/run-cli.js';
 import { openStore } from '../src/store.js';
 import { claudeEngine } from '../src/mods/claude-code-cli/engine.js';
 import { FAKE_CLAUDE, fakeSetup, type FakeTurn } from './helpers.js';
+import { usePack } from './pack-helper.js';
+
+usePack(); // M3 Task 3: the built-in kinds are the default pack's mods; this file loads the pack once
 
 const GOLDEN = path.join(__dirname, 'golden-3b');
 

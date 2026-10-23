@@ -16,6 +16,9 @@ import { openStore, type Store } from '../src/store.js';
 import type { Mods } from '../src/mods/types.js';
 import { packMods } from '../../core/test/pack.js';
 import { PROBE } from './http-helpers.js';
+import { usePack } from './pack-helper.js';
+
+// M3 Task 3: the describes below load the default pack with `usePack()`, except 'the real bundled folder', which starts the real loader (and so loads the pack) itself.
 
 const KEY = 'sk-test-0123456789abcdef';
 const rm = (d: string) => { try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* left for the OS */ } };
@@ -104,6 +107,7 @@ function tree(dir: string): string[] {
 }
 
 describe('the default pack in the list', () => {
+  usePack();
   it('lists the pack mods with their flags, and the pack line for the first-run screen', async () => {
     const w = await boot();
     const r = body(await listMods(w.env()));
@@ -137,6 +141,7 @@ describe('the default pack in the list', () => {
 });
 
 describe('a required mod has no off switch', () => {
+  usePack();
   it('the Settings action refuses with words and writes nothing', async () => {
     const w = await boot();
     const r = await setEnabled(w.env(), 'pend', false);
@@ -174,6 +179,7 @@ describe('a required mod has no off switch', () => {
 });
 
 describe('Customize', () => {
+  usePack();
   it('the file it would import is the built-in folder as text, without `pack` and `required`; a bad id, an unknown id and a mod outside the pack are refused', async () => {
     const w = await boot();
     const r = customizeFile(w.env(), 'pend');
@@ -362,6 +368,7 @@ describe('Customize', () => {
 });
 
 describe('"the built-in is newer"', () => {
+  usePack();
   it('isNewer compares dotted numbers, left to right', () => {
     expect(isNewer('1.10.0', '1.9.0')).toBe(true);
     expect(isNewer('1.9.0', '1.10.0')).toBe(false);
@@ -424,6 +431,7 @@ describe('the real bundled folder', () => {
 });
 
 describe('over HTTP', () => {
+  usePack();
   it('GET and POST /api/mods/:id/customize, the disable refusal of a required mod, and the pack line in the list', async () => {
     const w = await boot();
     const redactor = new Redactor({ home: w.dir, env: {}, keyEnvNames: () => keyEnvNames(w.mods) });

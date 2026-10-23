@@ -12,6 +12,7 @@ import { startServer } from '../src/server.js';
 import { openStore } from '../src/store.js';
 import { boot, cleanup, PROBE, request } from './http-helpers.js';
 import { tempHome } from './mods-harness.js';
+import { PACK_DIR, packMods } from '../../core/test/pack.js';
 
 const FIXTURE = fileURLToPath(new URL('./fixtures/mods/toy-beep/', import.meta.url));
 const manifest = () => JSON.parse(fs.readFileSync(path.join(FIXTURE, 'mod.json'), 'utf8')) as Record<string, any>;
@@ -38,14 +39,17 @@ async function withBeep(trusted: boolean, edit: (m: Record<string, any>) => void
 const kindsOf = async (w: Awaited<ReturnType<typeof boot>>) => (await w.api('GET', '/api/kinds')).json as { kinds: Array<Record<string, any>>; problems: string[] };
 
 describe('GET /api/kinds: the built-in views', () => {
-  it('serves the 13 views of core, in kind order, as the JSON core holds them', async () => {
+  it('serves the 10 views of core and the views of the default pack, in kind order, as the JSON they are held in', async () => {
     const w = await boot();
     const r = await w.api('GET', '/api/kinds');
     expect(r.status).toBe(200);
     expect(r.json.problems).toEqual([]);
     expect(r.json.kinds.map((k: { kind: string }) => k.kind)).toEqual(BUILT_IN_ORDER);
-    expect(r.json.kinds).toEqual(JSON.parse(JSON.stringify([...BUILTIN_VIEWS].sort((a, b) => a.order - b.order))));
-    expect(BUILTIN_VIEWS).toHaveLength(13);
+    // M3 Task 3: say, phase and end are pack mods now; their views are the `view` of their mod.json.
+    const pack = packMods(PACK_DIR).map((p) => (p.manifest as unknown as { view: { order: number } }).view);
+    expect(r.json.kinds).toEqual(JSON.parse(JSON.stringify([...BUILTIN_VIEWS, ...pack].sort((a, b) => a.order - b.order))));
+    expect(BUILTIN_VIEWS).toHaveLength(10);
+    expect(pack).toHaveLength(3);
   });
 
   it('needs the token like every other route', async () => {
@@ -163,11 +167,14 @@ describe('the builder refuses what it must not send', () => {
 
   it('a mod view cannot take the place of a built-in kind', async () => {
     const { mods, add } = await reg();
-    add(view({ kind: 'say', colour: 'hard', line: ['evil'] }));
+    add(view({ kind: 'gate', colour: 'hard', line: ['evil'] }));
+    // M3 Task 3: a pack kind (say, phase, end) is protected by the registry itself: its view is already recorded, so a second one is refused at once.
+    expect(() => add(view({ kind: 'say', colour: 'hard', line: ['evil'] }))).toThrow('block-view "say" is already registered');
     const out = servedKinds(mods);
-    expect(out.kinds.filter((k) => k.kind === 'say')).toEqual([BUILTIN_VIEWS.find((v) => v.kind === 'say')]);
+    expect(out.kinds.filter((k) => k.kind === 'gate')).toEqual([BUILTIN_VIEWS.find((v) => v.kind === 'gate')]);
+    expect(out.kinds.filter((k) => k.kind === 'say')).toHaveLength(1);
     expect(out.kinds).toHaveLength(13);
-    expect(out.problems).toEqual(['say: a mod cannot give a view to a built-in block, so it is not served.']);
+    expect(out.problems).toEqual(['gate: a mod cannot give a view to a built-in block, so it is not served.']);
     mods.dispose();
   });
 
@@ -211,7 +218,7 @@ describe('the builder refuses what it must not send', () => {
     mods.dispose();
   });
 
-  it('with no mods it is the 13 built-ins', () => {
-    expect(servedKinds().kinds.map((k) => k.kind)).toEqual(BUILT_IN_ORDER);
+  it('with no mods it is the 10 built-ins that stay in core (say, phase and end come with the default pack)', () => {
+    expect(servedKinds().kinds.map((k) => k.kind)).toEqual(BUILT_IN_ORDER.filter((k) => !['phase', 'say', 'end'].includes(k)));
   });
 });
