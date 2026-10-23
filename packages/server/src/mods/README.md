@@ -282,6 +282,7 @@ Reins registers each block, condition and card in core once, when the server sta
 - A mod that is registered and unchanged stays as it is.
 - A mod whose `mod.json` or code changed, that was switched off, that is no longer trusted, or that was removed keeps its old registration. Settings says `` `<id>`: applies after a restart. ``
 - A mod that was not registered yet (a new one, or one trusted or turned on after start) registers at once. It does not wait for a restart.
+- A user mod with the id of a bundled block, condition or card mod replaces it. The copy may cover only what the bundled mod itself `provides`: a copy of `say` may replace `say`, never `end` or `gate`. (Reins does not yet enforce this: no bundled block mod ships in M2, and the limit is M3 Task 1's.)
 
 ### Trust
 
@@ -300,10 +301,10 @@ Trust is by hash of every file in the folder, `mod.json` included. A change to `
 Reins limits what a mod's code can do to core, through its hooks and ops.
 
 - A hook that throws does not break Reins. Saving, printing, reading and checking carry on. A throw in `compile` or in a check shows as an error on the step.
-- Hooks get a copy of the step, the instruction or the event. A hook cannot change the workflow or what the run records.
+- The print, count and check hooks get a copy of the step, the instruction or the event. A compile hook builds the program, so what it pushes is the program; Reins checks the program after it is compiled (see below).
 - A node is copied once, before the check. The copy is what core runs.
 - A stuck op does not hold Stop. Stop returns at once, and the op's late writes are dropped.
-- A mod op's `vm` sees only: `vm.log`, with the event names the mod listed; `vm.command`, with the commands the op lists in `commands`; and `vm.goto` and `vm.tracks.start`, to a place in the program.
+- A mod op's `vm` is the run's own hands, fenced. These members are checked: `vm.log` (only the event names the mod listed), `vm.command` (only the commands the op lists in `commands`), `vm.goto` and `vm.tracks.start` (to a place in the program). These are also there and act with the run's own authority: `vm.pause`, `vm.takeLink`, `vm.turn`, `vm.ensureSession`, `vm.setRecall` and `vm.handBack`. A mod you trust can therefore pause its track, run a turn and hand text back; trust one only if you would let it do that.
 - The program is checked after it is compiled. A jump or a start to a place outside the program is refused, and the run does not start.
 - Output is capped: a heading at 200 characters, a count key at 40, a printed line at 300, and an error message at 200.
 - A throw from a mod op pauses its track.

@@ -14,12 +14,13 @@ import { capKind, KINDS, setKinds, unknownView, viewOf, wiresOf } from '../src/c
 import { cleanStep } from '../src/editorState.js';
 import { Palette } from '../src/Palette.js';
 
-const beepView = JSON.parse(fs.readFileSync(new URL('../../server/test/fixtures/mods/toy-beep/mod.json', import.meta.url), 'utf8')).view;
+const beepManifest = JSON.parse(fs.readFileSync(new URL('../../server/test/fixtures/mods/toy-beep/mod.json', import.meta.url), 'utf8'));
+const beepView = beepManifest.view;
 /** The list as the app gets it: the builder's answer, sent as JSON. */
 const served = (trusted = true) => {
   const registry = new Registry();
   registry.register('block-view', 'beep', beepView);
-  const mods = { registry, mods: [{ id: 'toy-beep', kind: 'block', trusted, manifest: { order: 140, view: beepView } }] };
+  const mods = { registry, mods: [{ id: 'toy-beep', kind: 'block', trusted, hasCode: true, manifest: { order: 140, provides: beepManifest.provides, view: beepView } }] };
   return JSON.parse(JSON.stringify(servedKinds(mods as never).kinds));
 };
 afterEach(() => setKinds(servedKinds().kinds)); // what the setup file made

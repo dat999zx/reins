@@ -337,6 +337,25 @@ const capOf = (x: number) => Math.ceil(Math.round(x * 1e9) / 1e3) / 1e6;
 const money6 = (x: number) => { const v = r6(x); return Number.isFinite(v) ? v : Number.isFinite(x) ? x : 0; };
 /** What a track's money record may hold at most (a cost, a total, a total of one model): far above any real run, far below what `r6` can overflow. */
 const MONEY_MAX = 1e12;
+
+/** The most `log` calls one instruction of a mod may make: each is a feed row and a full snapshot, so a loop that logs would fill the disk. */
+const LOG_MAX = 100;
+/** The pauses a mod's op may raise: the ones the run's own answers (approve, allow more, resume) handle for any step. */
+const MOD_PAUSES: readonly string[] = ['gate', 'budget-used', 'link-budget-used', 'agent-blocked', 'stop'];
+const PAUSE_TEXT_MAX = 200;
+
+/** A pause a mod's op raised, rebuilt from plain parts: an allowed `type`, `tame`d strings, finite numbers; never a track, a title, a condition or anything else the mod holds. */
+function modPause(mod: ModInfo, p: unknown, length: number, cut: (text: string) => never): PauseReason {
+  const o = (p !== null && typeof p === 'object' ? p : {}) as Record<string, unknown>;
+  const type = o.type;
+  if (typeof type !== 'string' || !MOD_PAUSES.includes(type)) cut(`The block "${mod.id}" paused the run with a reason it may not use (${tame(String(type), 40)}); Resume tries again`);
+  const out: Record<string, unknown> = { type };
+  for (const k of ['stepId', 'reason', 'text', 'linkKey']) { const s = tame(o[k], PAUSE_TEXT_MAX); if (s !== undefined) out[k] = s; }
+  for (const k of ['limit', 'spent']) { const n = o[k]; if (typeof n === 'number' && Number.isFinite(n)) out[k] = n; }
+  const to = o.to;
+  if (sound(to, length)) out.to = to;
+  return out as unknown as PauseReason;
+}
 /**
  * The `usdSpent` key of a slice a track inherited. U+0001 first (validate refuses a step id that starts with it, so no plain key equals this), then the
  * track and the step as a JSON array, so no two pairs give the same text.
@@ -413,7 +432,7 @@ export class Run {
   private lastTotals?: Record<string, number>;
   private openSubagent?: (o: SubagentOpen) => Promise<SubagentOpened>;
   private kinds?: Record<string, string>;
-  private subagents: Record<string, SubagentRecord> = {};
+  private subagents: Record<string, SubagentRecord> = Object.create(null);   // keyed by step id: a name like `constructor` must not find an Object member
   /** The session whose turn is in flight: the run's own or a subagent's; interrupts go there. */
   private turnSession?: EngineSession;
   /** The main line as a track: every field forwards to the Run's own, so snapshot, restore and every direct write read what they always read. */
@@ -905,9 +924,11 @@ export class Run {
     }
   }
 
-  /** The `log` gate of a mod's instruction: only an event its mod.json `provides.events` lists, with a copy of the data. */
-  private logGate(mod: ModInfo) {
+  /** The `log` gate of a mod's instruction: only an event its mod.json `provides.events` lists, with a copy of the data, and at most `LOG_MAX` calls (each one is a row and a snapshot). */
+  private logGate(mod: ModInfo, cut: (text: string) => never) {
+    let calls = 0;
     return (type: unknown, data: unknown) => {
+      if (++calls > LOG_MAX) cut(`The block "${mod.id}" logged more than ${LOG_MAX} events in one go; Resume tries again`);
       if (typeof type !== 'string' || !mod.events.includes(type)) throw new Error(`The block "${mod.id}" may not log "${tame(String(type), 40)}": its mod.json provides.events does not list it.`);
       return [type, structuredClone(data)];
     };
@@ -921,7 +942,9 @@ export class Run {
     let seen: readonly Instr[] | undefined;
     let copy: readonly Instr[] = [];
     return fence(this.vm(t), live, {
-      log: this.logGate(mod),
+      log: this.logGate(mod, cut),
+      pause: (p) => [modPause(mod, p, this.program.length, cut)],
+      takeLink: (key, to, max) => { place(to); return [key, to, max]; },
       command: (cmd) => { if (typeof cmd !== 'string' || !listed(cmd)) throw refuse(cmd); },
       judge: (c) => { for (const a of condAtoms(c)) if (CONDS.get(a.t)?.judge === 'command' && !listed(printCond(a))) throw refuse(printCond(a)); },
       goto: place,
@@ -1446,9 +1469,13 @@ export class Run {
     const isAtStep = !!(currentInstr && 'step' in currentInstr);
     const currentStepId = isAtStep ? (currentInstr as any).step : this.lastStepId;
 
+    const starts = new Map<number, StepStart[]>();
+    const program = compileProgram(newWorkflow, this.resolveBlock, starts);
+    // The constructor refuses a bad program; so does an edit (a block's `next` or `starts` may name a place that is not one): the old program stays and the run pauses.
+    if (programProblem(program, false)) { this.pauseTrack(this.main, { type: 'step-deleted' }); return; }
     this.workflow = newWorkflow;
-    this.starts = new Map();
-    this.program = compileProgram(newWorkflow, this.resolveBlock, this.starts);
+    this.starts = starts;
+    this.program = program;
 
     if (currentStepId) {
       const stepExists = this.findStepById(newWorkflow.steps, currentStepId);
@@ -1675,7 +1702,7 @@ export class Run {
     if (snapshot.openSlice) run.openSlice = { ...snapshot.openSlice };
     if (snapshot.lastTotal !== undefined) run.lastTotal = snapshot.lastTotal;
     if (snapshot.lastTotals) run.lastTotals = { ...snapshot.lastTotals };
-    if (snapshot.subagents) run.subagents = structuredClone(snapshot.subagents);
+    if (snapshot.subagents) run.subagents = Object.assign(Object.create(null), structuredClone(snapshot.subagents));
     if (snapshot.handback) run.handback = [...snapshot.handback];
     if (snapshot.changeRequest) run.changeRequest = structuredClone(snapshot.changeRequest);
     // A track that was running when the run was saved (a detach leaves them so) runs again; a paused one keeps its pause; an ended one is no track.
@@ -1848,10 +1875,14 @@ export class Run {
       const mod = modOfOp(op);
       if (!mod) await op.exec(instr, this.vm(t));
       else {
-        await this.modRun(t, mod, (instr as { step?: string }).step ?? instr.op, `instruction ${instr.op}`, (live, cut) => {
+        const stepId = (instr as { step?: string }).step ?? instr.op;
+        const from = t.pc;
+        await this.modRun(t, mod, stepId, `instruction ${instr.op}`, (live, cut) => {
           const own = structuredClone(instr);   // the op works on a copy: the program is not its to change
           return op.exec(own, this.modVm(t, mod, op, instr, live, cut));
         });
+        // `alive` is false for a paused, stopped or parked track: still alive with the counter where it was means the op forgot `vm.next()`, and the next pass would do the same.
+        if (this.alive(t) && t.pc === from) this.pauseForStop(t, `The block "${mod.id}" did not move on; Resume tries again`, stepId);
       }
       return this.status;
     }
@@ -1938,9 +1969,10 @@ export class Run {
         const mod = n.mod;
         const out = !n.exec ? 'next'
           : !mod ? await n.exec(instr.src, this.execCtx(t, instr.step))
-          : await this.modRun(t, mod, instr.step, `block ${instr.kind}`, (live) => n.exec!(structuredClone(instr.src), fence(this.execCtx(t, instr.step), live, { log: this.logGate(mod) })));
+          : await this.modRun(t, mod, instr.step, `block ${instr.kind}`, (live, cut) => n.exec!(structuredClone(instr.src), fence(this.execCtx(t, instr.step), live, { log: this.logGate(mod, cut) })));
         if (!this.alive(t)) return this.status;
         if (out === 'next') t.pc++;
+        else if (mod) this.pauseForStop(t, `The block "${mod.id}" did not move on; Resume tries again`, instr.step);   // 'stay' while the run goes on: the next pass would do the same
         return this.status;
       }
 

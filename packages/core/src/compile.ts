@@ -127,6 +127,9 @@ export function compileProgram(
     resolveBlock,
   };
 
+  // A mod's compile reads an earlier instruction as a frozen copy: it cannot rewrite what core or another block compiled (a TURN's policy, say).
+  const modCtx: CompileCtx = { ...ctx, get: (i) => { const x = instrs[i]; return x && Object.freeze(structuredClone(x)); } };
+
   const open: string[] = [];
   /** Where the instructions of a mod's step sit: once the links are patched they are replaced by frozen copies, so the mod keeps no handle on the program. */
   const modSpans: Array<[number, number]> = [];
@@ -136,7 +139,7 @@ export function compileProgram(
     const parents = [...open];
     open.push(step.id);
     const node = NODES.get(step.kind);
-    node?.compile(step, ctx);
+    node?.compile(step, node.mod ? modCtx : ctx);
     if (node?.mod) modSpans.push([from, instrs.length]);
     open.pop();
     // The inner step finishes first, so the outer one is put in front of it.

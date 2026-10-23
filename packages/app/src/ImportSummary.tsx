@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { showText } from '../../core/src/display.js';
 import { ApiError, post } from './api.js';
 import { NO_CODE_BUTTON, TRUST_BUTTON, applyBody, planOf, problemsFrom, summaryLines, type PreviewSummary } from './importLines.js';
 
@@ -19,7 +20,7 @@ export function linesOf(s: KindSummary): string[] {
 export function SummaryList({ summary }: { summary: KindSummary }) {
   return (
     <ul className="isummary" aria-label="What importing does">
-      {linesOf(summary).map((l, i) => <li key={i}>{l}</li>)}
+      {linesOf(summary).map((l, i) => <li key={i}>{showText(l, { lines: true })}</li>)}
     </ul>
   );
 }

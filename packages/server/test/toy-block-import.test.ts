@@ -172,15 +172,16 @@ describe('toy-beep: a block mod through preview, trust, restart, run, export, im
     expect(coreNow()).toBe(before);
   });
 
-  it('a condition or a card core already has is a warning too', async () => {
+  // Task 25a (MINOR 2): a condition or card name core has is refused at the manifest, not a warning. (This pin said "a warning".)
+  it('a condition or a card core already has is refused with words', async () => {
     const man = (kind: string, provides: unknown) => ({ reins: 1, id: `toy-${kind}`, kind, version: '1.0.0', label: `Toy ${kind}`, main: 'index.js', order: 150, provides });
     const code = 'export default function activate() {}\n';
     const atom = [...CONDS.keys()][0]!;
     const card = [...CARDS.keys()][0]!;
     const c = await preview(a, asFile({ 'mod.json': JSON.stringify(man('condition', { conditions: [atom, 'ping'] })), 'index.js': code }));
-    expect(c.json.summary.warnings).toEqual([`the condition \`${atom}\` already exists in Reins, so the code of this mod would be refused.`]);
+    expect([c.status, c.json.problems.join(' ')]).toEqual([400, expect.stringContaining(`lists \`${atom}\`, which Reins already has`)]);
     const k = await preview(a, asFile({ 'mod.json': JSON.stringify(man('card', { cards: [card] })), 'index.js': code }));
-    expect(k.json.summary.warnings).toEqual([`the card \`${card}\` already exists in Reins, so the code of this mod would be refused.`]);
+    expect([k.status, k.json.problems.join(' ')]).toEqual([400, expect.stringContaining(`lists \`${card}\`, which Reins already has`)]);
   });
 
   it('import without trust: listed as a block that needs trust, its view is served from the manifest, nothing runs or registers, also through reloads', async () => {

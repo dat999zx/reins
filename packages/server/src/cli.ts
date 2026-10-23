@@ -16,6 +16,7 @@ import { openUrl } from './opener.js';
 import { pickFolder } from './picker.js';
 import { runServe } from './serve.js';
 import { formatDiagnostic, loadWorkflow, startRunCli } from './run-cli.js';
+import { kindVersions } from './drive.js';
 import { readSetting } from './settings.js';
 import { openStore, redactingStore } from './store.js';
 
@@ -199,6 +200,7 @@ async function dispatch(argv: string[], io: Io, c: { home: string; dir: string; 
     const engineOf = makeEngineFrom(mods, { env: io.env, home: dir }, (id, origin) => store.hasConsent(id, origin), redactor);
     const settings = { get maxCallsPerTurn() { return readSetting(store, 'maxCallsPerTurn'); } };
     const h = startRunCli({
+      kinds: kindVersions(mods),
       ...(pos[0] ? { file: pos[0] } : {}),
       ...(typeof flags.resume === 'string' ? { resumeId: flags.resume } : {}),
       cwd: process.cwd(),

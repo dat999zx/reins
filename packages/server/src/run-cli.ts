@@ -37,6 +37,8 @@ export interface RunCliOptions {
   fullDetail?: boolean;
   /** What workflow commands run with (`shellEnvFrom(...)`), worked out when each starts; none = this process's. */
   env?: () => NodeJS.ProcessEnv;
+  /** `kindVersions(mods)`: saved with the run and compared on `--resume`. None = no check. */
+  kinds?: Record<string, string>;
 }
 
 // A partial line that has not seen its newline is written once it is this long. It is already redacted by then, so the cut is safe.
@@ -209,6 +211,7 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
       workflow, engine, cwd, resolveBlock: loaded.resolveBlock,
       ...(openSubagent ? { openSubagent } : {}),
       ...(o.env ? { env: o.env } : {}),
+      ...(o.kinds ? { kinds: o.kinds } : {}),
       onEvent: (ev) => {
         o.store.appendEvent(runId, ev);
         if (run) o.store.saveSnapshot(runId, run.snapshot());

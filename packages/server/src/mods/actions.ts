@@ -308,7 +308,12 @@ function addsOf(raw: Record<string, unknown>): string[] {
   const card = isObj(raw.view) && isObj(raw.view.card) ? raw.view.card : undefined;
   if (clean(card?.label)) out.push(`shown in the block list as ${show(card.label)}${clean(card.section) ? ` under ${show(card.section)}` : ''}`);
   // A block with no code (a data block) says so: there is nothing to run, so nothing to trust.
-  if (raw.kind === 'block' && raw.main === undefined) out.push('has no code, so there is nothing to trust');
+  if (raw.kind === 'block' && raw.main === undefined) {
+    out.push('has no code, so there is nothing to trust');
+    // The prompt it sends, cut. Not yet checked (this is the preview): a hidden character is named, never passed on.
+    const turn = raw.turn;
+    if (typeof turn === 'string') out.push(hasHiddenChars(turn.replaceAll('\n', '')) ? 'its prompt holds a hidden character, so the mod will be refused' : `its prompt is ${cap(JSON.stringify(turn), 300)}`);
+  }
   return out;
 }
 

@@ -3,7 +3,7 @@ import { kindOf, ROW_CLASSES } from '../src/mods/kinds.js';
 import { Registry } from '../src/mods/registry.js';
 
 const view = (extra: Record<string, unknown> = {}) => ({ kind: 'toy', order: 9, colour: 'soft', fields: [], line: ['toy'], ...extra });
-const check = (v: unknown) => kindOf('block')!.validate({ kind: 'block', main: 'x.js', order: 1, provides: { kinds: ['toy'] }, view: v }, { id: 'toy', registry: new Registry() });
+const check = (v: unknown) => kindOf('block')!.validate({ kind: 'block', main: 'x.js', order: 1, provides: { kinds: ['toy'], events: ['say', 'note', 'step_ended'] }, view: v }, { id: 'toy', registry: new Registry() });
 const rows = (r: unknown) => check(view({ rows: { say: r } }));
 const one = (out: unknown[]) => out.map(String).join('\n');
 

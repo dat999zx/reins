@@ -54,7 +54,7 @@ export function receipt(events: RunEventRecord[]): Receipt {
   const seen = (m: string) => byModel.get(m) ?? (byModel.set(m, { usd: 0, turns: 0 }), byModel.get(m)!);
 
   const subs = new Map<string, { title: string; usd: number; turns: number; unknown?: true }>();
-  const counts: Record<string, number> = {};
+  const counts = new Map<string, number>();   // a count key is a name a mod chose: `constructor` must not find an Object member
   // A Map: a track key is a name somebody chose. Rows are read from the `track` tag the Run puts on a track's own events.
   const tracks = new Map<string, { title: string; usd: number; turns: number; ended: boolean; unknown?: true }>();
   const trackOf = (ev: RunEventRecord) => {
@@ -162,7 +162,7 @@ export function receipt(events: RunEventRecord[]): Receipt {
     }
     for (const n of NODES.values()) {
       const k = n.count && Object.hasOwn(n.count, ev.type) ? n.count[ev.type]?.(ev.data) : undefined;
-      if (k) counts[k] = (counts[k] ?? 0) + 1;
+      if (k) counts.set(k, (counts.get(k) ?? 0) + 1);
     }
   }
 
@@ -192,7 +192,7 @@ export function receipt(events: RunEventRecord[]): Receipt {
     ...(models.length && unsplit > 0.00005 ? { unsplitUsd: r6(unsplit) } : {}),
     ...(subs.size ? { subagents: [...subs].map(([step, v]) => ({ step, title: v.title, usd: r6(v.usd), turns: v.turns, ...(v.unknown ? { unknown: true as const } : {}) })) } : {}),
     ...(tracks.size ? { tracks: [...tracks].map(([key, v]) => ({ key, title: v.title, usd: r6(v.usd), turns: v.turns, ended: v.ended, ...(v.unknown ? { unknown: true as const } : {}) })) } : {}),
-    ...(Object.keys(counts).length ? { counts } : {}),
+    ...(counts.size ? { counts: Object.fromEntries(counts) } : {}),
     ...(unpricedTurns ? { unpricedTurns } : {}),
   };
 }

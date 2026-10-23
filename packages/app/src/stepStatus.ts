@@ -130,7 +130,7 @@ const handlers: Record<string, Handler> = {
 
 /** Fold the rows of ONE run. */
 export function stepStatus(rows: LogRow[]): StepMap {
-  const m: StepMap = {};
+  const m: StepMap = Object.create(null); // keyed by step id, which may be `__proto__`: no prototype to write through
   const sh: Shared = { cursors: new Map(), own: new Map(), groups: new Map(), labels: Object.create(null) };
   for (const r of rows) {
     if (!Object.hasOwn(handlers, r.type)) continue;

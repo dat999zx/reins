@@ -1,4 +1,4 @@
-import { COND_PARAM_KEYS, COND_PARAM_LOOKS, dataBlock, hasHiddenChars, turnNames } from '@reins/core';
+import { CARDS, COND_PARAM_KEYS, COND_PARAM_LOOKS, CONDS, dataBlock, hasHiddenChars, ROW_CLASSES, turnNames, viewShapeProblem } from '@reins/core';
 import { RESERVED_BODY } from '../loop/wire-util.js';
 import { questionRefusal } from '../questions/index.js';
 import { Registry } from './registry.js';
@@ -201,10 +201,13 @@ const NAME = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
 const MAX_NAMES = 50;
 const MAX_VIEW = 32 * 1024;
 const MAX_VIEW_LIST = 50;
-const MAX_ROW_TEXT = 200;
-const MAX_ROW_DETAILS = 400;
-/** The classes a view's feed row may carry: the two `KindView.rows.className` names. The app keeps the same list (BlockRow.tsx); a test pins them equal. */
-export const ROW_CLASSES: readonly string[] = ['sx-sub', 'faint'];
+export { ROW_CLASSES };
+
+/**
+ * Core's own condition and card names, read once when this module loads, before any mod registers one (a later read of CONDS and CARDS would
+ * hold a mod's names too). A mod cannot provide one of them, and the served editor data of one is core's. (There is no bundled condition or card mod in M2.)
+ */
+export const CORE_NAMES: Record<string, ReadonlySet<string> | undefined> = { __proto__: null as never, conditions: new Set(CONDS.keys()), cards: new Set(CARDS.keys()) };
 
 /** A condition or card mod is code: it needs `main`. */
 const codeProblems = (raw: Record<string, unknown>, id: string): Problem[] => (typeof raw.main === 'string' ? [] : [`\`${id}\`: a ${String(raw.kind)} mod needs code (\`main\`).`]);
@@ -225,7 +228,12 @@ function providesProblems(raw: Record<string, unknown>, id: string, keys: string
     if (v === undefined) continue;
     if (!Array.isArray(v) || v.length > MAX_NAMES || !v.every((x) => typeof x === 'string' && NAME.test(x))) bad(`\`provides.${k}\` must be a list of at most ${MAX_NAMES} names (letters, digits, dash and underscore, starting with a letter).`);
     else if (new Set(v).size !== v.length) bad(`\`provides.${k}\` lists a name twice.`);
-    else for (const n of v as string[]) { const r = questionRefusal(k, n); if (r) bad(r); }
+    else for (const n of v as string[]) {
+      const r = questionRefusal(k, n);
+      if (r) bad(r);
+      else if (n in Object.prototype || n === 'prototype') bad(`\`provides.${k}\` lists \`${n}\`, a name every JavaScript object already has. Choose another.`);
+      else if (CORE_NAMES[k]?.has(n)) bad(`\`provides.${k}\` lists \`${n}\`, which Reins already has. A mod cannot cover it.`);
+    }
   }
   if (!out.length && !(p[need] as string[] | undefined)?.length) bad(`\`provides.${need}\` lists nothing.`);
   return out.slice(0, MAX_PROBLEMS);
@@ -251,21 +259,11 @@ function viewProblems(raw: Record<string, unknown>, id: string): Problem[] {
   if (v.fields.length > MAX_VIEW_LIST || v.line.length > MAX_VIEW_LIST) return bad(`\`view.fields\` and \`view.line\` hold at most ${MAX_VIEW_LIST} entries.`);
   if (v.fresh !== undefined && !isObj(v.fresh)) return bad('`view.fresh` must be an object.');
   if (v.order !== undefined && (typeof v.order !== 'number' || !Number.isFinite(v.order))) return bad('`view.order` must be a number.');
-  if (v.sub !== undefined && (typeof v.sub !== 'string' || v.sub.length > MAX_ROW_TEXT)) return bad(`\`view.sub\` must be text of at most ${MAX_ROW_TEXT} characters.`);
-  if (v.rows !== undefined) {
-    if (!isObj(v.rows)) return bad('`view.rows` must be an object with one entry for each event type.');
-    for (const [type, r] of Object.entries(v.rows)) {
-      const at = `\`view.rows.${plain(type)}\``;
-      if (!isObj(r)) return bad(`${at} must be an object.`);
-      const extra = entryKeys(r, ['text', 'details', 'className']);
-      if (extra !== undefined) return bad(`${at} has \`${plain(extra)}\`, which is not part of a row (text, details, className).`);
-      if (typeof r.text !== 'string' || r.text.length > MAX_ROW_TEXT) return bad(`${at} needs a \`text\` of at most ${MAX_ROW_TEXT} characters.`);
-      if (r.details !== undefined && (typeof r.details !== 'string' || r.details.length > MAX_ROW_DETAILS)) return bad(`${at} has a \`details\` that is not text of at most ${MAX_ROW_DETAILS} characters.`);
-      if (r.className !== undefined && !ROW_CLASSES.includes(r.className as string)) return bad(`${at} has \`className\` ${show(r.className)}. It must be one of ${ROW_CLASSES.join(', ')}.`);
-    }
-  }
   if (strings(v).some(hasHiddenChars)) return bad('a text in `view` holds a control, line-break or direction-changing character (a zero-width one too).');
-  return [];
+  // The whole shape, the same check the app runs on what it is served (core's viewShape.ts).
+  const p = raw.provides as Provides;
+  const why = viewShapeProblem(v, { mod: { attrs: p.attrs ?? [], events: p.events ?? [] } });
+  return why === undefined ? [] : bad(why);
 }
 
 /** The block's view, from the manifest, recorded under its kind. Nothing is run to get it. */

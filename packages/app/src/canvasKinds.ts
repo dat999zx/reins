@@ -2,6 +2,7 @@ import type { CardKind, StepKind } from '@reins/core';
 
 import { showText } from '../../core/src/display.js';
 import type { KindView } from '../../core/src/nodes/fields.js';
+import { viewShapeProblem } from '../../core/src/viewShape.js';
 import type { WireKind } from './canvas.js';
 
 export type { Field, KindView, Token } from '../../core/src/nodes/fields.js';
@@ -18,9 +19,11 @@ const fill = (all: (Omit<ServedView, 'order' | 'colour'> & Partial<ServedView>)[
   for (const v of sorted) kinds[v.kind] = v;
 };
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
-// Fills KINDS from the server's list. An entry that is not a view (no kind, fields or line) is left out: the server checks, the app does not trust.
+// Fills KINDS from the server's list. An entry that is not a view of the right shape is left out (the same check the server runs, core's viewShape.ts):
+// the server checks, the app does not trust. A later entry of a kind already taken is left out too, so the first one served keeps the name.
 export function setKinds(list: unknown): void {
-  fill(Array.isArray(list) ? list.filter((v): v is ServedView => isObj(v) && typeof v.kind === 'string' && Array.isArray(v.fields) && Array.isArray(v.line)) : []);
+  const seen = new Set<string>();
+  fill(Array.isArray(list) ? list.filter((v): v is ServedView => viewShapeProblem(v, { served: true }) === undefined && !seen.has((v as ServedView).kind) && !!seen.add((v as ServedView).kind)) : []);
 }
 
 // Adds a view for tests and later kinds; the disposer takes it out again.

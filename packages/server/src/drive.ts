@@ -6,6 +6,7 @@ import {
   type RunOptions, type ToolRequest, type Workflow,
 } from '@reins/core';
 import { runCommand } from './commands.js';
+import type { Mods } from './mods/types.js';
 
 export interface Question { id: string; kind: 'gate' | 'budget' | 'resume' | 'tool' | 'judge' | 'trust' | 'switch' | 'usd'; prompt: string; detail?: string;
   /** Who asks, when not the run's own agent (a subagent, D); the card shows it. */
@@ -101,9 +102,12 @@ export async function driveRun(run: Run, io: DriveIo, save: () => void): Promise
       }
     }
   } catch (err: any) {
-    error = String(err?.message ?? err);
-    io.say(`✗ ${error}`);
     detached = true;
+    // A Stop that lands while an answer is being applied makes the engine refuse ("closed"): that is the Stop, not a failure of the run.
+    if (run.status !== 'stopped') {
+      error = String(err?.message ?? err);
+      io.say(`✗ ${error}`);
+    }
   } finally {
     io.cancel?.('the run ended');
     await run.close().catch(() => {});
@@ -205,6 +209,21 @@ export async function askJudge(io: DriveIo, cond: Cond, ev: { lastText: string }
   return a !== null && /^(y|yes)$/i.test(a);
 }
 
+const MOD_KINDS = new Set(['block', 'condition', 'card']);
+
+/**
+ * The version of every block, condition and card mod that is loaded, enabled and without a problem (so: in force), by mod id.
+ * Core saves it with a run and pauses a restore that finds it changed ("saved with other blocks").
+ */
+export function kindVersions(mods: Pick<Mods, 'mods'>): Record<string, string> {
+  const out: Record<string, string> = Object.create(null);
+  for (const m of mods.mods) {
+    const v = (m.manifest as { version?: unknown } | undefined)?.version;
+    if (MOD_KINDS.has(m.kind) && m.enabled && m.problems.length === 0 && typeof v === 'string') out[m.id] = v;
+  }
+  return { ...out };
+}
+
 export function runOptions(io: DriveIo, o: {
   workflow: Workflow; engine: Engine; cwd: string;
   resolveBlock: (name: string) => Workflow | undefined;
@@ -214,6 +233,8 @@ export function runOptions(io: DriveIo, o: {
   openSubagent?: RunOptions['openSubagent'];
   /** What workflow commands and the git calls run with: the callers pass `shellEnvFrom(...)`, asked at each start, so no key and no REINS_* var reaches them. */
   env?: () => NodeJS.ProcessEnv;
+  /** `kindVersions(mods)` at this start. Passed on save and on restore alike: core compares only when both sides have it. */
+  kinds?: Record<string, string>;
 }): RunOptions {
   const { cwd } = o;
   const startCommit = git(cwd, ['rev-parse', 'HEAD'], o.env).trim();
@@ -226,6 +247,7 @@ export function runOptions(io: DriveIo, o: {
     ...(o.switchModel ? { switchModel: o.switchModel } : {}),
     ...(o.setReasoning ? { setReasoning: o.setReasoning } : {}),
     ...(o.openSubagent ? { openSubagent: o.openSubagent } : {}),
+    ...(o.kinds ? { kinds: o.kinds } : {}),
     commandRunner: async (cmd) => {
       io.say(`$ ${cmd}`);
       let r: Awaited<ReturnType<typeof runCommand>>;

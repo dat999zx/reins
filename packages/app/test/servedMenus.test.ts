@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { Registry, type Cond, type Step, type Workflow } from '@reins/core';
+import { type Cond, type Step, type Workflow } from '@reins/core';
 import { servedKinds } from '../../server/src/mods/kinds-view.js';
 import { BlockPanel } from '../src/BlockPanel.js';
 import { BlocksPane } from '../src/BlocksPane.js';
@@ -28,12 +28,15 @@ const pane = (...steps: Step[]) => renderToStaticMarkup(createElement(BlocksPane
 const palette = () => renderToStaticMarkup(createElement(Palette, { onAdd: () => {}, onCond: () => {}, press: { current: undefined } }));
 const panel = (s: Step) => renderToStaticMarkup(createElement(BlockPanel, { step: s, all: [s], rev: 0, models: [], efforts: [], onEdit: () => {}, onEditInText: () => {}, onDelete: () => {} }));
 
-/** The served lists with a mod's condition and card added, as the route would send them. */
+/**
+ * The served lists with another label for one condition and one card. (Task 25a: the server no longer lets a mod's view cover a core name, so the
+ * reply is edited here, which is all these tests need: the app draws what it is served.)
+ */
 function withMod() {
-  const registry = new Registry();
-  registry.register('cond-view', 'cmd', { label: 'Beep says so', fresh: { t: 'cmd', cmd: 'beep' }, param: { key: 'cmd', look: 'code' } });
-  registry.register('card-view', 'guard', { section: 'Notes', add: 'Add note' });
-  return wire(servedKinds({ registry, mods: [] } as never));
+  const s = wire(servedKinds());
+  s.conds = s.conds.map((c) => (c.t === 'cmd' ? { ...c, label: 'Beep says so', fresh: { t: 'cmd', cmd: 'beep' }, param: { key: 'cmd', look: 'code' } } : c)) as typeof s.conds;
+  s.cards = s.cards.map((c) => (c.kind === 'guard' ? { ...c, section: 'Notes', add: 'Add note' } : c));
+  return s;
 }
 
 describe('the condition menu is built from the served list', () => {

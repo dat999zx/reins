@@ -17,6 +17,7 @@ import type { Mods, SendWithKey } from './mods/types.js';
 import type { ProviderStatus } from './run-checks.js';
 import { recover } from './recover.js';
 import { loadWorkflow } from './run-cli.js';
+import { kindVersions } from './drive.js';
 import { openSession, projectFolderWords, rootFolderWords, under, type Ack, type DescribeEffort, type DescribeModel, type MakeEngine, type Session, type SessionDeps } from './session.js';
 import { contextSize, priceFor, readSetting, switchEstimate } from './settings.js';
 import { KEY_IN_IDENTITY, KeyInIdentity, type LogRow, type Store } from './store.js';
@@ -236,7 +237,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
   });
   // The one env of workflow commands and helpers, worked out at each start: it reads the providers and keys as they are THEN.
   const children = shellEnvFrom(mods, o.env ?? process.env, (t) => !!sender.holdsSecret?.(t) || !!o.redactor?.has(t));
-  const deps: SessionDeps = { store: o.store, makeEngine: (a) => o.makeEngine({ ...a, settings }), dir: o.dir, env: children, ...(o.redactor ? { redactor: o.redactor } : {}), describeModel, describeEffort, folderTrust: folderTrustFrom(mods), providers: checkEnvFrom(mods, { env: o.env ?? process.env, home: o.dir }), consent: asks, origin: (provider) => providerOrigin(mods, provider), generation: (provider) => providerGeneration(mods, provider), onRow: (row) => { for (const f of subs) f(row); } };
+  const deps: SessionDeps = { kinds: () => kindVersions(mods), store: o.store, makeEngine: (a) => o.makeEngine({ ...a, settings }), dir: o.dir, env: children, ...(o.redactor ? { redactor: o.redactor } : {}), describeModel, describeEffort, folderTrust: folderTrustFrom(mods), providers: checkEnvFrom(mods, { env: o.env ?? process.env, home: o.dir }), consent: asks, origin: (provider) => providerOrigin(mods, provider), generation: (provider) => providerGeneration(mods, provider), onRow: (row) => { for (const f of subs) f(row); } };
   let engines: Array<{ id: string } & EngineProbe> = [];
   let host = '';
   let origin = '';

@@ -38,6 +38,8 @@ export interface SessionDeps {
   store: Store; makeEngine: MakeEngine; dir: string; onRow?: (row: LogRow) => void; describeModel?: DescribeModel; describeEffort?: DescribeEffort;
   /** What workflow commands run with: `shellEnvFrom(...)`, worked out when each command starts; no key and no REINS_* var. None = this process's (tests). */
   env?: () => NodeJS.ProcessEnv;
+  /** `() => kindVersions(mods)`, read when each run starts or resumes (a reload changes it). None = the "saved with other blocks" check is off (tests). */
+  kinds?: () => Record<string, string>;
   /** Hides secrets in streamed command output and refuses to save a workflow that holds one. None = nothing is hidden (tests). */
   redactor?: Redactor;
   /** The folder question of a provider's protocol, if it has one (spec S4: asked for the engine being opened). */
@@ -778,6 +780,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     const opts = runOptions(io, {
       workflow: wf, engine: getEngine(), cwd, resolveBlock, session: lent, switchModel: runSwitch, setReasoning: runReasoning, openSubagent,
       ...(deps.env ? { env: deps.env } : {}),
+      ...(deps.kinds ? { kinds: deps.kinds() } : {}),
       onEvent: (ev) => {
         store.appendEvent(rid, ev);
         if (run) store.saveSnapshot(rid, run.snapshot());

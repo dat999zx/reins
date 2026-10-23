@@ -4,7 +4,7 @@ import { BlocksPane } from './BlocksPane.js';
 import { ContextMenu } from './ContextMenu.js';
 import { itemsFor, type MenuCtx, type MenuTarget } from './menus.js';
 import { addLoose, attach, detach, ensureEnd, freedBy, FULL, HOME, moveItems, park, removeLoose, selfContained, splitAtEnd, unpark } from './arrange.js';
-import { addStepAt, capBackward, dropPlace, dropSteps, duplicateSteps, freshOf, moveStep, nestPlace, newId, placeOf, setCond, stackEnd, takeSteps, type Hit, type Place } from './blocks.js';
+import { addStepAt, capBackward, dropPlace, dropSteps, duplicateSteps, moveStep, nestPlace, newId, newStep, placeOf, setCond, stackEnd, takeSteps, type Hit, type Place } from './blocks.js';
 import { KINDS } from './canvasKinds.js';
 import { flatSteps, marksOf, removeLinks, setLink, type WireKind } from './canvas.js';
 import { lanes, linksToDraw, taken } from './arrows.js';
@@ -430,7 +430,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, models, ef
       }
       else if ('surface' in t && 'id' in src) parkIds(src.ids ?? [src.id], src.id, pt);
       else if ('surface' in t && 'kind' in src) {
-        stash([{ id: newId(w, src.kind), kind: src.kind, attrs: {}, cards: [], links: [], ...freshOf(src.kind) }], [pt]);
+        stash([newStep(w, src.kind)], [pt]);
       } else if (place && 'kind' in src && onEdit((m) => addStepAt(m, src.kind, place))) one(newId(w, src.kind));
     },
     move: (keys, d) => { onLayout((l) => moveItems(keys.some((k) => k.startsWith('s:')) ? { ...l, free: { ...Object.fromEntries(base.current), ...l.free } } : l, keys, d)); },

@@ -54,12 +54,15 @@ export function App() {
   }, [token]);
 
   // The faces of the blocks (core's and the mods'), asked once. The workspace waits for the answer, so a saved block of a mod's kind is not read as unknown.
+  // Asked again on leaving Settings (a block may have been imported, trusted, disabled or removed there); the bump draws the new lists.
   const [kindsReady, setKindsReady] = useState(false);
+  const [, drawKinds] = useState(0);
+  const readKinds = () => get<{ kinds: unknown; conds: unknown; cards: unknown; questions: unknown }>('/api/kinds')
+    .then((r) => { setKinds(r.kinds); setConds(r.conds); setCards(r.cards); setQuestions(r.questions); drawKinds((n) => n + 1); })
+    .catch(() => {});
   useEffect(() => {
     if (!token) return;
-    get<{ kinds: unknown; conds: unknown; cards: unknown; questions: unknown }>('/api/kinds')
-      .then((r) => { setKinds(r.kinds); setConds(r.conds); setCards(r.cards); setQuestions(r.questions); })
-      .catch(() => {}).finally(() => setKindsReady(true));
+    void readKinds().finally(() => setKindsReady(true));
   }, [token]);
 
   const commit = (next: State) => { stRef.current = next; setSt(next); };
@@ -118,6 +121,7 @@ export function App() {
   // Leaving Settings: a provider may have been installed, disabled or removed, so the lists, the probes and each session's provider status are read again.
   useEffect(() => {
     if (settings || !ready) return;
+    void readKinds();
     get<{ sessions: SessionView[]; engines: Engines; providers?: Provider[] }>('/api/state').then((r) => {
       commit(loadSessions(stRef.current, r.sessions));
       setEngines(r.engines);

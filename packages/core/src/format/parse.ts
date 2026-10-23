@@ -103,7 +103,7 @@ export function parseWorkflow(input: string): ParseWorkflowResult {
   }
 
   // Counters for default IDs
-  const counters: Record<string, number> = {};
+  const counters: Record<string, number> = Object.create(null);
 
   const autos: AutoCard[] = [];
 

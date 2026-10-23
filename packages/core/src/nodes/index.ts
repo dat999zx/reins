@@ -213,8 +213,9 @@ export function opOf(op: string): OpType<any> | undefined {
 export function defaultId(step: { kind: string; title?: string }, counters: Record<string, number>): string {
   const own = NODES.get(step.kind)?.defaultId?.(step as Step);
   if (own) return own;
-  counters[step.kind] = (counters[step.kind] || 0) + 1;
-  return `${step.kind}-${counters[step.kind]}`;
+  const n = (Object.hasOwn(counters, step.kind) ? counters[step.kind]! : 0) + 1;   // a kind named `constructor` must not find an Object member
+  counters[step.kind] = n;
+  return `${step.kind}-${n}`;
 }
 export function nodeAttrs(): Set<string> { return new Set([...NODES.values()].flatMap((n) => n.attrs)); }
 export function headingOwns(): Set<string> { return new Set([...NODES.values()].flatMap((n) => n.heading?.owns ?? [])); }

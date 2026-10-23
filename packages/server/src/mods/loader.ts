@@ -13,6 +13,8 @@ const ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const RESERVED = /^(nul|con|prn|aux|com[1-9]|lpt[1-9])$/i;
 const MAX_MANIFEST = 256 * 1024;
 const MAX_DEPTH = 32;
+/** How long a mod's `activate` may take before it fails. An object so a test can shorten it. */
+export const ACTIVATE = { ms: 10_000 };
 
 interface Found {
   folder: string;
@@ -472,6 +474,7 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
   // A startOnly mod's registrations in core outlive a load: they sit in `carry` (the caller's, or this load's own, undone by `dispose`).
   const carry = o.carry ?? new Map<string, Carried>();
   const held = new Set<string>(); // carried keys this load met
+  const previews: Array<() => void> = []; // untrusted mods' manifest-only views, recorded after every activation
 
   const load = async (f: Found, kindId: string) => {
     const id = idOf(f.raw, f.folder);
@@ -534,8 +537,15 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
         if (!carried && !mod.trusted) {
           mod.problems.push(`\`${id}\`: needs trust. Its code is new, or a file changed since you trusted it. It has not run.`);
           // What the manifest alone shows (a block's view) is recorded without running anything; a mod that would replace a built-in records nothing.
-          const shown = replacing ? undefined : kind.preview?.(mod, host);
-          if (shown) tx.undo.push(shown);
+          // It waits until every mod has activated: a preview must never take a name a trusted mod is about to register.
+          if (!replacing && kind.preview) previews.push(() => {
+            try {
+              const shown = kind.preview!(mod, host);
+              if (shown) tx.undo.push(shown);
+            } catch (e) {
+              mod.problems.push(`\`${id}\`: its view is not shown: ${errorText(e)}`);
+            }
+          });
           return;
         }
         if (!carried) {
@@ -570,10 +580,16 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
         if (d) tx.undo.push(d);
         if (activate) {
           const { api, close } = buildApi(kindId, raw, env, tracked, kind.startOnly ? own : tx, replacing);
+          let timer: ReturnType<typeof setTimeout> | undefined;
           try {
-            await activate(api);
+            // An activate that never settles must not hold the start of the server: after the limit it fails like one that threw.
+            await Promise.race([
+              activate(api),
+              new Promise<never>((_, no) => { timer = setTimeout(() => no(new Error(`did not finish starting within ${ACTIVATE.ms / 1000} seconds.`)), ACTIVATE.ms); }),
+            ]);
           } finally {
-            close(); // settled, by return or by throw: from now on every member refuses
+            clearTimeout(timer);
+            close(); // settled, by return or by throw (or by the limit): from now on every member refuses
           }
         }
       } catch (e) {
@@ -601,6 +617,7 @@ export async function loadMods(o: LoadOptions): Promise<Mods> {
       if (f.raw && f.raw.kind === kind.id) await load(f, kind.id);
     }
   }
+  for (const record of previews) record();
   // Whatever no kind took (a kind that is not text, or not known) still gets its words.
   for (const f of all) {
     if (listed.has(f)) continue;

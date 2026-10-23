@@ -101,6 +101,11 @@ export function validate(
       diagnostics.push({ severity: 'error', message: `The id of step "${step.id.slice(1)}" starts with a reserved character`, pos });
     }
 
+    // A name every object already has (`__proto__`, `constructor`, `toString`, ...) breaks the tables that are keyed by step id.
+    if (step.id in Object.prototype || step.id === 'prototype') {
+      diagnostics.push({ severity: 'error', message: `"${step.id}" cannot be a step id: it is a name every object already has. Pick another id`, pos });
+    }
+
     // Rule 2: duplicate step id
     if (allIds.has(step.id)) {
       diagnostics.push({

@@ -3,7 +3,7 @@
 // at run time in a temp home through `tempHome`.
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { CARDS, CONDS, hasHiddenChars, Registry } from '@reins/core';
+import { CARDS, CONDS, hasHiddenChars, registerCard, registerCondition, Registry } from '@reins/core';
 import { loadMods } from '../src/mods/loader.js';
 import type { LoadedMod, Mods } from '../src/mods/types.js';
 import { servedKinds } from '../src/mods/kinds-view.js';
@@ -318,13 +318,16 @@ describe('the served conditions and cards', () => {
     expect(servedKinds().cards.map((c) => c.kind)).toEqual(['guard']);
   });
 
-  it('a manifest\'s view wins over the built-in\'s for the same atom; with none the built-in\'s is served', () => {
+  // Task 25a (MINOR 2): a view recorded under a core name is never served; the built-in's own data is. (This pin said the manifest's view won.)
+  it('the built-in\'s data is served for a core atom or card, whatever a view recorded under its name says', () => {
     const registry = new Registry();
     registry.register('cond-view', 'cmd', { label: 'Mine', fresh: { t: 'cmd', cmd: 'x' } });
+    registry.register('card-view', 'guard', { section: 'Mine', add: 'Mine' });
     const s = servedKinds({ registry, mods: [] } as never);
-    expect(s.conds.find((c) => c.t === 'cmd')?.label).toBe('Mine');
+    expect(s.conds.find((c) => c.t === 'cmd')?.label).toBe('command passes');
     expect(s.conds.find((c) => c.t === 'tests')?.label).toBe('tests pass');
     expect(s.conds.map((c) => c.t)).toEqual(COND_ORDER);
+    expect(s.cards).toEqual([{ kind: 'guard', section: 'Guards', add: 'Add guard' }]);
   });
 
   it('the served t is the atom\'s own, whatever the view says', () => {
@@ -333,35 +336,41 @@ describe('the served conditions and cards', () => {
     expect(servedKinds({ registry, mods: [] } as never).conds.filter((c) => c.t === 'tests')).toHaveLength(1);
   });
 
-  it('a label with a hidden character is not served, and the problem says so in \\u form', () => {
+  // These three used core names (cmd, guard, llm); a core name now serves the built-in's data, so they use atoms and cards a mod registered (Task 25a, MINOR 2).
+  const withMod = (conds: string[], cards: string[], run: () => void) => {
+    const off = [...conds.map((t) => registerCondition({ t } as never)), ...cards.map((kind) => registerCard({ kind } as never))];
+    try { run(); } finally { off.forEach((f) => f()); }
+  };
+
+  it('a label with a hidden character is not served, and the problem says so in \\u form', () => withMod(['zed'], ['zip'], () => {
     const registry = new Registry();
-    registry.register('cond-view', 'cmd', { label: `a${RLO}b`, fresh: { t: 'cmd' } });
-    registry.register('card-view', 'guard', { section: 'Guards', add: `Add\u0000guard` });
+    registry.register('cond-view', 'zed', { label: `a${RLO}b`, fresh: { t: 'zed' } });
+    registry.register('card-view', 'zip', { section: 'Guards', add: `Add\u0000guard` });
     const s = servedKinds({ registry, mods: [] } as never);
-    expect(s.conds.map((c) => c.t)).not.toContain('cmd');
-    expect(s.cards).toEqual([]);
+    expect(s.conds.map((c) => c.t)).not.toContain('zed');
+    expect(s.cards.map((c) => c.kind)).not.toContain('zip');
     expect(s.problems).toHaveLength(2);
-    expect(s.problems.join('\n')).toContain('condition cmd');
-    expect(s.problems.join('\n')).toContain('card guard');
+    expect(s.problems.join('\n')).toContain('condition zed');
+    expect(s.problems.join('\n')).toContain('card zip');
     const wire = JSON.stringify(s);
     expect(wire).not.toContain(RLO);
     expect(wire).not.toContain('\\u0000');
     expect(s.problems.some(hasHiddenChars)).toBe(false);
-  });
+  }));
 
-  it('a hidden character in a key of a view is not served either', () => {
+  it('a hidden character in a key of a view is not served either', () => withMod(['zed'], [], () => {
     const registry = new Registry();
-    registry.register('cond-view', 'cmd', { label: 'x', fresh: { t: 'cmd', [`k${RLO}`]: 'v' } });
-    expect(servedKinds({ registry, mods: [] } as never).conds.map((c) => c.t)).not.toContain('cmd');
-  });
+    registry.register('cond-view', 'zed', { label: 'x', fresh: { t: 'zed', [`k${RLO}`]: 'v' } });
+    expect(servedKinds({ registry, mods: [] } as never).conds.map((c) => c.t)).not.toContain('zed');
+  }));
 
-  it('a view that is not JSON (a function, a throwing getter) is left out or comes without the function', () => {
+  it('a view that is not JSON (a function, a throwing getter) is left out or comes without the function', () => withMod(['zed', 'zid'], [], () => {
     const registry = new Registry();
-    registry.register('cond-view', 'cmd', { label: 'x', fresh: { t: 'cmd' }, run: () => 1 });
-    registry.register('cond-view', 'llm', { get label(): string { throw new Error('no'); }, fresh: { t: 'llm' } });
+    registry.register('cond-view', 'zed', { label: 'x', fresh: { t: 'zed' }, run: () => 1 });
+    registry.register('cond-view', 'zid', { get label(): string { throw new Error('no'); }, fresh: { t: 'zid' } });
     const s = servedKinds({ registry, mods: [] } as never);
-    expect(s.conds.find((c) => c.t === 'cmd')).toEqual({ t: 'cmd', label: 'x', fresh: { t: 'cmd' } });
-    expect(s.conds.map((c) => c.t)).not.toContain('llm');
+    expect(s.conds.find((c) => c.t === 'zed')).toEqual({ t: 'zed', label: 'x', fresh: { t: 'zed' } });
+    expect(s.conds.map((c) => c.t)).not.toContain('zid');
     expect(s.problems.join()).toContain('could not be read as JSON');
-  });
+  }));
 });

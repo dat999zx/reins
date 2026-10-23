@@ -96,11 +96,12 @@ describe('GET /api/kinds: a block mod', () => {
     expect(kinds.at(-1)).toEqual({ ...manifest().view, trusted: false });
   });
 
-  it('a manifest that claims trusted: true does not get it (the flag is the server\'s)', async () => {
-    const w = await withBeep(false, (m) => { m.view.trusted = true; });
-    expect((await kindsOf(w)).kinds.at(-1)!.trusted).toBe(false);
-    const t = await withBeep(true, (m) => { m.view.trusted = false; });
-    expect('trusted' in (await kindsOf(t)).kinds.at(-1)!).toBe(false);
+  // Task 25a (B1): a `trusted` key in a mod's view is not part of a view, so the mod is refused and not served. (This pin said the key was ignored.)
+  it('a manifest that has a trusted key in its view is refused and not served (the flag is the server\'s)', async () => {
+    for (const [trusted, claim] of [[false, true], [true, false]] as const) {
+      const w = await withBeep(trusted, (m) => { m.view.trusted = claim; });
+      expect((await kindsOf(w)).kinds.map((k) => k.kind)).not.toContain('beep');
+    }
   });
 
   it('a mod view without its own order sits where the manifest order says', async () => {
