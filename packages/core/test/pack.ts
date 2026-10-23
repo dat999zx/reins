@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { checkMode, policyOf, register, registerCard, registerCondition, turnInstr } from '../src/index.js';
+import { checkMode, driftFound, globMatcher, isValidGlob, parseCond, policyOf, printCond, register, registerCard, registerCondition, relPath, turnInstr } from '../src/index.js';
 
 /** Where the pack mods are. */
 export const PACK_DIR = fileURLToPath(new URL('../../server/src/mods/', import.meta.url));
@@ -65,9 +65,9 @@ export async function registerPack(dir: string): Promise<() => void> {
       const api = {
         env: process.env,
         registerBlock: (n: Parameters<typeof register>[0]) => { const d = register(n, order); undo.push(d); return d; },
-        registerCondition: (c: Parameters<typeof registerCondition>[0]) => { const d = registerCondition(c, order); undo.push(d); return d; },
+        registerCondition: (c: Parameters<typeof registerCondition>[0]) => { const d = registerCondition(c, order, { pack: true }); undo.push(d); return d; },
         registerCard: (c: Parameters<typeof registerCard>[0]) => { const d = registerCard(c, order); undo.push(d); return d; },
-        core: Object.freeze({ checkMode, policyOf, turnInstr }),
+        core: Object.freeze({ checkMode, driftFound, globMatcher, isValidGlob, parseCond, policyOf, printCond, relPath, turnInstr }),
       };
       const m = (await import(/* @vite-ignore */ pathToFileURL(codeOf(mod.dir, main)).href)) as { default?: (a: typeof api) => unknown };
       if (typeof m.default !== 'function') throw new Error(`pack mod ${mod.id}: does not default-export a function`);

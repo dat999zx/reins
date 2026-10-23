@@ -1,0 +1,2246 @@
+{
+ "mem": {
+  "diagnostics": [],
+  "steps": [
+   {
+    "id": "recall-1",
+    "kind": "recall",
+    "attrs": {
+     "knowl": "upload, retry ,, deploy"
+    },
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 8,
+     "col": 1
+    }
+   },
+   {
+    "id": "plan",
+    "kind": "phase",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 11,
+     "col": 1
+    },
+    "title": "plan",
+    "prompt": "plan it"
+   },
+   {
+    "id": "store-1",
+    "kind": "store",
+    "attrs": {
+     "knowl": "decision"
+    },
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 14,
+     "col": 1
+    }
+   },
+   {
+    "id": "recall-2",
+    "kind": "recall",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 17,
+     "col": 1
+    }
+   },
+   {
+    "id": "store-2",
+    "kind": "store",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 19,
+     "col": 1
+    }
+   }
+  ],
+  "printed": "---\nreins: 1\nname: pin4-mem\nbudget: { turns: 30, minutes: 9 }\nalways: []\n---\n\n## recall\nknowl: upload, retry ,, deploy\n\n## phase plan\n> plan it\n\n## store\nknowl: decision\n\n## recall\n\n## store\n",
+  "validate": [],
+  "program": [
+   {
+    "op": "RECALL",
+    "step": "recall-1",
+    "topics": [
+     "upload",
+     "retry",
+     "deploy"
+    ],
+    "top": 0
+   },
+   {
+    "op": "TURN",
+    "step": "plan",
+    "policy": {
+     "mode": "write",
+     "guards": [],
+     "allowShell": true
+    },
+    "src": {
+     "id": "plan",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 11,
+      "col": 1
+     },
+     "title": "plan",
+     "prompt": "plan it"
+    },
+    "top": 1
+   },
+   {
+    "op": "STORE",
+    "step": "store-1",
+    "what": "decision",
+    "top": 2
+   },
+   {
+    "op": "RECALL",
+    "step": "recall-2",
+    "topics": [],
+    "top": 3
+   },
+   {
+    "op": "STORE",
+    "step": "store-2",
+    "what": "decisions",
+    "top": 4
+   },
+   {
+    "op": "END"
+   }
+  ]
+ },
+ "gates": {
+  "diagnostics": [],
+  "steps": [
+   {
+    "id": "first",
+    "kind": "phase",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 8,
+     "col": 1
+    },
+    "title": "first",
+    "prompt": "go"
+   },
+   {
+    "id": "gate-1",
+    "kind": "gate",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 11,
+     "col": 1
+    },
+    "cond": {
+     "t": "approve"
+    }
+   },
+   {
+    "id": "gate-2",
+    "kind": "gate",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 14,
+     "col": 1
+    },
+    "cond": {
+     "t": "done"
+    }
+   },
+   {
+    "id": "gate-3",
+    "kind": "gate",
+    "attrs": {},
+    "cards": [],
+    "links": [
+     {
+      "kind": "next",
+      "to": "first",
+      "max": 2,
+      "pos": {
+       "line": 19,
+       "col": 6
+      }
+     }
+    ],
+    "pos": {
+     "line": 17,
+     "col": 1
+    },
+    "cond": {
+     "t": "tests"
+    }
+   },
+   {
+    "id": "last",
+    "kind": "phase",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 21,
+     "col": 1
+    },
+    "title": "last",
+    "prompt": "finish"
+   }
+  ],
+  "printed": "---\nreins: 1\nname: pin4-gates\nbudget: { turns: 30, minutes: 9 }\nalways: []\n---\n\n## phase first\n> go\n\n## gate\nuntil: you approve\n\n## gate\nuntil: agent says done\n\n## gate\nuntil: tests pass\nnext: first (max 2)\n\n## phase last\n> finish\n",
+  "validate": [
+   {
+    "severity": "warning",
+    "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+    "pos": {
+     "line": 17,
+     "col": 1
+    }
+   },
+   {
+    "severity": "warning",
+    "message": "step `last` is never reached",
+    "pos": {
+     "line": 21,
+     "col": 1
+    }
+   }
+  ],
+  "program": [
+   {
+    "op": "TURN",
+    "step": "first",
+    "policy": {
+     "mode": "write",
+     "guards": [],
+     "allowShell": true
+    },
+    "src": {
+     "id": "first",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 8,
+      "col": 1
+     },
+     "title": "first",
+     "prompt": "go"
+    },
+    "top": 0
+   },
+   {
+    "op": "GATE",
+    "step": "gate-1",
+    "cond": {
+     "t": "approve"
+    },
+    "top": 1
+   },
+   {
+    "op": "GATE",
+    "step": "gate-2",
+    "cond": {
+     "t": "done"
+    },
+    "top": 2
+   },
+   {
+    "op": "GATE",
+    "step": "gate-3",
+    "cond": {
+     "t": "tests"
+    },
+    "top": 3
+   },
+   {
+    "op": "JUMP",
+    "target": 0,
+    "step": "gate-3",
+    "linkMax": 2,
+    "top": 3
+   },
+   {
+    "op": "TURN",
+    "step": "last",
+    "policy": {
+     "mode": "write",
+     "guards": [],
+     "allowShell": true
+    },
+    "src": {
+     "id": "last",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 21,
+      "col": 1
+     },
+     "title": "last",
+     "prompt": "finish"
+    },
+    "top": 4
+   },
+   {
+    "op": "END"
+   }
+  ]
+ },
+ "ifs": {
+  "diagnostics": [],
+  "steps": [
+   {
+    "id": "first",
+    "kind": "phase",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 8,
+     "col": 1
+    },
+    "title": "first",
+    "prompt": "go"
+   },
+   {
+    "id": "if-1",
+    "kind": "if",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 11,
+     "col": 1
+    },
+    "cond": {
+     "t": "done"
+    },
+    "kids": [
+     {
+      "id": "yes",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 12,
+       "col": 1
+      },
+      "title": "yes",
+      "prompt": "yes branch"
+     }
+    ],
+    "else": [
+     {
+      "id": "no",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 17,
+       "col": 1
+      },
+      "title": "no",
+      "prompt": "no branch"
+     }
+    ]
+   },
+   {
+    "id": "if-2",
+    "kind": "if",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 20,
+     "col": 1
+    },
+    "cond": {
+     "t": "approve"
+    },
+    "kids": [
+     {
+      "id": "only",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 21,
+       "col": 1
+      },
+      "title": "only",
+      "prompt": "only branch"
+     }
+    ]
+   },
+   {
+    "id": "if-3",
+    "kind": "if",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 24,
+     "col": 1
+    },
+    "kids": [
+     {
+      "id": "nocond",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 25,
+       "col": 1
+      },
+      "title": "nocond",
+      "prompt": "no condition"
+     }
+    ]
+   },
+   {
+    "id": "after",
+    "kind": "phase",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 28,
+     "col": 1
+    },
+    "title": "after",
+    "prompt": "after"
+   }
+  ],
+  "printed": "---\nreins: 1\nname: pin4-ifs\nbudget: { turns: 30, minutes: 9 }\nalways: []\n---\n\n## phase first\n> go\n\n## if agent says done\n\n### phase yes\n> yes branch\n\n### else\n\n### phase no\n> no branch\n\n## if you approve\n\n### phase only\n> only branch\n\n## if\n\n### phase nocond\n> no condition\n\n## phase after\n> after\n",
+  "validate": [],
+  "program": [
+   {
+    "op": "TURN",
+    "step": "first",
+    "policy": {
+     "mode": "write",
+     "guards": [],
+     "allowShell": true
+    },
+    "src": {
+     "id": "first",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 8,
+      "col": 1
+     },
+     "title": "first",
+     "prompt": "go"
+    },
+    "top": 0
+   },
+   {
+    "op": "IF",
+    "step": "if-1",
+    "cond": {
+     "t": "done"
+    },
+    "elseJump": 4,
+    "top": 1
+   },
+   {
+    "op": "TURN",
+    "step": "yes",
+    "policy": {
+     "mode": "write",
+     "guards": [],
+     "allowShell": true
+    },
+    "src": {
+     "id": "yes",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 12,
+      "col": 1
+     },
+     "title": "yes",
+     "prompt": "yes branch"
+    },
+    "top": 1
+   },
+   {
+    "op": "JUMP",
+    "target": 5,
+    "top": 1
+   },
+   {
+    "op": "TURN",
+    "step": "no",
+    "policy": {
+     "mode": "write",
+     "guards": [],
+     "allowShell": true
+    },
+    "src": {
+     "id": "no",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 17,
+      "col": 1
+     },
+     "title": "no",
+     "prompt": "no branch"
+    },
+    "top": 1
+   },
+   {
+    "op": "IF",
+    "step": "if-2",
+    "cond": {
+     "t": "approve"
+    },
+    "elseJump": 7,
+    "top": 2
+   },
+   {
+    "op": "TURN",
+    "step": "only",
+    "policy": {
+     "mode": "write",
+     "guards": [],
+     "allowShell": true
+    },
+    "src": {
+     "id": "only",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 21,
+      "col": 1
+     },
+     "title": "only",
+     "prompt": "only branch"
+    },
+    "top": 2
+   },
+   {
+    "op": "IF",
+    "step": "if-3",
+    "cond": {
+     "t": "done"
+    },
+    "elseJump": 9,
+    "top": 3
+   },
+   {
+    "op": "TURN",
+    "step": "nocond",
+    "policy": {
+     "mode": "write",
+     "guards": [],
+     "allowShell": true
+    },
+    "src": {
+     "id": "nocond",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 25,
+      "col": 1
+     },
+     "title": "nocond",
+     "prompt": "no condition"
+    },
+    "top": 3
+   },
+   {
+    "op": "TURN",
+    "step": "after",
+    "policy": {
+     "mode": "write",
+     "guards": [],
+     "allowShell": true
+    },
+    "src": {
+     "id": "after",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 28,
+      "col": 1
+     },
+     "title": "after",
+     "prompt": "after"
+    },
+    "top": 4
+   },
+   {
+    "op": "END"
+   }
+  ]
+ },
+ "bad": {
+  "diagnostics": [
+   {
+    "severity": "error",
+    "message": "Unexpected condition token at \"wibble\"",
+    "pos": {
+     "line": 10,
+     "col": 6
+    }
+   },
+   {
+    "severity": "error",
+    "message": "Unexpected condition token at \"wibble\"",
+    "pos": {
+     "line": 14,
+     "col": 1
+    }
+   }
+  ],
+  "steps": [
+   {
+    "id": "gate-1",
+    "kind": "gate",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 8,
+     "col": 1
+    }
+   },
+   {
+    "id": "if-1",
+    "kind": "if",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 10,
+     "col": 1
+    },
+    "kids": [
+     {
+      "id": "a",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 11,
+       "col": 1
+      },
+      "title": "a",
+      "prompt": "a"
+     }
+    ]
+   },
+   {
+    "id": "gate-2",
+    "kind": "gate",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 14,
+     "col": 1
+    }
+   },
+   {
+    "id": "recall-1",
+    "kind": "recall",
+    "attrs": {
+     "knowl": "a",
+     "mode": "write"
+    },
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 17,
+     "col": 1
+    }
+   },
+   {
+    "id": "store-1",
+    "kind": "store",
+    "attrs": {
+     "max": "3"
+    },
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 21,
+     "col": 1
+    }
+   },
+   {
+    "id": "gate-3",
+    "kind": "gate",
+    "attrs": {},
+    "cards": [],
+    "links": [],
+    "pos": {
+     "line": 24,
+     "col": 1
+    },
+    "prompt": "text on a gate",
+    "cond": {
+     "t": "approve"
+    }
+   }
+  ],
+  "printed": "---\nreins: 1\nname: pin4-bad\nbudget: { turns: 30, minutes: 9 }\nalways: []\n---\n\n## gate\n\n## if\n\n### phase a\n> a\n\n## gate\n\n## recall\nmode: write\nknowl: a\n\n## store\nmax: 3\n\n## gate\nuntil: you approve\n> text on a gate\n",
+  "validate": [
+   {
+    "severity": "error",
+    "message": "gate step \"gate-1\" requires until: condition",
+    "pos": {
+     "line": 8,
+     "col": 1
+    }
+   },
+   {
+    "severity": "error",
+    "message": "gate step \"gate-2\" requires until: condition",
+    "pos": {
+     "line": 14,
+     "col": 1
+    }
+   }
+  ],
+  "program": [
+   {
+    "op": "GATE",
+    "step": "gate-1",
+    "cond": {
+     "t": "approve"
+    },
+    "top": 0
+   },
+   {
+    "op": "IF",
+    "step": "if-1",
+    "cond": {
+     "t": "done"
+    },
+    "elseJump": 3,
+    "top": 1
+   },
+   {
+    "op": "TURN",
+    "step": "a",
+    "policy": {
+     "mode": "write",
+     "guards": [],
+     "allowShell": true
+    },
+    "src": {
+     "id": "a",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 11,
+      "col": 1
+     },
+     "title": "a",
+     "prompt": "a"
+    },
+    "top": 1
+   },
+   {
+    "op": "GATE",
+    "step": "gate-2",
+    "cond": {
+     "t": "approve"
+    },
+    "top": 2
+   },
+   {
+    "op": "RECALL",
+    "step": "recall-1",
+    "topics": [
+     "a"
+    ],
+    "top": 3
+   },
+   {
+    "op": "STORE",
+    "step": "store-1",
+    "what": "decisions",
+    "top": 4
+   },
+   {
+    "op": "GATE",
+    "step": "gate-3",
+    "cond": {
+     "t": "approve"
+    },
+    "top": 5
+   },
+   {
+    "op": "END"
+   }
+  ]
+ },
+ "runMemNone": {
+  "status": "done",
+  "texts": [
+   "[Reins · workflow \"pin4-mem\" · step 2 of 5: plan]\n\nplan it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · workflow \"pin4-mem\" · step 3 of 5: store]\n\nProvide a one-paragraph decision summary for \"decision\".\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · workflow \"pin4-mem\" · step 5 of 5: store]\n\nProvide a one-paragraph decision summary for \"decisions\".\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+  ],
+  "events": [
+   {
+    "id": "ev-1",
+    "timestamp": 1000,
+    "type": "run_started",
+    "data": {
+     "workflow": "pin4-mem",
+     "steps": [
+      {
+       "id": "recall-1",
+       "kind": "recall"
+      },
+      {
+       "id": "plan",
+       "kind": "phase",
+       "title": "plan"
+      },
+      {
+       "id": "store-1",
+       "kind": "store"
+      },
+      {
+       "id": "recall-2",
+       "kind": "recall"
+      },
+      {
+       "id": "store-2",
+       "kind": "store"
+      }
+     ]
+    }
+   },
+   {
+    "id": "ev-2",
+    "timestamp": 2000,
+    "type": "step_started",
+    "data": {
+     "step": "recall-1",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-3",
+    "timestamp": 3000,
+    "type": "recall",
+    "data": {
+     "topics": [
+      "upload",
+      "retry",
+      "deploy"
+     ],
+     "skipped": "no recall function"
+    }
+   },
+   {
+    "id": "ev-4",
+    "timestamp": 4000,
+    "type": "step_started",
+    "data": {
+     "step": "plan",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-5",
+    "timestamp": 5000,
+    "type": "turn_started",
+    "data": {
+     "step": "plan"
+    }
+   },
+   {
+    "id": "ev-6",
+    "timestamp": 6000,
+    "type": "engine_cost",
+    "data": {
+     "usd": 0.01
+    }
+   },
+   {
+    "id": "ev-7",
+    "timestamp": 7000,
+    "type": "turn_ended",
+    "data": {
+     "step": "plan",
+     "text": "reply 1\nREINS: done",
+     "cost": 0.01
+    }
+   },
+   {
+    "id": "ev-8",
+    "timestamp": 8000,
+    "type": "step_started",
+    "data": {
+     "step": "store-1",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-9",
+    "timestamp": 9000,
+    "type": "turn_started",
+    "data": {
+     "step": "store-1"
+    }
+   },
+   {
+    "id": "ev-10",
+    "timestamp": 10000,
+    "type": "engine_cost",
+    "data": {
+     "usd": 0.01
+    }
+   },
+   {
+    "id": "ev-11",
+    "timestamp": 11000,
+    "type": "turn_ended",
+    "data": {
+     "step": "store-1",
+     "text": "reply 2\nREINS: done",
+     "cost": 0.01
+    }
+   },
+   {
+    "id": "ev-12",
+    "timestamp": 12000,
+    "type": "store",
+    "data": {
+     "what": "decision",
+     "skipped": "no store function"
+    }
+   },
+   {
+    "id": "ev-13",
+    "timestamp": 13000,
+    "type": "step_started",
+    "data": {
+     "step": "recall-2",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-14",
+    "timestamp": 14000,
+    "type": "recall",
+    "data": {
+     "topics": [],
+     "skipped": "no recall function"
+    }
+   },
+   {
+    "id": "ev-15",
+    "timestamp": 15000,
+    "type": "step_started",
+    "data": {
+     "step": "store-2",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-16",
+    "timestamp": 16000,
+    "type": "turn_started",
+    "data": {
+     "step": "store-2"
+    }
+   },
+   {
+    "id": "ev-17",
+    "timestamp": 17000,
+    "type": "engine_cost",
+    "data": {
+     "usd": 0.01
+    }
+   },
+   {
+    "id": "ev-18",
+    "timestamp": 18000,
+    "type": "turn_ended",
+    "data": {
+     "step": "store-2",
+     "text": "reply 3\nREINS: done",
+     "cost": 0.01
+    }
+   },
+   {
+    "id": "ev-19",
+    "timestamp": 19000,
+    "type": "store",
+    "data": {
+     "what": "decisions",
+     "skipped": "no store function"
+    }
+   },
+   {
+    "id": "ev-20",
+    "timestamp": 20000,
+    "type": "run_finished",
+    "data": {}
+   }
+  ],
+  "receipt": {
+   "workflow": "pin4-mem",
+   "status": "done",
+   "totalTurns": 3,
+   "totalTimeMs": 19000,
+   "totalCostUsd": 0.03,
+   "gatesHeld": 0,
+   "guardRefusals": 0,
+   "readOnlyRefusals": 0,
+   "totalRefusals": 0,
+   "loopAttempts": 0,
+   "autoCardsFired": 0,
+   "liveCardsDelivered": 0,
+   "verifyResults": {
+    "passed": 0,
+    "failed": 0
+   },
+   "knowlRecalls": 0,
+   "knowlStores": 0,
+   "knowlSkipped": 4
+  },
+  "counter": 5,
+  "calls": [],
+  "seen": []
+ },
+ "runMemBoth": {
+  "status": "done",
+  "texts": [
+   "[Reins · workflow \"pin4-mem\" · step 2 of 5: plan]\n\nContext from Knowl:\n- ctx upload\n- ctx retry\n- ctx deploy\n\nplan it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · workflow \"pin4-mem\" · step 3 of 5: store]\n\nProvide a one-paragraph decision summary for \"decision\".\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · workflow \"pin4-mem\" · step 5 of 5: store]\n\nProvide a one-paragraph decision summary for \"decisions\".\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+  ],
+  "events": [
+   {
+    "id": "ev-1",
+    "timestamp": 1000,
+    "type": "run_started",
+    "data": {
+     "workflow": "pin4-mem",
+     "steps": [
+      {
+       "id": "recall-1",
+       "kind": "recall"
+      },
+      {
+       "id": "plan",
+       "kind": "phase",
+       "title": "plan"
+      },
+      {
+       "id": "store-1",
+       "kind": "store"
+      },
+      {
+       "id": "recall-2",
+       "kind": "recall"
+      },
+      {
+       "id": "store-2",
+       "kind": "store"
+      }
+     ]
+    }
+   },
+   {
+    "id": "ev-2",
+    "timestamp": 2000,
+    "type": "step_started",
+    "data": {
+     "step": "recall-1",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-3",
+    "timestamp": 3000,
+    "type": "recall",
+    "data": {
+     "topics": [
+      "upload",
+      "retry",
+      "deploy"
+     ],
+     "context": [
+      "ctx upload",
+      "ctx retry",
+      "ctx deploy"
+     ]
+    }
+   },
+   {
+    "id": "ev-4",
+    "timestamp": 4000,
+    "type": "step_started",
+    "data": {
+     "step": "plan",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-5",
+    "timestamp": 5000,
+    "type": "turn_started",
+    "data": {
+     "step": "plan"
+    }
+   },
+   {
+    "id": "ev-6",
+    "timestamp": 6000,
+    "type": "engine_cost",
+    "data": {
+     "usd": 0.01
+    }
+   },
+   {
+    "id": "ev-7",
+    "timestamp": 7000,
+    "type": "turn_ended",
+    "data": {
+     "step": "plan",
+     "text": "reply 1\nREINS: done",
+     "cost": 0.01
+    }
+   },
+   {
+    "id": "ev-8",
+    "timestamp": 8000,
+    "type": "step_started",
+    "data": {
+     "step": "store-1",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-9",
+    "timestamp": 9000,
+    "type": "turn_started",
+    "data": {
+     "step": "store-1"
+    }
+   },
+   {
+    "id": "ev-10",
+    "timestamp": 10000,
+    "type": "engine_cost",
+    "data": {
+     "usd": 0.01
+    }
+   },
+   {
+    "id": "ev-11",
+    "timestamp": 11000,
+    "type": "turn_ended",
+    "data": {
+     "step": "store-1",
+     "text": "reply 2\nREINS: done",
+     "cost": 0.01
+    }
+   },
+   {
+    "id": "ev-12",
+    "timestamp": 12000,
+    "type": "store",
+    "data": {
+     "what": "decision",
+     "summary": "reply 2"
+    }
+   },
+   {
+    "id": "ev-13",
+    "timestamp": 13000,
+    "type": "step_started",
+    "data": {
+     "step": "recall-2",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-14",
+    "timestamp": 14000,
+    "type": "recall",
+    "data": {
+     "topics": [],
+     "context": []
+    }
+   },
+   {
+    "id": "ev-15",
+    "timestamp": 15000,
+    "type": "step_started",
+    "data": {
+     "step": "store-2",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-16",
+    "timestamp": 16000,
+    "type": "turn_started",
+    "data": {
+     "step": "store-2"
+    }
+   },
+   {
+    "id": "ev-17",
+    "timestamp": 17000,
+    "type": "engine_cost",
+    "data": {
+     "usd": 0.01
+    }
+   },
+   {
+    "id": "ev-18",
+    "timestamp": 18000,
+    "type": "turn_ended",
+    "data": {
+     "step": "store-2",
+     "text": "reply 3\nREINS: done",
+     "cost": 0.01
+    }
+   },
+   {
+    "id": "ev-19",
+    "timestamp": 19000,
+    "type": "store",
+    "data": {
+     "what": "decisions",
+     "summary": "reply 3"
+    }
+   },
+   {
+    "id": "ev-20",
+    "timestamp": 20000,
+    "type": "run_finished",
+    "data": {}
+   }
+  ],
+  "receipt": {
+   "workflow": "pin4-mem",
+   "status": "done",
+   "totalTurns": 3,
+   "totalTimeMs": 19000,
+   "totalCostUsd": 0.03,
+   "gatesHeld": 0,
+   "guardRefusals": 0,
+   "readOnlyRefusals": 0,
+   "totalRefusals": 0,
+   "loopAttempts": 0,
+   "autoCardsFired": 0,
+   "liveCardsDelivered": 0,
+   "verifyResults": {
+    "passed": 0,
+    "failed": 0
+   },
+   "knowlRecalls": 2,
+   "knowlStores": 2,
+   "knowlSkipped": 0
+  },
+  "counter": 5,
+  "calls": [
+   [
+    "recall",
+    [
+     "upload",
+     "retry",
+     "deploy"
+    ]
+   ],
+   [
+    "store",
+    "decision",
+    "reply 2"
+   ],
+   [
+    "recall",
+    []
+   ],
+   [
+    "store",
+    "decisions",
+    "reply 3"
+   ]
+  ],
+  "seen": []
+ },
+ "runGates": {
+  "status": "paused",
+  "texts": [
+   "[Reins · workflow \"pin4-gates\" · step 1 of 5: first]\n\ngo\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · workflow \"pin4-gates\" · step 1 of 5: first]\n\ngo\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · workflow \"pin4-gates\" · step 1 of 5: first]\n\ngo\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+  ],
+  "events": [
+   {
+    "id": "ev-1",
+    "timestamp": 1000,
+    "type": "run_started",
+    "data": {
+     "workflow": "pin4-gates",
+     "steps": [
+      {
+       "id": "first",
+       "kind": "phase",
+       "title": "first"
+      },
+      {
+       "id": "gate-1",
+       "kind": "gate"
+      },
+      {
+       "id": "gate-2",
+       "kind": "gate"
+      },
+      {
+       "id": "gate-3",
+       "kind": "gate"
+      },
+      {
+       "id": "last",
+       "kind": "phase",
+       "title": "last"
+      }
+     ]
+    }
+   },
+   {
+    "id": "ev-2",
+    "timestamp": 2000,
+    "type": "step_started",
+    "data": {
+     "step": "first",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-3",
+    "timestamp": 3000,
+    "type": "turn_started",
+    "data": {
+     "step": "first"
+    }
+   },
+   {
+    "id": "ev-4",
+    "timestamp": 4000,
+    "type": "engine_cost",
+    "data": {
+     "usd": 0.01
+    }
+   },
+   {
+    "id": "ev-5",
+    "timestamp": 5000,
+    "type": "turn_ended",
+    "data": {
+     "step": "first",
+     "text": "reply 1\nREINS: done",
+     "cost": 0.01
+    }
+   },
+   {
+    "id": "ev-6",
+    "timestamp": 6000,
+    "type": "step_started",
+    "data": {
+     "step": "gate-1",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-7",
+    "timestamp": 7000,
+    "type": "gate_paused",
+    "data": {
+     "step": "gate-1",
+     "cond": {
+      "t": "approve"
+     }
+    }
+   },
+   {
+    "id": "ev-8",
+    "timestamp": 8000,
+    "type": "gate_approved",
+    "data": {}
+   },
+   {
+    "id": "ev-9",
+    "timestamp": 9000,
+    "type": "step_started",
+    "data": {
+     "step": "gate-2",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-10",
+    "timestamp": 10000,
+    "type": "step_started",
+    "data": {
+     "step": "gate-3",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-11",
+    "timestamp": 11000,
+    "type": "step_started",
+    "data": {
+     "step": "first",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-12",
+    "timestamp": 12000,
+    "type": "turn_started",
+    "data": {
+     "step": "first"
+    }
+   },
+   {
+    "id": "ev-13",
+    "timestamp": 13000,
+    "type": "engine_cost",
+    "data": {
+     "usd": 0.01
+    }
+   },
+   {
+    "id": "ev-14",
+    "timestamp": 14000,
+    "type": "turn_ended",
+    "data": {
+     "step": "first",
+     "text": "reply 2\nREINS: done",
+     "cost": 0.01
+    }
+   },
+   {
+    "id": "ev-15",
+    "timestamp": 15000,
+    "type": "step_started",
+    "data": {
+     "step": "gate-1",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-16",
+    "timestamp": 16000,
+    "type": "gate_paused",
+    "data": {
+     "step": "gate-1",
+     "cond": {
+      "t": "approve"
+     }
+    }
+   },
+   {
+    "id": "ev-17",
+    "timestamp": 17000,
+    "type": "gate_approved",
+    "data": {}
+   },
+   {
+    "id": "ev-18",
+    "timestamp": 18000,
+    "type": "step_started",
+    "data": {
+     "step": "gate-2",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-19",
+    "timestamp": 19000,
+    "type": "step_started",
+    "data": {
+     "step": "gate-3",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-20",
+    "timestamp": 20000,
+    "type": "step_started",
+    "data": {
+     "step": "first",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-21",
+    "timestamp": 21000,
+    "type": "turn_started",
+    "data": {
+     "step": "first"
+    }
+   },
+   {
+    "id": "ev-22",
+    "timestamp": 22000,
+    "type": "engine_cost",
+    "data": {
+     "usd": 0.01
+    }
+   },
+   {
+    "id": "ev-23",
+    "timestamp": 23000,
+    "type": "turn_ended",
+    "data": {
+     "step": "first",
+     "text": "reply 3\nREINS: done",
+     "cost": 0.01
+    }
+   },
+   {
+    "id": "ev-24",
+    "timestamp": 24000,
+    "type": "step_started",
+    "data": {
+     "step": "gate-1",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-25",
+    "timestamp": 25000,
+    "type": "gate_paused",
+    "data": {
+     "step": "gate-1",
+     "cond": {
+      "t": "approve"
+     }
+    }
+   },
+   {
+    "id": "ev-26",
+    "timestamp": 26000,
+    "type": "gate_approved",
+    "data": {}
+   },
+   {
+    "id": "ev-27",
+    "timestamp": 27000,
+    "type": "step_started",
+    "data": {
+     "step": "gate-2",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-28",
+    "timestamp": 28000,
+    "type": "step_started",
+    "data": {
+     "step": "gate-3",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-29",
+    "timestamp": 29000,
+    "type": "link_budget_exceeded",
+    "data": {
+     "linkKey": "gate-3~next->0",
+     "jumps": 3,
+     "max": 2
+    }
+   }
+  ],
+  "receipt": {
+   "workflow": "pin4-gates",
+   "status": "running",
+   "totalTurns": 3,
+   "totalTimeMs": 28000,
+   "totalCostUsd": 0.03,
+   "gatesHeld": 3,
+   "guardRefusals": 0,
+   "readOnlyRefusals": 0,
+   "totalRefusals": 0,
+   "loopAttempts": 0,
+   "autoCardsFired": 0,
+   "liveCardsDelivered": 0,
+   "verifyResults": {
+    "passed": 0,
+    "failed": 0
+   },
+   "knowlRecalls": 0,
+   "knowlStores": 0,
+   "knowlSkipped": 0
+  },
+  "counter": 4,
+  "calls": [],
+  "seen": [
+   "null",
+   "null",
+   "null",
+   "null"
+  ]
+ },
+ "runIfYes": {
+  "status": "done",
+  "texts": [
+   "[Reins · workflow \"pin4-ifs\" · step 1 of 5: first]\n\ngo\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · workflow \"pin4-ifs\" · step 2 of 5: yes]\n\nyes branch\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · workflow \"pin4-ifs\" · step 4 of 5: nocond]\n\nno condition\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · workflow \"pin4-ifs\" · step 5 of 5: after]\n\nafter\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+  ],
+  "events": [
+   {
+    "id": "ev-1",
+    "timestamp": 1000,
+    "type": "run_started",
+    "data": {
+     "workflow": "pin4-ifs",
+     "steps": [
+      {
+       "id": "first",
+       "kind": "phase",
+       "title": "first"
+      },
+      {
+       "id": "if-1",
+       "kind": "if"
+      },
+      {
+       "id": "yes",
+       "kind": "phase",
+       "title": "yes"
+      },
+      {
+       "id": "no",
+       "kind": "phase",
+       "title": "no"
+      },
+      {
+       "id": "if-2",
+       "kind": "if"
+      },
+      {
+       "id": "only",
+       "kind": "phase",
+       "title": "only"
+      },
+      {
+       "id": "if-3",
+       "kind": "if"
+      },
+      {
+       "id": "nocond",
+       "kind": "phase",
+       "title": "nocond"
+      },
+      {
+       "id": "after",
+       "kind": "phase",
+       "title": "after"
+      }
+     ]
+    }
+   },
+   {
+    "id": "ev-2",
+    "timestamp": 2000,
+    "type": "step_started",
+    "data": {
+     "step": "first",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-3",
+    "timestamp": 3000,
+    "type": "turn_started",
+    "data": {
+     "step": "first"
+    }
+   },
+   {
+    "id": "ev-4",
+    "timestamp": 4000,
+    "type": "engine_cost",
+    "data": {
+     "usd": 0.01
+    }
+   },
+   {
+    "id": "ev-5",
+    "timestamp": 5000,
+    "type": "turn_ended",
+    "data": {
+     "step": "first",
+     "text": "reply 1\nREINS: done",
+     "cost": 0.01
+    }
+   },
+   {
+    "id": "ev-6",
+    "timestamp": 6000,
+    "type": "step_started",
+    "data": {
+     "step": "if-1",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-7",
+    "timestamp": 7000,
+    "type": "step_started",
+    "data": {
+     "step": "yes",
+     "parents": [
+      "if-1"
+     ]
+    }
+   },
+   {
+    "id": "ev-8",
+    "timestamp": 8000,
+    "type": "turn_started",
+    "data": {
+     "step": "yes"
+    }
+   },
+   {
+    "id": "ev-9",
+    "timestamp": 9000,
+    "type": "engine_cost",
+    "data": {
+     "usd": 0.01
+    }
+   },
+   {
+    "id": "ev-10",
+    "timestamp": 10000,
+    "type": "turn_ended",
+    "data": {
+     "step": "yes",
+     "text": "reply 2\nREINS: done",
+     "cost": 0.01
+    }
+   },
+   {
+    "id": "ev-11",
+    "timestamp": 11000,
+    "type": "step_started",
+    "data": {
+     "step": "if-2",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-12",
+    "timestamp": 12000,
+    "type": "step_started",
+    "data": {
+     "step": "if-3",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-13",
+    "timestamp": 13000,
+    "type": "step_started",
+    "data": {
+     "step": "nocond",
+     "parents": [
+      "if-3"
+     ]
+    }
+   },
+   {
+    "id": "ev-14",
+    "timestamp": 14000,
+    "type": "turn_started",
+    "data": {
+     "step": "nocond"
+    }
+   },
+   {
+    "id": "ev-15",
+    "timestamp": 15000,
+    "type": "engine_cost",
+    "data": {
+     "usd": 0.01
+    }
+   },
+   {
+    "id": "ev-16",
+    "timestamp": 16000,
+    "type": "turn_ended",
+    "data": {
+     "step": "nocond",
+     "text": "reply 3\nREINS: done",
+     "cost": 0.01
+    }
+   },
+   {
+    "id": "ev-17",
+    "timestamp": 17000,
+    "type": "step_started",
+    "data": {
+     "step": "after",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-18",
+    "timestamp": 18000,
+    "type": "turn_started",
+    "data": {
+     "step": "after"
+    }
+   },
+   {
+    "id": "ev-19",
+    "timestamp": 19000,
+    "type": "engine_cost",
+    "data": {
+     "usd": 0.01
+    }
+   },
+   {
+    "id": "ev-20",
+    "timestamp": 20000,
+    "type": "turn_ended",
+    "data": {
+     "step": "after",
+     "text": "reply 4\nREINS: done",
+     "cost": 0.01
+    }
+   },
+   {
+    "id": "ev-21",
+    "timestamp": 21000,
+    "type": "run_finished",
+    "data": {}
+   }
+  ],
+  "receipt": {
+   "workflow": "pin4-ifs",
+   "status": "done",
+   "totalTurns": 4,
+   "totalTimeMs": 20000,
+   "totalCostUsd": 0.04,
+   "gatesHeld": 0,
+   "guardRefusals": 0,
+   "readOnlyRefusals": 0,
+   "totalRefusals": 0,
+   "loopAttempts": 0,
+   "autoCardsFired": 0,
+   "liveCardsDelivered": 0,
+   "verifyResults": {
+    "passed": 0,
+    "failed": 0
+   },
+   "knowlRecalls": 0,
+   "knowlStores": 0,
+   "knowlSkipped": 0
+  },
+  "counter": 10,
+  "calls": [],
+  "seen": []
+ },
+ "runIfNo": {
+  "status": "done",
+  "texts": [
+   "[Reins · workflow \"pin4-if-no\" · step 1 of 2: first]\n\ngo\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · workflow \"pin4-if-no\" · step 2 of 2: no]\n\nno branch\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+  ],
+  "events": [
+   {
+    "id": "ev-1",
+    "timestamp": 1000,
+    "type": "run_started",
+    "data": {
+     "workflow": "pin4-if-no",
+     "steps": [
+      {
+       "id": "first",
+       "kind": "phase",
+       "title": "first"
+      },
+      {
+       "id": "if-1",
+       "kind": "if"
+      },
+      {
+       "id": "yes",
+       "kind": "phase",
+       "title": "yes"
+      },
+      {
+       "id": "no",
+       "kind": "phase",
+       "title": "no"
+      }
+     ]
+    }
+   },
+   {
+    "id": "ev-2",
+    "timestamp": 2000,
+    "type": "step_started",
+    "data": {
+     "step": "first",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-3",
+    "timestamp": 3000,
+    "type": "turn_started",
+    "data": {
+     "step": "first"
+    }
+   },
+   {
+    "id": "ev-4",
+    "timestamp": 4000,
+    "type": "engine_cost",
+    "data": {
+     "usd": 0.01
+    }
+   },
+   {
+    "id": "ev-5",
+    "timestamp": 5000,
+    "type": "turn_ended",
+    "data": {
+     "step": "first",
+     "text": "go",
+     "cost": 0.01
+    }
+   },
+   {
+    "id": "ev-6",
+    "timestamp": 6000,
+    "type": "step_started",
+    "data": {
+     "step": "if-1",
+     "parents": []
+    }
+   },
+   {
+    "id": "ev-7",
+    "timestamp": 7000,
+    "type": "step_started",
+    "data": {
+     "step": "no",
+     "parents": [
+      "if-1"
+     ]
+    }
+   },
+   {
+    "id": "ev-8",
+    "timestamp": 8000,
+    "type": "turn_started",
+    "data": {
+     "step": "no"
+    }
+   },
+   {
+    "id": "ev-9",
+    "timestamp": 9000,
+    "type": "engine_cost",
+    "data": {
+     "usd": 0.01
+    }
+   },
+   {
+    "id": "ev-10",
+    "timestamp": 10000,
+    "type": "turn_ended",
+    "data": {
+     "step": "no",
+     "text": "REINS: working",
+     "cost": 0.01
+    }
+   },
+   {
+    "id": "ev-11",
+    "timestamp": 11000,
+    "type": "run_finished",
+    "data": {}
+   }
+  ],
+  "receipt": {
+   "workflow": "pin4-if-no",
+   "status": "done",
+   "totalTurns": 2,
+   "totalTimeMs": 10000,
+   "totalCostUsd": 0.02,
+   "gatesHeld": 0,
+   "guardRefusals": 0,
+   "readOnlyRefusals": 0,
+   "totalRefusals": 0,
+   "loopAttempts": 0,
+   "autoCardsFired": 0,
+   "liveCardsDelivered": 0,
+   "verifyResults": {
+    "passed": 0,
+    "failed": 0
+   },
+   "knowlRecalls": 0,
+   "knowlStores": 0,
+   "knowlSkipped": 0
+  },
+  "counter": 5,
+  "calls": [],
+  "seen": []
+ },
+ "tagged": [
+  {
+   "ok": true,
+   "text": "---\nreins: 1\nname: chat\nalways: []\nbudget: { turns: 20, minutes: 30 }\n---\n\n## phase prompt\n> hello\n> world\n"
+  },
+  {
+   "ok": true,
+   "text": "---\nreins: 1\nname: chat\nalways: []\nbudget: { turns: 20, minutes: 30 }\n---\n\n## phase prompt\n> hello\n> world\n\n## gate\nuntil: you approve\n"
+  },
+  {
+   "ok": true,
+   "text": "---\nreins: 1\nname: chat\nalways: []\nbudget: { turns: 20, minutes: 30 }\n---\n\n## repeat\nuntil: write\nmax: 5\n\n### phase prompt\n> hello\n> world\n"
+  },
+  {
+   "ok": true,
+   "text": "---\nreins: 1\nname: chat\nalways: []\nbudget: { turns: 20, minutes: 30 }\n---\n\n## phase prompt\n> hello\n> world\n\n## verify\nagainst: prompt\n"
+  },
+  {
+   "ok": true,
+   "text": "---\nreins: 1\nname: chat\nalways: []\nbudget: { turns: 20, minutes: 30 }\n---\n\n## phase prompt\nguard: write\n> hello\n> world\n"
+  },
+  {
+   "ok": true,
+   "text": "---\nreins: 1\nname: chat\nalways: []\nbudget: { turns: 20, minutes: 30 }\n---\n\n## phase prompt\nmode: write\n> hello\n> world\n"
+  },
+  {
+   "ok": true,
+   "text": "---\nreins: 1\nname: chat\nalways: []\nbudget: { turns: 20, minutes: 30 }\n---\n\n## phase prompt\nmode: read-only\n> hello\n> world\n"
+  },
+  {
+   "ok": true,
+   "text": "---\nreins: 1\nname: chat\nalways: []\nbudget: { turns: 20, minutes: 30 }\n---\n\n## phase prompt\n> hello\n> world\n\n## gate\nuntil: you approve\n"
+  },
+  {
+   "ok": false,
+   "error": "unknown tag \"if\""
+  },
+  {
+   "ok": false,
+   "error": "unknown tag \"recall\""
+  },
+  {
+   "ok": false,
+   "error": "unknown tag \"store\""
+  }
+ ],
+ "catalogue": [
+  {
+   "name": "gate",
+   "place": "after",
+   "enforced": true
+  },
+  {
+   "name": "repeat",
+   "place": "wrap",
+   "arg": "until",
+   "argRequired": true,
+   "enforced": true
+  },
+  {
+   "name": "verify",
+   "place": "after",
+   "enforced": true
+  },
+  {
+   "name": "guard",
+   "place": "card",
+   "arg": "guard",
+   "argRequired": true,
+   "enforced": true
+  },
+  {
+   "name": "mode",
+   "place": "attr",
+   "arg": "mode",
+   "argRequired": true,
+   "enforced": true
+  },
+  {
+   "name": "read-only",
+   "place": "attr",
+   "argRequired": false,
+   "enforced": true
+  }
+ ],
+ "order": [
+  "phase",
+  "say",
+  "run",
+  "gate",
+  "repeat",
+  "if",
+  "verify",
+  "recall",
+  "store",
+  "model",
+  "subagent",
+  "end",
+  "use"
+ ],
+ "views": [
+  {
+   "kind": "gate",
+   "order": 40,
+   "colour": "gate",
+   "fields": [],
+   "line": [
+    "wait until",
+    "cond"
+   ],
+   "card": {
+    "label": "wait until",
+    "section": "Flow"
+   },
+   "fresh": {
+    "cond": {
+     "t": "approve"
+    }
+   },
+   "status": {
+    "gate_paused": {
+     "state": "waiting",
+     "gate": true,
+     "cursor": true,
+     "opens": true
+    }
+   }
+  },
+  {
+   "kind": "if",
+   "order": 60,
+   "colour": "loop",
+   "group": "kids+else",
+   "fields": [],
+   "line": [
+    "if",
+    "cond"
+   ],
+   "card": {
+    "label": "if / else",
+    "section": "Flow"
+   },
+   "fresh": {
+    "cond": {
+     "t": "approve"
+    }
+   }
+  },
+  {
+   "kind": "recall",
+   "order": 80,
+   "colour": "mem",
+   "icon": "round",
+   "fields": [
+    {
+     "key": "knowl",
+     "label": "Knowl",
+     "input": "text"
+    }
+   ],
+   "line": [
+    "recall from Knowl",
+    {
+     "field": "knowl"
+    }
+   ],
+   "card": {
+    "label": "recall",
+    "section": "Memory"
+   },
+   "fresh": {}
+  },
+  {
+   "kind": "store",
+   "order": 90,
+   "colour": "mem",
+   "icon": "round",
+   "fields": [
+    {
+     "key": "knowl",
+     "label": "Knowl",
+     "input": "text"
+    }
+   ],
+   "line": [
+    "store to Knowl",
+    {
+     "field": "knowl"
+    }
+   ],
+   "card": {
+    "label": "store",
+    "section": "Memory"
+   },
+   "fresh": {}
+  }
+ ]
+}

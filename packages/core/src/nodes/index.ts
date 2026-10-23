@@ -4,16 +4,7 @@ import type { EngineSession, TurnResult } from '../fake-engine.js';
 import type { CommandOutcome, PauseReason, RunEventRecord, RunEventType } from '../run.js';
 import { ordered } from '../registry.js';
 import { guardNode } from '../guard.js';
-import run from './run.js';
-import gate from './gate.js';
-import repeat from './repeat.js';
-import ifNode from './if.js';
-import verify from './verify.js';
 import use from './use.js';
-import recall from './recall.js';
-import store from './store.js';
-import model from './model.js';
-import subagent from './subagent.js';
 
 /** What the host did with a model step. `label` names the model in use afterwards. One member per `to`, so `r.label` narrows. */
 export type SwitchOutcome = { to: 'switched' | 'same' | 'kept'; label: string } | { to: 'stop' } | { to: 'closed' };
@@ -42,6 +33,11 @@ export interface CompileCtx {
   linkTo(targetStepId: string, apply: (index: number) => void, fallback?: number): void;
   /** = linkTo(targetStepId, (t) => { instr.onFailJump = t; }); kept so verify.ts and run.ts compile byte for byte. */
   linkLater(instr: { onFailJump?: number }, targetStepId: string): void;
+  /**
+   * For a step with a condition whose kids were just compiled (the instructions from `from` to here): each of them whose op has `inLoop` is handed the loop (`exit` is the instruction after the loop's end)
+   * and takes the patch it returns. The step's own instructions only. True when one took the loop's condition, so the loop need not judge it itself.
+   */
+  loopBody(step: Step, from: number, exit: number): boolean;
   resolveBlock?: (name: string) => Workflow | undefined;
 }
 export interface ValidateCtx {
@@ -180,6 +176,11 @@ export interface OpType<I extends Instr> {
   allowMore?(instr: I): number | undefined;
   /** The instruction runs a command whose result the conditions read right after (`EvalCtx.atRun`). */
   ranCommand?: true;
+  /**
+   * The instruction sits in the body of a loop that ends on a condition (`CompileCtx.loopBody`): the fields of this instruction it takes (never `op`, `step` or `top`), or undefined to take none.
+   * `passes`: it is the first instruction of the body, its block runs a command (`ranCommand`), and the loop's condition is that command passing.
+   */
+  inLoop?(instr: I, loop: { cond: Cond; exit: number; passes: boolean }): Partial<I> | undefined;
 }
 
 /** The instructions the run itself executes: a kind cannot bring these. */
@@ -205,7 +206,7 @@ export function register(given: NodeType, order?: number, opts?: { shadow?: bool
   return KINDS.add(n, { order, shadow: opts?.shadow });
 }
 // The numbers are today's order, with room between them.
-for (const [n, order] of [[run, 30], [gate, 40], [repeat, 50], [ifNode, 60], [verify, 70], [use, 80], [recall, 90], [store, 100], [model, 110], [subagent, 120]] as const) register(n, order);
+for (const [n, order] of [[use, 80]] as const) register(n, order);
 
 export function opOf(op: string): OpType<any> | undefined {
   for (const n of NODES.values()) if (n.ops && Object.hasOwn(n.ops, op)) return n.ops[op];
@@ -223,13 +224,4 @@ export function nodeAttrs(): Set<string> { return new Set([...NODES.values()].fl
 export function headingOwns(): Set<string> { return new Set([...NODES.values()].flatMap((n) => n.heading?.owns ?? [])); }
 
 export { checkMode, turnInstr, policyOf } from './turn.js';
-export { default as runNode } from './run.js';
-export { default as gateNode } from './gate.js';
-export { default as repeatNode } from './repeat.js';
-export { default as ifNode } from './if.js';
-export { default as verifyNode } from './verify.js';
 export { default as useNode } from './use.js';
-export { default as recallNode } from './recall.js';
-export { default as storeNode } from './store.js';
-export { default as modelNode } from './model.js';
-export { default as subagentNode } from './subagent.js';

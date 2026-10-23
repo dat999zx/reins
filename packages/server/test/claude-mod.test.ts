@@ -39,11 +39,8 @@ describe('the claude mods', () => {
   it('the registry has the protocol claude-code-cli and the provider claude after start, with no problems', async () => {
     const mods = await start();
     expect(mods.problems).toEqual([]);
-    expect(mods.mods.map((m) => [m.id, m.kind, m.source, m.problems])).toEqual([
-      // M3 Task 3: the default pack's blocks load first (blocks come after conditions and cards, before protocols and providers)
-      ['end', 'block', 'bundled', []],
-      ['phase', 'block', 'bundled', []],
-      ['say', 'block', 'bundled', []],
+    // M3 Tasks 3 to 8: the default pack's mods (blocks, conditions, cards) load too; this test is about the engines, so it leaves the pack's rows out
+    expect(mods.mods.filter((m) => m.pack !== 'default').map((m) => [m.id, m.kind, m.source, m.problems])).toEqual([
       ['anthropic-messages', 'protocol', 'bundled', []],
       ['claude-code-cli', 'protocol', 'bundled', []],
       ['openai-chat', 'protocol', 'bundled', []],

@@ -1,0 +1,22 @@
+{
+  "reins": 1,
+  "id": "store",
+  "kind": "block",
+  "version": "1.0.0",
+  "label": "Store",
+  "description": "Has the agent sum up a decision and keeps it in Knowl",
+  "main": "index.js",
+  "order": 100,
+  "pack": "default",
+  "provides": { "kinds": ["store"], "attrs": ["knowl"], "ops": ["STORE"], "events": ["store"] },
+  "view": {
+    "kind": "store",
+    "order": 90,
+    "colour": "mem",
+    "icon": "round",
+    "fields": [{ "key": "knowl", "label": "Knowl", "input": "text" }],
+    "line": ["store to Knowl", { "field": "knowl" }],
+    "card": { "label": "store", "section": "Memory" },
+    "fresh": {}
+  }
+}

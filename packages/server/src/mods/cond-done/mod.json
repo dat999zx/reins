@@ -1,0 +1,15 @@
+{
+  "reins": 1,
+  "id": "cond-done",
+  "kind": "condition",
+  "version": "1.0.0",
+  "label": "Condition: agent says done",
+  "description": "True when the agent's last line is REINS: done",
+  "main": "index.js",
+  "order": 60,
+  "pack": "default",
+  "provides": { "conditions": ["done"] },
+  "view": {
+    "done": { "label": "agent says done", "fresh": { "t": "done" } }
+  }
+}

@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
-import { FakeEngine, NODES, Run, compileProgram, parseWorkflow, validate } from '@reins/core';
+import { BUILTIN_VIEWS, FakeEngine, NODES, Run, compileProgram, parseWorkflow, validate } from '@reins/core';
 import { startMods } from '../src/engines.js';
 import { servedKinds } from '../src/mods/kinds-view.js';
 import { formatDiagnostic, loadWorkflow, startRunCli } from '../src/run-cli.js';
@@ -108,7 +108,7 @@ describe('no pack loaded: an empty registry', () => {
     try {
       const served = servedKinds(mods);
       expect(served.problems).toEqual([]);
-      expect(served.kinds.map((k) => k.kind)).toEqual(['run', 'gate', 'repeat', 'if', 'verify', 'recall', 'store', 'model', 'subagent', 'use']);
+      expect(served.kinds.map((k) => k.kind)).toEqual([...BUILTIN_VIEWS].sort((a, b) => a.order - b.order).map((v) => v.kind));   // whatever stays in core, whichever kinds have moved
     } finally {
       mods.dispose();
     }

@@ -1,0 +1,28 @@
+{
+  "reins": 1,
+  "id": "verify",
+  "kind": "block",
+  "version": "1.0.0",
+  "label": "Verify",
+  "description": "Compares the work against an earlier step",
+  "main": "index.js",
+  "order": 70,
+  "pack": "default",
+  "provides": { "kinds": ["verify"], "ops": ["VERIFY"], "attrs": ["against"], "events": ["verify_result"] },
+  "view": {
+    "kind": "verify",
+    "order": 70,
+    "colour": "verify",
+    "fails": true,
+    "against": true,
+    "cards": true,
+    "fields": [
+      { "key": "prompt", "label": "Prompt", "input": "textarea" },
+      { "key": "against", "label": "Against", "input": "step" }
+    ],
+    "line": ["verify against", { "field": "against" }],
+    "card": { "label": "verify against", "section": "Flow" },
+    "fresh": {},
+    "status": { "verify_result": { "when": { "key": "pass", "is": [false] }, "step": "track", "state": "failed", "why": "verify" } }
+  }
+}

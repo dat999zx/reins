@@ -1,0 +1,12 @@
+{
+  "reins": 1,
+  "id": "card-now",
+  "kind": "card",
+  "version": "1.0.0",
+  "label": "Card: now",
+  "description": "A note delivered in the middle of the agent's turn",
+  "main": "index.js",
+  "order": 20,
+  "pack": "default",
+  "provides": { "cards": ["now"] }
+}

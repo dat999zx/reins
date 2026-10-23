@@ -9,7 +9,7 @@ const files = readdirSync(new URL('../src/nodes/', import.meta.url))
 
 describe('every nodes/*.ts file is in NODES', () => {
   it('finds the node files', () => {
-    expect(files).toContain('model.ts');
+    expect(files).toContain('use.ts');
   });
   for (const f of files) {
     it(f, async () => {

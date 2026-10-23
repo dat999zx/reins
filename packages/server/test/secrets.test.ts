@@ -15,6 +15,7 @@ import { openStore, redactingStore } from '../src/store.js';
 import { boot, cleanup, openStream, request, tmpDir } from './http-helpers.js';
 import { until } from './helpers.js';
 import { tempHome } from './mods-harness.js';
+import { usePack } from './pack-helper.js';
 
 const KEY = 'sk-test-0123456789abcdef';
 afterEach(cleanup);
@@ -337,6 +338,7 @@ describe('4. the sweep: no key bytes in any file, in the SSE body, or in what ap
 });
 
 describe('5. reins run: the terminal output', () => {
+  usePack(); // M3: the terminal runs in this process, so the default pack is loaded for this block only
   it('neither a command that prints the key (write path) nor a say line that holds it (say path) reaches the output', async () => {
     const t = tempHome();
     try {

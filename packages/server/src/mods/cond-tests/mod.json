@@ -1,0 +1,15 @@
+{
+  "reins": 1,
+  "id": "cond-tests",
+  "kind": "condition",
+  "version": "1.0.0",
+  "label": "Condition: tests pass",
+  "description": "True when the test command passes",
+  "main": "index.js",
+  "order": 20,
+  "pack": "default",
+  "provides": { "conditions": ["tests"] },
+  "view": {
+    "tests": { "label": "tests pass", "fresh": { "t": "tests" } }
+  }
+}

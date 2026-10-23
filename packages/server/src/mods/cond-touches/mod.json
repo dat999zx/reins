@@ -1,0 +1,15 @@
+{
+  "reins": 1,
+  "id": "cond-touches",
+  "kind": "condition",
+  "version": "1.0.0",
+  "label": "Condition: touches files",
+  "description": "True when a tool call touched a file the glob matches",
+  "main": "index.js",
+  "order": 80,
+  "pack": "default",
+  "provides": { "conditions": ["touches"] },
+  "view": {
+    "touches": { "label": "touches files", "fresh": { "t": "touches", "glob": "migrations/**" }, "param": { "key": "glob", "look": "pill" } }
+  }
+}

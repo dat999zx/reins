@@ -1,4 +1,5 @@
 import type { Workflow, Step, Cond } from './model.js';
+import type { ModEvents } from './index.js';
 import { compileProgram, compileTurn, programProblem, sound, type Instr, type Policy, type StepStart } from './compile.js';
 import { fence, isVmError, modOfOp, tame, textOf } from './guard.js';
 import type { Engine, EngineSession, TurnResult } from './fake-engine.js';
@@ -113,18 +114,11 @@ export interface RunEvents {
   refusal: unknown;
   card_queued: unknown;
   card_delivered: unknown;
-  gate_paused: unknown;
   gate_approved: unknown;
-  loop_iteration: unknown;
-  loop_budget_exceeded: unknown;
   link_jump: unknown;
   link_budget_exceeded: unknown;
-  verify_result: unknown;
-  recall: unknown;
-  store: unknown;
   budget_warning: unknown;
   engine_cost: unknown;
-  model_switched: unknown;
   budget_reached: unknown;
   subagent_started: unknown;
   subagent_result: unknown;
@@ -133,7 +127,7 @@ export interface RunEvents {
   track_started: unknown;
   track_ended: unknown;
 }
-export type RunEventType = keyof RunEvents;
+export type RunEventType = keyof RunEvents | keyof ModEvents;
 
 export interface RunEventRecord {
   id: string;
@@ -925,11 +919,13 @@ export class Run {
   }
 
   /** The `log` gate of a mod's instruction: only an event its mod.json `provides.events` lists, with a copy of the data, and at most `LOG_MAX` calls (each one is a row and a snapshot). */
-  private logGate(mod: ModInfo, cut: (text: string) => never) {
+  private logGate(mod: ModInfo, cut: (text: string) => never, ranStep?: string) {
     let calls = 0;
     return (type: unknown, data: unknown) => {
       if (++calls > LOG_MAX) cut(`The block "${mod.id}" logged more than ${LOG_MAX} events in one go; Resume tries again`);
-      if (typeof type !== 'string' || !mod.events.includes(type)) throw new Error(`The block "${mod.id}" may not log "${tame(String(type), 40)}": its mod.json provides.events does not list it.`);
+      // The command's result is core's event: an op that says it `ranCommand` may record it for its own step, with no `provides.events` entry.
+      const theirs = type === 'command_result' && ranStep !== undefined && (data as { step?: unknown } | null | undefined)?.step === ranStep;
+      if (typeof type !== 'string' || !(theirs || mod.events.includes(type))) throw new Error(`The block "${mod.id}" may not log "${tame(String(type), 40)}": its mod.json provides.events does not list it.`);
       return [type, structuredClone(data)];
     };
   }
@@ -938,15 +934,17 @@ export class Run {
   private modVm(t: Track, mod: ModInfo, op: OpType<any>, instr: Instr, live: () => void, cut: (text: string) => never): VmCtx {
     const place = (i: unknown) => { if (!sound(i, this.program.length)) cut(`The block "${mod.id}" sent the run to ${tame(String(i), 20)}, which is not a place in the program; Resume tries again`); };
     const listed = (cmd: string) => (op.commands?.(instr) ?? []).includes(cmd);
+    const ownConds = (i: Instr) => [(i as { cond?: Cond }).cond, (i as { repeatCond?: Cond }).repeatCond].flatMap((c) => condAtoms(c).map((a) => printCond(a)));
     const refuse = (what: unknown) => new Error(`The block "${mod.id}" may not run "${tame(String(what), 60)}": its commands() does not list it.`);
     let seen: readonly Instr[] | undefined;
     let copy: readonly Instr[] = [];
     return fence(this.vm(t), live, {
-      log: this.logGate(mod, cut),
+      log: this.logGate(mod, cut, op.ranCommand === true ? (instr as { step?: string }).step : undefined),
       pause: (p) => [modPause(mod, p, this.program.length, cut)],
       takeLink: (key, to, max) => { place(to); return [key, to, max]; },
       command: (cmd) => { if (typeof cmd !== 'string' || !listed(cmd)) throw refuse(cmd); },
-      judge: (c) => { for (const a of condAtoms(c)) if (CONDS.get(a.t)?.judge === 'command' && !listed(printCond(a))) throw refuse(printCond(a)); },
+      // An op may judge the conditions of its own instruction without listing them: the trust hash already counts those (server/trust.ts `commandsOf`).
+      judge: (c) => { for (const a of condAtoms(c)) if (CONDS.get(a.t)?.judge === 'command' && !listed(printCond(a)) && !ownConds(instr).includes(printCond(a))) throw refuse(printCond(a)); },
       goto: place,
       'tracks.start': (_group, list) => { for (const s of Array.isArray(list) ? list : []) place(s?.at); },
     }, {
@@ -1873,7 +1871,8 @@ export class Run {
     const op = opOf(instr.op);
     if (op) {
       const mod = modOfOp(op);
-      if (!mod) await op.exec(instr, this.vm(t));
+      // A block of the default pack is the product's own code: its ops run exactly as core's did (the run waits for a command in flight, as for a core op). Only another mod's ops are fenced and raced with Stop.
+      if (!mod || mod.pack) await op.exec(instr, this.vm(t));
       else {
         const stepId = (instr as { step?: string }).step ?? instr.op;
         const from = t.pc;

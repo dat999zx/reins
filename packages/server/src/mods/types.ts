@@ -1,4 +1,4 @@
-import type { CardType, CondType, Decision, Engine, EngineEvent, EngineProbe, NodeType, ToolRequest, checkMode, policyOf, turnInstr } from '@reins/core';
+import type { CardType, CondType, Decision, Engine, EngineEvent, EngineProbe, NodeType, ToolRequest, checkMode, driftFound, globMatcher, isValidGlob, parseCond, policyOf, printCond, relPath, turnInstr } from '@reins/core';
 import type { ModelRequest, WireEvent } from '../loop/types.js';
 import type { KeyStatus } from '../secrets.js';
 import type { Registry } from './registry.js';
@@ -121,7 +121,7 @@ export interface ModApi {
   /** Card mods: adds a card kind to core. */
   registerCard(c: CardType): () => void;
   /** Exactly these three, frozen. It grows only by a reviewed edit; never `register`, `NODES`, `CONDS`, `CARDS` or `opOf`. */
-  core: { checkMode: typeof checkMode; policyOf: typeof policyOf; turnInstr: typeof turnInstr };
+  core: { checkMode: typeof checkMode; driftFound: typeof driftFound; globMatcher: typeof globMatcher; isValidGlob: typeof isValidGlob; parseCond: typeof parseCond; policyOf: typeof policyOf; printCond: typeof printCond; relPath: typeof relPath; turnInstr: typeof turnInstr };
 }
 
 /** What a mod says it brings. The api refuses anything not listed here. Each list is names. */
@@ -238,7 +238,7 @@ export interface LoadedMod {
 /** A kind's own checks, run after the loader's common ones. `ctx.registry` holds the kinds loaded before this one. */
 export interface ModKind {
   id: string;
-  validate(raw: Record<string, unknown>, ctx: { id: string; registry: Registry; source?: ModSource }): Problem[];
+  validate(raw: Record<string, unknown>, ctx: { id: string; registry: Registry; source?: ModSource; /** The manifest is a bundled mod's, or a user mod that has the id (and kind) of one: a copy of a built-in. */ builtin?: boolean }): Problem[];
   /** Records the mod; returns what undoes it. */
   activate(mod: LoadedMod, host: ModHost): (() => void) | undefined;
   /**

@@ -14,6 +14,7 @@ import { claudeEngine } from '../src/mods/claude-code-cli/engine.js';
 import { commandsOf, hashCommands } from '../src/trust.js';
 import { FAKE_CLAUDE, fakeSetup } from './helpers.js';
 import { tempHome } from './mods-harness.js';
+import { usePack } from './pack-helper.js';
 
 const g = globalThis as unknown as Record<string, any>;
 const GLOBALS = ['__started', '__gate', '__out'];
@@ -150,6 +151,7 @@ describe('a throwing hook never breaks saving, printing, parsing or validating',
 });
 
 describe('the trust list', () => {
+  usePack(); // M3 Task 4: the gate these workflows use is the default pack's
   const none = () => undefined;
 
   it('ops.commands throwing: a problem line in the list, so the workflow cannot run until the user sees it', async () => {

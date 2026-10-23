@@ -7,6 +7,9 @@ import { parseWorkflow, register, type NodeType, type Workflow } from '@reins/co
 import { FOLDER_PATH, folderHash } from '../src/mods/claude-code-cli/folder.js';
 import { commandsOf, hashCommands } from '../src/trust.js';
 import { golden } from '../../core/test/golden-3a/stable.js';
+import { usePack } from './pack-helper.js';
+
+usePack(); // M3 Task 8: the conditions are the default pack's mods; commandsOf reads them from core
 
 const dirs: string[] = [];
 const folder = (files: Record<string, string> = {}) => {

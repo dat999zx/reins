@@ -104,6 +104,38 @@ describe('fill: text and unparsable templates', () => {
   });
 });
 
+describe('quoted words in a hole', () => {
+  it("'word' is an alternative that always has text, so it is the fallback of a list", () => {
+    expect(fill("{label|model|'the session model'}", {})).toBe('the session model');
+    expect(fill("{label|model|'the session model'}", { model: 'm' })).toBe('m');
+    expect(fill("{label|model|'the session model'}", { label: 'L', model: 'm' })).toBe('L');
+    expect(fill("{label|model|'the session model'}", { label: '', model: '' })).toBe('the session model');
+  });
+  it("path?'word' gives the word when the data has a finite number or true there, and nothing for anything else", () => {
+    const f = (d: unknown) => fill("[{on?'yes'}]", d);
+    expect(f({ on: true })).toBe('[yes]');
+    expect(f({ on: 0 })).toBe('[yes]');
+    expect(f({ on: 1.5 })).toBe('[yes]');
+    for (const on of [false, undefined, null, '', 'text', 'true', NaN, Infinity, [], {}, () => 1]) expect(f({ on }), String(on)).toBe('[]');
+    expect(f({})).toBe('[]');
+    expect(f(null)).toBe('[]');
+    expect(f(JSON.parse('{"__proto__":{"on":true}}'))).toBe('[]');
+    expect(fill("{resumed?'resumed'|'started'}", { resumed: true })).toBe('resumed');
+    expect(fill("{resumed?'resumed'|'started'}", { resumed: false })).toBe('started');
+  });
+  it('the words go through showText like any filled value, and a word may hold spaces and a question mark', () => {
+    expect(fill("a{n?' ('}{n:usd}{u?' + ?'}{n?')'}.", { n: 0.5, u: true })).toBe('a ($0.5000 + ?).');
+    expect(fill("a{n?' ('}{n:usd}{u?' + ?'}{n?')'}.", {})).toBe('a.');
+    expect(fill("{x?'a\u202Eb'}", { x: true })).toBe('a<U+202E>b');
+  });
+  it('a malformed quoted word is shown as the template is', () => {
+    for (const t of ["{'a}", "{a'}", "{'a'b'}", "{'a|b'}", "{'a:b'}", "{a?'x}", "{?'x'}", "{a..b?'x'}", "{'a'?}"]) {
+      expect(() => fill(t, { a: true }), t).not.toThrow();
+      expect(fill(t, { a: true }), t).toBe(t);
+    }
+  });
+});
+
 describe('a row template', () => {
   const row = (type: string, data: unknown = {}) => ({ sessionId: 's', seq: 1, ts: 1, type, data }) as LogRow;
   const ctx = { sess: reduce(initial(), row('note'), 0).sessions.s!, act: { answer: async () => {}, resume: () => {} } };

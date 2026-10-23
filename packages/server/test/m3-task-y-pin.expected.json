@@ -1,0 +1,8171 @@
+{
+ "parsed": {
+  "runFix": {
+   "diagnostics": [],
+   "steps": [
+    {
+     "id": "run-1",
+     "kind": "run",
+     "attrs": {
+      "cmd": "npm test"
+     },
+     "cards": [],
+     "links": [
+      {
+       "kind": "on-fail",
+       "to": "fix",
+       "max": 2,
+       "pos": {
+        "line": 9,
+        "col": 9
+       }
+      }
+     ],
+     "pos": {
+      "line": 8,
+      "col": 1
+     }
+    },
+    {
+     "id": "end-1",
+     "kind": "end",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 11,
+      "col": 1
+     }
+    },
+    {
+     "id": "fix",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [
+      {
+       "kind": "next",
+       "to": "run-1",
+       "pos": {
+        "line": 15,
+        "col": 6
+       }
+      }
+     ],
+     "pos": {
+      "line": 13,
+      "col": 1
+     },
+     "title": "fix",
+     "prompt": "fix it"
+    }
+   ],
+   "printed": "---\nreins: 1\nname: run-fix\nbudget: { turns: 40, minutes: 9 }\nalways: []\n---\n\n## run `npm test`\non-fail: fix (max 2)\n\n## end\n\n## phase fix\nnext: run-1\n> fix it\n",
+   "validate": [
+    {
+     "severity": "error",
+     "message": "Backward link to \"run-1\" requires max",
+     "pos": {
+      "line": 15,
+      "col": 6
+     }
+    }
+   ],
+   "program": [
+    {
+     "op": "RUN",
+     "step": "run-1",
+     "cmd": "npm test",
+     "linkMax": 2,
+     "top": 0,
+     "onFailJump": 2
+    },
+    {
+     "op": "END",
+     "top": 1
+    },
+    {
+     "op": "TURN",
+     "step": "fix",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "fix",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [
+       {
+        "kind": "next",
+        "to": "run-1",
+        "pos": {
+         "line": 15,
+         "col": 6
+        }
+       }
+      ],
+      "pos": {
+       "line": 13,
+       "col": 1
+      },
+      "title": "fix",
+      "prompt": "fix it"
+     },
+     "top": 2
+    },
+    {
+     "op": "JUMP",
+     "target": 0,
+     "step": "fix",
+     "top": 2
+    },
+    {
+     "op": "END"
+    }
+   ],
+   "commands": {
+    "list": [
+     "npm test",
+     "npm test"
+    ],
+    "hash": "01c031aaceec22242bfb82e33aff2cf56fe97db38f6730d5c53ac0d77cdaf060"
+   }
+  },
+  "runFailTarget": {
+   "diagnostics": [],
+   "steps": [
+    {
+     "id": "run-1",
+     "kind": "run",
+     "attrs": {
+      "cmd": "npm test"
+     },
+     "cards": [],
+     "links": [
+      {
+       "kind": "on-fail",
+       "to": "fix",
+       "pos": {
+        "line": 9,
+        "col": 9
+       }
+      }
+     ],
+     "pos": {
+      "line": 8,
+      "col": 1
+     }
+    },
+    {
+     "id": "end-1",
+     "kind": "end",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 11,
+      "col": 1
+     }
+    },
+    {
+     "id": "fix",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 13,
+      "col": 1
+     },
+     "title": "fix",
+     "prompt": "fix it"
+    }
+   ],
+   "printed": "---\nreins: 1\nname: run-fail-target\nbudget: { turns: 40, minutes: 9 }\nalways: []\n---\n\n## run `npm test`\non-fail: fix\n\n## end\n\n## phase fix\n> fix it\n",
+   "validate": [],
+   "program": [
+    {
+     "op": "RUN",
+     "step": "run-1",
+     "cmd": "npm test",
+     "top": 0,
+     "onFailJump": 2
+    },
+    {
+     "op": "END",
+     "top": 1
+    },
+    {
+     "op": "TURN",
+     "step": "fix",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "fix",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 13,
+       "col": 1
+      },
+      "title": "fix",
+      "prompt": "fix it"
+     },
+     "top": 2
+    },
+    {
+     "op": "END"
+    }
+   ],
+   "commands": {
+    "list": [
+     "npm test",
+     "npm test"
+    ],
+    "hash": "01c031aaceec22242bfb82e33aff2cf56fe97db38f6730d5c53ac0d77cdaf060"
+   }
+  },
+  "runOdd": {
+   "diagnostics": [],
+   "steps": [
+    {
+     "id": "run-1",
+     "kind": "run",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 8,
+      "col": 1
+     }
+    },
+    {
+     "id": "run-2",
+     "kind": "run",
+     "attrs": {
+      "cmd": "echo hi"
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 10,
+      "col": 1
+     }
+    },
+    {
+     "id": "run-3",
+     "kind": "run",
+     "attrs": {
+      "cmd": "echo \"a b\""
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 12,
+      "col": 1
+     }
+    },
+    {
+     "id": "run-4",
+     "kind": "run",
+     "attrs": {
+      "cmd": "a`b`"
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 14,
+      "col": 1
+     }
+    },
+    {
+     "id": "say-1",
+     "kind": "say",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 16,
+      "col": 1
+     },
+     "prompt": "done"
+    }
+   ],
+   "printed": "---\nreins: 1\nname: run-odd\nbudget: { turns: 40, minutes: 9 }\nalways: []\n---\n\n## run\n\n## run `echo hi`\n\n## run `echo \"a b\"`\n\n## run `a`b``\n\n## say\n> done\n",
+   "validate": [],
+   "program": [
+    {
+     "op": "RUN",
+     "step": "run-1",
+     "cmd": "",
+     "top": 0
+    },
+    {
+     "op": "RUN",
+     "step": "run-2",
+     "cmd": "echo hi",
+     "top": 1
+    },
+    {
+     "op": "RUN",
+     "step": "run-3",
+     "cmd": "echo \"a b\"",
+     "top": 2
+    },
+    {
+     "op": "RUN",
+     "step": "run-4",
+     "cmd": "a`b`",
+     "top": 3
+    },
+    {
+     "op": "TURN",
+     "step": "say-1",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "say-1",
+      "kind": "say",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 16,
+       "col": 1
+      },
+      "prompt": "done"
+     },
+     "top": 4
+    },
+    {
+     "op": "END"
+    }
+   ],
+   "commands": {
+    "list": [
+     "",
+     "echo hi",
+     "echo \"a b\"",
+     "a`b`",
+     "npm test"
+    ],
+    "hash": "e0b0b601aeba92a9e6c1e7dc404c3a1d1863ecd76b1df1c58063ea4a2e72af09"
+   }
+  },
+  "runNext": {
+   "diagnostics": [],
+   "steps": [
+    {
+     "id": "run-1",
+     "kind": "run",
+     "attrs": {
+      "cmd": "make"
+     },
+     "cards": [],
+     "links": [
+      {
+       "kind": "next",
+       "to": "tail",
+       "pos": {
+        "line": 9,
+        "col": 6
+       }
+      }
+     ],
+     "pos": {
+      "line": 8,
+      "col": 1
+     }
+    },
+    {
+     "id": "skipped",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 11,
+      "col": 1
+     },
+     "title": "skipped",
+     "prompt": "skipped"
+    },
+    {
+     "id": "tail",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 14,
+      "col": 1
+     },
+     "title": "tail",
+     "prompt": "tail"
+    }
+   ],
+   "printed": "---\nreins: 1\nname: run-next\nbudget: { turns: 40, minutes: 9 }\nalways: []\n---\n\n## run `make`\nnext: tail\n\n## phase skipped\n> skipped\n\n## phase tail\n> tail\n",
+   "validate": [
+    {
+     "severity": "warning",
+     "message": "step `skipped` is never reached",
+     "pos": {
+      "line": 11,
+      "col": 1
+     }
+    }
+   ],
+   "program": [
+    {
+     "op": "RUN",
+     "step": "run-1",
+     "cmd": "make",
+     "top": 0
+    },
+    {
+     "op": "JUMP",
+     "target": 3,
+     "step": "run-1",
+     "top": 0
+    },
+    {
+     "op": "TURN",
+     "step": "skipped",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "skipped",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 11,
+       "col": 1
+      },
+      "title": "skipped",
+      "prompt": "skipped"
+     },
+     "top": 1
+    },
+    {
+     "op": "TURN",
+     "step": "tail",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "tail",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 14,
+       "col": 1
+      },
+      "title": "tail",
+      "prompt": "tail"
+     },
+     "top": 2
+    },
+    {
+     "op": "END"
+    }
+   ],
+   "commands": {
+    "list": [
+     "make",
+     "npm test"
+    ],
+    "hash": "5611d63f03f1ac14af4eef217506ed2f10f707df9c0706199aa8be26cb02cf47"
+   }
+  },
+  "repeatTests": {
+   "diagnostics": [],
+   "steps": [
+    {
+     "id": "repeat-1",
+     "kind": "repeat",
+     "attrs": {
+      "max": "3"
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 8,
+      "col": 1
+     },
+     "cond": {
+      "t": "tests"
+     },
+     "kids": [
+      {
+       "id": "run-1",
+       "kind": "run",
+       "attrs": {
+        "cmd": "npm test"
+       },
+       "cards": [],
+       "links": [],
+       "pos": {
+        "line": 12,
+        "col": 1
+       }
+      },
+      {
+       "id": "fix",
+       "kind": "phase",
+       "attrs": {},
+       "cards": [],
+       "links": [],
+       "pos": {
+        "line": 14,
+        "col": 1
+       },
+       "title": "fix",
+       "prompt": "fix"
+      }
+     ]
+    }
+   ],
+   "printed": "---\nreins: 1\nname: repeat-tests\nbudget: { turns: 40, minutes: 9 }\nalways: []\n---\n\n## repeat\nuntil: tests pass\nmax: 3\n\n### run `npm test`\n\n### phase fix\n> fix\n",
+   "validate": [
+    {
+     "severity": "warning",
+     "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+     "pos": {
+      "line": 8,
+      "col": 1
+     }
+    }
+   ],
+   "program": [
+    {
+     "op": "LOOP_IN",
+     "step": "repeat-1",
+     "max": 3,
+     "top": 0
+    },
+    {
+     "op": "RUN",
+     "step": "run-1",
+     "cmd": "npm test",
+     "repeatCond": {
+      "t": "tests"
+     },
+     "loopExit": 4,
+     "onPassJump": 4,
+     "top": 0
+    },
+    {
+     "op": "TURN",
+     "step": "fix",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "fix",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 14,
+       "col": 1
+      },
+      "title": "fix",
+      "prompt": "fix"
+     },
+     "top": 0
+    },
+    {
+     "op": "LOOP_BK",
+     "step": "repeat-1",
+     "target": 1,
+     "top": 0
+    },
+    {
+     "op": "END"
+    }
+   ],
+   "commands": {
+    "list": [
+     "npm test",
+     "tests pass",
+     "npm test"
+    ],
+    "hash": "ac3edf0b5d7e53b3aef4dda05bfc03919758bab086d26490eb02d99a7414858a"
+   }
+  },
+  "repeatLint": {
+   "diagnostics": [],
+   "steps": [
+    {
+     "id": "repeat-1",
+     "kind": "repeat",
+     "attrs": {
+      "max": "3"
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 8,
+      "col": 1
+     },
+     "cond": {
+      "t": "cmd",
+      "cmd": "npm run lint"
+     },
+     "kids": [
+      {
+       "id": "run-1",
+       "kind": "run",
+       "attrs": {
+        "cmd": "npm run lint"
+       },
+       "cards": [],
+       "links": [],
+       "pos": {
+        "line": 12,
+        "col": 1
+       }
+      },
+      {
+       "id": "fix",
+       "kind": "phase",
+       "attrs": {},
+       "cards": [],
+       "links": [],
+       "pos": {
+        "line": 14,
+        "col": 1
+       },
+       "title": "fix",
+       "prompt": "fix"
+      }
+     ]
+    }
+   ],
+   "printed": "---\nreins: 1\nname: repeat-lint\nbudget: { turns: 40, minutes: 9 }\nalways: []\n---\n\n## repeat\nuntil: `npm run lint` passes\nmax: 3\n\n### run `npm run lint`\n\n### phase fix\n> fix\n",
+   "validate": [],
+   "program": [
+    {
+     "op": "LOOP_IN",
+     "step": "repeat-1",
+     "max": 3,
+     "top": 0
+    },
+    {
+     "op": "RUN",
+     "step": "run-1",
+     "cmd": "npm run lint",
+     "repeatCond": {
+      "t": "cmd",
+      "cmd": "npm run lint"
+     },
+     "loopExit": 4,
+     "onPassJump": 4,
+     "top": 0
+    },
+    {
+     "op": "TURN",
+     "step": "fix",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "fix",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 14,
+       "col": 1
+      },
+      "title": "fix",
+      "prompt": "fix"
+     },
+     "top": 0
+    },
+    {
+     "op": "LOOP_BK",
+     "step": "repeat-1",
+     "target": 1,
+     "top": 0
+    },
+    {
+     "op": "END"
+    }
+   ],
+   "commands": {
+    "list": [
+     "npm run lint",
+     "`npm run lint` passes",
+     "npm test"
+    ],
+    "hash": "d0836ebaaf06ec8c20e55736c11fe9d30929ee57e228c484a37cc3bdbc73d11d"
+   }
+  },
+  "repeatOther": {
+   "diagnostics": [],
+   "steps": [
+    {
+     "id": "repeat-1",
+     "kind": "repeat",
+     "attrs": {
+      "max": "3"
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 8,
+      "col": 1
+     },
+     "cond": {
+      "t": "cmd",
+      "cmd": "npm run lint"
+     },
+     "kids": [
+      {
+       "id": "run-1",
+       "kind": "run",
+       "attrs": {
+        "cmd": "npm test"
+       },
+       "cards": [],
+       "links": [],
+       "pos": {
+        "line": 12,
+        "col": 1
+       }
+      },
+      {
+       "id": "fix",
+       "kind": "phase",
+       "attrs": {},
+       "cards": [],
+       "links": [],
+       "pos": {
+        "line": 14,
+        "col": 1
+       },
+       "title": "fix",
+       "prompt": "fix"
+      }
+     ]
+    }
+   ],
+   "printed": "---\nreins: 1\nname: repeat-other\nbudget: { turns: 40, minutes: 9 }\nalways: []\n---\n\n## repeat\nuntil: `npm run lint` passes\nmax: 3\n\n### run `npm test`\n\n### phase fix\n> fix\n",
+   "validate": [],
+   "program": [
+    {
+     "op": "LOOP_IN",
+     "step": "repeat-1",
+     "max": 3,
+     "top": 0
+    },
+    {
+     "op": "RUN",
+     "step": "run-1",
+     "cmd": "npm test",
+     "repeatCond": {
+      "t": "cmd",
+      "cmd": "npm run lint"
+     },
+     "loopExit": 4,
+     "top": 0
+    },
+    {
+     "op": "TURN",
+     "step": "fix",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "fix",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 14,
+       "col": 1
+      },
+      "title": "fix",
+      "prompt": "fix"
+     },
+     "top": 0
+    },
+    {
+     "op": "LOOP_BK",
+     "step": "repeat-1",
+     "target": 1,
+     "top": 0
+    },
+    {
+     "op": "END"
+    }
+   ],
+   "commands": {
+    "list": [
+     "npm test",
+     "`npm run lint` passes",
+     "npm test"
+    ],
+    "hash": "2b7d7eaefa86bcaecabc483c20bf430ca2557567fa38e7ad0af1e6a1c1025827"
+   }
+  },
+  "repeatLate": {
+   "diagnostics": [],
+   "steps": [
+    {
+     "id": "repeat-1",
+     "kind": "repeat",
+     "attrs": {
+      "max": "3"
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 8,
+      "col": 1
+     },
+     "cond": {
+      "t": "tests"
+     },
+     "kids": [
+      {
+       "id": "fix",
+       "kind": "phase",
+       "attrs": {},
+       "cards": [],
+       "links": [],
+       "pos": {
+        "line": 12,
+        "col": 1
+       },
+       "title": "fix",
+       "prompt": "fix"
+      },
+      {
+       "id": "run-1",
+       "kind": "run",
+       "attrs": {
+        "cmd": "npm test"
+       },
+       "cards": [],
+       "links": [],
+       "pos": {
+        "line": 15,
+        "col": 1
+       }
+      }
+     ]
+    }
+   ],
+   "printed": "---\nreins: 1\nname: repeat-late\nbudget: { turns: 40, minutes: 9 }\nalways: []\n---\n\n## repeat\nuntil: tests pass\nmax: 3\n\n### phase fix\n> fix\n\n### run `npm test`\n",
+   "validate": [
+    {
+     "severity": "warning",
+     "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+     "pos": {
+      "line": 8,
+      "col": 1
+     }
+    }
+   ],
+   "program": [
+    {
+     "op": "LOOP_IN",
+     "step": "repeat-1",
+     "max": 3,
+     "top": 0
+    },
+    {
+     "op": "TURN",
+     "step": "fix",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "fix",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 12,
+       "col": 1
+      },
+      "title": "fix",
+      "prompt": "fix"
+     },
+     "top": 0
+    },
+    {
+     "op": "RUN",
+     "step": "run-1",
+     "cmd": "npm test",
+     "repeatCond": {
+      "t": "tests"
+     },
+     "loopExit": 4,
+     "top": 0
+    },
+    {
+     "op": "LOOP_BK",
+     "step": "repeat-1",
+     "target": 1,
+     "top": 0
+    },
+    {
+     "op": "END"
+    }
+   ],
+   "commands": {
+    "list": [
+     "npm test",
+     "tests pass",
+     "npm test"
+    ],
+    "hash": "ac3edf0b5d7e53b3aef4dda05bfc03919758bab086d26490eb02d99a7414858a"
+   }
+  },
+  "repeatNoCmd": {
+   "diagnostics": [],
+   "steps": [
+    {
+     "id": "repeat-1",
+     "kind": "repeat",
+     "attrs": {
+      "max": "2"
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 8,
+      "col": 1
+     },
+     "cond": {
+      "t": "tests"
+     },
+     "kids": [
+      {
+       "id": "run-1",
+       "kind": "run",
+       "attrs": {},
+       "cards": [],
+       "links": [],
+       "pos": {
+        "line": 12,
+        "col": 1
+       }
+      }
+     ]
+    }
+   ],
+   "printed": "---\nreins: 1\nname: repeat-nocmd\nbudget: { turns: 40, minutes: 9 }\nalways: []\n---\n\n## repeat\nuntil: tests pass\nmax: 2\n\n### run\n",
+   "validate": [
+    {
+     "severity": "warning",
+     "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+     "pos": {
+      "line": 8,
+      "col": 1
+     }
+    }
+   ],
+   "program": [
+    {
+     "op": "LOOP_IN",
+     "step": "repeat-1",
+     "max": 2,
+     "top": 0
+    },
+    {
+     "op": "RUN",
+     "step": "run-1",
+     "cmd": "",
+     "repeatCond": {
+      "t": "tests"
+     },
+     "loopExit": 3,
+     "onPassJump": 3,
+     "top": 0
+    },
+    {
+     "op": "LOOP_BK",
+     "step": "repeat-1",
+     "target": 1,
+     "top": 0
+    },
+    {
+     "op": "END"
+    }
+   ],
+   "commands": {
+    "list": [
+     "",
+     "tests pass",
+     "npm test"
+    ],
+    "hash": "8d88e784f69779f88af91471f20fc70e3ea672228e85fc09ce0510361d107ae5"
+   }
+  },
+  "repeatAgent": {
+   "diagnostics": [],
+   "steps": [
+    {
+     "id": "repeat-1",
+     "kind": "repeat",
+     "attrs": {
+      "max": "3"
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 8,
+      "col": 1
+     },
+     "cond": {
+      "t": "done"
+     },
+     "kids": [
+      {
+       "id": "work",
+       "kind": "phase",
+       "attrs": {},
+       "cards": [],
+       "links": [],
+       "pos": {
+        "line": 12,
+        "col": 1
+       },
+       "title": "work",
+       "prompt": "work"
+      }
+     ]
+    }
+   ],
+   "printed": "---\nreins: 1\nname: repeat-agent\nbudget: { turns: 40, minutes: 9 }\nalways: []\n---\n\n## repeat\nuntil: agent says done\nmax: 3\n\n### phase work\n> work\n",
+   "validate": [],
+   "program": [
+    {
+     "op": "LOOP_IN",
+     "step": "repeat-1",
+     "max": 3,
+     "top": 0
+    },
+    {
+     "op": "TURN",
+     "step": "work",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "work",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 12,
+       "col": 1
+      },
+      "title": "work",
+      "prompt": "work"
+     },
+     "top": 0
+    },
+    {
+     "op": "LOOP_BK",
+     "step": "repeat-1",
+     "target": 1,
+     "cond": {
+      "t": "done"
+     },
+     "top": 0
+    },
+    {
+     "op": "END"
+    }
+   ],
+   "commands": {
+    "list": [
+     "npm test"
+    ],
+    "hash": "328e123c63857fd8473bd4bd3581e655b08b7440d7f5d2c31cc375607582f539"
+   }
+  },
+  "repeatBudget": {
+   "diagnostics": [],
+   "steps": [
+    {
+     "id": "repeat-1",
+     "kind": "repeat",
+     "attrs": {
+      "max": "2"
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 8,
+      "col": 1
+     },
+     "cond": {
+      "t": "tests"
+     },
+     "kids": [
+      {
+       "id": "run-1",
+       "kind": "run",
+       "attrs": {
+        "cmd": "npm test"
+       },
+       "cards": [],
+       "links": [],
+       "pos": {
+        "line": 12,
+        "col": 1
+       }
+      },
+      {
+       "id": "fix",
+       "kind": "phase",
+       "attrs": {},
+       "cards": [],
+       "links": [],
+       "pos": {
+        "line": 14,
+        "col": 1
+       },
+       "title": "fix",
+       "prompt": "fix"
+      }
+     ]
+    },
+    {
+     "id": "end-1",
+     "kind": "end",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 17,
+      "col": 1
+     }
+    }
+   ],
+   "printed": "---\nreins: 1\nname: repeat-budget\nbudget: { turns: 40, minutes: 9 }\nalways: []\n---\n\n## repeat\nuntil: tests pass\nmax: 2\n\n### run `npm test`\n\n### phase fix\n> fix\n\n## end\n",
+   "validate": [
+    {
+     "severity": "warning",
+     "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+     "pos": {
+      "line": 8,
+      "col": 1
+     }
+    }
+   ],
+   "program": [
+    {
+     "op": "LOOP_IN",
+     "step": "repeat-1",
+     "max": 2,
+     "top": 0
+    },
+    {
+     "op": "RUN",
+     "step": "run-1",
+     "cmd": "npm test",
+     "repeatCond": {
+      "t": "tests"
+     },
+     "loopExit": 4,
+     "onPassJump": 4,
+     "top": 0
+    },
+    {
+     "op": "TURN",
+     "step": "fix",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "fix",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 14,
+       "col": 1
+      },
+      "title": "fix",
+      "prompt": "fix"
+     },
+     "top": 0
+    },
+    {
+     "op": "LOOP_BK",
+     "step": "repeat-1",
+     "target": 1,
+     "top": 0
+    },
+    {
+     "op": "END",
+     "top": 1
+    },
+    {
+     "op": "END"
+    }
+   ],
+   "commands": {
+    "list": [
+     "npm test",
+     "tests pass",
+     "npm test"
+    ],
+    "hash": "ac3edf0b5d7e53b3aef4dda05bfc03919758bab086d26490eb02d99a7414858a"
+   }
+  },
+  "repeatNested": {
+   "diagnostics": [],
+   "steps": [
+    {
+     "id": "repeat-1",
+     "kind": "repeat",
+     "attrs": {
+      "max": "2"
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 8,
+      "col": 1
+     },
+     "cond": {
+      "t": "tests"
+     },
+     "kids": [
+      {
+       "id": "repeat-2",
+       "kind": "repeat",
+       "attrs": {
+        "max": "2"
+       },
+       "cards": [],
+       "links": [],
+       "pos": {
+        "line": 12,
+        "col": 1
+       },
+       "cond": {
+        "t": "cmd",
+        "cmd": "npm run lint"
+       },
+       "kids": [
+        {
+         "id": "run-1",
+         "kind": "run",
+         "attrs": {
+          "cmd": "npm run lint"
+         },
+         "cards": [],
+         "links": [],
+         "pos": {
+          "line": 16,
+          "col": 1
+         }
+        }
+       ]
+      },
+      {
+       "id": "run-2",
+       "kind": "run",
+       "attrs": {
+        "cmd": "npm test"
+       },
+       "cards": [],
+       "links": [],
+       "pos": {
+        "line": 18,
+        "col": 1
+       }
+      },
+      {
+       "id": "fix",
+       "kind": "phase",
+       "attrs": {},
+       "cards": [],
+       "links": [],
+       "pos": {
+        "line": 20,
+        "col": 1
+       },
+       "title": "fix",
+       "prompt": "fix"
+      }
+     ]
+    }
+   ],
+   "printed": "---\nreins: 1\nname: repeat-nested\nbudget: { turns: 40, minutes: 9 }\nalways: []\n---\n\n## repeat\nuntil: tests pass\nmax: 2\n\n### repeat\nuntil: `npm run lint` passes\nmax: 2\n\n#### run `npm run lint`\n\n### run `npm test`\n\n### phase fix\n> fix\n",
+   "validate": [
+    {
+     "severity": "warning",
+     "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+     "pos": {
+      "line": 8,
+      "col": 1
+     }
+    }
+   ],
+   "program": [
+    {
+     "op": "LOOP_IN",
+     "step": "repeat-1",
+     "max": 2,
+     "top": 0
+    },
+    {
+     "op": "LOOP_IN",
+     "step": "repeat-2",
+     "max": 2,
+     "top": 0
+    },
+    {
+     "op": "RUN",
+     "step": "run-1",
+     "cmd": "npm run lint",
+     "repeatCond": {
+      "t": "tests"
+     },
+     "loopExit": 7,
+     "onPassJump": 4,
+     "top": 0
+    },
+    {
+     "op": "LOOP_BK",
+     "step": "repeat-2",
+     "target": 2,
+     "top": 0
+    },
+    {
+     "op": "RUN",
+     "step": "run-2",
+     "cmd": "npm test",
+     "repeatCond": {
+      "t": "tests"
+     },
+     "loopExit": 7,
+     "top": 0
+    },
+    {
+     "op": "TURN",
+     "step": "fix",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "fix",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 20,
+       "col": 1
+      },
+      "title": "fix",
+      "prompt": "fix"
+     },
+     "top": 0
+    },
+    {
+     "op": "LOOP_BK",
+     "step": "repeat-1",
+     "target": 1,
+     "top": 0
+    },
+    {
+     "op": "END"
+    }
+   ],
+   "commands": {
+    "list": [
+     "npm run lint",
+     "tests pass",
+     "npm test",
+     "tests pass",
+     "npm test"
+    ],
+    "hash": "192ded8c95f6206680434bc2ef1f8e74855728fd13a92855b2f90761e12dbad7"
+   }
+  },
+  "repeatNot": {
+   "diagnostics": [],
+   "steps": [
+    {
+     "id": "repeat-1",
+     "kind": "repeat",
+     "attrs": {
+      "max": "2"
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 8,
+      "col": 1
+     },
+     "cond": {
+      "t": "not",
+      "a": {
+       "t": "tests"
+      }
+     },
+     "kids": [
+      {
+       "id": "run-1",
+       "kind": "run",
+       "attrs": {
+        "cmd": "npm test"
+       },
+       "cards": [],
+       "links": [],
+       "pos": {
+        "line": 12,
+        "col": 1
+       }
+      }
+     ]
+    }
+   ],
+   "printed": "---\nreins: 1\nname: repeat-not\nbudget: { turns: 40, minutes: 9 }\nalways: []\n---\n\n## repeat\nuntil: not tests pass\nmax: 2\n\n### run `npm test`\n",
+   "validate": [
+    {
+     "severity": "warning",
+     "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+     "pos": {
+      "line": 8,
+      "col": 1
+     }
+    }
+   ],
+   "program": [
+    {
+     "op": "LOOP_IN",
+     "step": "repeat-1",
+     "max": 2,
+     "top": 0
+    },
+    {
+     "op": "RUN",
+     "step": "run-1",
+     "cmd": "npm test",
+     "repeatCond": {
+      "t": "not",
+      "a": {
+       "t": "tests"
+      }
+     },
+     "loopExit": 3,
+     "top": 0
+    },
+    {
+     "op": "LOOP_BK",
+     "step": "repeat-1",
+     "target": 1,
+     "top": 0
+    },
+    {
+     "op": "END"
+    }
+   ],
+   "commands": {
+    "list": [
+     "npm test",
+     "tests pass",
+     "npm test"
+    ],
+    "hash": "ac3edf0b5d7e53b3aef4dda05bfc03919758bab086d26490eb02d99a7414858a"
+   }
+  },
+  "repeatBad": {
+   "diagnostics": [],
+   "steps": [
+    {
+     "id": "repeat-1",
+     "kind": "repeat",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 8,
+      "col": 1
+     },
+     "cond": {
+      "t": "tests"
+     },
+     "kids": [
+      {
+       "id": "a",
+       "kind": "phase",
+       "attrs": {},
+       "cards": [],
+       "links": [],
+       "pos": {
+        "line": 11,
+        "col": 1
+       },
+       "title": "a",
+       "prompt": "a"
+      }
+     ]
+    },
+    {
+     "id": "repeat-2",
+     "kind": "repeat",
+     "attrs": {
+      "max": "0"
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 14,
+      "col": 1
+     },
+     "cond": {
+      "t": "tests"
+     },
+     "kids": [
+      {
+       "id": "b",
+       "kind": "phase",
+       "attrs": {},
+       "cards": [],
+       "links": [],
+       "pos": {
+        "line": 18,
+        "col": 1
+       },
+       "title": "b",
+       "prompt": "b"
+      }
+     ]
+    },
+    {
+     "id": "repeat-3",
+     "kind": "repeat",
+     "attrs": {
+      "max": "abc"
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 21,
+      "col": 1
+     },
+     "cond": {
+      "t": "tests"
+     },
+     "kids": [
+      {
+       "id": "c",
+       "kind": "phase",
+       "attrs": {},
+       "cards": [],
+       "links": [],
+       "pos": {
+        "line": 25,
+        "col": 1
+       },
+       "title": "c",
+       "prompt": "c"
+      }
+     ]
+    },
+    {
+     "id": "repeat-4",
+     "kind": "repeat",
+     "attrs": {
+      "max": "2"
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 28,
+      "col": 1
+     },
+     "kids": [
+      {
+       "id": "d",
+       "kind": "phase",
+       "attrs": {},
+       "cards": [],
+       "links": [],
+       "pos": {
+        "line": 31,
+        "col": 1
+       },
+       "title": "d",
+       "prompt": "d"
+      }
+     ]
+    }
+   ],
+   "printed": "---\nreins: 1\nname: repeat-bad\nbudget: { turns: 40, minutes: 9 }\nalways: []\n---\n\n## repeat\nuntil: tests pass\n\n### phase a\n> a\n\n## repeat\nuntil: tests pass\nmax: 0\n\n### phase b\n> b\n\n## repeat\nuntil: tests pass\nmax: abc\n\n### phase c\n> c\n\n## repeat\nmax: 2\n\n### phase d\n> d\n",
+   "validate": [
+    {
+     "severity": "error",
+     "message": "repeat step \"repeat-1\" requires max",
+     "pos": {
+      "line": 8,
+      "col": 1
+     }
+    },
+    {
+     "severity": "warning",
+     "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+     "pos": {
+      "line": 8,
+      "col": 1
+     }
+    },
+    {
+     "severity": "error",
+     "message": "repeat step \"repeat-2\" requires max",
+     "pos": {
+      "line": 14,
+      "col": 1
+     }
+    },
+    {
+     "severity": "warning",
+     "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+     "pos": {
+      "line": 14,
+      "col": 1
+     }
+    },
+    {
+     "severity": "warning",
+     "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+     "pos": {
+      "line": 21,
+      "col": 1
+     }
+    }
+   ],
+   "program": [
+    {
+     "op": "LOOP_IN",
+     "step": "repeat-1",
+     "max": 1,
+     "top": 0
+    },
+    {
+     "op": "TURN",
+     "step": "a",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "a",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 11,
+       "col": 1
+      },
+      "title": "a",
+      "prompt": "a"
+     },
+     "top": 0
+    },
+    {
+     "op": "LOOP_BK",
+     "step": "repeat-1",
+     "target": 1,
+     "cond": {
+      "t": "tests"
+     },
+     "top": 0
+    },
+    {
+     "op": "LOOP_IN",
+     "step": "repeat-2",
+     "max": 0,
+     "top": 1
+    },
+    {
+     "op": "TURN",
+     "step": "b",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "b",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 18,
+       "col": 1
+      },
+      "title": "b",
+      "prompt": "b"
+     },
+     "top": 1
+    },
+    {
+     "op": "LOOP_BK",
+     "step": "repeat-2",
+     "target": 4,
+     "cond": {
+      "t": "tests"
+     },
+     "top": 1
+    },
+    {
+     "op": "LOOP_IN",
+     "step": "repeat-3",
+     "max": null,
+     "top": 2
+    },
+    {
+     "op": "TURN",
+     "step": "c",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "c",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 25,
+       "col": 1
+      },
+      "title": "c",
+      "prompt": "c"
+     },
+     "top": 2
+    },
+    {
+     "op": "LOOP_BK",
+     "step": "repeat-3",
+     "target": 7,
+     "cond": {
+      "t": "tests"
+     },
+     "top": 2
+    },
+    {
+     "op": "LOOP_IN",
+     "step": "repeat-4",
+     "max": 2,
+     "top": 3
+    },
+    {
+     "op": "TURN",
+     "step": "d",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "d",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 31,
+       "col": 1
+      },
+      "title": "d",
+      "prompt": "d"
+     },
+     "top": 3
+    },
+    {
+     "op": "LOOP_BK",
+     "step": "repeat-4",
+     "target": 10,
+     "top": 3
+    },
+    {
+     "op": "END"
+    }
+   ],
+   "commands": {
+    "list": [
+     "tests pass",
+     "tests pass",
+     "tests pass",
+     "npm test"
+    ],
+    "hash": "cbe569aa0e4d2b1ad47db61a7dd5bac471c27ec1f66c4856adfa0c299393d2e9"
+   }
+  },
+  "repeatEmpty": {
+   "diagnostics": [],
+   "steps": [
+    {
+     "id": "repeat-1",
+     "kind": "repeat",
+     "attrs": {
+      "max": "2"
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 8,
+      "col": 1
+     },
+     "cond": {
+      "t": "tests"
+     }
+    }
+   ],
+   "printed": "---\nreins: 1\nname: repeat-empty\nbudget: { turns: 40, minutes: 9 }\nalways: []\n---\n\n## repeat\nuntil: tests pass\nmax: 2\n",
+   "validate": [
+    {
+     "severity": "warning",
+     "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+     "pos": {
+      "line": 8,
+      "col": 1
+     }
+    }
+   ],
+   "program": [
+    {
+     "op": "LOOP_IN",
+     "step": "repeat-1",
+     "max": 2,
+     "top": 0
+    },
+    {
+     "op": "LOOP_BK",
+     "step": "repeat-1",
+     "target": 1,
+     "cond": {
+      "t": "tests"
+     },
+     "top": 0
+    },
+    {
+     "op": "END"
+    }
+   ],
+   "commands": {
+    "list": [
+     "tests pass",
+     "npm test"
+    ],
+    "hash": "cf635e43403eb5c1304301816647bc9ca28fce5d949479e83404b5636f47d5f2"
+   }
+  },
+  "verify": {
+   "diagnostics": [],
+   "steps": [
+    {
+     "id": "plan",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 8,
+      "col": 1
+     },
+     "title": "plan",
+     "prompt": "plan"
+    },
+    {
+     "id": "verify-1",
+     "kind": "verify",
+     "attrs": {
+      "against": "plan"
+     },
+     "cards": [],
+     "links": [
+      {
+       "kind": "on-fail",
+       "to": "plan",
+       "max": 2,
+       "pos": {
+        "line": 13,
+        "col": 9
+       }
+      }
+     ],
+     "pos": {
+      "line": 11,
+      "col": 1
+     }
+    },
+    {
+     "id": "verify-2",
+     "kind": "verify",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 15,
+      "col": 1
+     }
+    },
+    {
+     "id": "verify-3",
+     "kind": "verify",
+     "attrs": {
+      "against": "later"
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 17,
+      "col": 1
+     },
+     "prompt": "check this carefully"
+    },
+    {
+     "id": "later",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 21,
+      "col": 1
+     },
+     "title": "later",
+     "prompt": "later"
+    }
+   ],
+   "printed": "---\nreins: 1\nname: verify\nbudget: { turns: 40, minutes: 9 }\nalways: []\n---\n\n## phase plan\n> plan\n\n## verify\nagainst: plan\non-fail: plan (max 2)\n\n## verify\n\n## verify\nagainst: later\n> check this carefully\n\n## phase later\n> later\n",
+   "validate": [],
+   "program": [
+    {
+     "op": "TURN",
+     "step": "plan",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "plan",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 8,
+       "col": 1
+      },
+      "title": "plan",
+      "prompt": "plan"
+     },
+     "top": 0
+    },
+    {
+     "op": "VERIFY",
+     "step": "verify-1",
+     "against": "plan",
+     "linkMax": 2,
+     "top": 1,
+     "onFailJump": 0
+    },
+    {
+     "op": "VERIFY",
+     "step": "verify-2",
+     "against": "",
+     "top": 2
+    },
+    {
+     "op": "VERIFY",
+     "step": "verify-3",
+     "against": "later",
+     "top": 3
+    },
+    {
+     "op": "TURN",
+     "step": "later",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "later",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 21,
+       "col": 1
+      },
+      "title": "later",
+      "prompt": "later"
+     },
+     "top": 4
+    },
+    {
+     "op": "END"
+    }
+   ],
+   "commands": {
+    "list": [
+     "npm test"
+    ],
+    "hash": "328e123c63857fd8473bd4bd3581e655b08b7440d7f5d2c31cc375607582f539"
+   }
+  },
+  "verifyFailTarget": {
+   "diagnostics": [],
+   "steps": [
+    {
+     "id": "plan",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 8,
+      "col": 1
+     },
+     "title": "plan",
+     "prompt": "plan"
+    },
+    {
+     "id": "verify-1",
+     "kind": "verify",
+     "attrs": {
+      "against": "plan"
+     },
+     "cards": [],
+     "links": [
+      {
+       "kind": "on-fail",
+       "to": "fixit",
+       "pos": {
+        "line": 13,
+        "col": 9
+       }
+      }
+     ],
+     "pos": {
+      "line": 11,
+      "col": 1
+     }
+    },
+    {
+     "id": "end-1",
+     "kind": "end",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 15,
+      "col": 1
+     }
+    },
+    {
+     "id": "fixit",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 17,
+      "col": 1
+     },
+     "title": "fixit",
+     "prompt": "fix it"
+    }
+   ],
+   "printed": "---\nreins: 1\nname: verify-fail-target\nbudget: { turns: 40, minutes: 9 }\nalways: []\n---\n\n## phase plan\n> plan\n\n## verify\nagainst: plan\non-fail: fixit\n\n## end\n\n## phase fixit\n> fix it\n",
+   "validate": [],
+   "program": [
+    {
+     "op": "TURN",
+     "step": "plan",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "plan",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 8,
+       "col": 1
+      },
+      "title": "plan",
+      "prompt": "plan"
+     },
+     "top": 0
+    },
+    {
+     "op": "VERIFY",
+     "step": "verify-1",
+     "against": "plan",
+     "top": 1,
+     "onFailJump": 3
+    },
+    {
+     "op": "END",
+     "top": 2
+    },
+    {
+     "op": "TURN",
+     "step": "fixit",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "fixit",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 17,
+       "col": 1
+      },
+      "title": "fixit",
+      "prompt": "fix it"
+     },
+     "top": 3
+    },
+    {
+     "op": "END"
+    }
+   ],
+   "commands": {
+    "list": [
+     "npm test"
+    ],
+    "hash": "328e123c63857fd8473bd4bd3581e655b08b7440d7f5d2c31cc375607582f539"
+   }
+  },
+  "verifyBad": {
+   "diagnostics": [],
+   "steps": [
+    {
+     "id": "verify-1",
+     "kind": "verify",
+     "attrs": {
+      "against": "ghost"
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 8,
+      "col": 1
+     }
+    },
+    {
+     "id": "verify-2",
+     "kind": "verify",
+     "attrs": {
+      "against": "plan"
+     },
+     "cards": [],
+     "links": [
+      {
+       "kind": "on-fail",
+       "to": "nowhere",
+       "pos": {
+        "line": 13,
+        "col": 9
+       }
+      }
+     ],
+     "pos": {
+      "line": 11,
+      "col": 1
+     }
+    },
+    {
+     "id": "plan",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 15,
+      "col": 1
+     },
+     "title": "plan",
+     "prompt": "plan"
+    }
+   ],
+   "printed": "---\nreins: 1\nname: verify-bad\nbudget: { turns: 40, minutes: 9 }\nalways: []\n---\n\n## verify\nagainst: ghost\n\n## verify\nagainst: plan\non-fail: nowhere\n\n## phase plan\n> plan\n",
+   "validate": [
+    {
+     "severity": "error",
+     "message": "verify against target \"ghost\" not found",
+     "pos": {
+      "line": 8,
+      "col": 1
+     }
+    },
+    {
+     "severity": "error",
+     "message": "Link target \"nowhere\" not found",
+     "pos": {
+      "line": 13,
+      "col": 9
+     }
+    }
+   ],
+   "program": [
+    {
+     "op": "VERIFY",
+     "step": "verify-1",
+     "against": "ghost",
+     "top": 0
+    },
+    {
+     "op": "VERIFY",
+     "step": "verify-2",
+     "against": "plan",
+     "top": 1
+    },
+    {
+     "op": "TURN",
+     "step": "plan",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "plan",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 15,
+       "col": 1
+      },
+      "title": "plan",
+      "prompt": "plan"
+     },
+     "top": 2
+    },
+    {
+     "op": "END"
+    }
+   ],
+   "commands": {
+    "list": [
+     "npm test"
+    ],
+    "hash": "328e123c63857fd8473bd4bd3581e655b08b7440d7f5d2c31cc375607582f539"
+   }
+  },
+  "verifyDeep": {
+   "diagnostics": [],
+   "steps": [
+    {
+     "id": "plan",
+     "kind": "phase",
+     "attrs": {},
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 8,
+      "col": 1
+     },
+     "title": "plan",
+     "prompt": "plan"
+    },
+    {
+     "id": "repeat-1",
+     "kind": "repeat",
+     "attrs": {
+      "max": "2"
+     },
+     "cards": [],
+     "links": [],
+     "pos": {
+      "line": 11,
+      "col": 1
+     },
+     "cond": {
+      "t": "done"
+     },
+     "kids": [
+      {
+       "id": "verify-1",
+       "kind": "verify",
+       "attrs": {
+        "against": "plan"
+       },
+       "cards": [],
+       "links": [
+        {
+         "kind": "on-fail",
+         "to": "plan",
+         "pos": {
+          "line": 17,
+          "col": 9
+         }
+        }
+       ],
+       "pos": {
+        "line": 15,
+        "col": 1
+       }
+      }
+     ]
+    }
+   ],
+   "printed": "---\nreins: 1\nname: verify-deep\nbudget: { turns: 40, minutes: 9 }\nalways: []\n---\n\n## phase plan\n> plan\n\n## repeat\nuntil: agent says done\nmax: 2\n\n### verify\nagainst: plan\non-fail: plan\n",
+   "validate": [
+    {
+     "severity": "error",
+     "message": "Backward link to \"plan\" requires max",
+     "pos": {
+      "line": 17,
+      "col": 9
+     }
+    }
+   ],
+   "program": [
+    {
+     "op": "TURN",
+     "step": "plan",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "plan",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 8,
+       "col": 1
+      },
+      "title": "plan",
+      "prompt": "plan"
+     },
+     "top": 0
+    },
+    {
+     "op": "LOOP_IN",
+     "step": "repeat-1",
+     "max": 2,
+     "top": 1
+    },
+    {
+     "op": "VERIFY",
+     "step": "verify-1",
+     "against": "plan",
+     "top": 1,
+     "onFailJump": 0
+    },
+    {
+     "op": "LOOP_BK",
+     "step": "repeat-1",
+     "target": 2,
+     "cond": {
+      "t": "done"
+     },
+     "top": 1
+    },
+    {
+     "op": "END"
+    }
+   ],
+   "commands": {
+    "list": [
+     "npm test"
+    ],
+    "hash": "328e123c63857fd8473bd4bd3581e655b08b7440d7f5d2c31cc375607582f539"
+   }
+  }
+ },
+ "runs": {
+  "runFixPass": {
+   "status": "done",
+   "pauses": [
+    []
+   ],
+   "commands": [
+    "npm test",
+    "npm test"
+   ],
+   "texts": [
+    "[Reins · workflow \"run-fix\" · step 3 of 3: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "run-fix",
+      "steps": [
+       {
+        "id": "run-1",
+        "kind": "run"
+       },
+       {
+        "id": "end-1",
+        "kind": "end"
+       },
+       {
+        "id": "fix",
+        "kind": "phase",
+        "title": "fix"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "step_started",
+     "data": {
+      "step": "fix",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "turn_started",
+     "data": {
+      "step": "fix"
+     }
+    },
+    {
+     "id": "ev-6",
+     "timestamp": 6000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-7",
+     "timestamp": 7000,
+     "type": "turn_ended",
+     "data": {
+      "step": "fix",
+      "text": "reply 1\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-8",
+     "timestamp": 8000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-9",
+     "timestamp": 9000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 0
+     }
+    },
+    {
+     "id": "ev-10",
+     "timestamp": 10000,
+     "type": "step_started",
+     "data": {
+      "step": "end-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-11",
+     "timestamp": 11000,
+     "type": "run_finished",
+     "data": {}
+    }
+   ],
+   "receipt": {
+    "workflow": "run-fix",
+    "status": "done",
+    "totalTurns": 1,
+    "totalTimeMs": 10000,
+    "totalCostUsd": 0.01,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 0,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 0,
+     "failed": 0
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 1
+  },
+  "runFixBudget": {
+   "status": "paused",
+   "pauses": [
+    [
+     {
+      "type": "link-budget-used",
+      "limit": 2,
+      "linkKey": "run-1->2",
+      "to": 2
+     }
+    ],
+    [
+     {
+      "type": "link-budget-used",
+      "limit": 3,
+      "linkKey": "run-1->2",
+      "to": 2
+     }
+    ]
+   ],
+   "commands": [
+    "npm test",
+    "npm test",
+    "npm test",
+    "npm test"
+   ],
+   "texts": [
+    "[Reins · workflow \"run-fix\" · step 3 of 3: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"run-fix\" · step 3 of 3: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"run-fix\" · step 3 of 3: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "run-fix",
+      "steps": [
+       {
+        "id": "run-1",
+        "kind": "run"
+       },
+       {
+        "id": "end-1",
+        "kind": "end"
+       },
+       {
+        "id": "fix",
+        "kind": "phase",
+        "title": "fix"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "step_started",
+     "data": {
+      "step": "fix",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "turn_started",
+     "data": {
+      "step": "fix"
+     }
+    },
+    {
+     "id": "ev-6",
+     "timestamp": 6000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-7",
+     "timestamp": 7000,
+     "type": "turn_ended",
+     "data": {
+      "step": "fix",
+      "text": "reply 1\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-8",
+     "timestamp": 8000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-9",
+     "timestamp": 9000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-10",
+     "timestamp": 10000,
+     "type": "step_started",
+     "data": {
+      "step": "fix",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-11",
+     "timestamp": 11000,
+     "type": "turn_started",
+     "data": {
+      "step": "fix"
+     }
+    },
+    {
+     "id": "ev-12",
+     "timestamp": 12000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-13",
+     "timestamp": 13000,
+     "type": "turn_ended",
+     "data": {
+      "step": "fix",
+      "text": "reply 2\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-14",
+     "timestamp": 14000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-15",
+     "timestamp": 15000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-16",
+     "timestamp": 16000,
+     "type": "link_budget_exceeded",
+     "data": {
+      "linkKey": "run-1->2",
+      "jumps": 3,
+      "max": 2
+     }
+    },
+    {
+     "id": "ev-17",
+     "timestamp": 17000,
+     "type": "run_resumed",
+     "data": {
+      "allowMore": 1
+     }
+    },
+    {
+     "id": "ev-18",
+     "timestamp": 18000,
+     "type": "step_started",
+     "data": {
+      "step": "fix",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-19",
+     "timestamp": 19000,
+     "type": "turn_started",
+     "data": {
+      "step": "fix"
+     }
+    },
+    {
+     "id": "ev-20",
+     "timestamp": 20000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-21",
+     "timestamp": 21000,
+     "type": "turn_ended",
+     "data": {
+      "step": "fix",
+      "text": "reply 3\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-22",
+     "timestamp": 22000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-23",
+     "timestamp": 23000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-24",
+     "timestamp": 24000,
+     "type": "link_budget_exceeded",
+     "data": {
+      "linkKey": "run-1->2",
+      "jumps": 4,
+      "max": 2
+     }
+    }
+   ],
+   "receipt": {
+    "workflow": "run-fix",
+    "status": "running",
+    "totalTurns": 3,
+    "totalTimeMs": 23000,
+    "totalCostUsd": 0.03,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 0,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 0,
+     "failed": 0
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 0
+  },
+  "runFixHeld": {
+   "status": "paused",
+   "pauses": [
+    [
+     {
+      "type": "link-budget-used",
+      "limit": 2,
+      "linkKey": "run-1->2",
+      "to": 2
+     }
+    ]
+   ],
+   "commands": [
+    "npm test",
+    "npm test",
+    "npm test"
+   ],
+   "texts": [
+    "[Reins · workflow \"run-fix\" · step 3 of 3: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"run-fix\" · step 3 of 3: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "run-fix",
+      "steps": [
+       {
+        "id": "run-1",
+        "kind": "run"
+       },
+       {
+        "id": "end-1",
+        "kind": "end"
+       },
+       {
+        "id": "fix",
+        "kind": "phase",
+        "title": "fix"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "step_started",
+     "data": {
+      "step": "fix",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "turn_started",
+     "data": {
+      "step": "fix"
+     }
+    },
+    {
+     "id": "ev-6",
+     "timestamp": 6000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-7",
+     "timestamp": 7000,
+     "type": "turn_ended",
+     "data": {
+      "step": "fix",
+      "text": "reply 1\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-8",
+     "timestamp": 8000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-9",
+     "timestamp": 9000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-10",
+     "timestamp": 10000,
+     "type": "step_started",
+     "data": {
+      "step": "fix",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-11",
+     "timestamp": 11000,
+     "type": "turn_started",
+     "data": {
+      "step": "fix"
+     }
+    },
+    {
+     "id": "ev-12",
+     "timestamp": 12000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-13",
+     "timestamp": 13000,
+     "type": "turn_ended",
+     "data": {
+      "step": "fix",
+      "text": "reply 2\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-14",
+     "timestamp": 14000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-15",
+     "timestamp": 15000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-16",
+     "timestamp": 16000,
+     "type": "link_budget_exceeded",
+     "data": {
+      "linkKey": "run-1->2",
+      "jumps": 3,
+      "max": 2
+     }
+    }
+   ],
+   "receipt": {
+    "workflow": "run-fix",
+    "status": "running",
+    "totalTurns": 2,
+    "totalTimeMs": 15000,
+    "totalCostUsd": 0.02,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 0,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 0,
+     "failed": 0
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 0
+  },
+  "runFailTarget": {
+   "status": "done",
+   "pauses": [
+    []
+   ],
+   "commands": [
+    "npm test"
+   ],
+   "texts": [
+    "[Reins · workflow \"run-fail-target\" · step 3 of 3: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "run-fail-target",
+      "steps": [
+       {
+        "id": "run-1",
+        "kind": "run"
+       },
+       {
+        "id": "end-1",
+        "kind": "end"
+       },
+       {
+        "id": "fix",
+        "kind": "phase",
+        "title": "fix"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "step_started",
+     "data": {
+      "step": "fix",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "turn_started",
+     "data": {
+      "step": "fix"
+     }
+    },
+    {
+     "id": "ev-6",
+     "timestamp": 6000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-7",
+     "timestamp": 7000,
+     "type": "turn_ended",
+     "data": {
+      "step": "fix",
+      "text": "reply 1\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-8",
+     "timestamp": 8000,
+     "type": "run_finished",
+     "data": {}
+    }
+   ],
+   "receipt": {
+    "workflow": "run-fail-target",
+    "status": "done",
+    "totalTurns": 1,
+    "totalTimeMs": 7000,
+    "totalCostUsd": 0.01,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 0,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 0,
+     "failed": 0
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 3
+  },
+  "verifyFailTarget": {
+   "status": "done",
+   "pauses": [
+    []
+   ],
+   "commands": [],
+   "texts": [
+    "[Reins · workflow \"verify-fail-target\" · step 1 of 4: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"verify-fail-target\" · step 2 of 4: verify]\n\nCompare what you built against step \"plan\":\nplan\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · workflow \"verify-fail-target\" · step 4 of 4: fixit]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "verify-fail-target",
+      "steps": [
+       {
+        "id": "plan",
+        "kind": "phase",
+        "title": "plan"
+       },
+       {
+        "id": "verify-1",
+        "kind": "verify"
+       },
+       {
+        "id": "end-1",
+        "kind": "end"
+       },
+       {
+        "id": "fixit",
+        "kind": "phase",
+        "title": "fixit"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "plan",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "turn_started",
+     "data": {
+      "step": "plan"
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "turn_ended",
+     "data": {
+      "step": "plan",
+      "text": "plan",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-6",
+     "timestamp": 6000,
+     "type": "step_started",
+     "data": {
+      "step": "verify-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-7",
+     "timestamp": 7000,
+     "type": "turn_started",
+     "data": {
+      "step": "verify-1"
+     }
+    },
+    {
+     "id": "ev-8",
+     "timestamp": 8000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-9",
+     "timestamp": 9000,
+     "type": "turn_ended",
+     "data": {
+      "step": "verify-1",
+      "text": "REINS: fail: x",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-10",
+     "timestamp": 10000,
+     "type": "verify_result",
+     "data": {
+      "pass": false
+     }
+    },
+    {
+     "id": "ev-11",
+     "timestamp": 11000,
+     "type": "step_started",
+     "data": {
+      "step": "fixit",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-12",
+     "timestamp": 12000,
+     "type": "turn_started",
+     "data": {
+      "step": "fixit"
+     }
+    },
+    {
+     "id": "ev-13",
+     "timestamp": 13000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-14",
+     "timestamp": 14000,
+     "type": "turn_ended",
+     "data": {
+      "step": "fixit",
+      "text": "fixed",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-15",
+     "timestamp": 15000,
+     "type": "run_finished",
+     "data": {}
+    }
+   ],
+   "receipt": {
+    "workflow": "verify-fail-target",
+    "status": "done",
+    "totalTurns": 3,
+    "totalTimeMs": 14000,
+    "totalCostUsd": 0.03,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 0,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 0,
+     "failed": 1
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 4
+  },
+  "runOdd": {
+   "status": "done",
+   "pauses": [
+    []
+   ],
+   "commands": [
+    "",
+    "echo hi",
+    "echo \"a b\"",
+    "a`b`"
+   ],
+   "texts": [
+    "[Reins · workflow \"run-odd\" · step 5 of 5: say]\n\ndone\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "run-odd",
+      "steps": [
+       {
+        "id": "run-1",
+        "kind": "run"
+       },
+       {
+        "id": "run-2",
+        "kind": "run"
+       },
+       {
+        "id": "run-3",
+        "kind": "run"
+       },
+       {
+        "id": "run-4",
+        "kind": "run"
+       },
+       {
+        "id": "say-1",
+        "kind": "say"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 0
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "step_started",
+     "data": {
+      "step": "run-2",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "command_result",
+     "data": {
+      "step": "run-2",
+      "exitCode": 0
+     }
+    },
+    {
+     "id": "ev-6",
+     "timestamp": 6000,
+     "type": "step_started",
+     "data": {
+      "step": "run-3",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-7",
+     "timestamp": 7000,
+     "type": "command_result",
+     "data": {
+      "step": "run-3",
+      "exitCode": 0
+     }
+    },
+    {
+     "id": "ev-8",
+     "timestamp": 8000,
+     "type": "step_started",
+     "data": {
+      "step": "run-4",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-9",
+     "timestamp": 9000,
+     "type": "command_result",
+     "data": {
+      "step": "run-4",
+      "exitCode": 0
+     }
+    },
+    {
+     "id": "ev-10",
+     "timestamp": 10000,
+     "type": "step_started",
+     "data": {
+      "step": "say-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-11",
+     "timestamp": 11000,
+     "type": "turn_started",
+     "data": {
+      "step": "say-1"
+     }
+    },
+    {
+     "id": "ev-12",
+     "timestamp": 12000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-13",
+     "timestamp": 13000,
+     "type": "turn_ended",
+     "data": {
+      "step": "say-1",
+      "text": "reply 1\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-14",
+     "timestamp": 14000,
+     "type": "run_finished",
+     "data": {}
+    }
+   ],
+   "receipt": {
+    "workflow": "run-odd",
+    "status": "done",
+    "totalTurns": 1,
+    "totalTimeMs": 13000,
+    "totalCostUsd": 0.01,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 0,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 0,
+     "failed": 0
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 5
+  },
+  "runNext": {
+   "status": "done",
+   "pauses": [
+    []
+   ],
+   "commands": [
+    "make"
+   ],
+   "texts": [
+    "[Reins · workflow \"run-next\" · step 3 of 3: tail]\n\ntail\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "run-next",
+      "steps": [
+       {
+        "id": "run-1",
+        "kind": "run"
+       },
+       {
+        "id": "skipped",
+        "kind": "phase",
+        "title": "skipped"
+       },
+       {
+        "id": "tail",
+        "kind": "phase",
+        "title": "tail"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "step_started",
+     "data": {
+      "step": "tail",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "turn_started",
+     "data": {
+      "step": "tail"
+     }
+    },
+    {
+     "id": "ev-6",
+     "timestamp": 6000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-7",
+     "timestamp": 7000,
+     "type": "turn_ended",
+     "data": {
+      "step": "tail",
+      "text": "reply 1\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-8",
+     "timestamp": 8000,
+     "type": "run_finished",
+     "data": {}
+    }
+   ],
+   "receipt": {
+    "workflow": "run-next",
+    "status": "done",
+    "totalTurns": 1,
+    "totalTimeMs": 7000,
+    "totalCostUsd": 0.01,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 0,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 0,
+     "failed": 0
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 4
+  },
+  "repeatTests": {
+   "status": "done",
+   "pauses": [
+    []
+   ],
+   "commands": [
+    "npm test",
+    "npm test",
+    "npm test"
+   ],
+   "texts": [
+    "[Reins · workflow \"repeat-tests\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"repeat-tests\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "repeat-tests",
+      "steps": [
+       {
+        "id": "repeat-1",
+        "kind": "repeat"
+       },
+       {
+        "id": "run-1",
+        "kind": "run"
+       },
+       {
+        "id": "fix",
+        "kind": "phase",
+        "title": "fix"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "repeat-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "step_started",
+     "data": {
+      "step": "fix",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-6",
+     "timestamp": 6000,
+     "type": "turn_started",
+     "data": {
+      "step": "fix"
+     }
+    },
+    {
+     "id": "ev-7",
+     "timestamp": 7000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-8",
+     "timestamp": 8000,
+     "type": "turn_ended",
+     "data": {
+      "step": "fix",
+      "text": "reply 1\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-9",
+     "timestamp": 9000,
+     "type": "loop_iteration",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 1
+     }
+    },
+    {
+     "id": "ev-10",
+     "timestamp": 10000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-11",
+     "timestamp": 11000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-12",
+     "timestamp": 12000,
+     "type": "step_started",
+     "data": {
+      "step": "fix",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-13",
+     "timestamp": 13000,
+     "type": "turn_started",
+     "data": {
+      "step": "fix"
+     }
+    },
+    {
+     "id": "ev-14",
+     "timestamp": 14000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-15",
+     "timestamp": 15000,
+     "type": "turn_ended",
+     "data": {
+      "step": "fix",
+      "text": "reply 2\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-16",
+     "timestamp": 16000,
+     "type": "loop_iteration",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 2
+     }
+    },
+    {
+     "id": "ev-17",
+     "timestamp": 17000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-18",
+     "timestamp": 18000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 0
+     }
+    },
+    {
+     "id": "ev-19",
+     "timestamp": 19000,
+     "type": "run_finished",
+     "data": {}
+    }
+   ],
+   "receipt": {
+    "workflow": "repeat-tests",
+    "status": "done",
+    "totalTurns": 2,
+    "totalTimeMs": 18000,
+    "totalCostUsd": 0.02,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 2,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 0,
+     "failed": 0
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 4
+  },
+  "repeatTestsFirstPass": {
+   "status": "done",
+   "pauses": [
+    []
+   ],
+   "commands": [
+    "npm test"
+   ],
+   "texts": [],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "repeat-tests",
+      "steps": [
+       {
+        "id": "repeat-1",
+        "kind": "repeat"
+       },
+       {
+        "id": "run-1",
+        "kind": "run"
+       },
+       {
+        "id": "fix",
+        "kind": "phase",
+        "title": "fix"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "repeat-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 0
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "run_finished",
+     "data": {}
+    }
+   ],
+   "receipt": {
+    "workflow": "repeat-tests",
+    "status": "done",
+    "totalTurns": 0,
+    "totalTimeMs": 4000,
+    "totalCostUsd": 0,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 0,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 0,
+     "failed": 0
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 4
+  },
+  "repeatLint": {
+   "status": "done",
+   "pauses": [
+    []
+   ],
+   "commands": [
+    "npm run lint",
+    "npm run lint"
+   ],
+   "texts": [
+    "[Reins · workflow \"repeat-lint\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "repeat-lint",
+      "steps": [
+       {
+        "id": "repeat-1",
+        "kind": "repeat"
+       },
+       {
+        "id": "run-1",
+        "kind": "run"
+       },
+       {
+        "id": "fix",
+        "kind": "phase",
+        "title": "fix"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "repeat-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "step_started",
+     "data": {
+      "step": "fix",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-6",
+     "timestamp": 6000,
+     "type": "turn_started",
+     "data": {
+      "step": "fix"
+     }
+    },
+    {
+     "id": "ev-7",
+     "timestamp": 7000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-8",
+     "timestamp": 8000,
+     "type": "turn_ended",
+     "data": {
+      "step": "fix",
+      "text": "reply 1\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-9",
+     "timestamp": 9000,
+     "type": "loop_iteration",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 1
+     }
+    },
+    {
+     "id": "ev-10",
+     "timestamp": 10000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-11",
+     "timestamp": 11000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 0
+     }
+    },
+    {
+     "id": "ev-12",
+     "timestamp": 12000,
+     "type": "run_finished",
+     "data": {}
+    }
+   ],
+   "receipt": {
+    "workflow": "repeat-lint",
+    "status": "done",
+    "totalTurns": 1,
+    "totalTimeMs": 11000,
+    "totalCostUsd": 0.01,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 1,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 0,
+     "failed": 0
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 4
+  },
+  "repeatOther": {
+   "status": "done",
+   "pauses": [
+    []
+   ],
+   "commands": [
+    "npm test",
+    "npm run lint",
+    "npm test",
+    "npm run lint"
+   ],
+   "texts": [
+    "[Reins · workflow \"repeat-other\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "repeat-other",
+      "steps": [
+       {
+        "id": "repeat-1",
+        "kind": "repeat"
+       },
+       {
+        "id": "run-1",
+        "kind": "run"
+       },
+       {
+        "id": "fix",
+        "kind": "phase",
+        "title": "fix"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "repeat-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 0
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "step_started",
+     "data": {
+      "step": "fix",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-6",
+     "timestamp": 6000,
+     "type": "turn_started",
+     "data": {
+      "step": "fix"
+     }
+    },
+    {
+     "id": "ev-7",
+     "timestamp": 7000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-8",
+     "timestamp": 8000,
+     "type": "turn_ended",
+     "data": {
+      "step": "fix",
+      "text": "reply 1\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-9",
+     "timestamp": 9000,
+     "type": "loop_iteration",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 1
+     }
+    },
+    {
+     "id": "ev-10",
+     "timestamp": 10000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-11",
+     "timestamp": 11000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 0
+     }
+    },
+    {
+     "id": "ev-12",
+     "timestamp": 12000,
+     "type": "run_finished",
+     "data": {}
+    }
+   ],
+   "receipt": {
+    "workflow": "repeat-other",
+    "status": "done",
+    "totalTurns": 1,
+    "totalTimeMs": 11000,
+    "totalCostUsd": 0.01,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 1,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 0,
+     "failed": 0
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 4
+  },
+  "repeatOtherFailRun": {
+   "status": "paused",
+   "pauses": [
+    [
+     {
+      "type": "budget-used",
+      "stepId": "repeat-1",
+      "limit": 3
+     }
+    ]
+   ],
+   "commands": [
+    "npm test",
+    "npm test",
+    "npm test"
+   ],
+   "texts": [
+    "[Reins · workflow \"repeat-other\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"repeat-other\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"repeat-other\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "repeat-other",
+      "steps": [
+       {
+        "id": "repeat-1",
+        "kind": "repeat"
+       },
+       {
+        "id": "run-1",
+        "kind": "run"
+       },
+       {
+        "id": "fix",
+        "kind": "phase",
+        "title": "fix"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "repeat-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "step_started",
+     "data": {
+      "step": "fix",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-6",
+     "timestamp": 6000,
+     "type": "turn_started",
+     "data": {
+      "step": "fix"
+     }
+    },
+    {
+     "id": "ev-7",
+     "timestamp": 7000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-8",
+     "timestamp": 8000,
+     "type": "turn_ended",
+     "data": {
+      "step": "fix",
+      "text": "reply 1\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-9",
+     "timestamp": 9000,
+     "type": "loop_iteration",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 1
+     }
+    },
+    {
+     "id": "ev-10",
+     "timestamp": 10000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-11",
+     "timestamp": 11000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-12",
+     "timestamp": 12000,
+     "type": "step_started",
+     "data": {
+      "step": "fix",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-13",
+     "timestamp": 13000,
+     "type": "turn_started",
+     "data": {
+      "step": "fix"
+     }
+    },
+    {
+     "id": "ev-14",
+     "timestamp": 14000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-15",
+     "timestamp": 15000,
+     "type": "turn_ended",
+     "data": {
+      "step": "fix",
+      "text": "reply 2\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-16",
+     "timestamp": 16000,
+     "type": "loop_iteration",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 2
+     }
+    },
+    {
+     "id": "ev-17",
+     "timestamp": 17000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-18",
+     "timestamp": 18000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-19",
+     "timestamp": 19000,
+     "type": "step_started",
+     "data": {
+      "step": "fix",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-20",
+     "timestamp": 20000,
+     "type": "turn_started",
+     "data": {
+      "step": "fix"
+     }
+    },
+    {
+     "id": "ev-21",
+     "timestamp": 21000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-22",
+     "timestamp": 22000,
+     "type": "turn_ended",
+     "data": {
+      "step": "fix",
+      "text": "reply 3\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-23",
+     "timestamp": 23000,
+     "type": "loop_iteration",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 3
+     }
+    },
+    {
+     "id": "ev-24",
+     "timestamp": 24000,
+     "type": "loop_budget_exceeded",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 3,
+      "max": 3
+     }
+    }
+   ],
+   "receipt": {
+    "workflow": "repeat-other",
+    "status": "running",
+    "totalTurns": 3,
+    "totalTimeMs": 23000,
+    "totalCostUsd": 0.03,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 3,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 0,
+     "failed": 0
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 3
+  },
+  "repeatLate": {
+   "status": "done",
+   "pauses": [
+    []
+   ],
+   "commands": [
+    "npm test"
+   ],
+   "texts": [
+    "[Reins · workflow \"repeat-late\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "repeat-late",
+      "steps": [
+       {
+        "id": "repeat-1",
+        "kind": "repeat"
+       },
+       {
+        "id": "fix",
+        "kind": "phase",
+        "title": "fix"
+       },
+       {
+        "id": "run-1",
+        "kind": "run"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "repeat-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "step_started",
+     "data": {
+      "step": "fix",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "turn_started",
+     "data": {
+      "step": "fix"
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-6",
+     "timestamp": 6000,
+     "type": "turn_ended",
+     "data": {
+      "step": "fix",
+      "text": "reply 1\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-7",
+     "timestamp": 7000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-8",
+     "timestamp": 8000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 0
+     }
+    },
+    {
+     "id": "ev-9",
+     "timestamp": 9000,
+     "type": "run_finished",
+     "data": {}
+    }
+   ],
+   "receipt": {
+    "workflow": "repeat-late",
+    "status": "done",
+    "totalTurns": 1,
+    "totalTimeMs": 8000,
+    "totalCostUsd": 0.01,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 0,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 0,
+     "failed": 0
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 4
+  },
+  "repeatLateFail": {
+   "status": "done",
+   "pauses": [
+    []
+   ],
+   "commands": [
+    "npm test",
+    "npm test"
+   ],
+   "texts": [
+    "[Reins · workflow \"repeat-late\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"repeat-late\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "repeat-late",
+      "steps": [
+       {
+        "id": "repeat-1",
+        "kind": "repeat"
+       },
+       {
+        "id": "fix",
+        "kind": "phase",
+        "title": "fix"
+       },
+       {
+        "id": "run-1",
+        "kind": "run"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "repeat-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "step_started",
+     "data": {
+      "step": "fix",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "turn_started",
+     "data": {
+      "step": "fix"
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-6",
+     "timestamp": 6000,
+     "type": "turn_ended",
+     "data": {
+      "step": "fix",
+      "text": "reply 1\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-7",
+     "timestamp": 7000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-8",
+     "timestamp": 8000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-9",
+     "timestamp": 9000,
+     "type": "loop_iteration",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 1
+     }
+    },
+    {
+     "id": "ev-10",
+     "timestamp": 10000,
+     "type": "step_started",
+     "data": {
+      "step": "fix",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-11",
+     "timestamp": 11000,
+     "type": "turn_started",
+     "data": {
+      "step": "fix"
+     }
+    },
+    {
+     "id": "ev-12",
+     "timestamp": 12000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-13",
+     "timestamp": 13000,
+     "type": "turn_ended",
+     "data": {
+      "step": "fix",
+      "text": "reply 2\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-14",
+     "timestamp": 14000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-15",
+     "timestamp": 15000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 0
+     }
+    },
+    {
+     "id": "ev-16",
+     "timestamp": 16000,
+     "type": "run_finished",
+     "data": {}
+    }
+   ],
+   "receipt": {
+    "workflow": "repeat-late",
+    "status": "done",
+    "totalTurns": 2,
+    "totalTimeMs": 15000,
+    "totalCostUsd": 0.02,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 1,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 0,
+     "failed": 0
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 4
+  },
+  "repeatNoCmd": {
+   "status": "done",
+   "pauses": [
+    []
+   ],
+   "commands": [
+    "",
+    "",
+    "npm test"
+   ],
+   "texts": [],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "repeat-nocmd",
+      "steps": [
+       {
+        "id": "repeat-1",
+        "kind": "repeat"
+       },
+       {
+        "id": "run-1",
+        "kind": "run"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "repeat-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "loop_iteration",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 1
+     }
+    },
+    {
+     "id": "ev-6",
+     "timestamp": 6000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-7",
+     "timestamp": 7000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 0
+     }
+    },
+    {
+     "id": "ev-8",
+     "timestamp": 8000,
+     "type": "run_finished",
+     "data": {}
+    }
+   ],
+   "receipt": {
+    "workflow": "repeat-nocmd",
+    "status": "done",
+    "totalTurns": 0,
+    "totalTimeMs": 7000,
+    "totalCostUsd": 0,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 1,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 0,
+     "failed": 0
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 3
+  },
+  "repeatAgent": {
+   "status": "done",
+   "pauses": [
+    []
+   ],
+   "commands": [],
+   "texts": [
+    "[Reins · workflow \"repeat-agent\" · step 1 of 1: work]\n\nwork\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"repeat-agent\" · step 1 of 1: work]\n\nwork\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"repeat-agent\" · step 1 of 1: work]\n\nwork\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "repeat-agent",
+      "steps": [
+       {
+        "id": "repeat-1",
+        "kind": "repeat"
+       },
+       {
+        "id": "work",
+        "kind": "phase",
+        "title": "work"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "repeat-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "step_started",
+     "data": {
+      "step": "work",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "turn_started",
+     "data": {
+      "step": "work"
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-6",
+     "timestamp": 6000,
+     "type": "turn_ended",
+     "data": {
+      "step": "work",
+      "text": "a",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-7",
+     "timestamp": 7000,
+     "type": "loop_iteration",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 1
+     }
+    },
+    {
+     "id": "ev-8",
+     "timestamp": 8000,
+     "type": "step_started",
+     "data": {
+      "step": "work",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-9",
+     "timestamp": 9000,
+     "type": "turn_started",
+     "data": {
+      "step": "work"
+     }
+    },
+    {
+     "id": "ev-10",
+     "timestamp": 10000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-11",
+     "timestamp": 11000,
+     "type": "turn_ended",
+     "data": {
+      "step": "work",
+      "text": "b",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-12",
+     "timestamp": 12000,
+     "type": "loop_iteration",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 2
+     }
+    },
+    {
+     "id": "ev-13",
+     "timestamp": 13000,
+     "type": "step_started",
+     "data": {
+      "step": "work",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-14",
+     "timestamp": 14000,
+     "type": "turn_started",
+     "data": {
+      "step": "work"
+     }
+    },
+    {
+     "id": "ev-15",
+     "timestamp": 15000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-16",
+     "timestamp": 16000,
+     "type": "turn_ended",
+     "data": {
+      "step": "work",
+      "text": "c\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-17",
+     "timestamp": 17000,
+     "type": "run_finished",
+     "data": {}
+    }
+   ],
+   "receipt": {
+    "workflow": "repeat-agent",
+    "status": "done",
+    "totalTurns": 3,
+    "totalTimeMs": 16000,
+    "totalCostUsd": 0.03,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 2,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 0,
+     "failed": 0
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 3
+  },
+  "repeatBudgetHeld": {
+   "status": "paused",
+   "pauses": [
+    [
+     {
+      "type": "budget-used",
+      "stepId": "repeat-1",
+      "limit": 2
+     }
+    ]
+   ],
+   "commands": [
+    "npm test",
+    "npm test"
+   ],
+   "texts": [
+    "[Reins · workflow \"repeat-budget\" · step 1 of 2: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"repeat-budget\" · step 1 of 2: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "repeat-budget",
+      "steps": [
+       {
+        "id": "repeat-1",
+        "kind": "repeat"
+       },
+       {
+        "id": "run-1",
+        "kind": "run"
+       },
+       {
+        "id": "fix",
+        "kind": "phase",
+        "title": "fix"
+       },
+       {
+        "id": "end-1",
+        "kind": "end"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "repeat-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "step_started",
+     "data": {
+      "step": "fix",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-6",
+     "timestamp": 6000,
+     "type": "turn_started",
+     "data": {
+      "step": "fix"
+     }
+    },
+    {
+     "id": "ev-7",
+     "timestamp": 7000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-8",
+     "timestamp": 8000,
+     "type": "turn_ended",
+     "data": {
+      "step": "fix",
+      "text": "reply 1\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-9",
+     "timestamp": 9000,
+     "type": "loop_iteration",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 1
+     }
+    },
+    {
+     "id": "ev-10",
+     "timestamp": 10000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-11",
+     "timestamp": 11000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-12",
+     "timestamp": 12000,
+     "type": "step_started",
+     "data": {
+      "step": "fix",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-13",
+     "timestamp": 13000,
+     "type": "turn_started",
+     "data": {
+      "step": "fix"
+     }
+    },
+    {
+     "id": "ev-14",
+     "timestamp": 14000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-15",
+     "timestamp": 15000,
+     "type": "turn_ended",
+     "data": {
+      "step": "fix",
+      "text": "reply 2\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-16",
+     "timestamp": 16000,
+     "type": "loop_iteration",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 2
+     }
+    },
+    {
+     "id": "ev-17",
+     "timestamp": 17000,
+     "type": "loop_budget_exceeded",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 2,
+      "max": 2
+     }
+    }
+   ],
+   "receipt": {
+    "workflow": "repeat-budget",
+    "status": "running",
+    "totalTurns": 2,
+    "totalTimeMs": 16000,
+    "totalCostUsd": 0.02,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 2,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 0,
+     "failed": 0
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 3
+  },
+  "repeatBudgetMore": {
+   "status": "done",
+   "pauses": [
+    [
+     {
+      "type": "budget-used",
+      "stepId": "repeat-1",
+      "limit": 2
+     }
+    ],
+    [
+     {
+      "type": "budget-used",
+      "stepId": "repeat-1",
+      "limit": 3
+     }
+    ],
+    []
+   ],
+   "commands": [
+    "npm test",
+    "npm test",
+    "npm test",
+    "npm test"
+   ],
+   "texts": [
+    "[Reins · workflow \"repeat-budget\" · step 1 of 2: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"repeat-budget\" · step 1 of 2: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"repeat-budget\" · step 1 of 2: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "repeat-budget",
+      "steps": [
+       {
+        "id": "repeat-1",
+        "kind": "repeat"
+       },
+       {
+        "id": "run-1",
+        "kind": "run"
+       },
+       {
+        "id": "fix",
+        "kind": "phase",
+        "title": "fix"
+       },
+       {
+        "id": "end-1",
+        "kind": "end"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "repeat-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "step_started",
+     "data": {
+      "step": "fix",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-6",
+     "timestamp": 6000,
+     "type": "turn_started",
+     "data": {
+      "step": "fix"
+     }
+    },
+    {
+     "id": "ev-7",
+     "timestamp": 7000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-8",
+     "timestamp": 8000,
+     "type": "turn_ended",
+     "data": {
+      "step": "fix",
+      "text": "reply 1\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-9",
+     "timestamp": 9000,
+     "type": "loop_iteration",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 1
+     }
+    },
+    {
+     "id": "ev-10",
+     "timestamp": 10000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-11",
+     "timestamp": 11000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-12",
+     "timestamp": 12000,
+     "type": "step_started",
+     "data": {
+      "step": "fix",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-13",
+     "timestamp": 13000,
+     "type": "turn_started",
+     "data": {
+      "step": "fix"
+     }
+    },
+    {
+     "id": "ev-14",
+     "timestamp": 14000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-15",
+     "timestamp": 15000,
+     "type": "turn_ended",
+     "data": {
+      "step": "fix",
+      "text": "reply 2\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-16",
+     "timestamp": 16000,
+     "type": "loop_iteration",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 2
+     }
+    },
+    {
+     "id": "ev-17",
+     "timestamp": 17000,
+     "type": "loop_budget_exceeded",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 2,
+      "max": 2
+     }
+    },
+    {
+     "id": "ev-18",
+     "timestamp": 18000,
+     "type": "run_resumed",
+     "data": {
+      "allowMore": 1
+     }
+    },
+    {
+     "id": "ev-19",
+     "timestamp": 19000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-20",
+     "timestamp": 20000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-21",
+     "timestamp": 21000,
+     "type": "step_started",
+     "data": {
+      "step": "fix",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-22",
+     "timestamp": 22000,
+     "type": "turn_started",
+     "data": {
+      "step": "fix"
+     }
+    },
+    {
+     "id": "ev-23",
+     "timestamp": 23000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-24",
+     "timestamp": 24000,
+     "type": "turn_ended",
+     "data": {
+      "step": "fix",
+      "text": "reply 3\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-25",
+     "timestamp": 25000,
+     "type": "loop_iteration",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 3
+     }
+    },
+    {
+     "id": "ev-26",
+     "timestamp": 26000,
+     "type": "loop_budget_exceeded",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 3,
+      "max": 3
+     }
+    },
+    {
+     "id": "ev-27",
+     "timestamp": 27000,
+     "type": "run_resumed",
+     "data": {
+      "allowMore": 1
+     }
+    },
+    {
+     "id": "ev-28",
+     "timestamp": 28000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-29",
+     "timestamp": 29000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 0
+     }
+    },
+    {
+     "id": "ev-30",
+     "timestamp": 30000,
+     "type": "step_started",
+     "data": {
+      "step": "end-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-31",
+     "timestamp": 31000,
+     "type": "run_finished",
+     "data": {}
+    }
+   ],
+   "receipt": {
+    "workflow": "repeat-budget",
+    "status": "done",
+    "totalTurns": 3,
+    "totalTimeMs": 30000,
+    "totalCostUsd": 0.03,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 3,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 0,
+     "failed": 0
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 4
+  },
+  "repeatNested": {
+   "status": "done",
+   "pauses": [
+    []
+   ],
+   "commands": [
+    "npm run lint",
+    "npm run lint",
+    "npm test"
+   ],
+   "texts": [],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "repeat-nested",
+      "steps": [
+       {
+        "id": "repeat-1",
+        "kind": "repeat"
+       },
+       {
+        "id": "repeat-2",
+        "kind": "repeat"
+       },
+       {
+        "id": "run-1",
+        "kind": "run"
+       },
+       {
+        "id": "run-2",
+        "kind": "run"
+       },
+       {
+        "id": "fix",
+        "kind": "phase",
+        "title": "fix"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "repeat-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "step_started",
+     "data": {
+      "step": "repeat-2",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1",
+       "repeat-2"
+      ]
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-6",
+     "timestamp": 6000,
+     "type": "loop_iteration",
+     "data": {
+      "step": "repeat-2",
+      "attempts": 1
+     }
+    },
+    {
+     "id": "ev-7",
+     "timestamp": 7000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1",
+       "repeat-2"
+      ]
+     }
+    },
+    {
+     "id": "ev-8",
+     "timestamp": 8000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 0
+     }
+    },
+    {
+     "id": "ev-9",
+     "timestamp": 9000,
+     "type": "run_finished",
+     "data": {}
+    }
+   ],
+   "receipt": {
+    "workflow": "repeat-nested",
+    "status": "done",
+    "totalTurns": 0,
+    "totalTimeMs": 8000,
+    "totalCostUsd": 0,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 1,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 0,
+     "failed": 0
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 7
+  },
+  "repeatNot": {
+   "status": "paused",
+   "pauses": [
+    [
+     {
+      "type": "budget-used",
+      "stepId": "repeat-1",
+      "limit": 2
+     }
+    ]
+   ],
+   "commands": [
+    "npm test",
+    "npm test"
+   ],
+   "texts": [],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "repeat-not",
+      "steps": [
+       {
+        "id": "repeat-1",
+        "kind": "repeat"
+       },
+       {
+        "id": "run-1",
+        "kind": "run"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "repeat-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 0
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "loop_iteration",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 1
+     }
+    },
+    {
+     "id": "ev-6",
+     "timestamp": 6000,
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-7",
+     "timestamp": 7000,
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 1
+     }
+    },
+    {
+     "id": "ev-8",
+     "timestamp": 8000,
+     "type": "loop_iteration",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 2
+     }
+    },
+    {
+     "id": "ev-9",
+     "timestamp": 9000,
+     "type": "loop_budget_exceeded",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 2,
+      "max": 2
+     }
+    }
+   ],
+   "receipt": {
+    "workflow": "repeat-not",
+    "status": "running",
+    "totalTurns": 0,
+    "totalTimeMs": 8000,
+    "totalCostUsd": 0,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 2,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 0,
+     "failed": 0
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 2
+  },
+  "repeatEmpty": {
+   "status": "done",
+   "pauses": [
+    []
+   ],
+   "commands": [
+    "npm test"
+   ],
+   "texts": [],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "repeat-empty",
+      "steps": [
+       {
+        "id": "repeat-1",
+        "kind": "repeat"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "repeat-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "run_finished",
+     "data": {}
+    }
+   ],
+   "receipt": {
+    "workflow": "repeat-empty",
+    "status": "done",
+    "totalTurns": 0,
+    "totalTimeMs": 2000,
+    "totalCostUsd": 0,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 0,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 0,
+     "failed": 0
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 2
+  },
+  "verifyFlow": {
+   "status": "done",
+   "pauses": [
+    []
+   ],
+   "commands": [],
+   "texts": [
+    "[Reins · workflow \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\nplan\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · workflow \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\nplan again\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · workflow \"verify\" · step 3 of 5: verify]\n\nCompare what you built against the earlier steps.\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · workflow \"verify\" · step 4 of 5: verify]\n\nStep \"later\" has not run, so there is no output of it to compare against. Compare against what the earlier steps produced.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · workflow \"verify\" · step 5 of 5: later]\n\nlater\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "verify",
+      "steps": [
+       {
+        "id": "plan",
+        "kind": "phase",
+        "title": "plan"
+       },
+       {
+        "id": "verify-1",
+        "kind": "verify"
+       },
+       {
+        "id": "verify-2",
+        "kind": "verify"
+       },
+       {
+        "id": "verify-3",
+        "kind": "verify"
+       },
+       {
+        "id": "later",
+        "kind": "phase",
+        "title": "later"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "plan",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "turn_started",
+     "data": {
+      "step": "plan"
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "turn_ended",
+     "data": {
+      "step": "plan",
+      "text": "plan",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-6",
+     "timestamp": 6000,
+     "type": "step_started",
+     "data": {
+      "step": "verify-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-7",
+     "timestamp": 7000,
+     "type": "turn_started",
+     "data": {
+      "step": "verify-1"
+     }
+    },
+    {
+     "id": "ev-8",
+     "timestamp": 8000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-9",
+     "timestamp": 9000,
+     "type": "turn_ended",
+     "data": {
+      "step": "verify-1",
+      "text": "REINS: fail: nothing",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-10",
+     "timestamp": 10000,
+     "type": "verify_result",
+     "data": {
+      "pass": false
+     }
+    },
+    {
+     "id": "ev-11",
+     "timestamp": 11000,
+     "type": "step_started",
+     "data": {
+      "step": "plan",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-12",
+     "timestamp": 12000,
+     "type": "turn_started",
+     "data": {
+      "step": "plan"
+     }
+    },
+    {
+     "id": "ev-13",
+     "timestamp": 13000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-14",
+     "timestamp": 14000,
+     "type": "turn_ended",
+     "data": {
+      "step": "plan",
+      "text": "plan again",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-15",
+     "timestamp": 15000,
+     "type": "step_started",
+     "data": {
+      "step": "verify-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-16",
+     "timestamp": 16000,
+     "type": "turn_started",
+     "data": {
+      "step": "verify-1"
+     }
+    },
+    {
+     "id": "ev-17",
+     "timestamp": 17000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-18",
+     "timestamp": 18000,
+     "type": "turn_ended",
+     "data": {
+      "step": "verify-1",
+      "text": "REINS: pass",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-19",
+     "timestamp": 19000,
+     "type": "verify_result",
+     "data": {
+      "pass": true
+     }
+    },
+    {
+     "id": "ev-20",
+     "timestamp": 20000,
+     "type": "step_started",
+     "data": {
+      "step": "verify-2",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-21",
+     "timestamp": 21000,
+     "type": "turn_started",
+     "data": {
+      "step": "verify-2"
+     }
+    },
+    {
+     "id": "ev-22",
+     "timestamp": 22000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-23",
+     "timestamp": 23000,
+     "type": "turn_ended",
+     "data": {
+      "step": "verify-2",
+      "text": "no against",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-24",
+     "timestamp": 24000,
+     "type": "verify_result",
+     "data": {
+      "pass": true
+     }
+    },
+    {
+     "id": "ev-25",
+     "timestamp": 25000,
+     "type": "step_started",
+     "data": {
+      "step": "verify-3",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-26",
+     "timestamp": 26000,
+     "type": "turn_started",
+     "data": {
+      "step": "verify-3"
+     }
+    },
+    {
+     "id": "ev-27",
+     "timestamp": 27000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-28",
+     "timestamp": 28000,
+     "type": "turn_ended",
+     "data": {
+      "step": "verify-3",
+      "text": "checked",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-29",
+     "timestamp": 29000,
+     "type": "verify_result",
+     "data": {
+      "pass": true
+     }
+    },
+    {
+     "id": "ev-30",
+     "timestamp": 30000,
+     "type": "step_started",
+     "data": {
+      "step": "later",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-31",
+     "timestamp": 31000,
+     "type": "turn_started",
+     "data": {
+      "step": "later"
+     }
+    },
+    {
+     "id": "ev-32",
+     "timestamp": 32000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-33",
+     "timestamp": 33000,
+     "type": "turn_ended",
+     "data": {
+      "step": "later",
+      "text": "later",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-34",
+     "timestamp": 34000,
+     "type": "run_finished",
+     "data": {}
+    }
+   ],
+   "receipt": {
+    "workflow": "verify",
+    "status": "done",
+    "totalTurns": 7,
+    "totalTimeMs": 33000,
+    "totalCostUsd": 0.07,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 0,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 3,
+     "failed": 1
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 5
+  },
+  "verifyBudget": {
+   "status": "done",
+   "pauses": [
+    [
+     {
+      "type": "link-budget-used",
+      "limit": 2,
+      "linkKey": "verify-1->0",
+      "to": 0
+     }
+    ],
+    []
+   ],
+   "commands": [],
+   "texts": [
+    "[Reins · workflow \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\nplan\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · workflow \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\np\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · workflow \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\np\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · workflow \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\np\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · workflow \"verify\" · step 3 of 5: verify]\n\nCompare what you built against the earlier steps.\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · workflow \"verify\" · step 4 of 5: verify]\n\nStep \"later\" has not run, so there is no output of it to compare against. Compare against what the earlier steps produced.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · workflow \"verify\" · step 5 of 5: later]\n\nlater\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "verify",
+      "steps": [
+       {
+        "id": "plan",
+        "kind": "phase",
+        "title": "plan"
+       },
+       {
+        "id": "verify-1",
+        "kind": "verify"
+       },
+       {
+        "id": "verify-2",
+        "kind": "verify"
+       },
+       {
+        "id": "verify-3",
+        "kind": "verify"
+       },
+       {
+        "id": "later",
+        "kind": "phase",
+        "title": "later"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "plan",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "turn_started",
+     "data": {
+      "step": "plan"
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "turn_ended",
+     "data": {
+      "step": "plan",
+      "text": "plan",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-6",
+     "timestamp": 6000,
+     "type": "step_started",
+     "data": {
+      "step": "verify-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-7",
+     "timestamp": 7000,
+     "type": "turn_started",
+     "data": {
+      "step": "verify-1"
+     }
+    },
+    {
+     "id": "ev-8",
+     "timestamp": 8000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-9",
+     "timestamp": 9000,
+     "type": "turn_ended",
+     "data": {
+      "step": "verify-1",
+      "text": "REINS: fail",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-10",
+     "timestamp": 10000,
+     "type": "verify_result",
+     "data": {
+      "pass": false
+     }
+    },
+    {
+     "id": "ev-11",
+     "timestamp": 11000,
+     "type": "step_started",
+     "data": {
+      "step": "plan",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-12",
+     "timestamp": 12000,
+     "type": "turn_started",
+     "data": {
+      "step": "plan"
+     }
+    },
+    {
+     "id": "ev-13",
+     "timestamp": 13000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-14",
+     "timestamp": 14000,
+     "type": "turn_ended",
+     "data": {
+      "step": "plan",
+      "text": "p",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-15",
+     "timestamp": 15000,
+     "type": "step_started",
+     "data": {
+      "step": "verify-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-16",
+     "timestamp": 16000,
+     "type": "turn_started",
+     "data": {
+      "step": "verify-1"
+     }
+    },
+    {
+     "id": "ev-17",
+     "timestamp": 17000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-18",
+     "timestamp": 18000,
+     "type": "turn_ended",
+     "data": {
+      "step": "verify-1",
+      "text": "REINS: fail",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-19",
+     "timestamp": 19000,
+     "type": "verify_result",
+     "data": {
+      "pass": false
+     }
+    },
+    {
+     "id": "ev-20",
+     "timestamp": 20000,
+     "type": "step_started",
+     "data": {
+      "step": "plan",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-21",
+     "timestamp": 21000,
+     "type": "turn_started",
+     "data": {
+      "step": "plan"
+     }
+    },
+    {
+     "id": "ev-22",
+     "timestamp": 22000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-23",
+     "timestamp": 23000,
+     "type": "turn_ended",
+     "data": {
+      "step": "plan",
+      "text": "p",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-24",
+     "timestamp": 24000,
+     "type": "step_started",
+     "data": {
+      "step": "verify-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-25",
+     "timestamp": 25000,
+     "type": "turn_started",
+     "data": {
+      "step": "verify-1"
+     }
+    },
+    {
+     "id": "ev-26",
+     "timestamp": 26000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-27",
+     "timestamp": 27000,
+     "type": "turn_ended",
+     "data": {
+      "step": "verify-1",
+      "text": "REINS: fail",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-28",
+     "timestamp": 28000,
+     "type": "verify_result",
+     "data": {
+      "pass": false
+     }
+    },
+    {
+     "id": "ev-29",
+     "timestamp": 29000,
+     "type": "link_budget_exceeded",
+     "data": {
+      "linkKey": "verify-1->0",
+      "jumps": 3,
+      "max": 2
+     }
+    },
+    {
+     "id": "ev-30",
+     "timestamp": 30000,
+     "type": "run_resumed",
+     "data": {
+      "allowMore": 1
+     }
+    },
+    {
+     "id": "ev-31",
+     "timestamp": 31000,
+     "type": "step_started",
+     "data": {
+      "step": "plan",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-32",
+     "timestamp": 32000,
+     "type": "turn_started",
+     "data": {
+      "step": "plan"
+     }
+    },
+    {
+     "id": "ev-33",
+     "timestamp": 33000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-34",
+     "timestamp": 34000,
+     "type": "turn_ended",
+     "data": {
+      "step": "plan",
+      "text": "p",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-35",
+     "timestamp": 35000,
+     "type": "step_started",
+     "data": {
+      "step": "verify-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-36",
+     "timestamp": 36000,
+     "type": "turn_started",
+     "data": {
+      "step": "verify-1"
+     }
+    },
+    {
+     "id": "ev-37",
+     "timestamp": 37000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-38",
+     "timestamp": 38000,
+     "type": "turn_ended",
+     "data": {
+      "step": "verify-1",
+      "text": "REINS: pass",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-39",
+     "timestamp": 39000,
+     "type": "verify_result",
+     "data": {
+      "pass": true
+     }
+    },
+    {
+     "id": "ev-40",
+     "timestamp": 40000,
+     "type": "step_started",
+     "data": {
+      "step": "verify-2",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-41",
+     "timestamp": 41000,
+     "type": "turn_started",
+     "data": {
+      "step": "verify-2"
+     }
+    },
+    {
+     "id": "ev-42",
+     "timestamp": 42000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-43",
+     "timestamp": 43000,
+     "type": "turn_ended",
+     "data": {
+      "step": "verify-2",
+      "text": "reply 9\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-44",
+     "timestamp": 44000,
+     "type": "verify_result",
+     "data": {
+      "pass": true
+     }
+    },
+    {
+     "id": "ev-45",
+     "timestamp": 45000,
+     "type": "step_started",
+     "data": {
+      "step": "verify-3",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-46",
+     "timestamp": 46000,
+     "type": "turn_started",
+     "data": {
+      "step": "verify-3"
+     }
+    },
+    {
+     "id": "ev-47",
+     "timestamp": 47000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-48",
+     "timestamp": 48000,
+     "type": "turn_ended",
+     "data": {
+      "step": "verify-3",
+      "text": "reply 10\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-49",
+     "timestamp": 49000,
+     "type": "verify_result",
+     "data": {
+      "pass": true
+     }
+    },
+    {
+     "id": "ev-50",
+     "timestamp": 50000,
+     "type": "step_started",
+     "data": {
+      "step": "later",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-51",
+     "timestamp": 51000,
+     "type": "turn_started",
+     "data": {
+      "step": "later"
+     }
+    },
+    {
+     "id": "ev-52",
+     "timestamp": 52000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-53",
+     "timestamp": 53000,
+     "type": "turn_ended",
+     "data": {
+      "step": "later",
+      "text": "reply 11\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-54",
+     "timestamp": 54000,
+     "type": "run_finished",
+     "data": {}
+    }
+   ],
+   "receipt": {
+    "workflow": "verify",
+    "status": "done",
+    "totalTurns": 11,
+    "totalTimeMs": 53000,
+    "totalCostUsd": 0.11,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 0,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 3,
+     "failed": 3
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 5
+  },
+  "verifyHeld": {
+   "status": "paused",
+   "pauses": [
+    [
+     {
+      "type": "link-budget-used",
+      "limit": 2,
+      "linkKey": "verify-1->0",
+      "to": 0
+     }
+    ]
+   ],
+   "commands": [],
+   "texts": [
+    "[Reins · workflow \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\nplan\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · workflow \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\np\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · workflow \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\np\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n"
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "verify",
+      "steps": [
+       {
+        "id": "plan",
+        "kind": "phase",
+        "title": "plan"
+       },
+       {
+        "id": "verify-1",
+        "kind": "verify"
+       },
+       {
+        "id": "verify-2",
+        "kind": "verify"
+       },
+       {
+        "id": "verify-3",
+        "kind": "verify"
+       },
+       {
+        "id": "later",
+        "kind": "phase",
+        "title": "later"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "plan",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "turn_started",
+     "data": {
+      "step": "plan"
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "turn_ended",
+     "data": {
+      "step": "plan",
+      "text": "plan",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-6",
+     "timestamp": 6000,
+     "type": "step_started",
+     "data": {
+      "step": "verify-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-7",
+     "timestamp": 7000,
+     "type": "turn_started",
+     "data": {
+      "step": "verify-1"
+     }
+    },
+    {
+     "id": "ev-8",
+     "timestamp": 8000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-9",
+     "timestamp": 9000,
+     "type": "turn_ended",
+     "data": {
+      "step": "verify-1",
+      "text": "REINS: fail",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-10",
+     "timestamp": 10000,
+     "type": "verify_result",
+     "data": {
+      "pass": false
+     }
+    },
+    {
+     "id": "ev-11",
+     "timestamp": 11000,
+     "type": "step_started",
+     "data": {
+      "step": "plan",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-12",
+     "timestamp": 12000,
+     "type": "turn_started",
+     "data": {
+      "step": "plan"
+     }
+    },
+    {
+     "id": "ev-13",
+     "timestamp": 13000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-14",
+     "timestamp": 14000,
+     "type": "turn_ended",
+     "data": {
+      "step": "plan",
+      "text": "p",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-15",
+     "timestamp": 15000,
+     "type": "step_started",
+     "data": {
+      "step": "verify-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-16",
+     "timestamp": 16000,
+     "type": "turn_started",
+     "data": {
+      "step": "verify-1"
+     }
+    },
+    {
+     "id": "ev-17",
+     "timestamp": 17000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-18",
+     "timestamp": 18000,
+     "type": "turn_ended",
+     "data": {
+      "step": "verify-1",
+      "text": "REINS: fail",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-19",
+     "timestamp": 19000,
+     "type": "verify_result",
+     "data": {
+      "pass": false
+     }
+    },
+    {
+     "id": "ev-20",
+     "timestamp": 20000,
+     "type": "step_started",
+     "data": {
+      "step": "plan",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-21",
+     "timestamp": 21000,
+     "type": "turn_started",
+     "data": {
+      "step": "plan"
+     }
+    },
+    {
+     "id": "ev-22",
+     "timestamp": 22000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-23",
+     "timestamp": 23000,
+     "type": "turn_ended",
+     "data": {
+      "step": "plan",
+      "text": "p",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-24",
+     "timestamp": 24000,
+     "type": "step_started",
+     "data": {
+      "step": "verify-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-25",
+     "timestamp": 25000,
+     "type": "turn_started",
+     "data": {
+      "step": "verify-1"
+     }
+    },
+    {
+     "id": "ev-26",
+     "timestamp": 26000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-27",
+     "timestamp": 27000,
+     "type": "turn_ended",
+     "data": {
+      "step": "verify-1",
+      "text": "REINS: fail",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-28",
+     "timestamp": 28000,
+     "type": "verify_result",
+     "data": {
+      "pass": false
+     }
+    },
+    {
+     "id": "ev-29",
+     "timestamp": 29000,
+     "type": "link_budget_exceeded",
+     "data": {
+      "linkKey": "verify-1->0",
+      "jumps": 3,
+      "max": 2
+     }
+    }
+   ],
+   "receipt": {
+    "workflow": "verify",
+    "status": "running",
+    "totalTurns": 6,
+    "totalTimeMs": 28000,
+    "totalCostUsd": 0.06,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 0,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 0,
+     "failed": 3
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 1
+  },
+  "verifyDeep": {
+   "status": "done",
+   "pauses": [
+    []
+   ],
+   "commands": [],
+   "texts": [
+    "[Reins · workflow \"verify-deep\" · step 1 of 2: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"verify-deep\" · step 2 of 2: verify]\n\nCompare what you built against step \"plan\":\nplan\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · workflow \"verify-deep\" · step 1 of 2: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · workflow \"verify-deep\" · step 2 of 2: verify]\n\nCompare what you built against step \"plan\":\nplan\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · workflow \"verify-deep\" · step 2 of 2: verify]\n\nCompare what you built against step \"plan\":\nplan\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n"
+   ],
+   "events": [
+    {
+     "id": "ev-1",
+     "timestamp": 1000,
+     "type": "run_started",
+     "data": {
+      "workflow": "verify-deep",
+      "steps": [
+       {
+        "id": "plan",
+        "kind": "phase",
+        "title": "plan"
+       },
+       {
+        "id": "repeat-1",
+        "kind": "repeat"
+       },
+       {
+        "id": "verify-1",
+        "kind": "verify"
+       }
+      ]
+     }
+    },
+    {
+     "id": "ev-2",
+     "timestamp": 2000,
+     "type": "step_started",
+     "data": {
+      "step": "plan",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-3",
+     "timestamp": 3000,
+     "type": "turn_started",
+     "data": {
+      "step": "plan"
+     }
+    },
+    {
+     "id": "ev-4",
+     "timestamp": 4000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-5",
+     "timestamp": 5000,
+     "type": "turn_ended",
+     "data": {
+      "step": "plan",
+      "text": "plan",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-6",
+     "timestamp": 6000,
+     "type": "step_started",
+     "data": {
+      "step": "repeat-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-7",
+     "timestamp": 7000,
+     "type": "step_started",
+     "data": {
+      "step": "verify-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-8",
+     "timestamp": 8000,
+     "type": "turn_started",
+     "data": {
+      "step": "verify-1"
+     }
+    },
+    {
+     "id": "ev-9",
+     "timestamp": 9000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-10",
+     "timestamp": 10000,
+     "type": "turn_ended",
+     "data": {
+      "step": "verify-1",
+      "text": "REINS: fail: x",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-11",
+     "timestamp": 11000,
+     "type": "verify_result",
+     "data": {
+      "pass": false
+     }
+    },
+    {
+     "id": "ev-12",
+     "timestamp": 12000,
+     "type": "step_started",
+     "data": {
+      "step": "plan",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-13",
+     "timestamp": 13000,
+     "type": "turn_started",
+     "data": {
+      "step": "plan"
+     }
+    },
+    {
+     "id": "ev-14",
+     "timestamp": 14000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-15",
+     "timestamp": 15000,
+     "type": "turn_ended",
+     "data": {
+      "step": "plan",
+      "text": "plan",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-16",
+     "timestamp": 16000,
+     "type": "step_started",
+     "data": {
+      "step": "repeat-1",
+      "parents": []
+     }
+    },
+    {
+     "id": "ev-17",
+     "timestamp": 17000,
+     "type": "step_started",
+     "data": {
+      "step": "verify-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-18",
+     "timestamp": 18000,
+     "type": "turn_started",
+     "data": {
+      "step": "verify-1"
+     }
+    },
+    {
+     "id": "ev-19",
+     "timestamp": 19000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-20",
+     "timestamp": 20000,
+     "type": "turn_ended",
+     "data": {
+      "step": "verify-1",
+      "text": "REINS: pass",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-21",
+     "timestamp": 21000,
+     "type": "verify_result",
+     "data": {
+      "pass": true
+     }
+    },
+    {
+     "id": "ev-22",
+     "timestamp": 22000,
+     "type": "loop_iteration",
+     "data": {
+      "step": "repeat-1",
+      "attempts": 1
+     }
+    },
+    {
+     "id": "ev-23",
+     "timestamp": 23000,
+     "type": "step_started",
+     "data": {
+      "step": "verify-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "id": "ev-24",
+     "timestamp": 24000,
+     "type": "turn_started",
+     "data": {
+      "step": "verify-1"
+     }
+    },
+    {
+     "id": "ev-25",
+     "timestamp": 25000,
+     "type": "engine_cost",
+     "data": {
+      "usd": 0.01
+     }
+    },
+    {
+     "id": "ev-26",
+     "timestamp": 26000,
+     "type": "turn_ended",
+     "data": {
+      "step": "verify-1",
+      "text": "ok\nREINS: done",
+      "cost": 0.01
+     }
+    },
+    {
+     "id": "ev-27",
+     "timestamp": 27000,
+     "type": "verify_result",
+     "data": {
+      "pass": true
+     }
+    },
+    {
+     "id": "ev-28",
+     "timestamp": 28000,
+     "type": "run_finished",
+     "data": {}
+    }
+   ],
+   "receipt": {
+    "workflow": "verify-deep",
+    "status": "done",
+    "totalTurns": 5,
+    "totalTimeMs": 27000,
+    "totalCostUsd": 0.05,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "readOnlyRefusals": 0,
+    "totalRefusals": 0,
+    "loopAttempts": 1,
+    "autoCardsFired": 0,
+    "liveCardsDelivered": 0,
+    "verifyResults": {
+     "passed": 2,
+     "failed": 1
+    },
+    "knowlRecalls": 0,
+    "knowlStores": 0,
+    "knowlSkipped": 0
+   },
+   "counter": 4
+  }
+ },
+ "stops": {
+  "runStopThenSettle": {
+   "status": "stopped",
+   "commands": [
+    "npm test"
+   ],
+   "events": [
+    {
+     "type": "run_started",
+     "data": {
+      "workflow": "run-fix",
+      "steps": [
+       {
+        "id": "run-1",
+        "kind": "run"
+       },
+       {
+        "id": "end-1",
+        "kind": "end"
+       },
+       {
+        "id": "fix",
+        "kind": "phase",
+        "title": "fix"
+       }
+      ]
+     }
+    },
+    {
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": []
+     }
+    },
+    {
+     "type": "run_stopped",
+     "data": {}
+    },
+    {
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 0
+     }
+    }
+   ],
+   "counter": 1
+  },
+  "runSettleThenStop": {
+   "status": "stopped",
+   "commands": [
+    "npm test"
+   ],
+   "events": [
+    {
+     "type": "run_started",
+     "data": {
+      "workflow": "run-fix",
+      "steps": [
+       {
+        "id": "run-1",
+        "kind": "run"
+       },
+       {
+        "id": "end-1",
+        "kind": "end"
+       },
+       {
+        "id": "fix",
+        "kind": "phase",
+        "title": "fix"
+       }
+      ]
+     }
+    },
+    {
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": []
+     }
+    },
+    {
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 0
+     }
+    },
+    {
+     "type": "step_started",
+     "data": {
+      "step": "end-1",
+      "parents": []
+     }
+    },
+    {
+     "type": "run_finished",
+     "data": {}
+    },
+    {
+     "type": "run_stopped",
+     "data": {}
+    }
+   ],
+   "counter": 1
+  },
+  "repeatStop": {
+   "status": "stopped",
+   "commands": [
+    "npm test"
+   ],
+   "events": [
+    {
+     "type": "run_started",
+     "data": {
+      "workflow": "repeat-tests",
+      "steps": [
+       {
+        "id": "repeat-1",
+        "kind": "repeat"
+       },
+       {
+        "id": "run-1",
+        "kind": "run"
+       },
+       {
+        "id": "fix",
+        "kind": "phase",
+        "title": "fix"
+       }
+      ]
+     }
+    },
+    {
+     "type": "step_started",
+     "data": {
+      "step": "repeat-1",
+      "parents": []
+     }
+    },
+    {
+     "type": "step_started",
+     "data": {
+      "step": "run-1",
+      "parents": [
+       "repeat-1"
+      ]
+     }
+    },
+    {
+     "type": "run_stopped",
+     "data": {}
+    },
+    {
+     "type": "command_result",
+     "data": {
+      "step": "run-1",
+      "exitCode": 0
+     }
+    }
+   ],
+   "counter": 1
+  }
+ },
+ "tagged": [
+  {
+   "ok": true,
+   "text": "---\nreins: 1\nname: chat\nalways: []\nbudget: { turns: 20, minutes: 30 }\n---\n\n## phase prompt\n> hello\n> world\n\n## verify\nagainst: prompt\n"
+  },
+  {
+   "ok": false,
+   "error": "#verify takes no argument"
+  },
+  {
+   "ok": false,
+   "error": "#repeat needs an argument"
+  },
+  {
+   "ok": true,
+   "text": "---\nreins: 1\nname: chat\nalways: []\nbudget: { turns: 20, minutes: 30 }\n---\n\n## repeat\nuntil: tests pass\nmax: 5\n\n### phase prompt\n> hello\n> world\n"
+  },
+  {
+   "ok": true,
+   "text": "---\nreins: 1\nname: chat\nalways: []\nbudget: { turns: 20, minutes: 30 }\n---\n\n## repeat\nuntil: tests pass\nmax: 5\n\n### phase prompt\n> hello\n> world\n\n## verify\nagainst: prompt\n"
+  },
+  {
+   "ok": false,
+   "error": "unknown tag \"run\""
+  }
+ ],
+ "taggedWorkflow": [
+  {
+   "ok": true,
+   "text": "---\nreins: 1\nname: chat\nalways: []\nbudget: { turns: 20, minutes: 30 }\n---\n\n## repeat\nuntil: tests pass\nmax: 5\n\n### phase prompt\n> hi\n",
+   "workflow": {
+    "version": 1,
+    "name": "chat",
+    "budget": {
+     "turns": 20,
+     "minutes": 30
+    },
+    "always": [],
+    "steps": [
+     {
+      "id": "repeat-1",
+      "kind": "repeat",
+      "attrs": {
+       "max": "5"
+      },
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 8,
+       "col": 1
+      },
+      "cond": {
+       "t": "tests"
+      },
+      "kids": [
+       {
+        "id": "prompt",
+        "kind": "phase",
+        "attrs": {},
+        "cards": [],
+        "links": [],
+        "pos": {
+         "line": 12,
+         "col": 1
+        },
+        "title": "prompt",
+        "prompt": "hi"
+       }
+      ]
+     }
+    ],
+    "autos": []
+   },
+   "warnings": [
+    {
+     "severity": "warning",
+     "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+     "pos": {
+      "line": 8,
+      "col": 1
+     }
+    }
+   ]
+  },
+  {
+   "ok": true,
+   "text": "---\nreins: 1\nname: chat\nalways: []\nbudget: { turns: 20, minutes: 30 }\n---\n\n## phase prompt\n> hi\n\n## verify\nagainst: prompt\n",
+   "workflow": {
+    "version": 1,
+    "name": "chat",
+    "budget": {
+     "turns": 20,
+     "minutes": 30
+    },
+    "always": [],
+    "steps": [
+     {
+      "id": "prompt",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 8,
+       "col": 1
+      },
+      "title": "prompt",
+      "prompt": "hi"
+     },
+     {
+      "id": "verify-1",
+      "kind": "verify",
+      "attrs": {
+       "against": "prompt"
+      },
+      "cards": [],
+      "links": [],
+      "pos": {
+       "line": 11,
+       "col": 1
+      }
+     }
+    ],
+    "autos": []
+   },
+   "warnings": []
+  }
+ ],
+ "catalogue": [
+  {
+   "name": "gate",
+   "place": "after",
+   "enforced": true
+  },
+  {
+   "name": "repeat",
+   "place": "wrap",
+   "arg": "until",
+   "argRequired": true,
+   "enforced": true
+  },
+  {
+   "name": "verify",
+   "place": "after",
+   "enforced": true
+  },
+  {
+   "name": "guard",
+   "place": "card",
+   "arg": "guard",
+   "argRequired": true,
+   "enforced": true
+  },
+  {
+   "name": "mode",
+   "place": "attr",
+   "arg": "mode",
+   "argRequired": true,
+   "enforced": true
+  },
+  {
+   "name": "read-only",
+   "place": "attr",
+   "argRequired": false,
+   "enforced": true
+  }
+ ],
+ "order": [
+  "phase",
+  "say",
+  "run",
+  "gate",
+  "repeat",
+  "if",
+  "verify",
+  "recall",
+  "store",
+  "model",
+  "subagent",
+  "end",
+  "use"
+ ],
+ "views": [
+  {
+   "kind": "run",
+   "order": 30,
+   "colour": "hard",
+   "fields": [
+    {
+     "key": "cmd",
+     "label": "Command",
+     "input": "mono"
+    }
+   ],
+   "line": [
+    "run",
+    {
+     "field": "cmd"
+    }
+   ],
+   "fails": true,
+   "card": {
+    "label": "run command",
+    "section": "Flow"
+   },
+   "fresh": {
+    "attrs": {
+     "cmd": "npm test"
+    }
+   }
+  },
+  {
+   "kind": "repeat",
+   "order": 50,
+   "colour": "loop",
+   "group": "kids",
+   "fields": [
+    {
+     "key": "max",
+     "label": "Max",
+     "input": "number",
+     "check": "count"
+    }
+   ],
+   "line": [
+    "repeat until",
+    "cond",
+    "max",
+    {
+     "field": "max"
+    }
+   ],
+   "card": {
+    "label": "repeat until",
+    "section": "Flow"
+   },
+   "fresh": {
+    "attrs": {
+     "max": "3"
+    },
+    "cond": {
+     "t": "approve"
+    }
+   },
+   "status": {
+    "loop_iteration": {
+     "attempts": "attempts"
+    },
+    "loop_budget_exceeded": {
+     "state": "stuck"
+    }
+   }
+  },
+  {
+   "kind": "verify",
+   "order": 70,
+   "colour": "verify",
+   "fields": [
+    {
+     "key": "prompt",
+     "label": "Prompt",
+     "input": "textarea"
+    },
+    {
+     "key": "against",
+     "label": "Against",
+     "input": "step"
+    }
+   ],
+   "line": [
+    "verify against",
+    {
+     "field": "against"
+    }
+   ],
+   "cards": true,
+   "fails": true,
+   "against": true,
+   "card": {
+    "label": "verify against",
+    "section": "Flow"
+   },
+   "fresh": {},
+   "status": {
+    "verify_result": {
+     "when": {
+      "key": "pass",
+      "is": [
+       false
+      ]
+     },
+     "step": "track",
+     "state": "failed",
+     "why": "verify"
+    }
+   }
+  }
+ ]
+}

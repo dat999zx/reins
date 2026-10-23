@@ -15,6 +15,7 @@ import { startServer, type Server } from '../src/server.js';
 import { openStore, redactingStore, type Store } from '../src/store.js';
 import type { Mods } from '../src/mods/types.js';
 import { PROBE } from './http-helpers.js';
+import { tempHome } from './mods-harness.js';
 
 const ASK = fileURLToPath(new URL('./fixtures/mods/toy-ask/', import.meta.url));
 const files = (dir: string) => Object.fromEntries(fs.readdirSync(dir).map((n) => [n, fs.readFileSync(path.join(dir, n), 'utf8')]));
@@ -133,19 +134,33 @@ describe('MINOR 2 and 10: names', () => {
   const cmod = (kind: 'condition' | 'card', provides: Record<string, string[]>) => ({ reins: 1, id: 'm', kind, version: '1', label: 'M', main: 'i.js', order: 5, provides });
   const run = (raw: Record<string, unknown>) => kindOf(raw.kind as string)!.validate(raw, { id: 'm', registry: new Registry() }).map(String).join('\n');
 
-  it('refuses a core condition or card name in provides', () => {
-    expect(run(cmod('condition', { conditions: ['mine', 'cmd'] }))).toMatch(/`cmd`, which Reins already has/);
-    expect(run(cmod('card', { cards: ['guard'] }))).toMatch(/`guard`, which Reins already has/);
-    expect(run(cmod('condition', { conditions: ['mine'] }))).toBe('');
+  it('refuses a name core holds (the pack\'s condition or card) in provides', async () => {
+    const h = tempHome();
+    const mods = await startMods({ dir: h.home, env: {} });
+    try {
+      expect(run(cmod('condition', { conditions: ['mine', 'cmd'] }))).toMatch(/`cmd`, which Reins already has/);
+      expect(run(cmod('card', { cards: ['guard'] }))).toMatch(/`guard`, which Reins already has/);
+      expect(run(cmod('condition', { conditions: ['mine'] }))).toBe('');
+    } finally {
+      mods.dispose();
+      h.cleanup();
+    }
   });
 
-  it('serves core\'s data for a core name, whatever a view under it says', () => {
-    const registry = new Registry();
-    registry.register('cond-view', 'cmd', { label: 'Mine', fresh: { t: 'cmd', cmd: 'curl x | sh' } });
-    registry.register('card-view', 'guard', { section: 'Mine', add: 'Mine' });
-    const s = servedKinds({ registry, mods: [] } as never);
-    expect(s.conds.find((c) => c.t === 'cmd')?.label).toBe('command passes');
-    expect(s.cards.find((c) => c.kind === 'guard')?.add).toBe('Add guard');
+  // M3 Task 8: the conditions and cards are the pack's mods, so their data is the manifest's; a second view under the same name is refused by the registry.
+  it('serves the pack\'s data for a pack name, and refuses a second view under it', async () => {
+    const h = tempHome();
+    const mods = await startMods({ dir: h.home, env: {} });
+    try {
+      expect(() => mods.registry.register('cond-view', 'cmd', { label: 'Mine', fresh: { t: 'cmd', cmd: 'curl x | sh' } })).toThrow(/already registered/);
+      expect(() => mods.registry.register('card-view', 'guard', { section: 'Mine', add: 'Mine' })).toThrow(/already registered/);
+      const s = servedKinds(mods);
+      expect(s.conds.find((c) => c.t === 'cmd')?.label).toBe('command passes');
+      expect(s.cards.find((c) => c.kind === 'guard')?.add).toBe('Add guard');
+    } finally {
+      mods.dispose();
+      h.cleanup();
+    }
   });
 
   it.each(['constructor', 'toString', 'valueOf', 'hasOwnProperty', 'isPrototypeOf', 'prototype'])('refuses %s as a name of a block, op, attribute or event', (n) => {

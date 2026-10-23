@@ -204,16 +204,18 @@ const MAX_VIEW_LIST = 50;
 export { ROW_CLASSES };
 
 /**
- * Core's own condition and card names, read once when this module loads, before any mod registers one (a later read of CONDS and CARDS would
- * hold a mod's names too). A mod cannot provide one of them, and the served editor data of one is core's. (There is no bundled condition or card mod in M2.)
+ * Which mod put each condition and card name in core (`conditions:tests` -> `cond-tests`; the loader writes it when the mod registers and takes it out
+ * with the entry). Core registers none itself since M3 Task 8: the default pack's mods do. A mod cannot provide a name core holds for ANOTHER mod
+ * (or for a test that registered it by hand); its own name is not a clash, so a manifest read again (a restart, a settings check) still passes.
  */
-export const CORE_NAMES: Record<string, ReadonlySet<string> | undefined> = { __proto__: null as never, conditions: new Set(CONDS.keys()), cards: new Set(CARDS.keys()) };
+export const HOLDERS = new Map<string, string>();
+const CORE_HELD: Record<string, ReadonlyMap<string, unknown> | undefined> = { __proto__: null as never, conditions: CONDS, cards: CARDS };
 
 /** A condition or card mod is code: it needs `main`. */
 const codeProblems = (raw: Record<string, unknown>, id: string): Problem[] => (typeof raw.main === 'string' ? [] : [`\`${id}\`: a ${String(raw.kind)} mod needs code (\`main\`).`]);
 
 /** The checks the kinds share: a finite `order`, and a `provides` of known keys holding lists of names (`need` must be non-empty). */
-function providesProblems(raw: Record<string, unknown>, id: string, keys: string[], need: string): Problem[] {
+function providesProblems(raw: Record<string, unknown>, id: string, keys: string[], need: string, builtin = false, replaces = false): Problem[] {
   const out: Problem[] = [];
   const bad = (msg: string) => out.push(`\`${id}\`: ${msg}`);
   if (typeof raw.order !== 'number' || !Number.isFinite(raw.order)) bad(`\`order\` must be a number (got ${show(raw.order)}).`);
@@ -229,10 +231,10 @@ function providesProblems(raw: Record<string, unknown>, id: string, keys: string
     if (!Array.isArray(v) || v.length > MAX_NAMES || !v.every((x) => typeof x === 'string' && NAME.test(x))) bad(`\`provides.${k}\` must be a list of at most ${MAX_NAMES} names (letters, digits, dash and underscore, starting with a letter).`);
     else if (new Set(v).size !== v.length) bad(`\`provides.${k}\` lists a name twice.`);
     else for (const n of v as string[]) {
-      const r = questionRefusal(k, n);
+      const r = questionRefusal(k, n, builtin);
       if (r) bad(r);
       else if (n in Object.prototype || n === 'prototype') bad(`\`provides.${k}\` lists \`${n}\`, a name every JavaScript object already has. Choose another.`);
-      else if (CORE_NAMES[k]?.has(n)) bad(`\`provides.${k}\` lists \`${n}\`, which Reins already has. A mod cannot cover it.`);
+      else if (!replaces && CORE_HELD[k]?.has(n) && HOLDERS.get(`${k}:${n}`) !== id) bad(`\`provides.${k}\` lists \`${n}\`, which Reins already has. A mod cannot cover it.`);
     }
   }
   if (!out.length && !(p[need] as string[] | undefined)?.length) bad(`\`provides.${need}\` lists nothing.`);
@@ -248,7 +250,7 @@ function strings(v: unknown, out: string[] = []): string[] {
 }
 
 /** The view of a block: an object whose `kind` the mod provides, with `fields` and `line`, small, and no shown text with a hidden character. */
-function viewProblems(raw: Record<string, unknown>, id: string): Problem[] {
+function viewProblems(raw: Record<string, unknown>, id: string, builtin = false): Problem[] {
   const bad = (msg: string): Problem[] => [`\`${id}\`: ${msg}`];
   const v = raw.view;
   if (!isObj(v)) return bad('`view` must be an object.');
@@ -262,7 +264,7 @@ function viewProblems(raw: Record<string, unknown>, id: string): Problem[] {
   if (strings(v).some(hasHiddenChars)) return bad('a text in `view` holds a control, line-break or direction-changing character (a zero-width one too).');
   // The whole shape, the same check the app runs on what it is served (core's viewShape.ts).
   const p = raw.provides as Provides;
-  const why = viewShapeProblem(v, { mod: { attrs: p.attrs ?? [], events: p.events ?? [] } });
+  const why = viewShapeProblem(v, { mod: { attrs: p.attrs ?? [], events: p.events ?? [], ...(builtin ? { pack: true as const } : {}) } });
   return why === undefined ? [] : bad(why);
 }
 
@@ -336,8 +338,9 @@ const recordWith = (what: 'cond-view' | 'card-view') => (mod: LoadedMod, host: M
 registerKind({
   id: 'condition',
   startOnly: true,
-  validate: (raw, { id }) => {
-    const out = [...codeProblems(raw, id), ...providesProblems(raw, id, ['conditions'], 'conditions')];
+  validate: (raw, { id, registry }) => {
+    // A mod whose id is already recorded replaces that mod (a Customize copy): the loader lets it cover only the names the original provides.
+    const out = [...codeProblems(raw, id), ...providesProblems(raw, id, ['conditions'], 'conditions', false, registry.get('condition', id) !== undefined)];
     return out.length ? out : namedViewProblems(raw, id, 'conditions', condEntry);
   },
   activate: recordWith('cond-view'),
@@ -346,8 +349,8 @@ registerKind({
 registerKind({
   id: 'card',
   startOnly: true,
-  validate: (raw, { id }) => {
-    const out = [...codeProblems(raw, id), ...providesProblems(raw, id, ['cards'], 'cards')];
+  validate: (raw, { id, registry }) => {
+    const out = [...codeProblems(raw, id), ...providesProblems(raw, id, ['cards'], 'cards', false, registry.get('card', id) !== undefined)];
     return out.length ? out : namedViewProblems(raw, id, 'cards', cardEntry);
   },
   activate: recordWith('card-view'),
@@ -395,11 +398,11 @@ registerKind({
   id: 'block',
   after: ['condition', 'card'],
   startOnly: true,
-  validate(raw, { id }) {
+  validate(raw, { id, builtin }) {
     const shape = shapeProblems(raw, id);
     if (shape.length) return shape;
-    const out = raw.turn === undefined ? providesProblems(raw, id, BLOCK_KEYS, 'kinds') : dataProblems(raw, id);
-    return out.length ? out : viewProblems(raw, id);
+    const out = raw.turn === undefined ? providesProblems(raw, id, BLOCK_KEYS, 'kinds', builtin) : dataProblems(raw, id);
+    return out.length ? out : viewProblems(raw, id, builtin);
   },
   // The view is known before the code runs and before trust, so the server can show it and the import summary can list it.
   preview: recordView,

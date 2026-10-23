@@ -1,5 +1,7 @@
-import type { Workflow, Step, Cond } from './model.js';
+import type { Workflow, Step } from './model.js';
+import type { ModInstrs } from './index.js';
 import { CARDS } from './cards/index.js';
+import { CONDS } from './conds/index.js';
 import { CORE_OPS, NODES, opOf, type CompileCtx } from './nodes/index.js';
 import { FAULT_OP, modOfOp, tame } from './guard.js';
 
@@ -12,24 +14,8 @@ export interface Policy {
 
 // The instruction shapes, keyed by op. A kind adds its own by merging into this interface.
 export interface Instrs {
-  RECALL: { step: string; topics: string[] };
   // src: the step as compiled (block steps prefixed), so a step inlined by `use` keeps its prompt.
   TURN: { step: string; policy: Policy; src: Step };
-  GATE: { step: string; cond: Cond };
-  LOOP_IN: { step: string; max: number };
-  RUN: {
-    step: string;
-    cmd: string;
-    onPassJump?: number;
-    onFailJump?: number;
-    linkMax?: number;
-    repeatCond?: Cond;
-    loopExit?: number;
-  };
-  LOOP_BK: { step: string; target: number; cond?: Cond };
-  IF: { step: string; cond: Cond; elseJump: number };
-  VERIFY: { step: string; against: string; onFailJump?: number; linkMax?: number };
-  STORE: { step: string; what: string };
   // A kind's own instruction (P12): run by `NodeType.exec` of `kind`, `src` the step as compiled.
   NODE: { step: string; kind: string; src: Step };
   JUMP: { target: number; step?: string; linkMax?: number };
@@ -38,7 +24,8 @@ export interface Instrs {
 
 // top: index of the top-level step this instruction belongs to (a repeat's inner steps and
 // steps inlined by `use` report their parent), so "step N of M" always counts the same things.
-export type Instr = { [K in keyof Instrs]: { op: K } & Instrs[K] }[keyof Instrs] & { top?: number };
+type AllInstrs = Instrs & ModInstrs;
+export type Instr = { [K in keyof AllInstrs]: { op: K } & AllInstrs[K] }[keyof AllInstrs] & { top?: number };
 
 export interface CompileTurnContext {
   workflowName: string;
@@ -117,6 +104,8 @@ export function compileProgram(
   const stepToIndex = new Map<string, number>();
   // A missing target leaves a run/verify onFailJump unset (falls through) and sends a JUMP to `fallback`.
   const links: Array<{ apply(index: number): void; target: string; fallback: number }> = [];
+  /** Where the step being compiled began, innermost last: `loopBody` reaches no instruction before it. */
+  const stepFrom: number[] = [];
   const ctx: CompileCtx = {
     at: () => instrs.length,
     push: (i) => { instrs.push(i); return i; },
@@ -124,6 +113,25 @@ export function compileProgram(
     compile: (steps) => { for (const s of steps) compileStep(s); },
     linkTo: (target, apply, fallback = -1) => { links.push({ apply, target, fallback }); },
     linkLater: (instr, target) => ctx.linkTo(target, (t) => { instr.onFailJump = t; }),
+    loopBody: (step, from, exit) => {
+      const cond = step.cond;
+      if (!cond) return false;
+      // Looked up by name in the registries: the first kid runs a command (its op says so) and the loop's condition is judged by that same command (its atom says so). A throwing atom hook is "no".
+      const first = step.kids?.[0];
+      const passes =
+        first !== undefined &&
+        Object.values(NODES.get(first.kind)?.ops ?? {}).some((o) => o.ranCommand === true) &&
+        (() => { try { return CONDS.get(cond.t)?.sameAsRun?.(cond, first.attrs.cmd || '') === true; } catch { return false; } })();
+      let taken = false;
+      for (let k = Math.max(from, stepFrom.at(-1) ?? 0); k < instrs.length; k++) {
+        const ins = instrs[k]!;
+        const patch = opOf(ins.op)?.inLoop?.(ins, { cond, exit, passes: passes && k === from });
+        if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) continue;
+        for (const [key, v] of Object.entries(patch)) if (!['op', 'step', 'top', '__proto__'].includes(key)) (ins as Record<string, unknown>)[key] = v;
+        taken = true;
+      }
+      return taken;
+    },
     resolveBlock,
   };
 
@@ -138,8 +146,10 @@ export function compileProgram(
     stepToIndex.set(step.id, from);
     const parents = [...open];
     open.push(step.id);
+    stepFrom.push(from);
     const node = NODES.get(step.kind);
     node?.compile(step, node.mod ? modCtx : ctx);
+    stepFrom.pop();
     if (node?.mod) modSpans.push([from, instrs.length]);
     open.pop();
     // The inner step finishes first, so the outer one is put in front of it.

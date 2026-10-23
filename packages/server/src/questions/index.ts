@@ -1,4 +1,3 @@
-import { BUILTIN_VIEWS } from '@reins/core';
 import budget from './budget.js';
 import gate from './gate.js';
 import judge from './judge.js';
@@ -26,11 +25,12 @@ const NAMES = new Set(QUESTIONS.map((q) => q.kind));
 
 /**
  * The words for a `provides` entry that names a question card, or undefined. A block kind of the same name is the block (`gate`), not the
- * question, so a `kinds` entry that is a built-in block is left to the rules for blocks.
+ * question, so a `kinds` entry of a built-in mod (`builtin`: the default pack's, or a copy of one) is left to the rules for blocks, which refuse a second
+ * block of the same kind.
  */
-export function questionRefusal(key: string, name: unknown): string | undefined {
+export function questionRefusal(key: string, name: unknown, builtin = false): string | undefined {
   if (typeof name !== 'string' || !NAMES.has(name)) return undefined;
   if (key !== 'kinds' && key !== 'conditions' && key !== 'cards') return undefined;
-  if (key === 'kinds' && BUILTIN_VIEWS.some((v) => v.kind === name)) return undefined;
+  if (key === 'kinds' && builtin) return undefined;
   return `\`provides.${key}\` names \`${name}\`, which is a question card. Question cards belong to Reins: a mod cannot add, replace or change one.`;
 }

@@ -1,0 +1,15 @@
+{
+  "reins": 1,
+  "id": "cond-same",
+  "kind": "condition",
+  "version": "1.0.0",
+  "label": "Condition: same error twice",
+  "description": "True when the last two commands failed with the same error",
+  "main": "index.js",
+  "order": 100,
+  "pack": "default",
+  "provides": { "conditions": ["same"] },
+  "view": {
+    "same": { "label": "same error twice", "fresh": { "t": "same" } }
+  }
+}

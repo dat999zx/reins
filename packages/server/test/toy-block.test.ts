@@ -7,7 +7,7 @@ import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { CARDS, CONDS, NODES, Run, checkMode, compileProgram, opOf, parseWorkflow, policyOf, printWorkflow, receipt, turnInstr, validate } from '@reins/core';
+import { CARDS, CONDS, NODES, Run, checkMode, compileProgram, opOf, parseCond, parseWorkflow, policyOf, printCond, printWorkflow, receipt, turnInstr, validate } from '@reins/core';
 import { harness } from '../../core/test/m1-harness.js';
 import { kindOf, kindsInOrder } from '../src/mods/kinds.js';
 import { startMods } from '../src/engines.js';
@@ -255,16 +255,18 @@ describe('the api registers only what `provides` lists, and a refusal leaves not
     expect(NODES.has('beep')).toBe(true);
   });
 
-  it('the api and api.core are frozen, and core holds exactly checkMode, policyOf and turnInstr', async () => {
+  it('the api and api.core are frozen, and core holds exactly checkMode, driftFound, globMatcher, isValidGlob, parseCond, policyOf, printCond, relPath and turnInstr', async () => {
     h.writeMod('bad', blockManifest(), { 'index.js': code('globalThis.__core = api.core; globalThis.__shape = { api: Object.keys(api).sort(), core: Object.keys(api.core).sort(), frozen: [Object.isFrozen(api), Object.isFrozen(api.core)] };') });
     await load();
     expect(g.__shape).toEqual({
       api: ['core', 'env', 'registerBlock', 'registerCard', 'registerCondition', 'registerProtocol'],
-      core: ['checkMode', 'policyOf', 'turnInstr'],
+      core: ['checkMode', 'driftFound', 'globMatcher', 'isValidGlob', 'parseCond', 'policyOf', 'printCond', 'relPath', 'turnInstr'],
       frozen: [true, true],
     });
     expect(g.__core.checkMode).toBe(checkMode);
+    expect(g.__core.parseCond).toBe(parseCond);
     expect(g.__core.policyOf).toBe(policyOf);
+    expect(g.__core.printCond).toBe(printCond);
     expect(g.__core.turnInstr).toBe(turnInstr);
   });
 });

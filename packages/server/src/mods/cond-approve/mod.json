@@ -1,0 +1,15 @@
+{
+  "reins": 1,
+  "id": "cond-approve",
+  "kind": "condition",
+  "version": "1.0.0",
+  "label": "Condition: you approve",
+  "description": "True when you approve at a pause",
+  "main": "index.js",
+  "order": 10,
+  "pack": "default",
+  "provides": { "conditions": ["approve"] },
+  "view": {
+    "approve": { "label": "you approve", "fresh": { "t": "approve" } }
+  }
+}

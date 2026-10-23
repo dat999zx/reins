@@ -1,0 +1,15 @@
+{
+  "reins": 1,
+  "id": "cond-cmd",
+  "kind": "condition",
+  "version": "1.0.0",
+  "label": "Condition: command passes",
+  "description": "True when a command you name exits 0",
+  "main": "index.js",
+  "order": 30,
+  "pack": "default",
+  "provides": { "conditions": ["cmd"] },
+  "view": {
+    "cmd": { "label": "command passes", "fresh": { "t": "cmd", "cmd": "npm run lint" }, "param": { "key": "cmd", "look": "code" } }
+  }
+}

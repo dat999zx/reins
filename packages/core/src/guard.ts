@@ -173,7 +173,7 @@ export function guardNode(src: NodeType): NodeType {
   if (n.ops && typeof n.ops === 'object') {
     const ops: Record<string, OpType<any>> = {};
     for (const [name, o] of Object.entries(n.ops)) {
-      const { exec, next, starts, commands, allowMore, ranCommand } = o;
+      const { exec, next, starts, commands, allowMore, ranCommand, inLoop } = o;
       // A copy of the instruction goes in; `bad` is what a throw becomes (a function: of the error).
       const at = (f: (i: Instr) => unknown, bad: unknown) => (i: Instr) => { try { return f(structuredClone(i)); } catch (e) { return typeof bad === 'function' ? bad(e) : bad; } };
       const g: OpType<any> = Object.freeze({
@@ -183,6 +183,8 @@ export function guardNode(src: NodeType): NodeType {
         ...(commands ? { commands: at((i) => { const r = commands.call(o, i); return Array.isArray(r) ? r.filter((c): c is string => typeof c === 'string') : []; }, (e: unknown) => [faultLine(where(`the commands of ${name}`), e)]) } : {}),
         ...(allowMore ? { allowMore: at((i) => { const r = allowMore.call(o, i); return whole(r) && r >= 0 ? r : undefined; }, undefined) } : {}),
         ...(ranCommand === true ? { ranCommand: true as const } : {}),
+        // The patch is a copy of plain data; a throw (or a patch that is not an object) takes nothing.
+        ...(inLoop ? { inLoop: (i: Instr, loop: unknown) => { try { const r = inLoop.call(o, structuredClone(i), structuredClone(loop) as never); return r !== null && typeof r === 'object' && !Array.isArray(r) ? structuredClone(r) : undefined; } catch { return undefined; } } } : {}),
       });
       MOD_OPS.set(g, info);
       ops[name] = g;

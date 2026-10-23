@@ -18,6 +18,10 @@ export function relPath(p: string, cwd: string): string {
   return inside ? norm.slice(root.length) : norm.replace(/^\.\//, '');
 }
 
+/** A matcher for a workflow glob, with picomatch's defaults: what the `touches` condition tests a tool's path with. A mod gets it through `api.core`, never the package. */
+export const globMatcher = (glob: string): ((rel: string) => boolean) => picomatch(glob);
+export { isValidGlob } from './util.js';
+
 function guardHit(policy: Policy, path: string, cwd: string): string | undefined {
   const rel = relPath(path, cwd);
   // Windows and macOS filesystems ignore case, so `MIGRATIONS/x` is the same file as `migrations/x`.

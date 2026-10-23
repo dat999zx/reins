@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
-  Registry, NODES, CONDS, CARDS, register, registerCondition, registerCard, opOf, runNode, validate, parseCond,
+  Registry, NODES, CONDS, CARDS, register, registerCondition, registerCard, opOf, validate, parseCond,
   checkMode, turnInstr, policyOf,
 } from '../src/index.js';
 import type { NodeType, CondType, CardType, Step, Workflow } from '../src/index.js';
@@ -12,6 +12,8 @@ declare module '../src/model.js' {
 }
 
 const ids = (r: Registry, kind = 'k') => r.entries(kind).map(([id]) => id);
+// `run` is the default pack's block (M3): core registers none, the test setup loads the pack.
+const runNode = NODES.get('run')!;
 
 describe('Registry: order, ties, shadow, dispose', () => {
   it('lists by order, then by insertion; no order goes after every number', () => {

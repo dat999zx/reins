@@ -206,7 +206,7 @@ The default export of `main` is `activate(api)`. Reins calls it once. The `api` 
 - `registerBlock(node)`: one argument, a `NodeType` (see `packages/core/src/nodes/README.md`). The block's view is the manifest's `view`. Code cannot give a view.
 - `registerCondition(c)`: a `CondType`.
 - `registerCard(c)`: a `CardType`.
-- `core`: exactly `checkMode`, `turnInstr` and `policyOf`. Nothing else: not `register`, `NODES`, `CONDS`, `CARDS` or `opOf`.
+- `core`: exactly `checkMode`, `turnInstr`, `policyOf`, `parseCond` and `printCond` (the last two for a block that takes a condition in its heading, like `if`). Nothing else: not `register`, `NODES`, `CONDS`, `CARDS` or `opOf`.
 - `env` and `registerProtocol`, as for a protocol mod.
 
 When `activate` returns or throws, the registrars refuse with "the api can only be used while the mod activates." `core` stays callable, because a block calls `turnInstr` when it runs.

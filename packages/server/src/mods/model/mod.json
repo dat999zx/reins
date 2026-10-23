@@ -1,0 +1,34 @@
+{
+  "reins": 1,
+  "id": "model",
+  "kind": "block",
+  "version": "1.0.0",
+  "label": "Model",
+  "description": "Switches the model and opens a USD budget for the steps after it",
+  "main": "index.js",
+  "order": 110,
+  "pack": "default",
+  "provides": { "kinds": ["model"], "attrs": ["model", "reasoning", "usd"], "events": ["model_switched"] },
+  "view": {
+    "kind": "model",
+    "order": 100,
+    "colour": "mine",
+    "slice": "opens",
+    "fields": [
+      { "key": "model", "label": "Model", "input": "model" },
+      { "key": "reasoning", "label": "Reasoning", "input": "effort", "inherits": true },
+      { "key": "usd", "label": "Budget (USD)", "input": "text", "error": "USD must be an amount above 0, like 2.50. Leave it empty for no USD limit.", "ph": "optional", "check": "usd" }
+    ],
+    "line": ["switch model to", { "field": "model" }, { "field": "reasoning" }, "USD", { "field": "usd" }],
+    "card": { "label": "switch model", "section": "Flow" },
+    "fresh": {},
+    "status": {
+      "model_switched": {
+        "state": "done",
+        "why": { "key": "how", "words": { "switched": "now", "same": "already on", "kept": "kept" }, "add": "label" },
+        "label": { "model": "model", "name": "label", "when": { "key": "how", "is": ["switched", "same"] } }
+      }
+    },
+    "hidden": ["model_switched"]
+  }
+}

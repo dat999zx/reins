@@ -16,11 +16,15 @@ export const ROW_CLASSES: readonly string[] = ['sx-sub', 'faint'];
 /** The event types core logs: a mod's row never covers one of these. (Not a `Record<keyof RunEvents, 1>`: other files merge their own names into that interface; a test pins this list to its source.) */
 export const CORE_EVENTS: Record<string, 1> = {
   run_started: 1, run_paused: 1, run_resumed: 1, run_stopped: 1, run_finished: 1, turn_started: 1, turn_ended: 1, step_started: 1, command_result: 1,
-  tool_call: 1, refusal: 1, card_queued: 1, card_delivered: 1, gate_paused: 1, gate_approved: 1, loop_iteration: 1, loop_budget_exceeded: 1,
-  link_jump: 1, link_budget_exceeded: 1, verify_result: 1, recall: 1, store: 1, budget_warning: 1, engine_cost: 1, model_switched: 1, budget_reached: 1,
+  tool_call: 1, refusal: 1, card_queued: 1, card_delivered: 1, gate_approved: 1,
+  link_jump: 1, link_budget_exceeded: 1, budget_warning: 1, engine_cost: 1, budget_reached: 1,
   subagent_started: 1, subagent_result: 1, hook: 1, judge: 1, track_started: 1, track_ended: 1,
 };
 export const isCoreEvent = (type: string): boolean => Object.hasOwn(CORE_EVENTS, type);
+/** Core events whose feed row one block of the default pack draws: the event, and the kind whose view may carry the row. */
+const EVENT_ROW_KIND: Record<string, string> = { subagent_started: 'subagent', subagent_result: 'subagent' };
+/** True when a view of `kind` may carry a row for `type`: any event core does not log, or one core logs for that very kind. */
+export const mayRow = (type: string, kind: unknown): boolean => !isCoreEvent(type) || (Object.hasOwn(EVENT_ROW_KIND, type) && EVENT_ROW_KIND[type] === kind);
 
 export const MAX_VIEW_LIST = 50;
 export const MAX_ROW_TEXT = 200;
@@ -38,7 +42,7 @@ const goodName = (v: unknown): v is string => typeof v === 'string' && NAME.test
 const FIELD_KEYS = ['key', 'label', 'input', 'error', 'inherits', 'ph', 'required', 'check', 'unset'];
 
 /** What the mod providing the view may use (its `provides`). Without it the view is core's or one the server already checked. */
-export interface ViewScope { mod?: { attrs: readonly string[]; events: readonly string[] }; served?: true }
+export interface ViewScope { mod?: { attrs: readonly string[]; events: readonly string[]; /** A block of the default pack, or a copy of one: its `fresh` may hold a condition (the `if` and `gate` blocks). */ pack?: true }; served?: true }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isText = (v: unknown, n = MAX_ROW_TEXT): v is string => typeof v === 'string' && v !== '' && v.length <= n;
@@ -133,8 +137,8 @@ export function viewShapeProblem(v: unknown, scope: ViewScope = {}): string | un
   if (v.fresh !== undefined) {
     const f = v.fresh;
     if (!isObj(f)) return '`view.fresh` must be an object.';
-    const bad = extraKey(f, mod ? ['title', 'prompt', 'attrs'] : ['title', 'prompt', 'attrs', 'cond']);
-    if (bad !== undefined) return `\`view.fresh\` has ${name(bad)}; a new block may start with a ${mod ? 'title, a prompt and attributes' : 'title, a prompt, attributes and a condition'} only.`;
+    const bad = extraKey(f, mod && !mod.pack ? ['title', 'prompt', 'attrs'] : ['title', 'prompt', 'attrs', 'cond']);
+    if (bad !== undefined) return `\`view.fresh\` has ${name(bad)}; a new block may start with a ${mod && !mod.pack ? 'title, a prompt and attributes' : 'title, a prompt, attributes and a condition'} only.`;
     for (const k of ['title', 'prompt'] as const) if (f[k] !== undefined && typeof f[k] !== 'string') return `\`view.fresh.${k}\` must be text.`;
     if (f.cond !== undefined && !isObj(f.cond)) return '`view.fresh.cond` must be an object.';
     if (f.attrs !== undefined) {
@@ -155,8 +159,8 @@ export function viewShapeProblem(v: unknown, scope: ViewScope = {}): string | un
       if (typeof r.text !== 'string' || r.text.length > MAX_ROW_TEXT) return `${at} needs a \`text\` of at most ${MAX_ROW_TEXT} characters.`;
       if (r.details !== undefined && (typeof r.details !== 'string' || r.details.length > MAX_ROW_DETAILS)) return `${at} has a \`details\` that is not text of at most ${MAX_ROW_DETAILS} characters.`;
       if (r.className !== undefined && !ROW_CLASSES.includes(r.className as string)) return `${at} has \`className\` ${name(r.className)}. It must be one of ${ROW_CLASSES.join(', ')}.`;
-      if (mod && isCoreEvent(type)) return `${at} is an event core logs, and a mod's row cannot cover it.`;
-      if (mod && !mod.events.includes(type)) return `${at} is not in \`provides.events\`.`;
+      if (mod && !mayRow(type, v.kind)) return `${at} is an event core logs, and a mod's row cannot cover it.`;
+      if (mod && !isCoreEvent(type) && !mod.events.includes(type)) return `${at} is not in \`provides.events\`.`;
     }
   }
   if (v.status !== undefined) {

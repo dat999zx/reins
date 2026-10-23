@@ -4,6 +4,7 @@
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CARDS, CONDS, hasHiddenChars, registerCard, registerCondition, Registry } from '@reins/core';
+import { BUNDLED_MODS } from '../src/engines.js';
 import { loadMods } from '../src/mods/loader.js';
 import type { LoadedMod, Mods } from '../src/mods/types.js';
 import { servedKinds } from '../src/mods/kinds-view.js';
@@ -36,6 +37,12 @@ afterEach(async () => {
 
 const load = async (trusted = true) => {
   const m = await loadMods({ bundledDir: path.join(h.home, 'no-bundled'), userDir: h.modsDir, home: h.home, disabled: new Set(), trusted: () => trusted, env: {} });
+  loaded.push(m);
+  return m;
+};
+/** The same load with the bundled folder the product ships: the default pack's conditions and cards (M3 Task 8) are in core, with their editor data from their manifests. */
+const loadReal = async (trusted = true) => {
+  const m = await loadMods({ bundledDir: BUNDLED_MODS, userDir: h.modsDir, home: h.home, disabled: new Set(), trusted: () => trusted, env: {} });
   loaded.push(m);
   return m;
 };
@@ -101,13 +108,14 @@ describe('the eight question cards are core data', () => {
 });
 
 describe('no mod can load a question card', () => {
-  it('questionRefusal: a question name in kinds (unless it is a built-in block), conditions or cards; nothing else', () => {
+  it('questionRefusal: a question name in kinds (unless it is a built-in mod\'s: the pack\'s gate block), conditions or cards; nothing else', () => {
     for (const q of ['budget', 'usd', 'tool', 'trust', 'judge', 'resume', 'switch']) {
       for (const key of ['kinds', 'conditions', 'cards']) expect(questionRefusal(key, q), `${key} ${q}`).toContain('is a question card');
     }
     expect(questionRefusal('cards', 'gate')).toContain('is a question card');
     expect(questionRefusal('conditions', 'gate')).toContain('is a question card');
-    expect(questionRefusal('kinds', 'gate')).toBeUndefined(); // the gate BLOCK is a kind; the rules for blocks apply
+    expect(questionRefusal('kinds', 'gate', true)).toBeUndefined(); // the gate BLOCK is the default pack's kind; the rules for blocks apply
+    expect(questionRefusal('kinds', 'gate')).toContain('is a question card'); // a mod of the user's cannot bring it (M3 Task 4)
     for (const key of ['attrs', 'ops', 'events']) expect(questionRefusal(key, 'budget'), key).toBeUndefined();
     for (const n of ['guard', 'ping', '', 'Budget', 'constructor']) expect(questionRefusal('cards', n), n).toBeUndefined();
     for (const n of [undefined, null, 3, {}, ['usd']]) expect(questionRefusal('cards', n), String(n)).toBeUndefined();
@@ -128,13 +136,13 @@ describe('no mod can load a question card', () => {
     expect(coreNow()).toBe(before);
   });
 
-  it('a block mod that provides a question as a kind is refused; one that provides the gate block is not refused for that reason', async () => {
+  it('a block mod that provides a question as a kind is refused; a user mod that provides the gate block is refused too (the gate block is the default pack\'s)', async () => {
     const block = (id: string, k: string) => ({ reins: 1, id, kind: 'block', version: '1.0.0', label: id, main: 'index.js', order: 500, provides: { kinds: [k] }, view: { kind: k, fields: [], line: [k] } });
     h.writeMod('bad-trust', block('bad-trust', 'trust'), { 'index.js': code('') });
     h.writeMod('shadow-gate', block('shadow-gate', 'gate'), { 'index.js': code('') });
     const mods = await load();
     expect(find(mods, 'bad-trust').problems.join()).toContain('which is a question card');
-    expect(find(mods, 'shadow-gate').problems.join()).not.toContain('question card');
+    expect(find(mods, 'shadow-gate').problems.join()).toContain('which is a question card');
   });
 
   it('a mod of kind `question` is not a kind of mod', async () => {
@@ -252,13 +260,15 @@ describe('a condition mod\'s view is checked when it loads', () => {
 });
 
 describe('the served conditions and cards', () => {
-  it('the built-in conditions come with their views, in core\'s order', () => {
-    const s = servedKinds();
+  it('the pack\'s conditions come with their views (the manifests\'), in core\'s order; core alone offers none', async () => {
+    expect(servedKinds().conds).toEqual([]);
+    const mods = await loadReal();
+    const s = servedKinds(mods);
     expect(s.conds.map((c) => c.t)).toEqual(COND_ORDER);
     expect(s.conds.map((c) => c.t)).toEqual([...CONDS.keys()]);
     for (const c of s.conds) {
       const { t, ...view } = c;
-      expect(view, t).toEqual(JSON.parse(JSON.stringify(CONDS.get(t)!.view)));
+      expect(view, t).toEqual(JSON.parse(JSON.stringify(mods.registry.get('cond-view', t))));
     }
     expect(s.conds.find((c) => c.t === 'cmd')).toEqual({ t: 'cmd', label: 'command passes', fresh: { t: 'cmd', cmd: 'npm run lint' }, param: { key: 'cmd', look: 'code' } });
     expect(s.conds.find((c) => c.t === 'review')?.param).toEqual({ key: 'q', look: 'str', optional: true });
@@ -267,8 +277,8 @@ describe('the served conditions and cards', () => {
     expect(s.problems).toEqual([]);
   });
 
-  it('every built-in param key is one of the four', () => {
-    for (const c of servedKinds().conds) if (c.param) expect(['cmd', 'q', 'n', 'glob'], c.t).toContain(c.param.key);
+  it('every pack param key is one of the four', async () => {
+    for (const c of servedKinds(await loadReal()).conds) if (c.param) expect(['cmd', 'q', 'n', 'glob'], c.t).toContain(c.param.key);
   });
 
   it('the route carries them', async () => {
@@ -280,7 +290,7 @@ describe('the served conditions and cards', () => {
 
   it('a condition mod\'s view is served at the place the condition has in core; its code cannot hand over a view', async () => {
     h.writeMod('ping', condMod('ping', { order: 25 }), { 'index.js': code(`api.registerCondition(${atom('ping', ", view: { label: 'EVIL', fresh: { t: 'ping' } }")});`) });
-    const mods = await load();
+    const mods = await loadReal();
     expect(find(mods, 'ping').problems).toEqual([]);
     const s = servedKinds(mods);
     expect(s.conds.map((c) => c.t)).toEqual([...COND_ORDER.slice(0, 2), 'ping', ...COND_ORDER.slice(2)]);
@@ -288,14 +298,14 @@ describe('the served conditions and cards', () => {
     expect(CONDS.get('ping')!.view).toBeUndefined();
     expect(JSON.stringify(s)).not.toContain('EVIL');
     mods.dispose();
-    expect(servedKinds(mods).conds.map((c) => c.t)).toEqual(COND_ORDER);
+    expect(servedKinds(mods).conds.map((c) => c.t)).toEqual([]); // the pack's atoms go with the load, as the mod's own
     expect(mods.registry.has('cond-view', 'ping')).toBe(false); // the view goes with the mod
   });
 
   it('a condition or card mod whose code is not trusted is not in core, so not offered', async () => {
     h.writeMod('ping', condMod('ping'), { 'index.js': code(`api.registerCondition(${atom('ping')});`) });
     h.writeMod('zap', cardMod('zap'), { 'index.js': code("api.registerCard({ kind: 'zap' });") });
-    const mods = await load(false);
+    const mods = await loadReal(false);
     expect(find(mods, 'ping').problems.join()).toContain('needs trust');
     const s = servedKinds(mods);
     expect(s.conds.map((c) => c.t)).toEqual(COND_ORDER);
@@ -304,7 +314,7 @@ describe('the served conditions and cards', () => {
 
   it('a card mod\'s words are served, after the built-in guard; its code cannot hand over a view', async () => {
     h.writeMod('zap', cardMod('zap'), { 'index.js': code("api.registerCard({ kind: 'zap', view: { section: 'EVIL', add: 'EVIL' } });") });
-    const mods = await load();
+    const mods = await loadReal();
     expect(find(mods, 'zap').problems).toEqual([]);
     expect(servedKinds(mods).cards).toEqual([{ kind: 'guard', section: 'Guards', add: 'Add guard' }, { kind: 'zap', section: 'Zaps', add: 'Add zap' }]);
     expect(JSON.stringify(servedKinds(mods))).not.toContain('EVIL');
@@ -313,27 +323,33 @@ describe('the served conditions and cards', () => {
     expect(mods.registry.has('card-view', 'zap')).toBe(false);
   });
 
-  it('a card with no view (now, stop) is not offered', () => {
+  it('a card with no view (now, stop) is not offered', async () => {
+    const mods = await loadReal();
     expect([...CARDS.keys()]).toEqual(['guard', 'now', 'stop']);
-    expect(servedKinds().cards.map((c) => c.kind)).toEqual(['guard']);
+    expect(servedKinds(mods).cards.map((c) => c.kind)).toEqual(['guard']);
   });
 
-  // Task 25a (MINOR 2): a view recorded under a core name is never served; the built-in's own data is. (This pin said the manifest's view won.)
-  it('the built-in\'s data is served for a core atom or card, whatever a view recorded under its name says', () => {
-    const registry = new Registry();
-    registry.register('cond-view', 'cmd', { label: 'Mine', fresh: { t: 'cmd', cmd: 'x' } });
-    registry.register('card-view', 'guard', { section: 'Mine', add: 'Mine' });
-    const s = servedKinds({ registry, mods: [] } as never);
+  // Task 25a (MINOR 2), after M3 Task 8: the pack's data for a pack atom or card is the one its manifest recorded; a view recorded under that name
+  // by anyone else is refused by the registry (the name is taken), so it is never served. (At HEAD core held the data; now the pack's mod does.)
+  it('a view recorded under a pack atom\'s or card\'s name by anyone else is refused, and the pack\'s data is served', async () => {
+    const mods = await loadReal();
+    expect(() => mods.registry.register('cond-view', 'cmd', { label: 'Mine', fresh: { t: 'cmd', cmd: 'x' } })).toThrow(/already registered/);
+    expect(() => mods.registry.register('card-view', 'guard', { section: 'Mine', add: 'Mine' })).toThrow(/already registered/);
+    const s = servedKinds(mods);
     expect(s.conds.find((c) => c.t === 'cmd')?.label).toBe('command passes');
     expect(s.conds.find((c) => c.t === 'tests')?.label).toBe('tests pass');
     expect(s.conds.map((c) => c.t)).toEqual(COND_ORDER);
     expect(s.cards).toEqual([{ kind: 'guard', section: 'Guards', add: 'Add guard' }]);
   });
 
-  it('the served t is the atom\'s own, whatever the view says', () => {
-    const registry = new Registry();
-    registry.register('cond-view', 'cmd', { t: 'tests', label: 'Mine', fresh: { t: 'cmd' } });
-    expect(servedKinds({ registry, mods: [] } as never).conds.filter((c) => c.t === 'tests')).toHaveLength(1);
+  it('the served t is the atom\'s own, whatever the view says', async () => {
+    const mods = await loadReal();
+    expect(servedKinds(mods).conds.filter((c) => c.t === 'tests')).toHaveLength(1);
+    const copy = new Registry();
+    copy.register('cond-view', 'cmd', { t: 'tests', label: 'Mine', fresh: { t: 'cmd' } });
+    const s = servedKinds({ registry: copy, mods: [] } as never);
+    expect(s.conds.filter((c) => c.t === 'tests')).toHaveLength(0);
+    expect(s.conds.find((c) => c.t === 'cmd')).toEqual({ t: 'cmd', label: 'Mine', fresh: { t: 'cmd' } });
   });
 
   // These three used core names (cmd, guard, llm); a core name now serves the built-in's data, so they use atoms and cards a mod registered (Task 25a, MINOR 2).

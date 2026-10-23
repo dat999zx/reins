@@ -51,10 +51,10 @@ export interface CondParam { key: (typeof COND_PARAM_KEYS)[number]; look: (typeo
 /** What the editor needs to offer an atom: its menu words, a new atom, and the box. Plain data; a mod gives it in its manifest, never in code. */
 export interface CondView { label: string; fresh: { t: string; [field: string]: string | number | boolean }; param?: CondParam }
 
-/** One condition atom. Add a file under conds/ and list it in conds/index.ts. */
+/** One condition atom. Core registers none: each is a mod (the default pack's are under packages/server/src/mods/cond-*), added with `registerCondition`. */
 export interface CondType<C extends { t: string } = any> {
   t: string;
-  /** The editor's data for this atom (menu words, new atom, value box). A built-in has it; for a mod it comes from the manifest. */
+  /** The editor's data for this atom (menu words, new atom, value box). For a mod (the pack's too) it comes from the manifest. */
   view?: CondView;
   /**
    * Try this atom at the cursor. `null`: not mine, try the next atom (and leave `s.idx` as it was).
@@ -115,7 +115,7 @@ export function printCond(c: Cond): string {
       return `${left} or ${right}`;
     }
     default:
-      return CONDS.get(c.t)?.print(c) as string;
+      return CONDS.get((c as { t: string }).t)?.print(c) as string;   // `c` is `never` when core is compiled alone: the atoms are merged in by the pack's mods
   }
 }
 

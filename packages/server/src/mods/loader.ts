@@ -3,9 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { questionRefusal } from '../questions/index.js';
-import { checkMode, policyOf, register as registerNode, registerCard, registerCondition, turnInstr } from '@reins/core';
+import { checkMode, driftFound, globMatcher, isValidGlob, parseCond, policyOf, printCond, register as registerNode, registerCard, registerCondition, relPath, turnInstr } from '@reins/core';
 import type { NodeType } from '@reins/core';
-import { cap, kindIds, kindOf, kindsInOrder, show } from './kinds.js';
+import { cap, HOLDERS, kindIds, kindOf, kindsInOrder, show } from './kinds.js';
 import { Registry } from './registry.js';
 import type { Carried, LoadedMod, LoadOptions, ModApi, ModHost, Mods, ModSource, Problem, Protocol, Provides } from './types.js';
 
@@ -304,7 +304,7 @@ export const isModId = (id: unknown): id is string => typeof id === 'string' && 
 export function validateMod(raw: Record<string, unknown>, f: { folder: string; source: ModSource }, id: string, bundledKinds: Map<string, string>, registry: Registry): Problem[] {
   const common = commonProblems(raw, f, id, bundledKinds);
   if (common.length) return common;
-  return kindOf(raw.kind as string)!.validate(raw, { id, registry, source: f.source }).slice(0, 20); // a hostile file cannot flood the list
+  return kindOf(raw.kind as string)!.validate(raw, { id, registry, source: f.source, builtin: f.source === 'bundled' || bundledKinds.get(id) === raw.kind }).slice(0, 20); // a hostile file cannot flood the list
 }
 
 /** Everything one mod must undo: its registry entries and whatever else a kind handed back. */
@@ -400,7 +400,18 @@ interface Door<T> {
   /** Throws, in words, for anything `provides` does not list. */
   check(item: T, has: (key: keyof Provides, name: unknown, what: string) => void): void;
   /** `pack`: the mod is one of the default pack (only a bundled manifest can say so). */
-  put(item: T, order: number, may: May, pack: boolean): () => void;
+  put(item: T, order: number, may: May, pack: boolean, id: string): () => void;
+}
+
+/** Writes down which mod holds a condition or card name in core (`HOLDERS`, read by the manifest check); the disposer puts back what was there. */
+function holding(key: string, id: string, off: () => void): () => void {
+  const before = HOLDERS.get(key);
+  HOLDERS.set(key, id);
+  return () => {
+    if (before === undefined) HOLDERS.delete(key);
+    else HOLDERS.set(key, before);
+    off();
+  };
 }
 const DOORS: { [M in 'registerBlock' | 'registerCondition' | 'registerCard']: Door<Parameters<ModApi[M]>[0]> } = {
   registerBlock: {
@@ -422,13 +433,14 @@ const DOORS: { [M in 'registerBlock' | 'registerCondition' | 'registerCard']: Do
     kind: 'condition',
     copy: (c) => viewless(copyOf('registerCondition', c)),
     check: (c, has) => has('conditions', c.t, 'the condition'),
-    put: (c, order, may) => registerCondition(c, order, { shadow: may('cond-view', c.t) }),
+    // The default pack's atom, or a Customize copy of one, is answered like core's own: its complaint is the answer (`isModCond`).
+    put: (c, order, may, pack, id) => holding(`conditions:${c.t}`, id, registerCondition(c, order, { shadow: may('cond-view', c.t), pack: pack || may('cond-view', c.t) })),
   },
   registerCard: {
     kind: 'card',
     copy: (c) => viewless(copyOf('registerCard', c)),
     check: (c, has) => has('cards', c.kind, 'the card'),
-    put: (c, order, may) => registerCard(c, order, { shadow: may('card-view', c.kind) }),
+    put: (c, order, may, _pack, id) => holding(`cards:${c.kind}`, id, registerCard(c, order, { shadow: may('card-view', c.kind) })),
   },
 };
 
@@ -442,7 +454,7 @@ function buildApi(kindId: string, raw: Record<string, unknown>, env: NodeJS.Proc
   const order = typeof raw.order === 'number' ? raw.order : NaN;
   const has = (key: keyof Provides, name: unknown, what: string) => {
     if (typeof name !== 'string' || !provides[key]?.includes(name)) throw new Error(`\`provides.${key}\` does not list ${what} ${show(name)}.`);
-    const q = questionRefusal(key, name); // the manifest check refuses it too; this is the api's own
+    const q = questionRefusal(key, name, raw.pack === 'default' || (key === 'kinds' && typeof name === 'string' && may('block-view', name))); // the manifest check refuses it too; this is the api's own
     if (q) throw new Error(q);
   };
   const live = <A extends unknown[], R>(f: (...a: A) => R) => (...a: A): R => {
@@ -455,7 +467,7 @@ function buildApi(kindId: string, raw: Record<string, unknown>, env: NodeJS.Proc
       if (door.kind !== kindId) throw new Error(`\`${member}\` is for ${door.kind} mods; this is a ${kindId} mod.`);
       const copy = door.copy(item, typeof raw.id === 'string' ? raw.id : kindId, provides, raw.pack === 'default');
       door.check(copy, has);
-      const undo = door.put(copy, order, may, raw.pack === 'default');
+      const undo = door.put(copy, order, may, raw.pack === 'default', typeof raw.id === 'string' ? raw.id : kindId);
       tx.undo.push(undo);
       return undo;
     })]),
@@ -464,7 +476,7 @@ function buildApi(kindId: string, raw: Record<string, unknown>, env: NodeJS.Proc
     env,
     registerProtocol: live((p: Protocol) => registry.register('protocol-impl', p.id, p)),
     ...doors,
-    core: Object.freeze({ checkMode, policyOf, turnInstr }),
+    core: Object.freeze({ checkMode, driftFound, globMatcher, isValidGlob, parseCond, policyOf, printCond, relPath, turnInstr }),
   });
   return { api, close: () => { open = false; } };
 }

@@ -13,6 +13,7 @@ import { openStore, redactingStore } from '../src/store.js';
 import { askedQuestion, boot, cleanup, openStream, tmpDir } from './http-helpers.js';
 import { until } from './helpers.js';
 import { tempHome } from './mods-harness.js';
+import { usePack } from './pack-helper.js';
 
 const KEY = 'sk-test-0123456789abcdef';
 const TURN = { fixture: 'claude-2.1.281-turns.jsonl', turn: 0 };
@@ -138,6 +139,7 @@ function cliRun(body: string, key = KEY) {
 }
 
 describe('A. the terminal (reins run)', () => {
+  usePack(); // M3: the terminal runs in this process, so the default pack is loaded for this block only (the HTTP blocks below boot their own)
   it('a key that straddles the old 64 KB cut is not cut', async () => {
     // the old code wrote everything but the last 4096 characters once 64 KB was held: here that point falls inside the key
     const c = cliRun(`const k = ${JSON.stringify(KEY)};

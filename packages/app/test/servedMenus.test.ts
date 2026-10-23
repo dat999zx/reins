@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { type Cond, type Step, type Workflow } from '@reins/core';
-import { servedKinds } from '../../server/src/mods/kinds-view.js';
+import { served } from './app-pack.js';
 import { BlockPanel } from '../src/BlockPanel.js';
 import { BlocksPane } from '../src/BlocksPane.js';
 import { CARD_KINDS, CARD_LABEL, setCards } from '../src/canvasKinds.js';
@@ -16,7 +16,7 @@ import { actionsFor, detailFor, GENERIC, offersStop, setQuestions } from '../src
 const esc = (s: string) => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 
 const wire = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
-const baseline = () => { const s = servedKinds(); setConds(s.conds); setCards(s.cards); setQuestions(s.questions); };
+const baseline = () => { const s = served(); setConds(s.conds); setCards(s.cards); setQuestions(s.questions); };
 afterEach(baseline); // what the setup file made
 
 const step = (kind: string, over: Partial<Step> = {}) => ({ id: `${kind}-1`, kind, attrs: {}, cards: [], links: [], ...over }) as Step;
@@ -33,7 +33,7 @@ const panel = (s: Step) => renderToStaticMarkup(createElement(BlockPanel, { step
  * reply is edited here, which is all these tests need: the app draws what it is served.)
  */
 function withMod() {
-  const s = wire(servedKinds());
+  const s = wire(served());
   s.conds = s.conds.map((c) => (c.t === 'cmd' ? { ...c, label: 'Beep says so', fresh: { t: 'cmd', cmd: 'beep' }, param: { key: 'cmd', look: 'code' } } : c)) as typeof s.conds;
   s.cards = s.cards.map((c) => (c.kind === 'guard' ? { ...c, section: 'Notes', add: 'Add note' } : c));
   return s;
@@ -68,7 +68,7 @@ describe('the condition menu is built from the served list', () => {
   });
 
   it('a condition the app has no entry for draws as its name, and its box does not exist', () => {
-    setConds(wire(servedKinds().conds).filter((c: { t: string }) => c.t !== 'tests'));
+    setConds(wire(served().conds).filter((c: { t: string }) => c.t !== 'tests'));
     const html = pane(step('repeat', { cond: { t: 'tests' } as Cond }));
     expect(html).toContain('>tests</span>');
     expect(applyParam({ t: 'tests' } as Cond, 'x')).toBeUndefined();
@@ -85,7 +85,7 @@ describe('the condition menu is built from the served list', () => {
   it('a stored step with a served condition reads back, and one with a condition that is gone does not', () => {
     const raw = { id: 'a', kind: 'if', attrs: {}, cards: [], links: [], cond: { t: 'cmd', cmd: 'x' } };
     expect(cleanStep(raw)).toBeDefined();
-    setConds(wire(servedKinds().conds).filter((c: { t: string }) => c.t !== 'cmd'));
+    setConds(wire(served().conds).filter((c: { t: string }) => c.t !== 'cmd'));
     expect(cleanStep(raw)).toBeUndefined();
   });
 

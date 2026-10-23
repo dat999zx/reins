@@ -9,6 +9,7 @@ import { KEY_IN_WORKFLOW, Redactor, setKey } from '../src/secrets.js';
 import { KEY_IN_IDENTITY, openStore, redactingStore } from '../src/store.js';
 import { boot, cleanup, tmpDir } from './http-helpers.js';
 import { tempHome } from './mods-harness.js';
+import { usePack } from './pack-helper.js';
 
 const KEY = 'sk-test-0123456789abcdef';
 const KEY_B = 'sk-test-fedcba9876543210';
@@ -146,6 +147,7 @@ describe('3. print --write', () => {
 });
 
 describe('8. the end of the terminal output', () => {
+  usePack(); // M3: the terminal runs in this process, so the default pack is loaded for this block only
   it('the start of a key that never completes is hidden when the output ends (p29a A11: it used to be written), and a clean line before it is not lost', async () => {
     const t = tempHome();
     try {

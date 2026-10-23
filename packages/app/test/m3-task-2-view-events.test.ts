@@ -6,9 +6,11 @@ import type { LogRow } from '@reins/server/store.js';
 import { viewShapeProblem } from '../../core/src/viewShape.js';
 import { loadMods } from '../../server/src/mods/loader.js';
 import { servedKinds } from '../../server/src/mods/kinds-view.js';
+import { served as appServed } from './app-pack.js';
 import type { Mods } from '../../server/src/mods/types.js';
 import { tempHome } from '../../server/test/mods-harness.js';
 import { setConds, standInCond } from '../src/condKinds.js';
+import { served as packServed } from './app-pack.js';
 import { KINDS, setKinds } from '../src/canvasKinds.js';
 import { feed } from '../src/feed.js';
 import { drawable, hidden } from '../src/rows/hidden.js';
@@ -46,7 +48,7 @@ beforeEach(() => { h = tempHome(); });
 afterEach(() => {
   for (const m of loaded.splice(0).reverse()) m.dispose();
   h.cleanup();
-  setKinds(servedKinds().kinds);
+  setKinds(packServed().kinds);
 });
 const withMod = async (view?: Record<string, unknown>) => {
   h.writeMod('toy-flag', manifest(view), { 'index.js': CODE });
@@ -130,7 +132,7 @@ describe('M3 Task 2: a mod kind marks the run and the feed from its view', () =>
     const { m } = await withMod();
     expect(hidden.has('flag_set')).toBe(true);
     m.dispose();
-    setKinds(servedKinds().kinds);
+    setKinds(packServed().kinds);
     expect(hidden.has('flag_set')).toBe(false);
     expect(statusOf('flagged')).toBeUndefined();
     expect(stepStatus([row('flagged', { step: 'f' })])).toEqual({});
@@ -202,7 +204,7 @@ describe('M3 Task 2: hostile view values', () => {
     setConds([{ t: 'zed', label: 'Z', fresh: { t: 'zed' } }, { t: 'approve', label: 'A', fresh: { t: 'approve' } }]);
     expect(standInCond()).toEqual({ t: 'zed' });
     expect(standInCond()).not.toBe(standInCond());   // a new copy each time
-    setConds(servedKinds().conds);
+    setConds(appServed().conds);
     expect(standInCond()).toEqual({ t: 'approve' });
   });
 

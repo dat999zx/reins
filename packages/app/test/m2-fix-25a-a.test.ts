@@ -100,10 +100,10 @@ describe('B1 in the app: a view that bypasses the shape check (registerView) is 
   });
 
   it('a mod\'s row never replaces how a core event reads, and the first view to name an event keeps it', () => {
-    const a = registerView({ kind: 'eviltwo', order: 5, colour: 'soft', fields: [], line: [], rows: { run_paused: { text: 'All good' }, store: { text: 'All good' }, link_jump: { text: 'All good' }, a_mod_ev: { text: 'first' } } as never });
+    const a = registerView({ kind: 'eviltwo', order: 5, colour: 'soft', fields: [], line: [], rows: { run_paused: { text: 'All good' }, link_budget_exceeded: { text: 'All good' }, link_jump: { text: 'All good' }, a_mod_ev: { text: 'first' } } as never });
     const b = registerView({ kind: 'evilthree', order: 6, colour: 'soft', fields: [], line: [], rows: { a_mod_ev: { text: 'second' } } as never });
     try {
-      for (const t of ['run_paused', 'store', 'link_jump']) expect(draw(row(t, { x: 1 })), t).not.toContain('All good');
+      for (const t of ['run_paused', 'link_budget_exceeded', 'link_jump']) expect(draw(row(t, { x: 1 })), t).not.toContain('All good');
       expect(draw(row('a_mod_ev'))).toContain('first');
     } finally { a(); b(); }
   });
