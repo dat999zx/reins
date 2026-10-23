@@ -37,7 +37,7 @@ max: 5
 against: plan
 on-fail: implement (max 2)
 
-## use review-pass
+## playbook review-pass
 
 ## store
 knowl: decisions

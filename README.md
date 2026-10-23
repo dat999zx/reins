@@ -52,7 +52,7 @@ Put workflows in `<project>/.reins/workflows/` or `~/.reins/workflows/`. More in
 
 | | |
 |---|---|
-| **Steps** | `phase`, `say`, `turn`, `run` (a shell command), `gate`, `verify`, `if` / `else`, `repeat`, `recall`, `store`, `end` (stops the workflow), `use` (reuse a block) |
+| **Steps** | `phase`, `say`, `turn`, `run` (a shell command), `gate`, `verify`, `if` / `else`, `repeat`, `recall`, `store`, `end` (stops the workflow), `playbook` (runs another workflow file from the `blocks/` folder, with inputs) |
 | **Conditions** | `tests`, `cmd`, `diff`, `touches`, `same`, `attempts`, `drift`, `done`, `approve`, `llm`, `review`, joined with `and` / `or` / `not` |
 | **Wires** | `next` jumps to a step, `on-fail` goes back and retries (with a max) |
 | **Auto cards** | `## whenever <condition>` fires a `now:` or `stop:` card by itself, e.g. `whenever attempts > 3` |
