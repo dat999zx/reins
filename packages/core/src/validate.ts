@@ -40,7 +40,7 @@ export function validate(
     if (!w.budget || (!w.budget.turns && !w.budget.minutes)) {
       diagnostics.push({
         severity: 'error',
-        message: 'Workflow requires budget with turns and minutes',
+        message: 'Playbook requires budget with turns and minutes',
         pos: { line: 1, col: 1 },
       });
     }
@@ -197,7 +197,7 @@ export function validate(
   if (!w.block && sliced.length) {
     const pos = sliced[0]!.pos || { line: 1, col: 1 };
     const sum = sliced.reduce((a, s) => a + (Number(s.attrs.usd) || 0), 0);
-    if (w.budget.usd !== undefined && sum > w.budget.usd + 1e-9) diagnostics.push({ severity: 'error', message: `The blocks' budgets add up to $${usdText(Math.round(sum * 100) / 100)}, over the workflow's $${usdText(w.budget.usd)}.`, pos });
+    if (w.budget.usd !== undefined && sum > w.budget.usd + 1e-9) diagnostics.push({ severity: 'error', message: `The blocks' budgets add up to $${usdText(Math.round(sum * 100) / 100)}, over the playbook's $${usdText(w.budget.usd)}.`, pos });
   }
 
   // Ids inside each container's body (all depths), for the jump-into-a-loop rule.

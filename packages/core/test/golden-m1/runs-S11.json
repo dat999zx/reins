@@ -109,8 +109,8 @@
     "workflow": "t"
   },
   "receivedTexts": [
-    "[Reins · workflow \"t\" · step 1 of 3: a]\n\na\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"t\" · step 4 of 4: b]\n\nb\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"t\" · step 1 of 3: a]\n\na\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"t\" · step 4 of 4: b]\n\nb\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
   ],
   "status": "done"
 }

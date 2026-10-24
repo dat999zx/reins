@@ -20,8 +20,8 @@ They live in `packages/server/src/mods/<id>/` and ship in the `reins-ai` package
 ### Switch off, remove
 
 - A built-in cannot be removed ("is built in and cannot be removed. You can disable it.").
-- **Disable** it on its row in Settings > Providers (under "Protocols and other mods"). The switch is written to `<home>/disabled-mods.json`. A workflow that uses a block, condition or card that is switched off fails its check. Like every change to a kind that is already in use, it applies after a restart; Settings says so.
-- A required mod has no off switch: Reins answers "is required: Reins cannot run without it, so it cannot be switched off. You can customize it instead." If `disabled-mods.json` names a required id by hand, Reins ignores the line and says so on the row. `phase` is the step every workflow is built from, and `end` is how a workflow stops; core has no other copy of either.
+- **Disable** it on its row in Settings > Providers (under "Protocols and other mods"). The switch is written to `<home>/disabled-mods.json`. A playbook that uses a block, condition or card that is switched off fails its check. Like every change to a kind that is already in use, it applies after a restart; Settings says so.
+- A required mod has no off switch: Reins answers "is required: Reins cannot run without it, so it cannot be switched off. You can customize it instead." If `disabled-mods.json` names a required id by hand, Reins ignores the line and says so on the row. `phase` is the step every playbook is built from, and `end` is how a playbook stops; core has no other copy of either.
 - To take a block away from the palette, switch off the mod. To change how a block works, Customize it.
 
 ### Customize
@@ -45,7 +45,7 @@ A block's view may draw the feed row of an event that core itself logs (`refusal
 "coreRows": ["subagent_started", "subagent_result"]
 ```
 
-The other key is `"stops": true`, which says the block ends the workflow, so the canvas draws it as a cap with no links out (`end` has it). Both keys are for the pack:
+The other key is `"stops": true`, which says the block ends the playbook, so the canvas draws it as a cap with no links out (`end` has it). Both keys are for the pack:
 
 - A block of the pack, or your copy of it, may use them. The copy may list the same events or fewer, and say `stops` only if the built-in does. A copy that lists one more event, or says `stops` when the built-in does not, is refused, and the row says why (`a copy may say only what the built-in says`). A copy made by Customize is a byte copy, so it passes.
 - A mod with an id of its own that has either key is refused too. A row for an event core logs, with no `coreRows` entry for it, is refused.
@@ -105,7 +105,7 @@ export default function activate(api) {
 }
 ```
 
-A workflow that uses it:
+A playbook that uses it:
 
 ```
 ## ping
@@ -178,7 +178,7 @@ export default function activate(api) {
 }
 ```
 
-A workflow that uses it (the step runs only when `ready.txt` is in the project folder):
+A playbook that uses it (the step runs only when `ready.txt` is in the project folder):
 
 ```
 ## if exists ready.txt
@@ -189,14 +189,14 @@ A workflow that uses it (the step runs only when `ready.txt` is in the project f
 
 The parts:
 
-- `t` is the atom's name, the word the parser stores in the workflow. The `provides.conditions` list must name it.
+- `t` is the atom's name, the word the parser stores in the playbook. The `provides.conditions` list must name it.
 - `parse(s)` reads the text at `s.idx`. If the text is not yours, return `null` and leave `s.idx` as it was: the parser tries the next atom. If it is yours but malformed, return `s.error(message, position)`. Atoms are tried in `order`, so pick words that no earlier atom starts with. `s.skipWs()` skips spaces; `s.quoted()` reads a quoted string.
-- `print(c)` gives the text back. Printing what `parse` read should give the same condition again, because Reins prints the workflow whenever it saves it.
+- `print(c)` gives the text back. Printing what `parse` read should give the same condition again, because Reins prints the playbook whenever it saves it.
 - `judge` says who decides: `deterministic` (your code, no model), `command` (a shell command), `you`, `agent`, `model` or `subagent`. `modelCall` (optional, a short name) makes the validator warn that the condition costs extra model calls.
 - `evalSync(c, ctx)` or `evaluate(c, ctx)` (async) answers. `ctx` has `cwd`, `events` (the run's log, read only), `commandResults`, `lastTurnText`, `runCommand(cmd)` and a few more (the `EvalCtx` type in `packages/core/src/cond.ts`). With neither function the atom is always false.
 - `globs(c)` lists globs for the validator to check. If your condition runs a command on its own, list it in `commands(c)`: the trust list shows those commands to the user. `auto: false` makes the atom always false inside an automatic `whenever` card (`not` flips it).
 - The `view` in the manifest gives the editor its menu word, a new atom (`fresh`), and the one value box (`param`). `param.key` must be one of `cmd`, `q`, `n` or `glob` and must be a field of your atom, which is why `exists` keeps its file name in `glob`. `look` is `code`, `str`, `num` or `pill`.
-- The code runs inside the Reins server with the user's rights; a throw in `parse` or `evaluate` goes into core (see "What is not contained" in `README.md`). Keep the code small and check what you read. The `exists` example joins a name from the workflow to the project folder, and a name like `../x` goes outside it; a real condition should refuse that.
+- The code runs inside the Reins server with the user's rights; a throw in `parse` or `evaluate` goes into core (see "What is not contained" in `README.md`). Keep the code small and check what you read. The `exists` example joins a name from the playbook to the project folder, and a name like `../x` goes outside it; a real condition should refuse that.
 
 `api.core` has helpers for conditions: `globMatcher`, `isValidGlob` and `relPath` for a glob (as `cond-touches` does), and `driftFound` for the drift signal. The full list is in `README.md`, under "The code: `activate(api)`".
 
@@ -256,11 +256,11 @@ The parts:
 
 ## Write a playbook
 
-A playbook is a workflow file that another workflow uses as one block. Use it to keep a routine (a review, a release check) in one file and give it inputs.
+A playbook can use another playbook through the playbook block. Use it to keep a routine (a review, a release check) in one file and give it inputs.
 
-**Where the file goes.** In a folder called `blocks/` next to the workflow file that uses it, named `<name>.reins.md`. A workflow in `<project>/.reins/workflows/ship.reins.md` finds its playbooks in `<project>/.reins/workflows/blocks/`. `reins run`, `reins check` and the app all look there.
+**Where the file goes.** In a folder called `blocks/` next to the playbook that uses it, named `<name>.reins.md`. A playbook in `<project>/.reins/workflows/ship.reins.md` finds its playbooks in `<project>/.reins/workflows/blocks/`. `reins run`, `reins check` and the app all look there.
 
-**The playbook file** is a whole workflow file with its front matter. `{{name}}` marks an input:
+**The used playbook** is a whole playbook file with its front matter. `{{name}}` marks an input:
 
 `blocks/review.reins.md`:
 
@@ -280,7 +280,7 @@ id: report
 > Write the findings for {{area}}.
 ```
 
-**The workflow that uses it** (`ship.reins.md`, after its front matter):
+**The playbook that uses it** (the outer one, `ship.reins.md`, after its front matter):
 
 ```
 ## phase Plan
@@ -310,16 +310,16 @@ The lines of a `playbook` block:
 |---|---|
 | `## playbook <name>` | The file `blocks/<name>.reins.md`. |
 | `input:` | `name = value; name = value`. Each `{{name}}` in the file is replaced by its value: in prompts, titles, attributes, card texts and conditions, before anything is compiled. So the commands you are asked to trust are the commands that will run. A `{{name}}` with no input is an error. An input the file never uses is a warning. A value is filled in one pass: a value that holds `{{other}}` stays as it is. |
-| `session: own` | The playbook runs as a track of its own: its own conversation, its own approvals, its own Stop. Without it the steps are compiled into your workflow and run in the same conversation. No other value is allowed. |
-| `usd:` | A USD budget for the playbook alone. An amount above 0, like `2.50`, and only with `session: own`. Any other value is ignored, and the playbook is then capped as if it had none. Without it the playbook is capped at what is left of the workflow's budget (inside a fork branch, at what is left of the branch's share), and has no cap only when no budget is set anywhere. With it the cap is that amount, and never more than what is left. |
+| `session: own` | The playbook runs as a track of its own: its own conversation, its own approvals, its own Stop. Without it the steps are compiled into your playbook and run in the same conversation. No other value is allowed. |
+| `usd:` | A USD budget for the playbook alone. An amount above 0, like `2.50`, and only with `session: own`. Any other value is ignored, and the playbook is then capped as if it had none. Without it the playbook is capped at what is left of the budget of the playbook that uses it (inside a fork branch, at what is left of the branch's share), and has no cap only when no budget is set anywhere. With it the cap is that amount, and never more than what is left. |
 | `output:` | Step ids of the file, separated by commas, only with `session: own`. Only those steps' last replies go back to the block under the playbook, each quoted as data. Without `output:` the track's last reply goes back. A named step that never ran says `<id> did not run.` |
 
-How the steps are named: an inline playbook puts its steps in your workflow with the id of the playbook step in front, so the first step above is `review/look` (`playbook-1/look` if you give the block no `id:`). That is the id you see in the run and the id that `output:` names without the prefix. An `end` inside an inline playbook ends only the playbook. In a playbook with `session: own`, an `end` ends the track.
+How the steps are named: an inline playbook puts its steps in your playbook with the id of the playbook block in front, so the first step above is `review/look` (`playbook-1/look` if you give the block no `id:`). That is the id you see in the run and the id that `output:` names without the prefix. An `end` inside an inline playbook ends only the playbook. In a playbook with `session: own`, an `end` ends the track.
 
 Limits (every one is checked and says so in words):
 
 - A name is one plain file name: letters, digits, `-`, `_` and `.` only, at most 100 characters, starting with a letter or digit, and not a Windows device name. A path (`../x`, `a/b`) is refused.
-- The file must be a plain file inside `blocks/` (a link that points outside is refused), at most 100,000 bytes, and a workflow.
+- The file must be a plain file inside `blocks/` (a link that points outside is refused), at most 100,000 bytes, and a playbook.
 - At most 30 inputs; a name is at most 40 characters (a letter first, then letters, digits, `-`, `_`); a value is at most 300 characters, holds no `;` and no hidden character.
 - A playbook may use another playbook, up to 8 levels deep. A file that runs itself, directly or through others, is refused.
 - One outermost playbook may put in at most 2,000 steps and 2 million characters, and one check reads at most 100 files.
@@ -370,7 +370,7 @@ What happens when the main line reaches the fork:
 
 Money: each branch has its own spend and its own share.
 
-- The share is the room divided equally: the room is what the workflow's USD budget has left, or the budget of the `model` block that is open at the fork (the smaller of the two, when there are both). `$1.00` over 3 branches is `0.333334` each, and `0.50` over 3 is `0.166667`: the share is rounded up to a millionth of a dollar.
+- The share is the room divided equally: the room is what the playbook's USD budget has left, or the budget of the `model` block that is open at the fork (the smaller of the two, when there are both). `$1.00` over 3 branches is `0.333334` each, and `0.50` over 3 is `0.166667`: the share is rounded up to a millionth of a dollar.
 - With no budget anywhere, a branch has no cap of its own.
 - A track a branch starts, such as an own playbook, spends from that branch's share: with no `usd:` it is capped at what the branch's share has left, and with a `usd:` at that amount or what the share has left, whichever is less. So the branches together stay inside the room, and what a branch's playbook spends is off that branch's share.
 - A branch that uses up its share is given what the other branches have not used, when that is a cent or more. Less than that, and the run pauses once, on the USD card for the whole run.
@@ -397,11 +397,11 @@ The checks Reins makes before it runs a fork, in the words it uses:
 
 ## The Share file
 
-Share is one file that holds a workflow and the mods it needs, so that someone else can import both with one click.
+Share is one file that holds a playbook and the mods it needs, so that someone else can import both with one click.
 
 **Export.** Two places make the file:
 
-- **Share** in the workflow menu of the Text view. It is off while the workflow has unsaved changes, because the file holds the saved workflow. It downloads `<name>.reins-mods.json`.
+- **Share** in the playbook menu of the Text view. It is off while the playbook has unsaved changes, because the file holds the saved playbook. It downloads `<name>.reins-mods.json`.
 - **Export my mods** in Settings > Providers. It downloads `my-mods.reins-mods.json` with every mod that is not built in (the ones you installed and your Customize copies), the first 20 at most.
 
 The file is JSON:
@@ -416,22 +416,22 @@ The file is JSON:
 
 What is in it:
 
-- `workflow`: the name (letters, digits, `-` and `_`, at most 60, never a path) and the text of the saved workflow, at most 256 KB.
-- `mods`: for each block, condition (in a step's `until:` or `if`, or in a `whenever` block) and card that the workflow uses and that comes from a mod of yours (a user mod, or your Customize copy of a built-in), the mod's text files. The file never holds a key, `secrets.json` or any file outside the mod's folder; a file that holds a key Reins knows is refused.
+- `workflow`: the name of the playbook (letters, digits, `-` and `_`, at most 60, never a path) and its saved text, at most 256 KB.
+- `mods`: for each block, condition (in a step's `until:` or `if`, or in a `whenever` block) and card that the playbook uses and that comes from a mod of yours (a user mod, or your Customize copy of a built-in), the mod's text files. The file never holds a key, `secrets.json` or any file outside the mod's folder; a file that holds a key Reins knows is refused.
 - At most 20 mods and 1 MB in all.
 
 What is NOT in it:
 
-- **The built-in blocks, conditions and cards.** A workflow that uses only the pack's gives a file with `"mods": {}`. Whoever imports it already has them. The app says so ("no mods in the file (the blocks it uses ship with Reins)").
-- **Playbook files.** A `playbook` step names a file in `blocks/`, and that file is not carried. The export says so, once for each file: `The playbook review is a file in your blocks folder and is not in this file. Whoever imports the file needs a playbook with that name.` Whoever imports the workflow needs the same `blocks/<name>.reins.md`; until they have it, the check says `Playbook "review" not found`. Send the playbook files yourself, or give the importer the folder. (The note comes from the `reads` word in the playbook's own `mod.json`: `{ "noun": "playbook", "folder": "blocks", "name": ["title", "playbook"] }`.)
-- A block that no mod installed on your machine brings gets a note when you export (`The block "x" is brought by no mod installed here, so no mod for it is in the file. Whoever imports the file needs that mod.`). The file still holds the workflow.
+- **The built-in blocks, conditions and cards.** A playbook that uses only the pack's gives a file with `"mods": {}`. Whoever imports it already has them. The app says so ("no mods in the file (the blocks it uses ship with Reins)").
+- **Playbook files.** A playbook block names a file in `blocks/`, and that file is not carried. The export says so, once for each file: `The playbook review is a file in your blocks folder and is not in this file. Whoever imports the file needs a playbook with that name.` Whoever imports the outer playbook needs the same `blocks/<name>.reins.md`; until they have it, the check says `Playbook "review" not found`. Send the playbook files yourself, or give the importer the folder. (The note comes from the `reads` word in the playbook's own `mod.json`: `{ "noun": "playbook", "folder": "blocks", "name": ["title", "playbook"] }`.)
+- A block that no mod installed on your machine brings gets a note when you export (`The block "x" is brought by no mod installed here, so no mod for it is in the file. Whoever imports the file needs that mod.`). The file still holds the playbook.
 - The `blocks/` folder, keys, consent, trust and settings.
 
-**Import.** Choose Import in Settings > Providers and pick the file. Reins shows one preview for the whole file: each mod with what it adds (`ping: adds the block ping ...`), the hash of each code mod, and what the workflow would do. A workflow that uses a block the file brings is checked with that block in mind; one that uses a block nobody brings shows the `Unknown step kind` line.
+**Import.** Choose Import in Settings > Providers and pick the file. Reins shows one preview for the whole file: each mod with what it adds (`ping: adds the block ping ...`), the hash of each code mod, and what the playbook would do. A playbook that uses a block the file brings is checked with that block in mind; one that uses a block nobody brings shows the `Unknown step kind` line.
 
 - **One trust prompt for each code mod.** Trust is by hash of every file. You say yes to a mod by the hash you were shown: "Trust and import" trusts every code mod of the file, "Import without running its code" installs them as "needs trust". A data mod needs no prompt.
 - A mod of the file with the id of a built-in needs its own confirm ("is part of what ships with Reins. The copy in this file takes its place after a restart.").
-- **All or nothing.** Everything is checked first. Then the mods and the workflow are placed, and when one step fails, the ones already placed are taken back. A refused file leaves nothing behind.
-- The workflow is saved as `<home>/workflows/<name>.reins.md`, new only. If a workflow of that name is already saved, the whole file is refused until you rename or remove one.
-- A file with two mods that bring the same block, condition or card, a mod with a key in it, or a hidden character in the workflow text is refused.
+- **All or nothing.** Everything is checked first. Then the mods and the playbook are placed, and when one step fails, the ones already placed are taken back. A refused file leaves nothing behind.
+- The playbook is saved as `<home>/workflows/<name>.reins.md`, new only. If a playbook of that name is already saved, the whole file is refused until you rename or remove one.
+- A file with two mods that bring the same block, condition or card, a mod with a key in it, or a hidden character in the playbook text is refused.
 - An old single-mod file (`reinsMod`) still imports as before.

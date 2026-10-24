@@ -381,7 +381,7 @@ describe.skipIf(skip)('live run e2e', () => {
     await dockCard('gate').getByRole('button', { name: 'Approve', exact: true }).click();
     await dock.getByRole('status').getByText('Done ·', { exact: false }).waitFor();
     await tab('Text').click();
-    const editor = page.getByRole('textbox', { name: 'Workflow text' });
+    const editor = page.getByRole('textbox', { name: 'Playbook text' });
     await editor.fill(`${await editor.inputValue()} `);
     await tab('Blocks').click();
     expect(await page.getByRole('button', { name: 'Run', exact: true }).getAttribute('title')).toBe('Save first: a run uses the saved file.');
@@ -599,7 +599,7 @@ describe.skipIf(skip)('live run e2e', () => {
     await page.locator('.wflist button', { has: page.locator('.sx-wfname', { hasText: /^decl$/ }) }).click();
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     await dockCard('trust').getByRole('button', { name: "Don't trust", exact: true }).click();
-    await dock.getByRole('status').getByText('The run did not start: The workflow is not trusted, so it did not run.', { exact: false }).waitFor();
+    await dock.getByRole('status').getByText('The run did not start: The playbook is not trusted, so it did not run.', { exact: false }).waitFor();
     await dock.getByRole('button', { name: 'Dismiss', exact: true }).click();
     expect(await dock.count()).toBe(0);
 
@@ -673,7 +673,7 @@ describe.skipIf(skip)('live run e2e', () => {
     await dockCard('trust').getByRole('button', { name: 'Trust', exact: true }).click();
     const modelQ = dockCard('switch');
     await modelQ.waitFor();
-    expect(await modelQ.locator('.qdetail').innerText()).toMatch(/Asked by the workflow's model block `model-1`\.$/);
+    expect(await modelQ.locator('.qdetail').innerText()).toMatch(/Asked by the playbook's model block `model-1`\.$/);
     await dock.getByRole('status').getByText('Waiting for you · switch question', { exact: false }).waitFor();
     const spawnsBefore = fake.log().filter((e) => e.kind === 'args').length;
     await modelQ.getByRole('button', { name: 'Switch', exact: true }).click();

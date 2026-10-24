@@ -176,7 +176,7 @@ describe('the six run-start checks, in the app and in reins run (spec 10.2)', ()
     },
     {
       name: '3: a model that cannot call tools', engine: 'p', body: MODEL('nt'),
-      words: 'nt cannot call tools, so it cannot edit files or run commands. Pick a model with tools for workflows.',
+      words: 'nt cannot call tools, so it cannot edit files or run commands. Pick a model with tools for playbooks.',
     },
     {
       name: '4: a reasoning level the model does not have', engine: 'p', body: '## subagent r\nreasoning: max\n> Look.\n',
@@ -205,7 +205,7 @@ describe('the six run-start checks, in the app and in reins run (spec 10.2)', ()
     },
     {
       name: 'order 3 before 5', engine: 'p', usd: 1, body: MODEL('ntnp'),
-      words: 'ntnp cannot call tools, so it cannot edit files or run commands. Pick a model with tools for workflows.',
+      words: 'ntnp cannot call tools, so it cannot edit files or run commands. Pick a model with tools for playbooks.',
     },
     {
       name: 'order 4 before 5', engine: 'p', usd: 1, body: '## subagent r\nreasoning: max\n> Look.\n\n## model np\n',
@@ -268,7 +268,7 @@ describe('the six run-start checks, in the app and in reins run (spec 10.2)', ()
 
   it('a subagent step with its own model does not move the session: a later bare model is judged on the session provider', async () => {
     const app = await viaApp('p', put(FRONT() + '## subagent r\nmodel: other:om\n> Look.\n\n## model nt\n\n## phase go\n> Go.\n'));
-    expect([app.status, app.error]).toEqual([400, 'nt cannot call tools, so it cannot edit files or run commands. Pick a model with tools for workflows.']);
+    expect([app.status, app.error]).toEqual([400, 'nt cannot call tools, so it cannot edit files or run commands. Pick a model with tools for playbooks.']);
   });
 
   it('a bare model that the session provider does not list still gets the old words', async () => {
@@ -498,7 +498,7 @@ describe('reins run --provider / --model / --resume', () => {
   it('the checks use the session the flags describe: --model nt refuses, and --provider other --model om with a budget starts', async () => {
     const bad = await viaCli(['run', put(PHASE), '--model', 'p:nt']);
     expect(bad.code).toBe(1);
-    expect(bad.out).toContain('nt cannot call tools, so it cannot edit files or run commands. Pick a model with tools for workflows.');
+    expect(bad.out).toContain('nt cannot call tools, so it cannot edit files or run commands. Pick a model with tools for playbooks.');
     const good = await viaCli(['run', put(FRONT(1) + '## phase go\n> Go.\n'), '--provider', 'other', '--model', 'om']);
     expect(good.out).toMatch(STARTED);
   });

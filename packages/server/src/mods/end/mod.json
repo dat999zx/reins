@@ -4,7 +4,7 @@
   "kind": "block",
   "version": "1.0.0",
   "label": "End",
-  "description": "Stops the workflow",
+  "description": "Stops the playbook",
   "main": "index.js",
   "order": 130,
   "pack": "default",

@@ -135,7 +135,7 @@ describe('checkBlock', () => {
   it('returns the diagnostics of a block file validated as a block', () => {
     const w = wf('## phase p\n> p\n');
     const noBudget = { ...w, budget: {} } as Workflow;
-    expect(errors(noBudget)).toEqual(['Workflow requires budget with turns and minutes']);
+    expect(errors(noBudget)).toEqual(['Playbook requires budget with turns and minutes']);
     blockToCheck = noBudget;
     expect(errors(wf('## probe\n'))).toEqual([]);
     expect(blockResult).toEqual([]);

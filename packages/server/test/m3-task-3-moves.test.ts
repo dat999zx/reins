@@ -159,7 +159,7 @@ describe('the id a phase makes from its title', () => {
 describe('the end block warns about what it ignores', () => {
   const end = (body: string) => `---\nreins: 1\nname: t\nbudget: { turns: 5, minutes: 5 }\nalways: []\n---\n\n## phase one\n> go\n\n## end\n${body}`;
   const warned = (body: string) => validate(parseWorkflow(end(body)).workflow!).map((d) => d.message);
-  const WORDS = 'an end step stops the workflow; its links, cards and prompt do nothing';
+  const WORDS = 'an end step stops the playbook; its links, cards and prompt do nothing';
   it('a link, a card or a prompt each draw the warning; a bare end does not', async () => {
     await start();
     expect(warned('')).not.toContain(WORDS);

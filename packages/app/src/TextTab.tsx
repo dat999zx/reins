@@ -171,7 +171,7 @@ export function TextTab({ view, onView, sess, models, efforts, sessionModel, ses
       if (file === null || !prev?.workflow) return false;
       if (busy.current || prev.for !== text) { setMsg(WAIT); return false; }
       if (prev.reformats && !confirmed.current.has(file)) {
-        if (!window.confirm('Editing with Blocks or the Budget form reformats this workflow file. Comments, unknown lines, frontmatter comments and unknown keys, and custom order are not kept. Continue?')) return false;
+        if (!window.confirm('Editing with Blocks or the Budget form reformats this playbook file. Comments, unknown lines, frontmatter comments and unknown keys, and custom order are not kept. Continue?')) return false;
         confirmed.current.add(file);
       }
       const next = fn(prev.workflow);
@@ -262,7 +262,7 @@ export function TextTab({ view, onView, sess, models, efforts, sessionModel, ses
       await refresh();
       await open(rel, true);
     } catch (e) {
-      setMsg(e instanceof ApiError && e.status === 409 ? 'A workflow with that name already exists.' : (e as Error).message);
+      setMsg(e instanceof ApiError && e.status === 409 ? 'A playbook with that name already exists.' : (e as Error).message);
     }
   };
   const startRun = () => {
@@ -358,8 +358,8 @@ export function TextTab({ view, onView, sess, models, efforts, sessionModel, ses
     <div className="texttab">
       <aside className="wflist">
         <form onSubmit={(e) => { e.preventDefault(); void create(); }}>
-          <input aria-label="Workflow name" placeholder="new-workflow-name" value={name} onChange={(e) => setName(e.target.value)} />
-          <button type="submit" disabled={!name}>New workflow</button>
+          <input aria-label="Playbook name" placeholder="new-playbook-name" value={name} onChange={(e) => setName(e.target.value)} />
+          <button type="submit" disabled={!name}>New playbook</button>
         </form>
         <ul>
           {list.map((w) => (
@@ -369,7 +369,7 @@ export function TextTab({ view, onView, sess, models, efforts, sessionModel, ses
               </button>
             </li>
           ))}
-          {list.length === 0 && <li className="hint">No workflows yet.</li>}
+          {list.length === 0 && <li className="hint">No playbooks yet.</li>}
         </ul>
         {view === 'blocks' && prev?.workflow && <Palette onAdd={add} onCond={cond} press={press} />}
       </aside>
@@ -379,7 +379,7 @@ export function TextTab({ view, onView, sess, models, efforts, sessionModel, ses
             const entry = list.find((w) => w.name === run.workflow);
             if (entry) void open(entry.path); else setMsg(`Open \`${run.workflow}\` from the list.`);
           }}>Open it</button></p> : null)}
-        {file === null ? <>{dock && <div className="ebar">{dock}</div>}<p className="hint">Pick a workflow, or make a new one.</p></> : (
+        {file === null ? <>{dock && <div className="ebar">{dock}</div>}<p className="hint">Pick a playbook, or make a new one.</p></> : (
           <>
             <div className="ebar">
               <b className="sx-wfname" title={file.split(/[\\/]/).at(-1)}>{file.split(/[\\/]/).at(-1)}</b>{dirty && <span className="dirty" title="Unsaved changes" role="img" aria-label="unsaved changes"> ●</span>}
@@ -407,7 +407,7 @@ export function TextTab({ view, onView, sess, models, efforts, sessionModel, ses
                   </aside>
                 ) : sel ? <BlockPanel key={sel.id} step={sel} all={flatSteps(prev.workflow.steps)} cond={prev.steps.find((s) => s.id === sel.id)?.cond}
                   turn={prev.turn} rev={prev} models={models} efforts={efforts} sessionModel={sessionModel} sessionEffort={sessionEffort} onEdit={edit} onShowInChat={ran(sel.id) ? () => onChat(sel.id) : undefined} onDelete={() => del([stepKey(sel.id)], toWorkspace)} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />
-                  : [...sels].some((k) => k.startsWith('l:')) ? <aside className="bpanel" aria-label="Loose block"><p className="hint">Loose block: not part of the workflow, never runs. Drag it into the script to use it.</p></aside>
+                  : [...sels].some((k) => k.startsWith('l:')) ? <aside className="bpanel" aria-label="Loose block"><p className="hint">Loose block: not part of the playbook, never runs. Drag it into the script to use it.</p></aside>
                   : <WorkflowPanel w={prev.workflow} rev={prev} onEdit={edit} />}
               </div>
             )}
@@ -423,7 +423,7 @@ export function TextTab({ view, onView, sess, models, efforts, sessionModel, ses
                     </div>
                   ))}
                 </pre>
-                <textarea ref={ta} aria-label="Workflow text" spellCheck={false} wrap="off" value={text}
+                <textarea ref={ta} aria-label="Playbook text" spellCheck={false} wrap="off" value={text}
                   onChange={(e) => setText(e.target.value)} onKeyDown={onKey} onScroll={mirror} />
               </div>
             </div>}

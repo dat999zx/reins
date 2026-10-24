@@ -1,6 +1,6 @@
 # Reins
 
-**Scratch for agent loops.** Write a coding agent's workflow as a text file: phases, gates, loops with budgets, rules. Reins drives Claude Code through it, and you steer from the browser while it runs.
+**Scratch for agent loops.** Write a coding agent's playbook as a text file: phases, gates, loops with budgets, rules. Reins drives Claude Code through it, and you steer from the browser while it runs.
 
 Prompt files (`CLAUDE.md`, rules, skills) have no control flow. You type "repeat until the tests pass" or "don't start coding until I approve the plan" and hope. In Reins those are a `repeat`, a `gate`, a `guard`, and they are enforced.
 
@@ -11,9 +11,9 @@ reins                  # starts the app and opens your browser
 
 Needs **Node 22.12+** and [Claude Code](https://claude.com/claude-code) installed and logged in. Run `reins doctor` to check.
 
-## A workflow
+## A playbook
 
-A workflow is a `.reins.md` file. It is plain text, so it diffs, merges and lives in git.
+A playbook is a `.reins.md` file. It is plain text, so it diffs, merges and lives in git.
 
 ```md
 ---
@@ -46,20 +46,20 @@ max: 4
 until: you approve
 ```
 
-Put workflows in `<project>/.reins/workflows/` or `~/.reins/workflows/`. More in [`examples/`](https://github.com/dat999zx/reins/tree/main/examples).
+Put playbooks in `<project>/.reins/workflows/` or `~/.reins/workflows/`. More in [`examples/`](https://github.com/dat999zx/reins/tree/main/examples).
 
 ## The pieces
 
 | | |
 |---|---|
-| **Steps** | `phase`, `say`, `run` (a shell command), `gate`, `verify`, `if` / `else`, `repeat`, `recall`, `store`, `model` (switch the model, open a USD budget), `subagent` (a step in a session of its own), `end` (stops the workflow), `fork` (runs branches at the same time), `playbook` (runs another workflow file from the `blocks/` folder, with inputs) |
+| **Steps** | `phase`, `say`, `run` (a shell command), `gate`, `verify`, `if` / `else`, `repeat`, `recall`, `store`, `model` (switch the model, open a USD budget), `subagent` (a step in a session of its own), `end` (stops the playbook), `fork` (runs branches at the same time), `playbook` (runs another playbook file from the `blocks/` folder, with inputs) |
 | **Conditions** | `tests`, `cmd`, `diff`, `touches`, `same`, `attempts`, `drift`, `done`, `approve`, `llm`, `review`, joined with `and` / `or` / `not` |
 | **Wires** | `next` from a `fork` starts a branch (only the fork has the `next` handle), `on-fail` goes back and retries (with a max) |
 | **Auto cards** | `## whenever <condition>` fires a `now:` or `stop:` card by itself, e.g. `whenever attempts > 3` |
 | **Live cards** | Drop onto a running session: `guard`, `stop`, `now` |
 | **Budgets** | Every loop has a `max`; the run has turns, minutes and dollars. Each run ends with a receipt |
 
-Reins checks a workflow before it runs (unknown steps, bad globs, dead wires, unreachable steps).
+Reins checks a playbook before it runs (unknown steps, bad globs, dead wires, unreachable steps).
 
 ## The app
 
@@ -76,10 +76,10 @@ Each step shows its state while a run goes. Two sessions can run side by side.
 
 ```
 reins                           start the app
-reins run <file>                run a workflow in the terminal
+reins run <file>                run a playbook in the terminal
   --engine claude  --model <m>  --effort <e>  --yes
 reins run --resume <runId>      pick a run back up
-reins check <file>              validate a workflow
+reins check <file>              validate a playbook
 reins print <file> [--write]    print it in standard form
 reins doctor                    check Node, SQLite and Claude Code
 reins --version                 print the version

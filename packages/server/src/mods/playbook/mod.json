@@ -4,7 +4,7 @@
   "kind": "block",
   "version": "1.0.0",
   "label": "Playbook",
-  "description": "Runs another workflow file from the blocks folder as one block, with inputs and outputs",
+  "description": "Runs another playbook file from the blocks folder as one block, with inputs and outputs",
   "main": "index.js",
   "order": 140,
   "pack": "default",

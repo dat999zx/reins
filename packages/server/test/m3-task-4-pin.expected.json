@@ -823,9 +823,9 @@
  "runMemNone": {
   "status": "done",
   "texts": [
-   "[Reins · workflow \"pin4-mem\" · step 2 of 5: plan]\n\nplan it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-   "[Reins · workflow \"pin4-mem\" · step 3 of 5: store]\n\nProvide a one-paragraph decision summary for \"decision\".\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-   "[Reins · workflow \"pin4-mem\" · step 5 of 5: store]\n\nProvide a one-paragraph decision summary for \"decisions\".\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   "[Reins · playbook \"pin4-mem\" · step 2 of 5: plan]\n\nplan it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · playbook \"pin4-mem\" · step 3 of 5: store]\n\nProvide a one-paragraph decision summary for \"decision\".\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · playbook \"pin4-mem\" · step 5 of 5: store]\n\nProvide a one-paragraph decision summary for \"decisions\".\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
   ],
   "events": [
    {
@@ -1057,9 +1057,9 @@
  "runMemBoth": {
   "status": "done",
   "texts": [
-   "[Reins · workflow \"pin4-mem\" · step 2 of 5: plan]\n\nContext from Knowl:\n- ctx upload\n- ctx retry\n- ctx deploy\n\nplan it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-   "[Reins · workflow \"pin4-mem\" · step 3 of 5: store]\n\nProvide a one-paragraph decision summary for \"decision\".\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-   "[Reins · workflow \"pin4-mem\" · step 5 of 5: store]\n\nProvide a one-paragraph decision summary for \"decisions\".\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   "[Reins · playbook \"pin4-mem\" · step 2 of 5: plan]\n\nContext from Knowl:\n- ctx upload\n- ctx retry\n- ctx deploy\n\nplan it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · playbook \"pin4-mem\" · step 3 of 5: store]\n\nProvide a one-paragraph decision summary for \"decision\".\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · playbook \"pin4-mem\" · step 5 of 5: store]\n\nProvide a one-paragraph decision summary for \"decisions\".\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
   ],
   "events": [
    {
@@ -1318,9 +1318,9 @@
  "runGates": {
   "status": "paused",
   "texts": [
-   "[Reins · workflow \"pin4-gates\" · step 1 of 5: first]\n\ngo\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-   "[Reins · workflow \"pin4-gates\" · step 1 of 5: first]\n\ngo\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-   "[Reins · workflow \"pin4-gates\" · step 1 of 5: first]\n\ngo\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   "[Reins · playbook \"pin4-gates\" · step 1 of 5: first]\n\ngo\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · playbook \"pin4-gates\" · step 1 of 5: first]\n\ngo\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · playbook \"pin4-gates\" · step 1 of 5: first]\n\ngo\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
   ],
   "events": [
    {
@@ -1636,10 +1636,10 @@
  "runIfYes": {
   "status": "done",
   "texts": [
-   "[Reins · workflow \"pin4-ifs\" · step 1 of 5: first]\n\ngo\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-   "[Reins · workflow \"pin4-ifs\" · step 2 of 5: yes]\n\nyes branch\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-   "[Reins · workflow \"pin4-ifs\" · step 4 of 5: nocond]\n\nno condition\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-   "[Reins · workflow \"pin4-ifs\" · step 5 of 5: after]\n\nafter\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   "[Reins · playbook \"pin4-ifs\" · step 1 of 5: first]\n\ngo\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · playbook \"pin4-ifs\" · step 2 of 5: yes]\n\nyes branch\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · playbook \"pin4-ifs\" · step 4 of 5: nocond]\n\nno condition\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · playbook \"pin4-ifs\" · step 5 of 5: after]\n\nafter\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
   ],
   "events": [
    {
@@ -1900,8 +1900,8 @@
  "runIfNo": {
   "status": "done",
   "texts": [
-   "[Reins · workflow \"pin4-if-no\" · step 1 of 2: first]\n\ngo\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-   "[Reins · workflow \"pin4-if-no\" · step 2 of 2: no]\n\nno branch\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   "[Reins · playbook \"pin4-if-no\" · step 1 of 2: first]\n\ngo\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · playbook \"pin4-if-no\" · step 2 of 2: no]\n\nno branch\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
   ],
   "events": [
    {

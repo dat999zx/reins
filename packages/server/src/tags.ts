@@ -72,7 +72,7 @@ export function taggedWorkflow(text: string, tags: Tag[]): Tagged {
   const diagnostics = [...parsed.diagnostics, ...(parsed.workflow ? validate(parsed.workflow) : [])];
   const errors = diagnostics.filter((d) => d.severity === 'error');
   if (!parsed.workflow || errors.length) {
-    return { ok: false, error: errors.map((d) => d.message).join('; ') || 'invalid workflow', text: b.text, diagnostics };
+    return { ok: false, error: errors.map((d) => d.message).join('; ') || 'invalid playbook', text: b.text, diagnostics };
   }
   return { ok: true, text: b.text, workflow: parsed.workflow, warnings: diagnostics.filter((d) => d.severity === 'warning') };
 }

@@ -245,8 +245,8 @@
     "workflow": "t"
   },
   "receivedTexts": [
-    "[Reins · workflow \"t\" · step 4 of 5: d]\n\nd\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"t\" · step 5 of 5: verify]\n\nCompare what you built against step \"d\":\nd2\nREINS: done\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n"
+    "[Reins · playbook \"t\" · step 4 of 5: d]\n\nd\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"t\" · step 5 of 5: verify]\n\nCompare what you built against step \"d\":\nd2\nREINS: done\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n"
   ],
   "status": "done"
 }

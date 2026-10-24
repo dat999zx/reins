@@ -62,7 +62,7 @@ const running = (v: RunView) => {
 export const PHASE: Record<RunPhase, { words: (v: RunView, pos?: Pos) => string; ended: boolean; resumable: boolean }> = {
   none: { words: () => '', ended: false, resumable: false },
   // a switch card after an ended run waits in phase busy: say so, not "working"
-  busy: { words: (v, pos) => (v.open.length ? PHASE.waiting.words(v, pos) : 'The agent is working (not a workflow run).'), ended: false, resumable: false },
+  busy: { words: (v, pos) => (v.open.length ? PHASE.waiting.words(v, pos) : 'The agent is working (not a playbook run).'), ended: false, resumable: false },
   running: {
     words: (v, pos) => `${running(v)}${pos ? ` · step ${pos.n} of ${pos.m}` : ''}${v.sub ? ` · subagent ${v.sub.title} on ${v.sub.label ?? 'the session model'}` : ''}${v.thinking !== undefined ? ` · ${thinkingWords(v.thinking)}` : ''}`,
     ended: false, resumable: false,

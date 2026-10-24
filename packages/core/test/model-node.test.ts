@@ -74,7 +74,7 @@ describe('model step: validate', () => {
   });
 
   it('slices over the workflow USD are one error with the sum', () => {
-    expect(errors(two('1.10', '1.90'))).toEqual(["The blocks' budgets add up to $3.00, over the workflow's $2.00."]);
+    expect(errors(two('1.10', '1.90'))).toEqual(["The blocks' budgets add up to $3.00, over the playbook's $2.00."]);
   });
 
   it('float noise does not fail an exact fit: 0.10 + 0.20 under 0.30 passes', () => {
@@ -82,7 +82,7 @@ describe('model step: validate', () => {
   });
 
   it('the sum in the message is rounded to cents: 0.10 + 0.20 over 0.25 says $0.30', () => {
-    expect(errors(wf('## model m1\nusd: 0.10\n\n## model m2\nusd: 0.20\n', ', usd: 0.25'))).toEqual(["The blocks' budgets add up to $0.30, over the workflow's $0.25."]);
+    expect(errors(wf('## model m1\nusd: 0.10\n\n## model m2\nusd: 0.20\n', ', usd: 0.25'))).toEqual(["The blocks' budgets add up to $0.30, over the playbook's $0.25."]);
   });
 
   it('no workflow USD is no limit: slices alone give no diagnostic', () => {

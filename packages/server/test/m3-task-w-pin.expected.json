@@ -4600,12 +4600,12 @@
   "guards": {
    "status": "done",
    "texts": [
-    "[Reins · workflow \"cards\" · step 1 of 6: p0]\n\nwork\n\nFor this step:\n- Do not touch migrations/**. (Enforced: edits there are blocked.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"cards\" · step 2 of 6: p1]\n\nwork\n\nFor this step:\n- Do not touch src/[bad. (Enforced: edits there are blocked.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"cards\" · step 3 of 6: p2]\n\nwork\n\nFor this step:\n- Do not touch a/b.ts. (Enforced: edits there are blocked.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"cards\" · step 4 of 6: p3]\n\nwork\n\nFor this step:\n- now: look again\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"cards\" · step 5 of 6: p4]\n\nwork\n\nFor this step:\n- stop: ask me\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"cards\" · step 6 of 6: p5]\n\nwork\n\nFor this step:\n- nope: unknown card\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"cards\" · step 1 of 6: p0]\n\nwork\n\nFor this step:\n- Do not touch migrations/**. (Enforced: edits there are blocked.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"cards\" · step 2 of 6: p1]\n\nwork\n\nFor this step:\n- Do not touch src/[bad. (Enforced: edits there are blocked.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"cards\" · step 3 of 6: p2]\n\nwork\n\nFor this step:\n- Do not touch a/b.ts. (Enforced: edits there are blocked.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"cards\" · step 4 of 6: p3]\n\nwork\n\nFor this step:\n- now: look again\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"cards\" · step 5 of 6: p4]\n\nwork\n\nFor this step:\n- stop: ask me\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"cards\" · step 6 of 6: p5]\n\nwork\n\nFor this step:\n- nope: unknown card\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
    ],
    "events": [
     [
@@ -4818,8 +4818,8 @@
   "autoNow": {
    "status": "done",
    "texts": [
-    "[Reins · workflow \"auto-now\" · step 1 of 2: p]\n\nwork\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"auto-now\" · step 2 of 2: q]\n\nmore\n\nFor this step:\n- hold on a moment\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"auto-now\" · step 1 of 2: p]\n\nwork\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"auto-now\" · step 2 of 2: q]\n\nmore\n\nFor this step:\n- hold on a moment\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
    ],
    "events": [
     [
@@ -4919,7 +4919,7 @@
   "autoStop": {
    "status": "paused",
    "texts": [
-    "[Reins · workflow \"auto-stop\" · step 1 of 2: p]\n\nwork\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"auto-stop\" · step 1 of 2: p]\n\nwork\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
    ],
    "events": [
     [
@@ -4988,7 +4988,7 @@
   "gateTests": {
    "status": "done",
    "texts": [
-    "[Reins · workflow \"gate-tests\" · step 1 of 4: p]\n\nwork\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"gate-tests\" · step 1 of 4: p]\n\nwork\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
    ],
    "events": [
     [

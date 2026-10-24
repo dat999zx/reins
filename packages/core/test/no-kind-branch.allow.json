@@ -217,7 +217,7 @@
         "putEnd: () => { const keys = [...sel].filter((k) => k.startsWith('l:')); if (keys.length) unparkTo(keys, { top: 'end' }); },"
       ],
       "packages/core/src/viewShape.ts": [
-        "if (v.stops !== undefined && (v.stops !== true || !packed)) return '`view.stops` is only for a block of the default pack (its `end`); no other block can end the workflow.';"
+        "if (v.stops !== undefined && (v.stops !== true || !packed)) return '`view.stops` is only for a block of the default pack (its `end`); no other block can end the playbook.';"
       ],
       "packages/server/src/mods/claude-code-cli/hooks.ts": [
         "req.on('end', () => {"

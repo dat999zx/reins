@@ -72,7 +72,7 @@ describe('driveRun on a USD pause (Task 2, milestone C)', () => {
     expect(t.lines).toContain('⏸ block model-1 used its $0.10 budget ($0.12 spent)');
     expect(t.questions).toEqual([{
       id: expect.stringMatching(/^[0-9a-f]+$/), kind: 'usd', prompt: 'allow $<amount> more / stop',
-      detail: 'Block `model-1` has used $0.12 of its $0.10. The workflow\'s USD budget has $1.18 left.',
+      detail: 'Block `model-1` has used $0.12 of its $0.10. The playbook\'s USD budget has $1.18 left.',
     }]);
     // 0.12 spent + 0.05 allowed = 0.17; c costs 0.06 more and is the last step
     expect(run.snapshot().runCost).toBeCloseTo(0.18, 9);
@@ -88,7 +88,7 @@ describe('driveRun on a USD pause (Task 2, milestone C)', () => {
     const t = testIo(() => 'stop');
     await driveRun(run, t.io, () => {});
     expect(t.lines).toContain('⏸ block model-1 used its $0.30 budget ($0.30 spent)');
-    expect(t.questions[0]).toMatchObject({ detail: "Block `model-1` has used $0.30 of its $0.30. The workflow's USD budget has $1.00 left." });
+    expect(t.questions[0]).toMatchObject({ detail: "Block `model-1` has used $0.30 of its $0.30. The playbook's USD budget has $1.00 left." });
   });
 
   it('a long measured tail keeps 4 decimals (0.06409 reads $0.0641), so a small overage is not hidden', async () => {
@@ -99,7 +99,7 @@ describe('driveRun on a USD pause (Task 2, milestone C)', () => {
     });
     const t = testIo(() => 'stop');
     await driveRun(run, t.io, () => {});
-    expect(t.questions[0]).toMatchObject({ detail: "Block `model-1` has used $0.0641 of its $0.01. The workflow's USD budget has $3.9359 left." });
+    expect(t.questions[0]).toMatchObject({ detail: "Block `model-1` has used $0.0641 of its $0.01. The playbook's USD budget has $3.9359 left." });
   });
 
   it('an allow past the workflow says the refusal and asks again', async () => {
@@ -107,7 +107,7 @@ describe('driveRun on a USD pause (Task 2, milestone C)', () => {
     const answers = ['allow $5', 'stop'];
     const t = testIo(() => answers.shift() ?? null);
     await driveRun(run, t.io, () => {});
-    expect(t.lines).toContain("Allow at most $0.08: the workflow's USD budget has that much left.");
+    expect(t.lines).toContain("Allow at most $0.08: the playbook's USD budget has that much left.");
     expect(t.questions.map((q) => q.kind)).toEqual(['usd', 'usd']);
     expect(run.status).toBe('stopped');
   });

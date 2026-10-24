@@ -67,7 +67,7 @@ const key: Check = (c) => {
   return undefined;
 };
 const tools: Check = (c) => firstWords(c, (u, { m }) =>
-  m.tools ? undefined : `${u.model} cannot call tools, so it cannot edit files or run commands. Pick a model with tools for workflows.`);
+  m.tools ? undefined : `${u.model} cannot call tools, so it cannot edit files or run commands. Pick a model with tools for playbooks.`);
 const effort: Check = (c) => firstWords(c, (u, { m }) => {
   if (u.reasoning === undefined || m.efforts.includes(u.reasoning)) return undefined;
   return m.efforts.length

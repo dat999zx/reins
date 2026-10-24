@@ -23,7 +23,7 @@
   ],
   "status": "done",
   "texts": [
-    "[Reins · workflow \"t\" · step 1 of 1: a]\n\na\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"t\" · step 1 of 1: a]\n\na\n\nFor this step:\n- use the other file\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"t\" · step 1 of 1: a]\n\na\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"t\" · step 1 of 1: a]\n\na\n\nFor this step:\n- use the other file\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
   ]
 }

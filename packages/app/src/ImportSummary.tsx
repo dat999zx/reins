@@ -112,7 +112,7 @@ export function ImportPanel({ onDone, onCancel, shown, initial }: { onDone: (sai
     setBusy(true);
     try {
       const r = await post<{ ids: string[]; problems?: string[]; workflow?: { name: string; diagnostics: string[] } }>('/api/mods/import', envelopeBody(text, env!, trust, replace));
-      onDone(`Imported ${r.ids.length} ${r.ids.length === 1 ? 'mod' : 'mods'}${r.workflow ? ` and the workflow ${r.workflow.name}` : ''}.${[...(r.workflow?.diagnostics ?? []), ...(r.problems ?? [])].map((p) => ` ${p}`).join('')}`);
+      onDone(`Imported ${r.ids.length} ${r.ids.length === 1 ? 'mod' : 'mods'}${r.workflow ? ` and the playbook ${r.workflow.name}` : ''}.${[...(r.workflow?.diagnostics ?? []), ...(r.problems ?? [])].map((p) => ` ${p}`).join('')}`);
     } catch (e) {
       setProblems(e instanceof ApiError ? problemsFrom(e.body, e.message) : [sayErr(e)]);
       setBusy(false);
@@ -138,7 +138,7 @@ export function ImportPanel({ onDone, onCancel, shown, initial }: { onDone: (sai
       {env && (
         <div aria-label="What importing the file does">
           {env.mods.map((m) => <EnvelopeMod key={m.id} m={m} trust={trust} replace={replace} flip={flip} />)}
-          {env.workflow && <p>Workflow: {showText(env.workflow.name)}{env.workflow.diagnostics.map((d) => ` · ${d}`).join('')}</p>}
+          {env.workflow && <p>Playbook: {showText(env.workflow.name)}{env.workflow.diagnostics.map((d) => ` · ${d}`).join('')}</p>}
           {env.warnings.map((w, i) => <p key={i} className="hint">{showText(w)}</p>)}
         </div>
       )}

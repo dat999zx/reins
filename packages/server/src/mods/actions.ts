@@ -1292,12 +1292,12 @@ function isEnvelope(input: unknown): boolean {
 /** A workflow of an envelope: a name (never a path) and its text. Returns the words when it cannot be taken. */
 function workflowOf(env: ModEnv, w: unknown): { name: string; text: string } | string {
   if (!isObj(w)) return '`workflow` must be { "name": ..., "text": ... }.';
-  for (const k of Object.keys(w)) if (k !== 'name' && k !== 'text') return `\`${cap(k, 40)}\` is not a field of the workflow; it holds a name and a text, never a path.`;
+  for (const k of Object.keys(w)) if (k !== 'name' && k !== 'text') return `\`${cap(k, 40)}\` is not a field of the playbook; it holds a name and a text, never a path.`;
   const { name, text } = w;
-  if (typeof name !== 'string' || !WORKFLOW_NAME.test(name) || WIN_RESERVED.test(name)) return 'The workflow name may hold only letters, digits, dash and underscore (at most 60), must start with a letter or digit, and is a name, never a path.';
-  if (typeof text !== 'string' || text === '') return 'The workflow text must be text that is not empty.';
-  if (Buffer.byteLength(text) > MAX_WORKFLOW) return `The workflow text is larger than ${MAX_WORKFLOW / 1024} KB.`;
-  if (hasHiddenChars(text.replace(/[\n\r\t]/g, ''))) return 'The workflow text holds a hidden character (a control, zero-width or direction-changing one), so it was refused.';
+  if (typeof name !== 'string' || !WORKFLOW_NAME.test(name) || WIN_RESERVED.test(name)) return 'The playbook name may hold only letters, digits, dash and underscore (at most 60), must start with a letter or digit, and is a name, never a path.';
+  if (typeof text !== 'string' || text === '') return 'The playbook text must be text that is not empty.';
+  if (Buffer.byteLength(text) > MAX_WORKFLOW) return `The playbook text is larger than ${MAX_WORKFLOW / 1024} KB.`;
+  if (hasHiddenChars(text.replace(/[\n\r\t]/g, ''))) return 'The playbook text holds a hidden character (a control, zero-width or direction-changing one), so it was refused.';
   if (env.holdsSecret(text)) return KEY_IN_MOD;
   return { name, text };
 }
@@ -1322,13 +1322,13 @@ function openEnvelope(env: ModEnv, input: unknown): Opened | { reply: Reply } {
   if (v.mods !== undefined && !isObj(v.mods)) return noReply('`mods` must be an object of mod ids and their files.');
   const entries = Object.entries(v.mods ?? {});
   if (entries.length > MAX_MODS) return noReply(`The file holds ${entries.length} mods; the most is ${MAX_MODS}.`);
-  if (!entries.length && v.workflow === undefined) return noReply('The file holds no mods and no workflow.');
+  if (!entries.length && v.workflow === undefined) return noReply('The file holds no mods and no playbook.');
   // The whole file: the text of every mod file and the workflow together. (A mod with too many files is refused below, by its own check.)
   let total = isObj(v.workflow) && typeof v.workflow.text === 'string' ? Buffer.byteLength(v.workflow.text) : 0;
   for (const [, files] of entries) {
     if (isObj(files) && Object.keys(files).length <= MAX_FILES) for (const t of Object.values(files)) if (typeof t === 'string') total += Buffer.byteLength(t);
   }
-  if (total > MAX_TOTAL) return noReply('The mods and the workflow are larger than 1 MB together.');
+  if (total > MAX_TOTAL) return noReply('The mods and the playbook are larger than 1 MB together.');
   if (holdsDeep(env, v)) return { reply: fail(400, KEY_IN_MOD) };
   const mods: Opened['mods'] = [];
   const brings = new Map<string, string>();
@@ -1379,7 +1379,7 @@ function previewEnvelope(env: ModEnv, file: unknown): Reply {
     mods: o.mods.map((m) => m.summary),
     adds: o.mods.flatMap((m) => m.summary.adds.map((a) => `${m.id}: ${a}`)),
     ...(workflow ? { workflow } : {}),
-    warnings: workflow?.exists ? [`A workflow named ${workflow.name} is already saved, so this file cannot be imported until it is renamed or removed.`] : [],
+    warnings: workflow?.exists ? [`A playbook named ${workflow.name} is already saved, so this file cannot be imported until it is renamed or removed.`] : [],
   };
   return { status: 200, body: { ok: true, summary } };
 }
@@ -1392,7 +1392,7 @@ function saveWorkflow(home: string, w: { name: string; text: string }): { undo()
   try {
     try {
       const st = fs.lstatSync(dir);
-      if (st.isSymbolicLink() || !st.isDirectory()) return 'The workflows folder is a link or a file, so the workflow was not saved.';
+      if (st.isSymbolicLink() || !st.isDirectory()) return 'The playbooks folder is a link or a file, so the playbook was not saved.';
     } catch (e) {
       if ((e as NodeJS.ErrnoException)?.code !== 'ENOENT') throw e;
       fs.mkdirSync(dir, { recursive: true });
@@ -1401,7 +1401,7 @@ function saveWorkflow(home: string, w: { name: string; text: string }): { undo()
     fs.writeFileSync(file, w.text, { flag: 'wx' });
   } catch (e) {
     if (made) { try { fs.rmdirSync(dir); } catch { /* not empty or gone */ } }
-    return (e as NodeJS.ErrnoException)?.code === 'EEXIST' ? `A workflow named ${w.name} is already saved.` : 'The workflow could not be saved.';
+    return (e as NodeJS.ErrnoException)?.code === 'EEXIST' ? `A playbook named ${w.name} is already saved.` : 'The playbook could not be saved.';
   }
   return { undo: () => { quietRm(file); if (made) { try { fs.rmdirSync(dir); } catch { /* not empty */ } } } };
 }
@@ -1431,7 +1431,7 @@ function applyEnvelope(env: ModEnv, b: Record<string, unknown>): Promise<Reply> 
       if (!m.summary.hasCode) return fail(400, `${id$(m.id)} has no code, so there is nothing to trust. Nothing was installed.`);
       if (trust.get(m.id) !== m.summary.hash) return fail(409, `${id$(m.id)} is not the code you were shown. Look at it again. Nothing was installed.`);
     }
-    if (o.workflow && there(workflowFile(env.home, o.workflow.name))) return fail(409, `A workflow named ${o.workflow.name} is already saved. Nothing was installed.`);
+    if (o.workflow && there(workflowFile(env.home, o.workflow.name))) return fail(409, `A playbook named ${o.workflow.name} is already saved. Nothing was installed.`);
     const placed: Placed[] = [];
     const back = () => placed.reverse().flatMap((p) => p.undo());
     const stop = (status: number, error: string): Reply => {
@@ -1508,7 +1508,7 @@ export function exportBundle(env: ModEnv, b: Record<string, unknown>): Reply {
   const w = b.workflow === undefined ? undefined : workflowOf(env, b.workflow);
   if (typeof w === 'string') return fail(400, w);
   const want = new Set<string>((b.ids ?? []) as string[]);
-  if (!want.size && !w) return fail(400, 'Say which mods or which workflow to export.');
+  if (!want.size && !w) return fail(400, 'Say which mods or which playbook to export.');
   const notes: string[] = [];
   const missing: string[] = [];
   for (const id of want) {
@@ -1546,5 +1546,5 @@ export function exportBundle(env: ModEnv, b: Record<string, unknown>): Reply {
   if (Buffer.byteLength(text) > MAX_TOTAL) return fail(409, 'The file would be larger than 1 MB, so nothing was exported.');
   const check = openEnvelope(env, text);
   if ('reply' in check) return fail(409, `The file would not import (${String((check.reply.body as { error?: unknown }).error)}), so nothing was exported.`);
-  return { status: 200, body: { text, ids: Object.keys(mods), notes, missing }, headers: { 'content-disposition': 'attachment; filename="workflow.reins-mods.json"' } };
+  return { status: 200, body: { text, ids: Object.keys(mods), notes, missing }, headers: { 'content-disposition': 'attachment; filename="playbook.reins-mods.json"' } };
 }

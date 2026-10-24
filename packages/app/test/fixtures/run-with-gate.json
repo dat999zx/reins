@@ -31,7 +31,7 @@
       "id": "f17ef996ea80",
       "kind": "trust",
       "detail": "npm test",
-      "prompt": "This workflow runs the commands below on your machine. Trust it? [y / n]"
+      "prompt": "This playbook runs the commands below on your machine. Trust it? [y / n]"
     }
   },
   {

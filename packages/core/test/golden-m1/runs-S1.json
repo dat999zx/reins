@@ -186,11 +186,11 @@
       "workflow": "t"
     },
     "receivedTexts": [
-      "[Reins · workflow \"t\" · step 1 of 6: one]\n\nfirst\n\nFor this step:\n- Do not touch migrations/**. (Enforced: edits there are blocked.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-      "[Reins · workflow \"t\" · step 2 of 6: say]\n\nhello\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-      "[Reins · workflow \"t\" · step 4 of 6: use]\n\nuse it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-      "[Reins · workflow \"t\" · step 5 of 6: after]\n\nafter\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-      "[Reins · workflow \"t\" · step 6 of 6: store]\n\nProvide a one-paragraph decision summary for \"decision\".\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+      "[Reins · playbook \"t\" · step 1 of 6: one]\n\nfirst\n\nFor this step:\n- Do not touch migrations/**. (Enforced: edits there are blocked.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"t\" · step 2 of 6: say]\n\nhello\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"t\" · step 4 of 6: use]\n\nuse it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"t\" · step 5 of 6: after]\n\nafter\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"t\" · step 6 of 6: store]\n\nProvide a one-paragraph decision summary for \"decision\".\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
     ],
     "status": "done"
   },
@@ -383,11 +383,11 @@
       "workflow": "t"
     },
     "receivedTexts": [
-      "[Reins · workflow \"t\" · step 1 of 6: one]\n\nfirst\n\nFor this step:\n- Do not touch migrations/**. (Enforced: edits there are blocked.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-      "[Reins · workflow \"t\" · step 2 of 6: say]\n\nhello\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-      "[Reins · workflow \"t\" · step 4 of 6: use]\n\nContext from Knowl:\n- PRIOR: upload retries\n\nuse it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-      "[Reins · workflow \"t\" · step 5 of 6: after]\n\nafter\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-      "[Reins · workflow \"t\" · step 6 of 6: store]\n\nProvide a one-paragraph decision summary for \"decision\".\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+      "[Reins · playbook \"t\" · step 1 of 6: one]\n\nfirst\n\nFor this step:\n- Do not touch migrations/**. (Enforced: edits there are blocked.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"t\" · step 2 of 6: say]\n\nhello\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"t\" · step 4 of 6: use]\n\nContext from Knowl:\n- PRIOR: upload retries\n\nuse it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"t\" · step 5 of 6: after]\n\nafter\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"t\" · step 6 of 6: store]\n\nProvide a one-paragraph decision summary for \"decision\".\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
     ],
     "status": "done"
   }

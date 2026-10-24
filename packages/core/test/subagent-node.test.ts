@@ -66,7 +66,7 @@ describe('subagent step: validate', () => {
   });
 
   it('slices of a model block and a subagent are summed against the workflow USD', () => {
-    expect(errors(wf('## model m\nusd: 1.10\n\n## subagent r\nusd: 1.90\n> Go.\n'))).toEqual(["The blocks' budgets add up to $3.00, over the workflow's $2.00."]);
+    expect(errors(wf('## model m\nusd: 1.10\n\n## subagent r\nusd: 1.90\n> Go.\n'))).toEqual(["The blocks' budgets add up to $3.00, over the playbook's $2.00."]);
     expect(errors(wf('## model m\nusd: 1.10\n\n## subagent r\nusd: 0.90\n> Go.\n'))).toEqual([]);
   });
 

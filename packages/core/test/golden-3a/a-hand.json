@@ -53,7 +53,7 @@
         }
       ],
       "turns": [
-        "[Reins · workflow \"t\" · step 1 of 1: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+        "[Reins · playbook \"t\" · step 1 of 1: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
       ]
     },
     "diags": []
@@ -112,7 +112,7 @@
         }
       ],
       "turns": [
-        "[Reins · workflow \"t\" · step 1 of 1: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+        "[Reins · playbook \"t\" · step 1 of 1: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
       ]
     },
     "diags": []
@@ -171,7 +171,7 @@
         }
       ],
       "turns": [
-        "[Reins · workflow \"t\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+        "[Reins · playbook \"t\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
       ]
     },
     "diags": []
@@ -223,7 +223,7 @@
         }
       ],
       "turns": [
-        "[Reins · workflow \"t\" · step 2 of 2: say]\n\ninside\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+        "[Reins · playbook \"t\" · step 2 of 2: say]\n\ninside\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
       ]
     },
     "diags": []
@@ -267,7 +267,7 @@
         }
       ],
       "turns": [
-        "[Reins · workflow \"t\" · step 2 of 3: plan]\n\np\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+        "[Reins · playbook \"t\" · step 2 of 3: plan]\n\np\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
       ]
     },
     "diags": [
@@ -334,7 +334,7 @@
         }
       ],
       "turns": [
-        "[Reins · workflow \"t\" · step 1 of 1: plan]\n\np\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+        "[Reins · playbook \"t\" · step 1 of 1: plan]\n\np\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
       ]
     },
     "diags": []
@@ -383,7 +383,7 @@
         }
       ],
       "turns": [
-        "[Reins · workflow \"t\" · step 1 of 1: all cards]\n\ndo\n\nFor this step:\n- Do not touch migrations/**. (Enforced: edits there are blocked.)\n- Step is read-only. (Enforced: no file edits or write commands are permitted.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+        "[Reins · playbook \"t\" · step 1 of 1: all cards]\n\ndo\n\nFor this step:\n- Do not touch migrations/**. (Enforced: edits there are blocked.)\n- Step is read-only. (Enforced: no file edits or write commands are permitted.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
       ]
     },
     "diags": []

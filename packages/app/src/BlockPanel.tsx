@@ -176,7 +176,7 @@ export function BlockPanel({ step, all, cond, turn, rev, models, efforts, sessio
 
 export function WorkflowPanel({ w, rev, onEdit }: { w: Workflow; rev: unknown; onEdit: (fn: (w: Workflow) => Workflow) => void }) {
   return (
-    <aside className="bpanel" aria-label="Workflow panel">
+    <aside className="bpanel" aria-label="Playbook panel">
       <h3>{w.name}</h3>
       {w.task && <div className="bfield">Task<span className="sx-faint">{w.task}</span></div>}
       {!w.block && <BudgetFields w={w} rev={rev} onEdit={onEdit} />}

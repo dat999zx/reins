@@ -374,7 +374,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       estimate: d.estimate, ...(d.source ? { source: d.source } : {}), limits: limits(),
     });
     if (c && 'ask' in c) {
-      const a = await ask({ id: questionId(), kind: 'switch', prompt: c.ask.prompt, detail: `${c.ask.detail}\nAsked by the workflow's model block \`${step}\`.` });
+      const a = await ask({ id: questionId(), kind: 'switch', prompt: c.ask.prompt, detail: `${c.ask.detail}\nAsked by the playbook's model block \`${step}\`.` });
       if (a === null) return { to: 'closed' };
       if (a === 'stop') return { to: 'stop' };
       if (a !== 'switch') {
@@ -854,10 +854,10 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     if (store.isTrusted(cwd, file, hash)) return true;
     const a = await ask({
       id: questionId(), kind: 'trust', detail: cmds.join('\n'),
-      prompt: 'This workflow runs the commands below on your machine. Trust it? [y / n]',
+      prompt: 'This playbook runs the commands below on your machine. Trust it? [y / n]',
     });
     if (a === null || !/^(y|yes)$/i.test(a)) {
-      log('note', { text: stopping ? 'The session was stopped before the workflow started.' : 'The workflow is not trusted, so it did not run.' });
+      log('note', { text: stopping ? 'The session was stopped before the playbook started.' : 'The playbook is not trusted, so it did not run.' });
       unsent();
       return false;
     }
@@ -871,14 +871,14 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     const file = real(path.resolve(cwd, p)); // a relative path is relative to the session folder
     if (!file) return bad(`Cannot read ${p}.`);
     const roots = [cwd, path.join(dir, 'workflows')].map(real);
-    if (!roots.some((r) => r && under(file, r))) return bad('The workflow must be under the session folder or ~/.reins/workflows.');
+    if (!roots.some((r) => r && under(file, r))) return bad('The playbook must be under the session folder or ~/.reins/workflows.');
     const runs = real(path.join(dir, 'runs'));
-    if (runs && under(file, runs)) return bad('~/.reins/runs holds generated files; run a workflow from your folder or ~/.reins/workflows.'); // /resume skips trust for these
+    if (runs && under(file, runs)) return bad('~/.reins/runs holds generated files; run a playbook from your folder or ~/.reins/workflows.'); // /resume skips trust for these
     // The run row will name this file and this folder: a known key in either is answered now, in plain words, not after OK in the worker.
     if (holdsKey(file, cwd, id)) return bad(KEY_IN_IDENTITY);
     const loaded = loadWorkflow(file);
     const w = loaded.workflow;
-    if (!w) return bad(loaded.diagnostics.filter((d) => d.severity === 'error').map((d) => d.message).join('; ') || 'Invalid workflow.', loaded.diagnostics);
+    if (!w) return bad(loaded.diagnostics.filter((d) => d.severity === 'error').map((d) => d.message).join('; ') || 'Invalid playbook.', loaded.diagnostics);
     const refused = refuseRun(w, loaded.resolveBlock);
     if (refused) return refused;
     begin();

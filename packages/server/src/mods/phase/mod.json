@@ -4,7 +4,7 @@
   "kind": "block",
   "version": "1.0.0",
   "label": "Phase",
-  "description": "A titled turn: the step every workflow is built from",
+  "description": "A titled turn: the step every playbook is built from",
   "main": "index.js",
   "order": 10,
   "pack": "default",

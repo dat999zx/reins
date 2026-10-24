@@ -213,7 +213,7 @@
   "status": "done",
   "texts": {
     "track-ended-main-1": [
-      "[Reins · workflow \"t\" · step 2 of 7: main]\n\nm\n\nFor this step:\n- Result of a: alpha\n- Result of b: beta\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+      "[Reins · playbook \"t\" · step 2 of 7: main]\n\nm\n\nFor this step:\n- Result of a: alpha\n- Result of b: beta\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
     ]
   },
   "tracks": []

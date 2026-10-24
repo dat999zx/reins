@@ -15,7 +15,7 @@ const edit: Item[] = [
 export const MENUS: Record<MenuTarget, Item[]> = {
   block: [
     ...edit,
-    { label: 'Park (leaves the workflow)', act: 'park', when: (c) => !c.free },
+    { label: 'Park (leaves the playbook)', act: 'park', when: (c) => !c.free },
     { label: 'Detach as free block', act: 'detach', when: (c) => c.count === 1 && c.topLevel && !c.free && !c.isEnd },
     { label: 'Put back in the stack', act: 'attach', when: (c) => c.free },
     '-',

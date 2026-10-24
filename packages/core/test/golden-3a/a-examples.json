@@ -137,9 +137,9 @@
       }
     ],
     "turns": [
-      "[Reins · workflow \"bug-fix\" · step 1 of 4: reproduce]\n\nAlways:\n- Reproduce the bug before changing code.\n\nWrite a test that reproduces the bug. It must fail for the right reason.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-      "[Reins · workflow \"bug-fix\" · step 3 of 4: fix]\n\nAlways:\n- Reproduce the bug before changing code.\n\nMake the smallest change that makes the test pass.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-      "[Reins · workflow \"bug-fix\" · step 4 of 4: say]\n\nAlways:\n- Reproduce the bug before changing code.\n\nSmall fix. Explain the root cause in two sentences.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+      "[Reins · playbook \"bug-fix\" · step 1 of 4: reproduce]\n\nAlways:\n- Reproduce the bug before changing code.\n\nWrite a test that reproduces the bug. It must fail for the right reason.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"bug-fix\" · step 3 of 4: fix]\n\nAlways:\n- Reproduce the bug before changing code.\n\nMake the smallest change that makes the test pass.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"bug-fix\" · step 4 of 4: say]\n\nAlways:\n- Reproduce the bug before changing code.\n\nSmall fix. Explain the root cause in two sentences.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
     ]
   },
   "safe-refactor": {
@@ -278,9 +278,9 @@
       }
     ],
     "turns": [
-      "[Reins · workflow \"safe-refactor\" · step 2 of 6: plan]\n\nAlways:\n- Behaviour must not change.\n- No public API changes.\n\nList every move you will make. No code yet.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-      "[Reins · workflow \"safe-refactor\" · step 4 of 6: refactor]\n\nAlways:\n- Behaviour must not change.\n- No public API changes.\n\nMove code as planned. Do not change behaviour.\n\nFor this step:\n- Do not touch src/api/**. (Enforced: edits there are blocked.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-      "[Reins · workflow \"safe-refactor\" · step 5 of 6: fix]\n\nAlways:\n- Behaviour must not change.\n- No public API changes.\n\nRestore the old behaviour. Do not change the tests.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+      "[Reins · playbook \"safe-refactor\" · step 2 of 6: plan]\n\nAlways:\n- Behaviour must not change.\n- No public API changes.\n\nList every move you will make. No code yet.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"safe-refactor\" · step 4 of 6: refactor]\n\nAlways:\n- Behaviour must not change.\n- No public API changes.\n\nMove code as planned. Do not change behaviour.\n\nFor this step:\n- Do not touch src/api/**. (Enforced: edits there are blocked.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"safe-refactor\" · step 5 of 6: fix]\n\nAlways:\n- Behaviour must not change.\n- No public API changes.\n\nRestore the old behaviour. Do not change the tests.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
     ]
   },
   "tdd-loop": {
@@ -460,10 +460,10 @@
       }
     ],
     "turns": [
-      "[Reins · workflow \"tdd-loop\" · step 2 of 3: red]\n\nAlways:\n- One test at a time.\n\nWrite exactly one failing test for the next requirement.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-      "[Reins · workflow \"tdd-loop\" · step 2 of 3: green]\n\nAlways:\n- One test at a time.\n\nWrite the least code that makes the new test pass.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-      "[Reins · workflow \"tdd-loop\" · step 3 of 3: review]\n\nAlways:\n- One test at a time.\n\nReview the full diff as a harsh reviewer. List real problems only.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-      "[Reins · workflow \"tdd-loop\" · step 3 of 3: fix]\n\nAlways:\n- One test at a time.\n\nFix the problems from the review. Nothing else.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+      "[Reins · playbook \"tdd-loop\" · step 2 of 3: red]\n\nAlways:\n- One test at a time.\n\nWrite exactly one failing test for the next requirement.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"tdd-loop\" · step 2 of 3: green]\n\nAlways:\n- One test at a time.\n\nWrite the least code that makes the new test pass.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"tdd-loop\" · step 3 of 3: review]\n\nAlways:\n- One test at a time.\n\nReview the full diff as a harsh reviewer. List real problems only.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"tdd-loop\" · step 3 of 3: fix]\n\nAlways:\n- One test at a time.\n\nFix the problems from the review. Nothing else.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
     ]
   },
   "upload-retry": {
@@ -679,11 +679,11 @@
       }
     ],
     "turns": [
-      "[Reins · workflow \"upload-retry\" · step 2 of 8: plan]\n\nAlways:\n- No new dependencies.\n- Keep functions under 40 lines.\n\nWrite a plan for adding retry to the upload endpoint.\nDo not write code. Output the plan as a numbered list, then stop.\n\nFor this step:\n- Step is read-only. (Enforced: no file edits or write commands are permitted.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-      "[Reins · workflow \"upload-retry\" · step 4 of 8: implement]\n\nAlways:\n- No new dependencies.\n- Keep functions under 40 lines.\n\nImplement the approved plan. Do not deviate; if you must, stop and say why.\nExplain each change in one line.\n\nFor this step:\n- Do not touch migrations/**. (Enforced: edits there are blocked.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-      "[Reins · workflow \"upload-retry\" · step 5 of 8: fix]\n\nAlways:\n- No new dependencies.\n- Keep functions under 40 lines.\n\nRead the error output first. Fix the cause, not the symptom.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-      "[Reins · workflow \"upload-retry\" · step 7 of 8: review]\n\nAlways:\n- No new dependencies.\n- Keep functions under 40 lines.\n\nReview the full diff as a harsh reviewer. List real problems only.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-      "[Reins · workflow \"upload-retry\" · step 7 of 8: fix]\n\nAlways:\n- No new dependencies.\n- Keep functions under 40 lines.\n\nFix the problems from the review. Nothing else.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+      "[Reins · playbook \"upload-retry\" · step 2 of 8: plan]\n\nAlways:\n- No new dependencies.\n- Keep functions under 40 lines.\n\nWrite a plan for adding retry to the upload endpoint.\nDo not write code. Output the plan as a numbered list, then stop.\n\nFor this step:\n- Step is read-only. (Enforced: no file edits or write commands are permitted.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"upload-retry\" · step 4 of 8: implement]\n\nAlways:\n- No new dependencies.\n- Keep functions under 40 lines.\n\nImplement the approved plan. Do not deviate; if you must, stop and say why.\nExplain each change in one line.\n\nFor this step:\n- Do not touch migrations/**. (Enforced: edits there are blocked.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"upload-retry\" · step 5 of 8: fix]\n\nAlways:\n- No new dependencies.\n- Keep functions under 40 lines.\n\nRead the error output first. Fix the cause, not the symptom.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"upload-retry\" · step 7 of 8: review]\n\nAlways:\n- No new dependencies.\n- Keep functions under 40 lines.\n\nReview the full diff as a harsh reviewer. List real problems only.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"upload-retry\" · step 7 of 8: fix]\n\nAlways:\n- No new dependencies.\n- Keep functions under 40 lines.\n\nFix the problems from the review. Nothing else.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
     ]
   }
 }

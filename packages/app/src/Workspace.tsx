@@ -453,7 +453,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, models, ef
   const parking = !!drag.src && !!drag.ok && !drag.over; // a step over bare surface: a release parks it
   useEffect(() => {
     if (!parking) return;
-    onNote('Release to park: it leaves the workflow.');
+    onNote('Release to park: it leaves the playbook.');
     return () => onNote('');
   }, [parking]);
 

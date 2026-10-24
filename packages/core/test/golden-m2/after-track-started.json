@@ -205,13 +205,13 @@
   "status": "done",
   "texts": {
     "track-started-main-1": [
-      "[Reins · workflow \"t\" · step 2 of 7: main]\n\nm\n\nFor this step:\n- Result of a: alpha\n- Result of b: beta\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+      "[Reins · playbook \"t\" · step 2 of 7: main]\n\nm\n\nFor this step:\n- Result of a: alpha\n- Result of b: beta\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
     ],
     "track-started-sub-a": [
-      "[Reins · workflow \"t\" · step 4 of 7: a]\n\na\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+      "[Reins · playbook \"t\" · step 4 of 7: a]\n\na\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
     ],
     "track-started-sub-b": [
-      "[Reins · workflow \"t\" · step 6 of 7: b]\n\nb\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+      "[Reins · playbook \"t\" · step 6 of 7: b]\n\nb\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
     ]
   },
   "tracks": []

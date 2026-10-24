@@ -47,7 +47,7 @@ export function compileTurn(step: Step, ctx: CompileTurnContext): string {
 
   // 1. Header line
   sections.push(
-    `[Reins · workflow "${ctx.workflowName}" · step ${stepNum} of ${ctx.totalSteps}: ${titleOrId}]`
+    `[Reins · playbook "${ctx.workflowName}" · step ${stepNum} of ${ctx.totalSteps}: ${titleOrId}]`
   );
 
   // 2. Always

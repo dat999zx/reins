@@ -222,10 +222,10 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
 
     if (snapshot) {
       run = Run.restore(snapshot, runOpts);
-      say(`Reins · resuming run ${runId} · workflow "${workflow.name}" · ${cwd}`);
+      say(`Reins · resuming run ${runId} · playbook "${workflow.name}" · ${cwd}`);
     } else {
       o.store.createRun({ id: runId, workflowPath: file, cwd });
-      say(`Reins · run ${runId} · workflow "${workflow.name}" · ${cwd}`);
+      say(`Reins · run ${runId} · playbook "${workflow.name}" · ${cwd}`);
       run = new Run(runOpts);
     }
     say('Type a line to send a card (steer). /now <text> interrupts and sends it. /stop halts the run.');
@@ -274,7 +274,7 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
 
   function printReceipt(r: Receipt, runId: string) {
     say('\n── Receipt ──');
-    say(`workflow ${r.workflow} · ${r.status} · ${r.totalTurns} turns · ${Math.round(r.totalTimeMs / 1000)} s · $${r.totalCostUsd.toFixed(4)}${r.unpricedTurns ? UNKNOWN_MARK : ''}`);
+    say(`playbook ${r.workflow} · ${r.status} · ${r.totalTurns} turns · ${Math.round(r.totalTimeMs / 1000)} s · $${r.totalCostUsd.toFixed(4)}${r.unpricedTurns ? UNKNOWN_MARK : ''}`);
     if (r.unpricedTurns) say(unpricedWords(r.unpricedTurns));
     if (r.models) {
       const split = r.models.map((m) => `${m.model} $${m.usd.toFixed(4)}${m.unknown ? UNKNOWN_MARK : ''} (${m.turns} turn${m.turns === 1 ? '' : 's'})`).join(' · ');
@@ -331,7 +331,7 @@ function readBlock(dir: string, name: string): Workflow | undefined {
   if (!st.isFile()) throw new Error('it is not a file');
   if (st.size > BLOCK_MAX) throw new Error(`the file is larger than ${BLOCK_MAX / 1000} KB`);
   const parsed = parseWorkflow(fs.readFileSync(real, 'utf8'));
-  if (!parsed.workflow) throw new Error(`the file is not a workflow${parsed.diagnostics[0] ? `: ${parsed.diagnostics[0].message}` : ''}`);
+  if (!parsed.workflow) throw new Error(`the file is not a playbook${parsed.diagnostics[0] ? `: ${parsed.diagnostics[0].message}` : ''}`);
   return parsed.diagnostics.length ? { ...parsed.workflow, problems: parsed.diagnostics } : parsed.workflow;
 }
 

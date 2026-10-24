@@ -14,7 +14,7 @@ export default function activate(api: Pick<ModApi, 'registerBlock'>): void {
     validate: {
       early(s, ctx) {
         if (s.links.length || s.cards.length || s.prompt) {
-          ctx.push({ severity: 'warning', message: 'an end step stops the workflow; its links, cards and prompt do nothing', pos: ctx.pos });
+          ctx.push({ severity: 'warning', message: 'an end step stops the playbook; its links, cards and prompt do nothing', pos: ctx.pos });
         }
       },
     },

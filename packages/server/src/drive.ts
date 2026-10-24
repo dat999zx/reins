@@ -154,7 +154,7 @@ async function onPause(run: Run, io: DriveIo, p: PauseReason): Promise<boolean> 
     io.say(block ? `⏸ block ${block} used its $${limit} budget ($${spent} spent)` : `⏸ the run used its $${limit} USD budget ($${spent} spent)`);
     const left = run.usdLeft();
     const detail = block
-      ? `Block \`${block}\` has used $${spent} of its $${limit}.${left === undefined ? '' : ` The workflow's USD budget has $${r4(Math.max(left, 0))} left.`}`
+      ? `Block \`${block}\` has used $${spent} of its $${limit}.${left === undefined ? '' : ` The playbook's USD budget has $${r4(Math.max(left, 0))} left.`}`
       : `The run has used $${spent} of its $${limit} USD budget.`;
     // The engine's own words when it stopped for a budget it cannot hold (an unknown spend, a missing price): the figures alone would not say why.
     const why = p.text ? ` ${p.text}` : '';

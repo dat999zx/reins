@@ -162,7 +162,7 @@ describe('hostile envelopes are refused whole', () => {
   it('a 5 MB workflow, a workflow just over its own cap, and a 5 MB file are refused', async () => {
     const w = await world();
     await refused(w, env1({}, { name: 'share', text: 'x'.repeat(5 * 1024 * 1024) }), /larger than 1 MB/);
-    await refused(w, env1({}, { name: 'share', text: 'x'.repeat(256 * 1024 + 1) }), /workflow text is larger than 256 KB/);
+    await refused(w, env1({}, { name: 'share', text: 'x'.repeat(256 * 1024 + 1) }), /playbook text is larger than 256 KB/);
     await refused(w, JSON.stringify(env1({}, { name: 'share', text: 'x'.repeat(5 * 1024 * 1024) })), /larger than 1 MB/);
     expect(importPreview(w.env, env1({}, { name: 'share', text: wf().text + 'x'.repeat(256 * 1024 - 2000) })).status).toBe(200);
   });
@@ -175,13 +175,13 @@ describe('hostile envelopes are refused whole', () => {
     const w = await world();
     const t = wf().text;
     for (const name of ['../evil', 'a/b', 'a\\b', 'C:\\x', '/etc/passwd', 'x.reins.md', '.hidden', 'con', 'nul', '', 'x'.repeat(61), 'a b', '..', 'a:b']) {
-      await refused(w, env1({}, { name, text: t }), /workflow name/);
+      await refused(w, env1({}, { name, text: t }), /playbook name/);
     }
-    await refused(w, env1({}, { name: 'share', text: t, path: '/etc/passwd' }), /not a field of the workflow/);
-    await refused(w, env1({}, { name: 'share', text: t, file: 'x' }), /not a field of the workflow/);
+    await refused(w, env1({}, { name: 'share', text: t, path: '/etc/passwd' }), /not a field of the playbook/);
+    await refused(w, env1({}, { name: 'share', text: t, file: 'x' }), /not a field of the playbook/);
     await refused(w, env1({}, 'workflows/share.reins.md'), /`workflow` must be/);
-    await refused(w, env1({}, { name: 5, text: t }), /workflow name/);
-    await refused(w, env1({}, { name: 'share', text: 5 }), /workflow text must be text/);
+    await refused(w, env1({}, { name: 5, text: t }), /playbook name/);
+    await refused(w, env1({}, { name: 'share', text: 5 }), /playbook text must be text/);
     await refused(w, env1({}, { name: 'share', text: '' }), /not empty/);
   });
   it('a nested envelope is refused as a mod, and is plain text anywhere else', async () => {
@@ -190,7 +190,7 @@ describe('hostile envelopes are refused whole', () => {
     await refused(w, env1({ evil: inner }), /must be text/);
     await refused(w, env1({ evil: { reinsMod: 1, files: dataMod('evil') } }), /must be text/);
     await refused(w, { reinsMods: 1, mods: { evil: { 'mod.json': inner } } }, /must be text/);
-    await refused(w, { reinsMods: 1, mods: {}, workflow: inner }, /workflow/);
+    await refused(w, { reinsMods: 1, mods: {}, workflow: inner }, /playbook/);
     // inside a file's text it is only text: the outer file installs, the inner one is not read
     const carrier = { ...dataMod('carrier'), 'notes.txt': JSON.stringify(inner) };
     const r = await importApply(w.env, { file: env1({ carrier }, { name: 'share', text: wf().text + JSON.stringify(inner).replaceAll('\n', ' ') + '\n' }) });
@@ -213,8 +213,8 @@ describe('hostile envelopes are refused whole', () => {
     await refused(w, { ...env1({ x: dataMod('x') }), extra: 1 }, /not a field of a mods file/);
     await refused(w, { reinsMods: 2, mods: {} }, /`reinsMods` is 2/);
     await refused(w, { reinsMods: 1, mods: [dataMod('x')] }, /`mods` must be an object/);
-    await refused(w, { reinsMods: 1 }, /no mods and no workflow/);
-    await refused(w, env1({}), /no mods and no workflow/);
+    await refused(w, { reinsMods: 1 }, /no mods and no playbook/);
+    await refused(w, env1({}), /no mods and no playbook/);
     await refused(w, '{"reinsMods":1,', /not valid JSON/);
     await refused(w, { reinsMods: 1, mods: { x: { 'a.txt': 'x' } } }, /mod.json/);
     await refused(w, env1({ x: 'text' }), /files|object/);
@@ -266,7 +266,7 @@ describe('all or nothing', () => {
     const file = env1({ eb1: codeMod(1), m2: dataMod('m2') }, wf());
     const r = await importApply(w.env, { file, trust: hashes(file, w) });
     expect(r.status, words(r)).toBe(409);
-    expect(body(r).error).toMatch(/workflows folder/);
+    expect(body(r).error).toMatch(/playbooks folder/);
     expect(snap(w.t.home)).toEqual(before);
     expect(NODES.has('ebk1')).toBe(false);
   });

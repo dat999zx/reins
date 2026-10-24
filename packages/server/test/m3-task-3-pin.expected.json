@@ -484,7 +484,7 @@
    },
    {
     "severity": "warning",
-    "message": "an end step stops the workflow; its links, cards and prompt do nothing",
+    "message": "an end step stops the playbook; its links, cards and prompt do nothing",
     "pos": {
      "line": 18,
      "col": 1
@@ -636,10 +636,10 @@
  "runMain": {
   "status": "done",
   "texts": [
-   "[Reins · workflow \"pin3\" · step 1 of 6: Plan the work]\n\nplan it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-   "[Reins · workflow \"pin3\" · step 2 of 6: say]\n\nsay hello\n\nFor this step:\n- Step is read-only. (Enforced: no file edits or write commands are permitted.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-   "[Reins · workflow \"pin3\" · step 3 of 6: Write the migration for the user table and then update every caller of the old programming interface in the whole code base]\n\nlong one\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-   "[Reins · workflow \"pin3\" · step 4 of 6: Odd -- Title!! (v2) ##]\n\nodd\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   "[Reins · playbook \"pin3\" · step 1 of 6: Plan the work]\n\nplan it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · playbook \"pin3\" · step 2 of 6: say]\n\nsay hello\n\nFor this step:\n- Step is read-only. (Enforced: no file edits or write commands are permitted.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · playbook \"pin3\" · step 3 of 6: Write the migration for the user table and then update every caller of the old programming interface in the whole code base]\n\nlong one\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+   "[Reins · playbook \"pin3\" · step 4 of 6: Odd -- Title!! (v2) ##]\n\nodd\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
   ],
   "events": [
    {
@@ -862,7 +862,7 @@
  "runSay": {
   "status": "done",
   "texts": [
-   "[Reins · workflow \"say-only\" · step 1 of 1: say]\n\njust say\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   "[Reins · playbook \"say-only\" · step 1 of 1: say]\n\njust say\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
   ],
   "events": [
    {
@@ -947,7 +947,7 @@
  "runRepeat": {
   "status": "done",
   "texts": [
-   "[Reins · workflow \"end-in-repeat\" · step 1 of 1: work]\n\nwork\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   "[Reins · playbook \"end-in-repeat\" · step 1 of 1: work]\n\nwork\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
   ],
   "events": [
    {

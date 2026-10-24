@@ -160,7 +160,7 @@
     "workflow": "t"
   },
   "receivedTexts": [
-    "[Reins · workflow \"t\" · step 1 of 2: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"t\" · step 1 of 2: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
   ],
   "status": "done"
 }

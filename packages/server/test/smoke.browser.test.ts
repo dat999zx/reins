@@ -135,9 +135,9 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     // 8. the Text tab: new workflow, an error shows on its line, fixed, saved, Run, Trust, the run finishes
     const receipts = await page.getByRole('region', { name: /^Receipt for/ }).count();
     await page.getByRole('tab', { name: 'Text' }).click();
-    await page.getByRole('textbox', { name: 'Workflow name' }).fill('smoke');
-    await page.getByRole('button', { name: 'New workflow' }).click();
-    const editor = page.getByRole('textbox', { name: 'Workflow text' });
+    await page.getByRole('textbox', { name: 'Playbook name' }).fill('smoke');
+    await page.getByRole('button', { name: 'New playbook' }).click();
+    const editor = page.getByRole('textbox', { name: 'Playbook text' });
     await editor.waitFor();
     const good = await editor.inputValue();
     expect(good).toContain('## phase build');
@@ -252,7 +252,7 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     // a click on the bare surface clears the selection: the side column shows the Workflow panel with the Always box
     const bare = await empty();
     await page.mouse.click(bare.x, bare.y);
-    await page.getByRole('complementary', { name: 'Workflow panel' }).getByRole('textbox', { name: 'Always' }).waitFor();
+    await page.getByRole('complementary', { name: 'Playbook panel' }).getByRole('textbox', { name: 'Always' }).waitFor();
 
     // the text the next steps compare against byte for byte
     await textTab.click();
@@ -402,7 +402,7 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
       await textTab.click();
       return editor.inputValue();
     }, { timeout: W }).toContain('usd: 0.50');
-    await expect.poll(() => diags.textContent(), { timeout: W }).not.toContain("Set the workflow's USD budget first");
+    await expect.poll(() => diags.textContent(), { timeout: W }).not.toContain("Set the playbook's USD budget first");
     await blocksTab.click();
     // the face shows both pills, the id and the USD
     await expect.poll(() => row('model-1').getByRole('combobox', { name: 'Model of model-1', exact: true }).inputValue(), { timeout: W }).toBe('claude-opus-5-5');

@@ -82,7 +82,7 @@ function Strand({ s, run, ctx, open, onToggle, onBlock }: {
     <li className="sx-strand" data-run={s.runId} data-state={s.state}>
       <div className="sx-head">
         <span className="sx-hmark" aria-hidden="true" />
-        <b>Workflow {s.workflow}</b><span className="sx-hwords"> · {words.replace(/`/g, '')}</span>
+        <b>Playbook {s.workflow}</b><span className="sx-hwords"> · {words.replace(/`/g, '')}</span>
         {!s.newest && <span className="sx-hnote" id={note}>{EARLIER}</span>}
       </div>
       <ol className="sx-knots">

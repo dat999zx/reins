@@ -1,6 +1,6 @@
 # Adding a block
 
-A block is a kind of step in a workflow, like `run` or `gate`. **A block is a mod.** The default pack is the only source of kinds: core registers none. The 14 blocks you see in the palette (`phase`, `say`, `run`, `gate`, `repeat`, `if`, `verify`, `recall`, `store`, `model`, `subagent`, `end`, `fork`, `playbook`) are mod folders in `packages/server/src/mods/<id>/`, each with a `mod.json` that says `"pack": "default"`, and the loader registers them when the server starts. A block of yours is the same thing, in `<home>/mods/<id>/`.
+A block is a kind of step in a playbook, like `run` or `gate`. **A block is a mod.** The default pack is the only source of kinds: core registers none. The 14 blocks you see in the palette (`phase`, `say`, `run`, `gate`, `repeat`, `if`, `verify`, `recall`, `store`, `model`, `subagent`, `end`, `fork`, `playbook`) are mod folders in `packages/server/src/mods/<id>/`, each with a `mod.json` that says `"pack": "default"`, and the loader registers them when the server starts. A block of yours is the same thing, in `<home>/mods/<id>/`.
 
 - Walkthrough with a block you can run: `packages/server/src/mods/PACK.md`, "Write a block".
 - The manifest, `provides`, `api`, trust and what is contained: `packages/server/src/mods/README.md`, "Block, condition and card mods".
@@ -129,7 +129,7 @@ A new block picks a free number above 150 in both places (the guide's `ping` use
 
 `ops` maps an instruction name (`BEEP`) to what the run does with it. The run calls `exec(instr, vm)`. Here `vm` is a `VmCtx`, the run seen from inside the op. Two rules matter.
 
-- Almost every member is live. `vm.program`, `vm.running()`, `vm.next()` and `vm.goto()` read or move the run's own state right now. A user can edit the workflow while your op waits, so the program you read after an `await` may not be the one you read before.
+- Almost every member is live. `vm.program`, `vm.running()`, `vm.next()` and `vm.goto()` read or move the run's own state right now. A user can edit the playbook while your op waits, so the program you read after an `await` may not be the one you read before.
 - Only `vm.at` is a copy. It is the counter when the op started. After a long `await`, do not use `vm.at + 1` to move on. Call `vm.next()`, which moves the live counter.
 
 Always check `vm.running()` after every `await`. The user may have pressed Stop while you waited. If it is false, return and touch nothing:

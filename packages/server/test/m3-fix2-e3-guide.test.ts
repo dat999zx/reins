@@ -170,7 +170,7 @@ describe('the money words of the guides', () => {
     expect(fork).toMatch(/A track a branch starts, such as an own playbook, spends from that branch's share/);
     expect(fork).toMatch(/with no `usd:` it is capped at what the branch's share has left/);
     const usd = PACK.split('\n').find((l) => l.startsWith('| `usd:` |'))!;
-    expect(usd).toMatch(/without it the playbook is capped at what is left of the workflow's budget/i);
+    expect(usd).toMatch(/without it the playbook is capped at what is left of the budget of the playbook that uses it/i);
     expect(usd).not.toMatch(/no budget of its own\./);
     expect(CHANGELOG).toMatch(/spends from that branch's share/);
   });

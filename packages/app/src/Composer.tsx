@@ -87,8 +87,8 @@ export function Composer({ id, cwd, busy, locked, catalogue, takeRefill, bar }: 
   return (
     <div className="composer">
       {runList && (
-        <ul className="runlist" aria-label="Workflows">
-          {runList.length === 0 && <li className="hint">No workflows in this folder.</li>}
+        <ul className="runlist" aria-label="Playbooks">
+          {runList.length === 0 && <li className="hint">No playbooks in this folder.</li>}
           {runList.map((w) => (
             <li key={w.path}><button onClick={() => { post(`/api/sessions/${id}/run`, { path: w.path }).then(() => { setRunList(null); setText(''); }).catch(fail); }}>{w.name} <span className="faint">({w.scope})</span></button></li>
           ))}

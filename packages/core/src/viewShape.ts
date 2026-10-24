@@ -110,7 +110,7 @@ export function viewShapeProblem(v: unknown, scope: ViewScope = {}): string | un
     if (v[k] !== undefined && !inSet(set, v[k])) return `\`view.${k}\` is ${name(v[k])}. It must be one of ${oneOf(set)}.`;
   }
   for (const k of ['fails', 'manyNext', 'against', 'cards'] as const) if (v[k] !== undefined && v[k] !== true) return `\`view.${k}\` must be true, or left out.`;
-  if (v.stops !== undefined && (v.stops !== true || !packed)) return '`view.stops` is only for a block of the default pack (its `end`); no other block can end the workflow.';
+  if (v.stops !== undefined && (v.stops !== true || !packed)) return '`view.stops` is only for a block of the default pack (its `end`); no other block can end the playbook.';
   if (v.coreRows !== undefined) {
     if (!packed) return '`view.coreRows` is only for a block of the default pack; no other view can draw the row of an event core logs.';
     if (!Array.isArray(v.coreRows) || v.coreRows.length > MAX_IS || !v.coreRows.every((t) => goodName(t) && isCoreEvent(t))) return `\`view.coreRows\` must be a list of up to ${MAX_IS} events core logs.`;

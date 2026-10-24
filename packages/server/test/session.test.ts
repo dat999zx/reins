@@ -1281,7 +1281,7 @@ describe('model step in a run (C)', () => {
     await go(x);
     const q = await x.question('switch');
     expect(q.prompt).toBe('Switch to B?');
-    expect(q.detail).toMatch(/\nAsked by the workflow's model block `model-1`\.$/);
+    expect(q.detail).toMatch(/\nAsked by the playbook's model block `model-1`\.$/);
     expect(x.rows('question').find((r) => (r.data as Question).id === q.id)!.runId).toBe(rid(x));
     expect(x.s.status()).toBe('waiting');
     expect(x.t.turns).toEqual(['first']);
@@ -1355,7 +1355,7 @@ describe('model step in a run (C)', () => {
     s2.answer(r.id, 'resume');
     const again = await x.question('switch');
     expect(again.id).not.toBe(q.id);
-    expect(again.detail).toMatch(/Asked by the workflow's model block `model-1`\.$/);
+    expect(again.detail).toMatch(/Asked by the playbook's model block `model-1`\.$/);
     s2.answer(again.id, 'switch');
     await s2.idle();
     expect(modelRows(x)).toEqual([{ model: 'model-b' }]);
@@ -1484,7 +1484,7 @@ describe('model step in a run (C)', () => {
     await go(x);
     const q = await x.question('switch');
     expect(q.prompt).toBe('Switch to model-b?');
-    expect(q.detail).toBe("The whole conversation, 1,000 tokens, goes to model-b as input. No price is known for model-b, so the cost cannot be estimated.\nAsked by the workflow's model block `model-1`.");
+    expect(q.detail).toBe("The whole conversation, 1,000 tokens, goes to model-b as input. No price is known for model-b, so the cost cannot be estimated.\nAsked by the playbook's model block `model-1`.");
     x.s.answer(q.id, 'keep');
     await x.s.idle();
   });
@@ -2361,7 +2361,7 @@ describe('subagent (D)', () => {
 
     it('says exactly what was used and what is left; the subagent is closed once before the card', async () => {
       const { x, q } = await atCard();
-      expect(q.detail).toBe('Block `subagent-1` has used $0.60 of its $0.50. The workflow\'s USD budget has $1.40 left.');
+      expect(q.detail).toBe('Block `subagent-1` has used $0.60 of its $0.50. The playbook\'s USD budget has $1.40 left.');
       expect(times(x.t.closedIds, subId(x))).toBe(1);
       x.s.answer(q.id, 'stop');
       await x.s.idle();

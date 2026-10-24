@@ -69,7 +69,7 @@ describe('USD slices on a model step', () => {
     await go(run);
     expect(run.pauseReason).toMatchObject({ type: 'usd-budget-used', stepId: 'model-1' });
     expect(run.usdLeft()).toBeCloseTo(0.08, 9);
-    expect(run.allowUsd(0.1)).toBe("Allow at most $0.08: the workflow's USD budget has that much left.");
+    expect(run.allowUsd(0.1)).toBe("Allow at most $0.08: the playbook's USD budget has that much left.");
     expect(run.status).toBe('paused');
     expect(run.allowUsd(0.08)).toBeUndefined();
     expect(run.status).toBe('running');

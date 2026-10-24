@@ -450,9 +450,9 @@ export async function startServer(o: ServerOptions): Promise<Server> {
           return previewWorkflow(cwd, o.dir, p, text, stepId);
         }
         if (!str(p) || !p || text !== undefined) return fail(400, 'Send a path and either text or workflow.');
-        if (!isObject(workflow) || !Array.isArray(workflow.steps) || !Array.isArray(workflow.autos) || !Array.isArray(workflow.always) || !isObject(workflow.budget)) return fail(400, 'The workflow model is malformed.');
+        if (!isObject(workflow) || !Array.isArray(workflow.steps) || !Array.isArray(workflow.autos) || !Array.isArray(workflow.always) || !isObject(workflow.budget)) return fail(400, 'The playbook model is malformed.');
         let printed: string;
-        try { printed = printWorkflow(workflow as unknown as Workflow); } catch { return fail(400, 'The workflow model is malformed.'); }
+        try { printed = printWorkflow(workflow as unknown as Workflow); } catch { return fail(400, 'The playbook model is malformed.'); }
         const out = previewWorkflow(cwd, o.dir, p, printed, stepId);
         return out.status === 200 ? { ...out, body: { ...(out.body as object), text: printed } } : out;
       }

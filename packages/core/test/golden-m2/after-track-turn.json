@@ -298,14 +298,14 @@
   "status": "done",
   "texts": {
     "track-turn-main-1": [
-      "[Reins · workflow \"t\" · step 2 of 8: main]\n\nm\n\nFor this step:\n- Result of a: \n- Result of b: beta\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+      "[Reins · playbook \"t\" · step 2 of 8: main]\n\nm\n\nFor this step:\n- Result of a: \n- Result of b: beta\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
     ],
     "track-turn-sub-a": [
-      "[Reins · workflow \"t\" · step 4 of 8: a]\n\na\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-      "[Reins · workflow \"t\" · step 5 of 8: a2]\n\na2\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+      "[Reins · playbook \"t\" · step 4 of 8: a]\n\na\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"t\" · step 5 of 8: a2]\n\na2\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
     ],
     "track-turn-sub-b": [
-      "[Reins · workflow \"t\" · step 7 of 8: b]\n\nb\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+      "[Reins · playbook \"t\" · step 7 of 8: b]\n\nb\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
     ]
   },
   "tracks": []

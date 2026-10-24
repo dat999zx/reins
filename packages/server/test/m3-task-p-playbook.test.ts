@@ -78,7 +78,7 @@ describe('the file reader refuses what is not a plain playbook file', () => {
     const p = project('## playbook junk', { junk: '\u0000\u0001\u0002 not a workflow' });
     const e = errs(p.load());
     expect(e).toHaveLength(1);
-    expect(e[0]).toMatch(/^Playbook "junk": the file is not a workflow/);
+    expect(e[0]).toMatch(/^Playbook "junk": the file is not a playbook/);
   });
 
   it('what the parser says about the file is shown on the playbook with its line', () => {

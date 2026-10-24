@@ -2458,7 +2458,7 @@
     "npm test"
    ],
    "texts": [
-    "[Reins · workflow \"run-fix\" · step 3 of 3: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"run-fix\" · step 3 of 3: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
    ],
    "events": [
     {
@@ -2621,9 +2621,9 @@
     "npm test"
    ],
    "texts": [
-    "[Reins · workflow \"run-fix\" · step 3 of 3: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"run-fix\" · step 3 of 3: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"run-fix\" · step 3 of 3: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"run-fix\" · step 3 of 3: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"run-fix\" · step 3 of 3: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"run-fix\" · step 3 of 3: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
    ],
    "events": [
     {
@@ -2896,8 +2896,8 @@
     "npm test"
    ],
    "texts": [
-    "[Reins · workflow \"run-fix\" · step 3 of 3: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"run-fix\" · step 3 of 3: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"run-fix\" · step 3 of 3: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"run-fix\" · step 3 of 3: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
    ],
    "events": [
     {
@@ -3090,7 +3090,7 @@
     "npm test"
    ],
    "texts": [
-    "[Reins · workflow \"run-fail-target\" · step 3 of 3: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"run-fail-target\" · step 3 of 3: fix]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
    ],
    "events": [
     {
@@ -3206,9 +3206,9 @@
    ],
    "commands": [],
    "texts": [
-    "[Reins · workflow \"verify-fail-target\" · step 1 of 4: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"verify-fail-target\" · step 2 of 4: verify]\n\nCompare what you built against step \"plan\":\nplan\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
-    "[Reins · workflow \"verify-fail-target\" · step 4 of 4: fixit]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"verify-fail-target\" · step 1 of 4: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"verify-fail-target\" · step 2 of 4: verify]\n\nCompare what you built against step \"plan\":\nplan\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · playbook \"verify-fail-target\" · step 4 of 4: fixit]\n\nfix it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
    ],
    "events": [
     {
@@ -3394,7 +3394,7 @@
     "a`b`"
    ],
    "texts": [
-    "[Reins · workflow \"run-odd\" · step 5 of 5: say]\n\ndone\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"run-odd\" · step 5 of 5: say]\n\ndone\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
    ],
    "events": [
     {
@@ -3573,7 +3573,7 @@
     "make"
    ],
    "texts": [
-    "[Reins · workflow \"run-next\" · step 3 of 3: tail]\n\ntail\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"run-next\" · step 3 of 3: tail]\n\ntail\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
    ],
    "events": [
     {
@@ -3694,8 +3694,8 @@
     "npm test"
    ],
    "texts": [
-    "[Reins · workflow \"repeat-tests\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"repeat-tests\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"repeat-tests\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"repeat-tests\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
    ],
    "events": [
     {
@@ -4014,7 +4014,7 @@
     "npm run lint"
    ],
    "texts": [
-    "[Reins · workflow \"repeat-lint\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"repeat-lint\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
    ],
    "events": [
     {
@@ -4177,7 +4177,7 @@
     "npm run lint"
    ],
    "texts": [
-    "[Reins · workflow \"repeat-other\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"repeat-other\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
    ],
    "events": [
     {
@@ -4345,9 +4345,9 @@
     "npm test"
    ],
    "texts": [
-    "[Reins · workflow \"repeat-other\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"repeat-other\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"repeat-other\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"repeat-other\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"repeat-other\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"repeat-other\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
    ],
    "events": [
     {
@@ -4623,7 +4623,7 @@
     "npm test"
    ],
    "texts": [
-    "[Reins · workflow \"repeat-late\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"repeat-late\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
    ],
    "events": [
     {
@@ -4755,8 +4755,8 @@
     "npm test"
    ],
    "texts": [
-    "[Reins · workflow \"repeat-late\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"repeat-late\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"repeat-late\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"repeat-late\" · step 1 of 1: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
    ],
    "events": [
     {
@@ -5069,9 +5069,9 @@
    ],
    "commands": [],
    "texts": [
-    "[Reins · workflow \"repeat-agent\" · step 1 of 1: work]\n\nwork\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"repeat-agent\" · step 1 of 1: work]\n\nwork\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"repeat-agent\" · step 1 of 1: work]\n\nwork\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"repeat-agent\" · step 1 of 1: work]\n\nwork\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"repeat-agent\" · step 1 of 1: work]\n\nwork\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"repeat-agent\" · step 1 of 1: work]\n\nwork\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
    ],
    "events": [
     {
@@ -5277,8 +5277,8 @@
     "npm test"
    ],
    "texts": [
-    "[Reins · workflow \"repeat-budget\" · step 1 of 2: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"repeat-budget\" · step 1 of 2: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"repeat-budget\" · step 1 of 2: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"repeat-budget\" · step 1 of 2: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
    ],
    "events": [
     {
@@ -5509,9 +5509,9 @@
     "npm test"
    ],
    "texts": [
-    "[Reins · workflow \"repeat-budget\" · step 1 of 2: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"repeat-budget\" · step 1 of 2: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"repeat-budget\" · step 1 of 2: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"repeat-budget\" · step 1 of 2: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"repeat-budget\" · step 1 of 2: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"repeat-budget\" · step 1 of 2: fix]\n\nfix\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
    ],
    "events": [
     {
@@ -6193,13 +6193,13 @@
    ],
    "commands": [],
    "texts": [
-    "[Reins · workflow \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\nplan\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
-    "[Reins · workflow \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\nplan again\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
-    "[Reins · workflow \"verify\" · step 3 of 5: verify]\n\nCompare what you built against the earlier steps.\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
-    "[Reins · workflow \"verify\" · step 4 of 5: verify]\n\nStep \"later\" has not run, so there is no output of it to compare against. Compare against what the earlier steps produced.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
-    "[Reins · workflow \"verify\" · step 5 of 5: later]\n\nlater\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\nplan\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · playbook \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\nplan again\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · playbook \"verify\" · step 3 of 5: verify]\n\nCompare what you built against the earlier steps.\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · playbook \"verify\" · step 4 of 5: verify]\n\nStep \"later\" has not run, so there is no output of it to compare against. Compare against what the earlier steps produced.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · playbook \"verify\" · step 5 of 5: later]\n\nlater\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
    ],
    "events": [
     {
@@ -6556,17 +6556,17 @@
    ],
    "commands": [],
    "texts": [
-    "[Reins · workflow \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\nplan\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
-    "[Reins · workflow \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\np\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
-    "[Reins · workflow \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\np\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
-    "[Reins · workflow \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\np\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
-    "[Reins · workflow \"verify\" · step 3 of 5: verify]\n\nCompare what you built against the earlier steps.\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
-    "[Reins · workflow \"verify\" · step 4 of 5: verify]\n\nStep \"later\" has not run, so there is no output of it to compare against. Compare against what the earlier steps produced.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
-    "[Reins · workflow \"verify\" · step 5 of 5: later]\n\nlater\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\nplan\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · playbook \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\np\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · playbook \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\np\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · playbook \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\np\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · playbook \"verify\" · step 3 of 5: verify]\n\nCompare what you built against the earlier steps.\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · playbook \"verify\" · step 4 of 5: verify]\n\nStep \"later\" has not run, so there is no output of it to compare against. Compare against what the earlier steps produced.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · playbook \"verify\" · step 5 of 5: later]\n\nlater\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
    ],
    "events": [
     {
@@ -7096,12 +7096,12 @@
    ],
    "commands": [],
    "texts": [
-    "[Reins · workflow \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\nplan\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
-    "[Reins · workflow \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\np\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
-    "[Reins · workflow \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\np\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n"
+    "[Reins · playbook \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\nplan\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · playbook \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\np\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · playbook \"verify\" · step 1 of 5: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"verify\" · step 2 of 5: verify]\n\nCompare what you built against step \"plan\":\np\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n"
    ],
    "events": [
     {
@@ -7411,11 +7411,11 @@
    ],
    "commands": [],
    "texts": [
-    "[Reins · workflow \"verify-deep\" · step 1 of 2: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"verify-deep\" · step 2 of 2: verify]\n\nCompare what you built against step \"plan\":\nplan\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
-    "[Reins · workflow \"verify-deep\" · step 1 of 2: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"verify-deep\" · step 2 of 2: verify]\n\nCompare what you built against step \"plan\":\nplan\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
-    "[Reins · workflow \"verify-deep\" · step 2 of 2: verify]\n\nCompare what you built against step \"plan\":\nplan\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n"
+    "[Reins · playbook \"verify-deep\" · step 1 of 2: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"verify-deep\" · step 2 of 2: verify]\n\nCompare what you built against step \"plan\":\nplan\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · playbook \"verify-deep\" · step 1 of 2: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"verify-deep\" · step 2 of 2: verify]\n\nCompare what you built against step \"plan\":\nplan\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · playbook \"verify-deep\" · step 2 of 2: verify]\n\nCompare what you built against step \"plan\":\nplan\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n"
    ],
    "events": [
     {

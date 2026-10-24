@@ -246,9 +246,9 @@ function HatBudget({ w, rev, onEdit, over }: { w: Workflow; rev: unknown; onEdit
   );
   return (
     <>
-      {pill('turns', 'Turns of the workflow', budgetCount(b.turns), 'not set')}<b>turns</b>
-      {pill('minutes', 'Minutes of the workflow', budgetCount(b.minutes), 'not set')}<b>min</b>
-      <span className="sx-grp"><b>USD</b>{pill('usd', 'USD of the workflow', b.usd === undefined ? '' : usdText(b.usd), 'optional')}</span>
+      {pill('turns', 'Turns of the playbook', budgetCount(b.turns), 'not set')}<b>turns</b>
+      {pill('minutes', 'Minutes of the playbook', budgetCount(b.minutes), 'not set')}<b>min</b>
+      <span className="sx-grp"><b>USD</b>{pill('usd', 'USD of the playbook', b.usd === undefined ? '' : usdText(b.usd), 'optional')}</span>
       {over && <div className="sx-bad">{over}</div>}
     </>
   );

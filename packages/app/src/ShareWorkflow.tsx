@@ -30,7 +30,7 @@ export function ShareButton({ name, text, disabled }: { name: string; text: stri
   const go = () => download(`${name}.reins-mods.json`, { workflow: { name, text } }).then(setSaid, (e) => setSaid(e instanceof ApiError ? e.message : (e as Error).message));
   return (
     <>
-      <button onClick={() => void go()} disabled={disabled} title={disabled ? 'Save first: the file holds the saved workflow.' : 'Export this workflow with the mods it uses, as one file.'}>Share</button>
+      <button onClick={() => void go()} disabled={disabled} title={disabled ? 'Save first: the file holds the saved playbook.' : 'Export this playbook with the mods it uses, as one file.'}>Share</button>
       {said && <span role="status" className="faint">{showText(said)}</span>}
     </>
   );

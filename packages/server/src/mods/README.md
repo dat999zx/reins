@@ -140,7 +140,7 @@ await fake.close();
 
 - One `push` is one model reply. A reply can hold `text`, `reasoning`, `toolCalls`, `usage`, a `status` with a `body` for an error, or `hangMs` to be slow.
 - The requests show the `authorization` header, so a test can check that the key arrived and nowhere else.
-- `test/toy-provider.test.ts` is a complete example: it installs the toy wire and the toy provider, runs a workflow with an approval, checks the cost, exports to a second home, disables, enables and removes.
+- `test/toy-provider.test.ts` is a complete example: it installs the toy wire and the toy provider, runs a playbook with an approval, checks the cost, exports to a second home, disables, enables and removes.
 
 ## Export, import and the trust prompt
 
@@ -220,7 +220,7 @@ The default export of `main` is `activate(api)`. Reins calls it once. The `api` 
   | `parseCond(src, pos?)` | Reads condition text into `{ cond }` or `{ diag }`, for a block that takes a condition in its heading (like `if`). | Runs the `parse` of the registered condition atoms. |
   | `printCond(cond)` | Prints a condition back to text. | Runs the `print` of the atoms. |
   | `driftFound(events)` | True when any drift signal fires in a run's events (the `drift` condition's test). | Pure; reads the array, never writes it. |
-  | `globMatcher(glob)` | A function that tests a project-relative path against a workflow glob (picomatch's defaults). | Pure. A pattern it cannot read may throw, so check with `isValidGlob` first. |
+  | `globMatcher(glob)` | A function that tests a project-relative path against a playbook glob (picomatch's defaults). | Pure. A pattern it cannot read may throw, so check with `isValidGlob` first. |
   | `isValidGlob(glob)` | True when the text is a glob Reins accepts. | Pure. |
   | `relPath(path, cwd)` | A tool path with `\` turned into `/`, `.` and `..` resolved, and made relative to `cwd` when it lies inside it. | Pure; touches no file. |
 
@@ -250,7 +250,7 @@ Two places use a template. Both use `{...}` placeholders. Neither runs code.
 
 ### Data blocks
 
-A block with `turn` and no `main` runs no code. Its step compiles to one prompt turn, filled from the template. The turn runs under the step's own mode, so `mode: read-only` in the workflow makes it read-only. The manifest cannot set `policy`, `mode`, `allowShell` or `tools`. The block has no ops and no heading. A data block needs no trust, because it runs nothing. Its `statusLine` is optional: one line, at most 200 characters, with no hidden character.
+A block with `turn` and no `main` runs no code. Its step compiles to one prompt turn, filled from the template. The turn runs under the step's own mode, so `mode: read-only` in the playbook makes it read-only. The manifest cannot set `policy`, `mode`, `allowShell` or `tools`. The block has no ops and no heading. A data block needs no trust, because it runs nothing. Its `statusLine` is optional: one line, at most 200 characters, with no hidden character.
 
 This is the whole `toy-ask` mod (`packages/server/test/fixtures/mods/toy-ask/mod.json`):
 
@@ -278,7 +278,7 @@ This is the whole `toy-ask` mod (`packages/server/test/fixtures/mods/toy-ask/mod
 }
 ```
 
-A workflow step that uses it:
+A playbook step that uses it:
 
 ```
 ## ask
@@ -347,7 +347,7 @@ This walks through `packages/server/test/fixtures/mods/toy-beep`, from install t
 2. **Preview.** Open Settings > Providers. The row under "Protocols and other mods" lists what the mod adds: the block `beep`, its operation `BEEP`, the event `beeped`, the attribute `times`, and its place under "Flow". Nothing has run.
 3. **Trust.** Press Trust, read the prompt, and say yes. Reins sends the hash the row showed. A different hash is refused. The block now runs, and `beep` is in the block list under Flow.
 4. **Restart.** Stop Reins and start it again. The block registers at start. Its hash still matches, so there is no prompt.
-5. **Use.** Save a workflow and check it:
+5. **Use.** Save a playbook and check it:
 
    ```
    ---
@@ -364,7 +364,7 @@ This walks through `packages/server/test/fixtures/mods/toy-beep`, from install t
    > go
    ```
 
-   `reins doctor --no-probe` lists the loaded mods, with no model call. `reins run toy.reins.md` runs the workflow with your provider. The terminal prints `  beeped x2`, and the receipt counts `beeps 1`.
+   `reins doctor --no-probe` lists the loaded mods, with no model call. `reins run toy.reins.md` runs the playbook with your provider. The terminal prints `  beeped x2`, and the receipt counts `beeps 1`.
 6. **Export.** In Settings > Providers, press Export on the toy-beep row. You get one JSON file with `mod.json` and `index.js`. It holds no key and nothing from the home.
 7. **Import elsewhere.** On another machine, or with another `REINS_HOME`, open Settings > Providers and choose Import. The preview shows the same lines and the same hash, and nothing is registered yet. Press "Import without running its code" to install it as "needs trust", or "Trust and import" to run it at once.
 

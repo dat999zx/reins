@@ -169,9 +169,9 @@
     "workflow": "t"
   },
   "receivedTexts": [
-    "[Reins · workflow \"t\" · step 1 of 4: one]\n\nfirst\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"t\" · step 2 of 4: review]\n\nReview the full diff as a harsh reviewer. List real problems only.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"t\" · step 2 of 4: fix]\n\nFix the problems from the review. Nothing else.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    "[Reins · playbook \"t\" · step 1 of 4: one]\n\nfirst\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"t\" · step 2 of 4: review]\n\nReview the full diff as a harsh reviewer. List real problems only.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"t\" · step 2 of 4: fix]\n\nFix the problems from the review. Nothing else.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
   ],
   "status": "done"
 }

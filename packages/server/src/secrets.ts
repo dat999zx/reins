@@ -95,7 +95,7 @@ export function keyStatus(p: KeyAuth, secrets: Secrets, env: NodeJS.ProcessEnv, 
 }
 
 /** The refusal when text to be saved as a workflow holds a known key. */
-export const KEY_IN_WORKFLOW = 'That text contains a saved key, so it was not saved. Keys never go in a workflow.';
+export const KEY_IN_WORKFLOW = 'That text contains a saved key, so it was not saved. Keys never go in a playbook.';
 
 /** A secret shorter than this is left alone: it would hit ordinary text. */
 export const MIN_SECRET = 8;

@@ -106,9 +106,9 @@ describe('dock facts', () => {
     expect(didNotStart([before], before.seq)).toBeUndefined();
     const working = status('running');
     expect(didNotStart([before, working], before.seq)).toBeUndefined();
-    const note = plain('note', { text: 'The workflow is not trusted, so it did not run.' });
+    const note = plain('note', { text: 'The playbook is not trusted, so it did not run.' });
     const idle = status('idle');
-    expect(didNotStart([before, working, note, idle], before.seq)).toBe('The workflow is not trusted, so it did not run.');
+    expect(didNotStart([before, working, note, idle], before.seq)).toBe('The playbook is not trusted, so it did not run.');
     expect(didNotStart([before, working, started(), note, idle], before.seq)).toBeUndefined();
     expect(didNotStart([before, working, idle], before.seq)).toBe('The run did not start.');
   });
@@ -217,7 +217,7 @@ describe('runView phase', () => {
     expect(PHASE.paused.words(view([started(), ss('gate-1'), row('run_detached', {})]))).toBe('Left paused at `gate-1`. Resume continues it.');
     reset();
     expect(PHASE.failed.words(view([started(), ss('build'), row('run_detached', { error: 'x' })]))).toBe('Failed at `build`: x');
-    expect(PHASE.busy.words(view([status('running')]))).toBe('The agent is working (not a workflow run).');
+    expect(PHASE.busy.words(view([status('running')]))).toBe('The agent is working (not a playbook run).');
   });
 
   it('busy says it waits when a question is open (a switch card after an ended run)', () => {

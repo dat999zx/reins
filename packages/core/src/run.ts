@@ -491,7 +491,7 @@ export class Run {
 
     this.program = compileProgram(this.workflow, this.resolveBlock, this.starts);
     const broken = programProblem(this.program, false);
-    if (broken) throw new Error(`This workflow cannot run: ${broken}.`);
+    if (broken) throw new Error(`This playbook cannot run: ${broken}.`);
 
     // Initialize auto cards as armed
     for (const auto of this.workflow.autos) {
@@ -870,7 +870,7 @@ export class Run {
       if (left !== undefined && n > left + 1e-9) {
         // Under a cent no allowance the parser takes fits: cap it and go on; the next overrun pauses on the workflow's own card, which can be raised.
         if (left < 0.01) n = Math.max(left, 0);
-        else return `Allow at most $${(Math.floor(left * 100 + 1e-6) / 100).toFixed(2)}: the workflow's USD budget has that much left.`;
+        else return `Allow at most $${(Math.floor(left * 100 + 1e-6) / 100).toFixed(2)}: the playbook's USD budget has that much left.`;
       }
     }
     this.usdExtra[key] = r6(Math.max(this.extraAt(key), spent - base) + n);
@@ -1241,7 +1241,7 @@ export class Run {
     const result = await this.runTurn(
       t, session,
       gate.stepId ?? 'gate',
-      `[Reins · workflow "${this.workflow.name}" · the user asked for changes before approving]\n\n${note}\n\n` +
+      `[Reins · playbook "${this.workflow.name}" · the user asked for changes before approving]\n\n${note}\n\n` +
         'When you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n'
     );
     // A stop card during the turn replaced the gate pause; otherwise the gate still waits.

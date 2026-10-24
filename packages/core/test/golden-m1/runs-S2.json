@@ -278,15 +278,15 @@
     "workflow": "t"
   },
   "receivedTexts": [
-    "[Reins · workflow \"t\" · step 1 of 3: plan]\n\nplan it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"t\" · step 2 of 3: verify]\n\nCompare what you built against step \"plan\":\nplan\nREINS: done\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
-    "[Reins · workflow \"t\" · step 3 of 3: verify]\n\nCompare what you built against step \"plan\":\nplan\nREINS: done\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
-    "[Reins · workflow \"t\" · step 1 of 3: plan]\n\nplan it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"t\" · step 2 of 3: verify]\n\nCompare what you built against step \"plan\":\nplan2\nREINS: done\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
-    "[Reins · workflow \"t\" · step 3 of 3: verify]\n\nCompare what you built against step \"plan\":\nplan2\nREINS: done\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
-    "[Reins · workflow \"t\" · step 1 of 3: plan]\n\nplan it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
-    "[Reins · workflow \"t\" · step 2 of 3: verify]\n\nCompare what you built against step \"plan\":\nplan3\nREINS: done\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
-    "[Reins · workflow \"t\" · step 3 of 3: verify]\n\nCompare what you built against step \"plan\":\nplan3\nREINS: done\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n"
+    "[Reins · playbook \"t\" · step 1 of 3: plan]\n\nplan it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"t\" · step 2 of 3: verify]\n\nCompare what you built against step \"plan\":\nplan\nREINS: done\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · playbook \"t\" · step 3 of 3: verify]\n\nCompare what you built against step \"plan\":\nplan\nREINS: done\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · playbook \"t\" · step 1 of 3: plan]\n\nplan it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"t\" · step 2 of 3: verify]\n\nCompare what you built against step \"plan\":\nplan2\nREINS: done\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · playbook \"t\" · step 3 of 3: verify]\n\nCompare what you built against step \"plan\":\nplan2\nREINS: done\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · playbook \"t\" · step 1 of 3: plan]\n\nplan it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"t\" · step 2 of 3: verify]\n\nCompare what you built against step \"plan\":\nplan3\nREINS: done\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n",
+    "[Reins · playbook \"t\" · step 3 of 3: verify]\n\nCompare what you built against step \"plan\":\nplan3\nREINS: done\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n"
   ],
   "status": "done"
 }

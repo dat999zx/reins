@@ -379,7 +379,7 @@ function dataProblems(raw: Record<string, unknown>, id: string): Problem[] {
   if (p.kinds!.length !== 1) return bad('a data block adds one kind: `provides.kinds` lists exactly one.');
   if (p.ops?.length) return bad('a data block has no code, so it adds no ops: `provides.ops` must be empty.');
   const set = ['policy', 'mode', 'allowShell', 'tools'].filter((k) => raw[k] !== undefined);
-  if (set.length) return bad(`a data block cannot set ${set.map((k) => `\`${k}\``).join(', ')}: its policy is the step's (\`mode: read-only\` in the workflow), never the manifest.`);
+  if (set.length) return bad(`a data block cannot set ${set.map((k) => `\`${k}\``).join(', ')}: its policy is the step's (\`mode: read-only\` in the playbook), never the manifest.`);
   const turn = raw.turn;
   if (typeof turn !== 'string') return bad('`turn` must be text.');
   if (Buffer.byteLength(turn) > MAX_TURN) return bad('`turn` is larger than 4 KB.');

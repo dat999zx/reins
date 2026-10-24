@@ -67,7 +67,7 @@ const PRINTED: string[] = [
   '· store skipped: Knowl is not wired up until Phase 6',
 ];
 const RECEIPT_LINES: string[] = [
-  'workflow pin · done · 7 turns · 0 s · $X',
+  'playbook pin · done · 7 turns · 0 s · $X',
   'gates held 1 · refusals 0 (guard 0, read-only 0) · loop attempts 1',
   'cards: live delivered 0, auto fired 0 · verify 1 pass / 1 fail · Knowl 0 recalls, 0 stores, 2 skipped',
   '',

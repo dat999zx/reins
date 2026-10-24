@@ -101,20 +101,20 @@ describe('the block face', () => {
     } as never));
     it('three pills: turns, minutes, USD (empty says optional)', () => {
       const html = hat({});
-      expect(html).toContain('aria-label="Turns of the workflow"');
-      expect(html).toContain('aria-label="Minutes of the workflow"');
-      expect(html).toContain('aria-label="USD of the workflow"');
-      expect(html).toMatch(/aria-label="Turns of the workflow"[^>]*value="10"/);
-      expect(html).toMatch(/aria-label="Minutes of the workflow"[^>]*value="30"/);
-      expect(html).toMatch(/aria-label="USD of the workflow" placeholder="optional"/);
-      expect(hat({ budget: { turns: 10, minutes: 30, usd: 2 } })).toMatch(/aria-label="USD of the workflow"[^>]*value="2.00"/);
+      expect(html).toContain('aria-label="Turns of the playbook"');
+      expect(html).toContain('aria-label="Minutes of the playbook"');
+      expect(html).toContain('aria-label="USD of the playbook"');
+      expect(html).toMatch(/aria-label="Turns of the playbook"[^>]*value="10"/);
+      expect(html).toMatch(/aria-label="Minutes of the playbook"[^>]*value="30"/);
+      expect(html).toMatch(/aria-label="USD of the playbook" placeholder="optional"/);
+      expect(hat({ budget: { turns: 10, minutes: 30, usd: 2 } })).toMatch(/aria-label="USD of the playbook"[^>]*value="2.00"/);
     });
     it('a block file has no budget, so no pills', () => {
-      expect(hat({ block: 'b' } as never)).not.toContain('of the workflow');
+      expect(hat({ block: 'b' } as never)).not.toContain('of the playbook');
     });
     it('the over-sum error is said under the pills, only while it is true', () => {
-      const d = { severity: 'error', message: "The blocks' budgets add up to $3.00, over the workflow's $2.00.", pos: { line: 9, col: 1 } };
-      expect(hat({}, [d])).toContain('<div class="sx-bad">The blocks&#x27; budgets add up to $3.00, over the workflow&#x27;s $2.00.</div>');
+      const d = { severity: 'error', message: "The blocks' budgets add up to $3.00, over the playbook's $2.00.", pos: { line: 9, col: 1 } };
+      expect(hat({}, [d])).toContain('<div class="sx-bad">The blocks&#x27; budgets add up to $3.00, over the playbook&#x27;s $2.00.</div>');
       expect(hat({})).not.toContain('sx-bad');
       // any other error is not the hat's to say
       expect(hat({}, [{ severity: 'error', message: 'Unknown attribute "x"', pos: { line: 9, col: 1 } }])).not.toContain('sx-bad');
