@@ -665,7 +665,10 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await textTab.click();
     const textBeforeHat = await editor.inputValue();
     await blocksTab.click();
-    await drag({ x: hat3.x + hat3.width / 2, y: hat3.y + hat3.height / 2 }, { x: hat3.x + hat3.width / 2 + 120, y: hat3.y + hat3.height / 2 + 60 });
+    // Grab the hat by its title text: the middle of the whole hat can be a budget input (it was one on macOS), and a press on an input does not drag the script.
+    const title3 = (await page.locator('.sx-hat > b').first().boundingBox())!;
+    const grip = { x: title3.x + title3.width / 2, y: title3.y + title3.height / 2 };
+    await drag(grip, { x: grip.x + 120, y: grip.y + 60 });
     const hat4 = await hatBox();
     expect(Math.abs(hat4.x - hat3.x - 120)).toBeLessThanOrEqual(2);
     expect(Math.abs(hat4.y - hat3.y - 60)).toBeLessThanOrEqual(2);
