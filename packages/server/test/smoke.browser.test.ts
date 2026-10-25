@@ -1066,9 +1066,12 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await page.mouse.down();
     await page.mouse.move(sg.x + 30, sg.y + 30, { steps: 4 });
     await page.waitForTimeout(300);
-    const zb = centre((await page.getByRole('button', { name: 'Fit' }).boundingBox())!);
+    const fitBox = () => page.getByRole('button', { name: 'Fit' }).boundingBox();
+    await holds(fitBox); // a note fading away moves the toolbar: aim once it holds still (on a slower machine it moved after it was measured, and the drop landed on the canvas)
+    const zb = centre((await fitBox())!);
     await page.mouse.move(zb.x, zb.y, { steps: 8 });
-    const zb2 = centre((await page.getByRole('button', { name: 'Fit' }).boundingBox())!); // a note fading away can move the toolbar mid-drag
+    await holds(fitBox);
+    const zb2 = centre((await fitBox())!); // a note fading away can move the toolbar mid-drag
     await page.mouse.move(zb2.x, zb2.y, { steps: 3 });
     await page.mouse.up();
     await page.waitForTimeout(300);
