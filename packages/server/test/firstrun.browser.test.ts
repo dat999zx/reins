@@ -45,7 +45,7 @@ describe.skipIf(skip)('first run and import (spec 7.3, 7.7)', () => {
   /** A server on a fresh home with the fixture catalog (plus a `claude-code` entry that must never be offered). */
   async function world(o: { done?: boolean } = {}) {
     const { browser, fake } = await need();
-    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-firstrun-b-')));
+    const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-firstrun-b-')));
     const dir = path.join(root, '.reins');
     const catalogDir = path.join(root, 'catalog');
     fs.mkdirSync(dir, { recursive: true });

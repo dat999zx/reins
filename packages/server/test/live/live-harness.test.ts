@@ -10,7 +10,7 @@ const KEY = 'sk-ant-api03-Zk3Qp9xT7mV2nB8cLd4Rw6Yh1JgF5aSe0UoXiKtNvMb';
 const TAIL = KEY.slice(-8);
 const dirs: string[] = [];
 const temp = () => {
-  const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-live-test-')));
+  const d = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-live-test-')));
   dirs.push(d);
   return d;
 };

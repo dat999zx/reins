@@ -14,7 +14,7 @@ let tmp = '';
 let home = '';
 let mods: Mods;
 beforeEach(async () => {
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29a-consent-')));
+  tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29a-consent-')));
   home = path.join(tmp, '.reins');
   const dir = path.join(home, 'mods', 'kp');
   fs.mkdirSync(dir, { recursive: true });

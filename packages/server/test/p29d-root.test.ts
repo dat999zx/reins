@@ -39,7 +39,7 @@ describe('D8: a root is refused before any filesystem call', () => {
   });
 
   it.skipIf(process.platform !== 'win32')('POST /api/sessions with a share root answers 400 with the words and never stats it', async () => {
-    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29d-root-')));
+    const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29d-root-')));
     undo.push(() => { try { fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* left */ } });
     const dir = path.join(root, '.reins');
     fs.mkdirSync(dir, { recursive: true });

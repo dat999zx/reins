@@ -93,7 +93,7 @@ function writeMod(dir: string, id: string, manifest: Record<string, unknown>) {
 }
 
 beforeAll(async () => {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-checks-')));
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-checks-')));
   const dir = path.join(root, '.reins');
   const proj = path.join(root, 'proj');
   fs.mkdirSync(proj, { recursive: true });

@@ -43,7 +43,7 @@ afterEach(async () => {
 });
 
 async function boot(catalog: Record<string, unknown>, o: { prep?: (dir: string) => void } = {}): Promise<World> {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-firstrun-')));
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-firstrun-')));
   const dir = path.join(root, '.reins');
   const catalogDir = path.join(root, 'catalog');
   fs.mkdirSync(dir, { recursive: true });

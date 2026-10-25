@@ -14,7 +14,7 @@ import { tempHome } from './mods-harness.js';
 import { testEngine } from './test-engine.js';
 
 const tmps: string[] = [];
-const tmp = () => { const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-cmod-'))); tmps.push(d); return d; };
+const tmp = () => { const d = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-cmod-'))); tmps.push(d); return d; };
 const homes: Array<ReturnType<typeof tempHome>> = [];
 const disposers: Array<() => void> = [];
 afterEach(() => {

@@ -17,7 +17,7 @@ usePack(); // M3 Task 3: the built-in kinds are the default pack's mods; this fi
 
 let tmp = '';
 const rigs: Rig[] = [];
-beforeEach(() => { tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29a2-nonce-'))); });
+beforeEach(() => { tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29a2-nonce-'))); });
 afterEach(async () => {
   for (const r of rigs.splice(0)) await r.cleanup();
   fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });

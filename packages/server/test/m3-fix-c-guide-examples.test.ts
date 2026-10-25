@@ -253,7 +253,7 @@ describe('guide: a condition as a mod (exists)', () => {
     expect(parseCond('exists').diag?.message).toMatch(/Expected a file name after "exists"/);
     const wf = parse(EXISTS_USE);
     expect(errorsOf(wf)).toEqual([]);
-    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-guide-exists-')));
+    const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-guide-exists-')));
     try {
       const turns = async (scn: string, present: boolean) => {
         const d = path.join(dir, scn);
@@ -385,7 +385,7 @@ describe('guide: the fork block', () => {
 
 describe('guide: the playbook block', () => {
   const setup = (blocks: Record<string, string>) => {
-    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-guide-pb-')));
+    const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-guide-pb-')));
     fs.mkdirSync(path.join(dir, 'blocks'));
     for (const [name, text] of Object.entries(blocks)) fs.writeFileSync(path.join(dir, 'blocks', `${name}.reins.md`), text);
     return { dir, file: path.join(dir, 'ship.reins.md'), done: () => fs.rmSync(dir, { recursive: true, force: true }) };

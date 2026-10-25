@@ -27,7 +27,7 @@ afterEach(async () => {
 
 describe('A7: one Redactor per process', () => {
   it('a key that was replaced stays masked in an engine host opened after the replacement', async () => {
-    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29a-misc-')));
+    const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29a-misc-')));
     dirs.push(root);
     const home = path.join(root, '.reins');
     const OLD = 'sk-old-0123456789abcdef';

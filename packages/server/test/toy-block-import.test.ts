@@ -49,7 +49,7 @@ async function close(w: World) {
 
 /** A real server over HTTP on a temp Reins folder with the real loader. `root` names a folder that is already there: that is a restart. */
 async function boot(root?: string): Promise<World> {
-  root ??= fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-beep-')));
+  root ??= fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-beep-')));
   const dir = path.join(root, '.reins');
   fs.mkdirSync(dir, { recursive: true });
   const env: NodeJS.ProcessEnv = { ...process.env };
@@ -385,7 +385,7 @@ describe('a hostile mod file is refused in words and writes nothing', () => {
   });
 
   it('a bad mod found in the mods folder is listed with its problems, and the list adds only plain names and clean texts', async () => {
-    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-beep-')));
+    const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-beep-')));
     const evil = path.join(root, '.reins', 'mods', 'evil');
     fs.mkdirSync(evil, { recursive: true });
     const m = JSON.parse(beepFiles()['mod.json']!);

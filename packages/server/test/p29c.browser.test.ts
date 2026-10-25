@@ -36,7 +36,7 @@ describe.skipIf(skip)('Protocols and other mods (phase C, S5)', () => {
   }, T);
 
   it('lists protocols, trusts a code protocol after the prompt (it runs once), and asks before disabling a protocol that providers use', async () => {
-    root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29c-b-')));
+    root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29c-b-')));
     const dir = path.join(root, '.reins');
     const marker = path.join(root, 'marker.log');
     const ran = () => (fs.existsSync(marker) ? fs.readFileSync(marker, 'utf8').split('\n').filter(Boolean) : []);

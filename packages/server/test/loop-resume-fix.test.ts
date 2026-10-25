@@ -24,7 +24,7 @@ afterEach(async () => {
   for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
 });
 const tmp = () => {
-  const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-fix-')));
+  const d = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-fix-')));
   dirs.push(d);
   return d;
 };

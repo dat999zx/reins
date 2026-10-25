@@ -48,7 +48,7 @@ afterAll(async () => {
 
 /** A real server over HTTP on a temp Reins folder: the real loader, the real engine factory, the store's consent, a fake provider server. */
 async function boot(): Promise<World> {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-toy-')));
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-toy-')));
   const dir = path.join(root, '.reins');
   const proj = path.join(root, 'proj');
   fs.mkdirSync(dir, { recursive: true });

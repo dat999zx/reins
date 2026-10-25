@@ -617,7 +617,7 @@ const isLive = (c: Child) => c.proc.exitCode === null && c.proc.signalCode === n
 
 interface Home { root: string; dir: string; proj: string; key: string; keyVar: string; env: NodeJS.ProcessEnv }
 function makeHome(baseUrl: string): Home {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-m3k-')));
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-m3k-')));
   const dir = path.join(root, '.reins');
   const proj = path.join(root, 'proj');
   fs.mkdirSync(path.join(dir, 'mods', 'anthropic'), { recursive: true });

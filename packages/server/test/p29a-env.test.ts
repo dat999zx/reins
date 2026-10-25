@@ -15,7 +15,7 @@ const KEY = 'sk-test-0123456789abcdef';
 const node = JSON.stringify(process.execPath);
 let tmp = '';
 let mods: Mods;
-beforeEach(() => { tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29a-env-'))); });
+beforeEach(() => { tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29a-env-'))); });
 afterEach(() => {
   mods?.dispose();
   fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });

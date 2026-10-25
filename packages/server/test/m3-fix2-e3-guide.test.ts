@@ -132,7 +132,7 @@ describe('the money words of the guides', () => {
     const t = tempHome();
     const mods = await startMods({ dir: t.home, env: {} });
     worlds.push({ dispose: () => mods.dispose(), cleanup: t.cleanup });
-    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-e3-pb-')));
+    const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-e3-pb-')));
     try {
       fs.mkdirSync(path.join(dir, 'blocks'));
       fs.writeFileSync(path.join(dir, 'blocks', 'review.reins.md'), REVIEW);

@@ -297,7 +297,7 @@ export async function startWorld(o: WorldOptions): Promise<World> {
   const fake = mode === 'dry' ? await startFakeProvider({ strictPairs: true }) : undefined;
   if (fake && o.list) fake.list.data = o.list.map((id) => ({ id, object: 'model' }));
 
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-live-')));
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-live-')));
   const dir = path.join(root, '.reins');
   const proj = path.join(root, 'proj');
   const userHome = path.join(root, 'home');

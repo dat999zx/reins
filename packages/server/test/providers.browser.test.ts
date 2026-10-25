@@ -42,7 +42,7 @@ describe.skipIf(skip)('Settings > Providers (spec 7.4 to 7.6)', () => {
   }, T);
 
   it('adds an endpoint, sets a key, tests with consent, disables and removes', async () => {
-    root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-provpage-')));
+    root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-provpage-')));
     const dir = path.join(root, '.reins');
     fake = await startFakeProvider();
     const host = new URL(fake.url).host;

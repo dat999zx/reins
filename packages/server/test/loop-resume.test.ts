@@ -31,7 +31,7 @@ afterEach(async () => {
   await cleanup();
 });
 const tmp = () => {
-  const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-resume-')));
+  const d = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-resume-')));
   dirs.push(d);
   return d;
 };

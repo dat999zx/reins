@@ -26,7 +26,7 @@ afterEach(async () => {
 });
 
 async function boot(): Promise<World> {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29c-')));
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29c-')));
   const dir = path.join(root, '.reins');
   fs.mkdirSync(dir, { recursive: true });
   const mods = await startMods({ dir, env: {} });

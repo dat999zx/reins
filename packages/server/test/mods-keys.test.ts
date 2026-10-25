@@ -73,7 +73,7 @@ afterEach(async () => {
  * under test (the session's question, the route's check, the live list's check). Without it the store-backed `send` is a second guard.
  */
 async function boot(o: { alwaysSend?: boolean; testTimeoutMs?: number; fileStore?: boolean; extra?: (a: Fake, b: Fake) => Array<Record<string, unknown>> } = {}): Promise<World> {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-keys-')));
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-keys-')));
   const dir = path.join(root, '.reins');
   const proj = path.join(root, 'proj');
   const catalogDir = path.join(root, 'catalog');

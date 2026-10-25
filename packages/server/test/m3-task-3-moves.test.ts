@@ -111,7 +111,7 @@ const envOf = (home: string, mods: () => Mods): ModEnv => ({
 
 describe('a Customize copy of phase', () => {
   it('stays the chat turn after the restart; a copy that drops chatTurn leaves the chat tags with words', async () => {
-    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-m3t3-')));
+    const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-m3t3-')));
     cleanups.push(() => fs.rmSync(root, { recursive: true, force: true }));
     const bundled = path.join(root, 'bundled');
     for (const id of ['phase', 'say', 'end']) build(id, path.join(bundled, id));
@@ -171,7 +171,7 @@ describe('the end block warns about what it ignores', () => {
 
 describe('the chat turn is found by the flag, never by the name phase', () => {
   it('a pack whose turn block has another name gets that name in the chat text, and its attributes as tags', async () => {
-    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-m3t3-turn-')));
+    const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-m3t3-turn-')));
     cleanups.push(() => fs.rmSync(root, { recursive: true, force: true }));
     const bundled = path.join(root, 'bundled', 'turnx');
     fs.mkdirSync(bundled, { recursive: true });

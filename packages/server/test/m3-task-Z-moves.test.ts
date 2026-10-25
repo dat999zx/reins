@@ -107,7 +107,7 @@ describe('who may draw the rows of a core event', () => {
 
 describe('a Customize copy of subagent', () => {
   it('is served with its rows after the restart; the copy of model keeps hiding model_switched', async () => {
-    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-m3tz-')));
+    const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-m3tz-')));
     cleanups.push(() => fs.rmSync(root, { recursive: true, force: true }));
     const bundled = path.join(root, 'bundled');
     for (const id of ['phase', 'say', 'end', 'model', 'subagent']) build(id, path.join(bundled, id));

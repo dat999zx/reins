@@ -51,7 +51,7 @@ afterEach(async () => {
 });
 
 async function boot(o: { catalog?: boolean; prep?: (dir: string) => void } = {}): Promise<World> {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-modsapi-')));
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-modsapi-')));
   const dir = path.join(root, '.reins');
   const catalogDir = path.join(root, 'catalog');
   const proj = path.join(root, 'proj');

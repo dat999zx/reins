@@ -14,7 +14,7 @@ const undo: Array<() => unknown> = [];
 afterEach(async () => { for (const f of undo.splice(0).reverse()) await f(); });
 
 async function boot(o: { pickError?: string; userHome?: string; prep?: (dir: string, root: string) => void } = {}) {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29a-http-')));
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29a-http-')));
   undo.push(() => { try { fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* left */ } });
   const dir = path.join(root, '.reins');
   const cwd = path.join(root, 'proj');
@@ -142,7 +142,7 @@ describe('A10: a project folder is not the whole home folder or a drive', () => 
   const WORDS = 'Pick a project folder, not your whole home folder or a drive.';
   // A home of its own in a temp folder, away from the Reins folder, so only the home rule can refuse.
   const fakeHome = () => {
-    const homeRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29a-home-')));
+    const homeRoot = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29a-home-')));
     undo.push(() => { try { fs.rmSync(homeRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* left */ } });
     const home = path.join(homeRoot, 'home');
     fs.mkdirSync(path.join(home, 'proj'), { recursive: true });

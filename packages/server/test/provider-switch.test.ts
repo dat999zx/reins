@@ -31,7 +31,7 @@ const NONE = { style: 'none', keyEnv: [] };
 
 /** A temp Reins folder with `mods/`, a project folder, and every fake provider closed at the end. */
 function folder(prefix: string) {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
   const dir = path.join(root, '.reins');
   const proj = path.join(root, 'proj');
   fs.mkdirSync(proj, { recursive: true });

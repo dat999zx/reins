@@ -29,7 +29,7 @@ afterEach(async () => {
   await cleanup();
 });
 const tmp = () => {
-  const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-compact-')));
+  const d = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-compact-')));
   dirs.push(d);
   return d;
 };

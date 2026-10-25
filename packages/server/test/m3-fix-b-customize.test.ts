@@ -51,7 +51,7 @@ const BODY = [
 ].join('\n\n') + '\n';
 
 async function world(customize: string[]): Promise<{ mods: Mods }> {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-fixb-')));
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-fixb-')));
   cleanups.push(() => rm(root));
   const bundled = path.join(root, 'bundled');
   buildPack(bundled);
@@ -105,7 +105,7 @@ describe('M3 fix B item 3: a Customize copy prints like the built-in', () => {
   });
 
   it('a foreign mod\'s block is still cut (a user mod with a kind of its own, trusted and in force)', async () => {
-    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-fixb-')));
+    const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-fixb-')));
     cleanups.push(() => rm(root));
     const bundled = path.join(root, 'bundled');
     buildPack(bundled);
@@ -135,7 +135,7 @@ describe('M3 fix B item 3: a Customize copy prints like the built-in', () => {
   });
 
   it('a user mod that names a built-in kind is not a copy: the registry refuses it and the built-in stays in force', async () => {
-    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-fixb-')));
+    const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-fixb-')));
     cleanups.push(() => rm(root));
     const bundled = path.join(root, 'bundled');
     buildPack(bundled);

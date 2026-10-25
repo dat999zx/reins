@@ -24,7 +24,7 @@ const rndMap = (m: Record<string, number> | undefined) => (m ? Object.fromEntrie
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g;
 
 const tmps: string[] = [];
-const tmp = () => { const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p-'))); tmps.push(d); return d; };
+const tmp = () => { const d = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p-'))); tmps.push(d); return d; };
 afterEach(async () => {
   await cleanup();
   for (const d of tmps.splice(0)) fs.rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });

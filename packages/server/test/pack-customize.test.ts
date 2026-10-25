@@ -67,7 +67,7 @@ function makeBundled(root: string, version = '1.0.0'): string {
 }
 
 async function boot(o: { prep?: (dir: string, root: string) => void; version?: string } = {}): Promise<World> {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-pack-')));
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-pack-')));
   const dir = path.join(root, '.reins');
   fs.mkdirSync(dir, { recursive: true });
   const bundled = makeBundled(root, o.version);
@@ -405,7 +405,7 @@ describe('"the built-in is newer"', () => {
 
 describe('the real bundled folder', () => {
   it('startMods with BUNDLED_MODS runs with no global registration: every pack mod in it registers and is taken out again by dispose', async () => {
-    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-pack-real-')));
+    const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-pack-real-')));
     expect((globalThis as unknown as { __packSetup?: string }).__packSetup).toBeUndefined(); // the server project has no pack setup (it would make startMods say "already registered")
     try {
       const before = [...NODES.keys()];

@@ -30,7 +30,7 @@ const cleanups: Array<() => void> = [];
 afterEach(() => { for (const c of cleanups.splice(0).reverse()) c(); });
 const rm = (d: string) => { try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* left for the OS */ } };
 const scratch = (): string => {
-  const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-w-')));
+  const d = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-w-')));
   cleanups.push(() => rm(d));
   return d;
 };

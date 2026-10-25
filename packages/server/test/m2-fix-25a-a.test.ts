@@ -203,7 +203,7 @@ describe('MINOR 4: the import summary shows a data block\'s prompt', () => {
   };
 
   beforeAll(async () => {
-    root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-25aa-')));
+    root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-25aa-')));
     const dir = path.join(root, '.reins');
     fs.mkdirSync(dir, { recursive: true });
     const env: NodeJS.ProcessEnv = { ...process.env };

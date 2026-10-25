@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 export function tempHome() {
-  const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-home-')));
+  const home = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-home-')));
   const modsDir = path.join(home, 'mods');
   fs.mkdirSync(modsDir);
   return {

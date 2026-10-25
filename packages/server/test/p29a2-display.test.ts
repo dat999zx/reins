@@ -20,7 +20,7 @@ const range = (a: number, b: number) => Array.from({ length: b - a + 1 }, (_, i)
 const hex = (n: number) => n.toString(16).toUpperCase().padStart(4, '0');
 
 let tmp = '';
-beforeEach(() => { tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29a2-display-'))); });
+beforeEach(() => { tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29a2-display-'))); });
 afterEach(() => fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
 
 describe('showText covers every invisible and default-ignorable code point', () => {

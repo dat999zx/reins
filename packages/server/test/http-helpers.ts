@@ -24,7 +24,7 @@ function rmTemp(d: string) {
 }
 
 export function tmpDir(): string {
-  const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-http-')));
+  const d = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-http-')));
   undo.push(() => rmTemp(d));
   return d;
 }

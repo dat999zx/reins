@@ -23,7 +23,7 @@ const make = async (...a: Parameters<typeof rig>) => {
   rigs.push(r);
   return r;
 };
-const tmp = () => { const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29d-money-'))); dirs.push(d); return d; };
+const tmp = () => { const d = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-p29d-money-'))); dirs.push(d); return d; };
 afterEach(async () => {
   for (const r of rigs.splice(0)) await r.cleanup();
   for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });

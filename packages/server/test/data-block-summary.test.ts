@@ -37,7 +37,7 @@ const call = (method: string, url: string, body?: unknown) => new Promise<{ stat
 });
 
 beforeAll(async () => {
-  root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-dbs-')));
+  root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-dbs-')));
   const dir = path.join(root, '.reins');
   fs.mkdirSync(dir, { recursive: true });
   const env: NodeJS.ProcessEnv = { ...process.env };

@@ -51,7 +51,7 @@ afterEach(async () => {
 });
 
 async function boot() {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-catalog-')));
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-catalog-')));
   const dir = path.join(root, '.reins');
   fs.mkdirSync(dir, { recursive: true });
   const mods = await startMods({ dir, env: {} });

@@ -26,7 +26,7 @@ const needed = (): string[] => fs.readdirSync(MODS_DIR, { withFileTypes: true })
 const cleanups: Array<() => void> = [];
 afterEach(() => { for (const c of cleanups.splice(0).reverse()) c(); });
 const scratch = (): string => {
-  const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-ymoves-')));
+  const d = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-ymoves-')));
   cleanups.push(() => { try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* left for the OS */ } });
   return d;
 };
