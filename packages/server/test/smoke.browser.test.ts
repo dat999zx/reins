@@ -896,8 +896,11 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     // 8e.5b. S-against: a verify block's blue handle, dragged onto a block, writes `against:`; select the arrow and press Delete: the line is gone
     await card('verify against').click();
     await row('verify-1').waitFor();
-    // The new block lands low on the canvas, where the zoom buttons sit over its handles on a taller layout (a macOS or Linux runner): fit the script into view first.
-    await page.getByRole('button', { name: 'Fit' }).click();
+    // The new block is the last one, low on the canvas, and the zoom buttons float at the foot of it: on a runner with a taller layout they sat over the block's handles (the press hit
+    // "Zoom out"). Pan the script up while the wire is drawn, and back after, so the camera is where the later steps expect it.
+    const lift = 90;
+    const clear = await empty();
+    await drag(clear, { x: clear.x, y: clear.y - lift });
     await holds(async () => ({ v: await row('verify-1').boundingBox(), p: await row('plan').boundingBox() }));
     await row('verify-1').locator('.sx-row').first().hover();
     const vb = (await row('verify-1').locator('.sx-handle[data-lk="against"]').boundingBox())!;
@@ -924,6 +927,8 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await textTab.click();
     expect(await editor.inputValue()).toBe(textBeforeHat);
     await blocksTab.click();
+    const back = await empty();
+    await drag(back, { x: back.x, y: back.y + lift });
     // 8e.6. detach `plan` from its menu: it moves behind an `end`, no new error, a note names the capped link; Ctrl+Z restores the text
     const errs = () => page.locator('.diags .bad').count();
     await textTab.click();
