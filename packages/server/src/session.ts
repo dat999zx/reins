@@ -111,7 +111,8 @@ export function projectFolderWords(cwd: string, reinsDir: string, userHome: stri
  * touches the filesystem. A Windows-style path is judged by the Windows rules on any host.
  */
 export function rootFolderWords(cwd: string): string | undefined {
-  const plain = plainWin(cwd);
+  const bare = plainWin(cwd);
+  const plain = /^[a-z]:$/i.test(bare) ? `${bare}\\` : bare; // a bare `C:` is the current folder on C: to Node (the host's, by where this runs); as a project folder it is the drive
   const win = /^([a-z]:|[\\/]{2})/i.test(plain);
   const P = win ? path.win32 : path;
   const text = P.resolve(plain);

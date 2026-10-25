@@ -197,7 +197,7 @@ describe('export', () => {
     fs.mkdirSync(target);
     let linked = true;
     try { fs.symlinkSync(target, path.join(d, 'lnk'), 'junction'); } catch (e) { linked = false; console.log(`skipped the link case: this machine cannot create links (${(e as Error).message})`); }
-    if (linked) await bad('link', () => {}, () => fs.rmdirSync(path.join(d, 'lnk')), 'is a link');
+    if (linked) await bad('link', () => {}, () => { const l = path.join(d, 'lnk'); if (process.platform === 'win32') fs.rmdirSync(l); else fs.unlinkSync(l); }, 'is a link');
     await bad('home name',() => fs.writeFileSync(path.join(d, 'secrets.json'), '{}'), () => fs.rmSync(path.join(d, 'secrets.json')), 'belongs to Reins');
     for (let i = 0; i < 50; i++) fs.writeFileSync(path.join(d, `f${i}.txt`), 'x');
     const many = await w.call('GET', '/api/mods/acme/export');

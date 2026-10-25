@@ -45,7 +45,7 @@ interface Proc { pid: number; ppid: number; name: string; claude: boolean }
 /** Every process now: id, parent, name, and whether its name or command line says claude. The command line is read here and never kept. */
 function processes(): Proc[] {
   if (process.platform !== 'win32') {
-    const out = execFileSync('ps', ['-eo', 'pid=,ppid=,args=']).toString().split('\n').filter(Boolean);
+    const out = execFileSync('ps', ['-eo', 'pid=,ppid=,args=']).toString().split('\n').filter(Boolean).filter((l) => !/ ps -eo pid=,ppid=,args=\s*$/.test(l)); // not the listing's own process: a child of this one, never in the baseline
     return out.map((l) => { const m = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(l)!; return { pid: Number(m[1]), ppid: Number(m[2]), name: m[3]!.split(' ')[0]!, claude: /claude/i.test(m[3]!) }; });
   }
   // The word is built in two pieces so that this very command line does not match it; `self` marks the query's own process.
