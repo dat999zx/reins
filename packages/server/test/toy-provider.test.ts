@@ -28,7 +28,7 @@ interface World {
   call: (method: string, url: string, body?: unknown) => Promise<Res>;
 }
 const worlds: World[] = [];
-const marker = path.join(fs.realpathSync(os.tmpdir()), `reins-toy-marker-${process.pid}.log`);
+const marker = path.join(fs.realpathSync.native(os.tmpdir()), `reins-toy-marker-${process.pid}.log`);
 
 beforeAll(() => {
   rm(marker);

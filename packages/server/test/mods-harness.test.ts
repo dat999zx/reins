@@ -7,7 +7,7 @@ import { tempHome } from './mods-harness.js';
 describe('tempHome', () => {
   it('makes a home and an empty mods folder under the temp dir, and cleanup removes it', () => {
     const h = tempHome();
-    expect(path.dirname(h.home)).toBe(fs.realpathSync(os.tmpdir()));
+    expect(path.dirname(h.home)).toBe(fs.realpathSync.native(os.tmpdir()));
     expect(fs.readdirSync(h.modsDir)).toEqual([]);
     h.cleanup();
     expect(fs.existsSync(h.home)).toBe(false);

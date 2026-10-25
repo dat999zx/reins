@@ -26,7 +26,7 @@ const FIXTURE = fileURLToPath(new URL('./fixtures/mods/toy-beep/', import.meta.u
 const beepManifest = () => JSON.parse(fs.readFileSync(path.join(FIXTURE, 'mod.json'), 'utf8')) as Record<string, any>;
 const beepCode = () => fs.readFileSync(path.join(FIXTURE, 'index.js'), 'utf8');
 const g = globalThis as unknown as Record<string, any>;
-const marker = path.join(fs.realpathSync(os.tmpdir()), `reins-toy-beep-marker-${process.pid}.log`);
+const marker = path.join(fs.realpathSync.native(os.tmpdir()), `reins-toy-beep-marker-${process.pid}.log`);
 const marked = () => (fs.existsSync(marker) ? fs.readFileSync(marker, 'utf8').split('\n').filter(Boolean) : []);
 
 let h: ReturnType<typeof tempHome>;

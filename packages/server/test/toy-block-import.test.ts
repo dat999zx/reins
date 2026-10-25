@@ -20,7 +20,7 @@ import { PROBE } from './http-helpers.js';
 
 const FIXTURE = fileURLToPath(new URL('./fixtures/mods/toy-beep/', import.meta.url));
 const rm = (d: string) => { try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* left for the OS */ } };
-const marker = path.join(fs.realpathSync(os.tmpdir()), `reins-toy-beep-import-marker-${process.pid}.log`);
+const marker = path.join(fs.realpathSync.native(os.tmpdir()), `reins-toy-beep-import-marker-${process.pid}.log`);
 const marked = () => (fs.existsSync(marker) ? fs.readFileSync(marker, 'utf8').split('\n').filter(Boolean) : []);
 
 interface Res { status: number; json: any; text: string }
