@@ -606,7 +606,13 @@ liveSuite('M3 row 5: an envelope of a code mod, a data mod and a workflow, from 
 // ---- row 6: the server is a separate process, killed hard in the middle of a fork
 
 interface Child { proc: ChildProcess; port: number; token: string; out: string[]; dead: Promise<void> }
-const killTree = (c: Child) => { try { execFileSync('taskkill', ['/PID', String(c.proc.pid), '/F', '/T'], { stdio: 'ignore' }); } catch { /* already gone */ } };
+/** A hard kill: taskkill on Windows, SIGKILL elsewhere (of the whole process group when `tree`; the server is spawned as a group leader off Windows). */
+function hardKill(pid: number | undefined, tree: boolean): void {
+  if (pid === undefined) return;
+  if (process.platform === 'win32') { try { execFileSync('taskkill', ['/PID', String(pid), '/F', ...(tree ? ['/T'] : [])], { stdio: 'ignore' }); } catch { /* already gone */ } return; }
+  try { process.kill(tree ? -pid : pid, 'SIGKILL'); } catch { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } }
+}
+const killTree = (c: Child) => hardKill(c.proc.pid, true);
 const isLive = (c: Child) => c.proc.exitCode === null && c.proc.signalCode === null;
 
 interface Home { root: string; dir: string; proj: string; key: string; keyVar: string; env: NodeJS.ProcessEnv }
@@ -633,7 +639,7 @@ function makeHome(baseUrl: string): Home {
 
 /** `reins serve` from the built package, as a separate process; resolves with its address. */
 async function startChild(h: Home): Promise<Child> {
-  const proc = spawn(process.execPath, [DIST_CLI, 'serve', '--port', '0'], { cwd: h.root, env: h.env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+  const proc = spawn(process.execPath, [DIST_CLI, 'serve', '--port', '0'], { cwd: h.root, env: h.env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, detached: process.platform !== 'win32' });
   const out: string[] = [];
   const dead = new Promise<void>((ok) => { proc.once('exit', () => ok()); });
   proc.stderr!.on('data', (d: Buffer) => out.push(d.toString()));

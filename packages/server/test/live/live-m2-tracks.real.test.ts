@@ -375,7 +375,13 @@ liveSuite('M2 row 3: a USD limit crossed, one pause, one re-share', { key: 'anth
 // ---- row 4: the server is a separate process, killed hard
 
 interface Child { proc: ChildProcess; port: number; token: string; out: string[]; dead: Promise<void> }
-const killTree = (c: Child) => { try { execFileSync('taskkill', ['/PID', String(c.proc.pid), '/F', '/T'], { stdio: 'ignore' }); } catch { /* already gone */ } };
+/** A hard kill: taskkill on Windows, SIGKILL elsewhere (of the whole process group when `tree`; the server is spawned as a group leader off Windows). */
+function hardKill(pid: number | undefined, tree: boolean): void {
+  if (pid === undefined) return;
+  if (process.platform === 'win32') { try { execFileSync('taskkill', ['/PID', String(pid), '/F', ...(tree ? ['/T'] : [])], { stdio: 'ignore' }); } catch { /* already gone */ } return; }
+  try { process.kill(tree ? -pid : pid, 'SIGKILL'); } catch { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } }
+}
+const killTree = (c: Child) => hardKill(c.proc.pid, true);
 const isLive = (c: Child) => c.proc.exitCode === null && c.proc.signalCode === null;
 
 interface Home { root: string; dir: string; proj: string; key: string; keyVar: string; env: NodeJS.ProcessEnv }
@@ -403,7 +409,7 @@ function makeHome(baseUrl: string): Home {
 
 /** `reins serve` from the built package, as a separate process; resolves with its address. */
 async function startChild(h: Home): Promise<Child> {
-  const proc = spawn(process.execPath, [DIST_CLI, 'serve', '--port', '0'], { cwd: h.root, env: h.env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+  const proc = spawn(process.execPath, [DIST_CLI, 'serve', '--port', '0'], { cwd: h.root, env: h.env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, detached: process.platform !== 'win32' });
   const out: string[] = [];
   const dead = new Promise<void>((ok) => { proc.once('exit', () => ok()); });
   proc.stderr!.on('data', (d: Buffer) => out.push(d.toString()));
@@ -500,7 +506,7 @@ describe.skipIf(!fs.existsSync(DIST_CLI) || (REAL && !CLI4 && !process.env[PROVI
     const before = { rows, turnEnded: datas(rows, 'turn_ended'), cost: convoCost(h.dir) };
     // A hard kill: no clean close, no detach. With the API only the server is killed (nothing else was started); on the CLI variant ONLY the server
     // process is killed, not its tree, so what the claude processes do when their server dies shows, and is then cleaned up here.
-    if (CLI4) { try { execFileSync('taskkill', ['/PID', String(c1.proc.pid), '/F'], { stdio: 'ignore' }); } catch { /* already gone */ } } else killTree(c1);
+    if (CLI4) hardKill(c1.proc.pid, false); else killTree(c1);
     await c1.dead;
     expect(isLive(c1)).toBe(false);
     let orphans = 'n/a';
@@ -508,7 +514,7 @@ describe.skipIf(!fs.existsSync(DIST_CLI) || (REAL && !CLI4 && !process.env[PROVI
       await sleep(5000);
       const left = leftovers(base);
       orphans = namesOf(left);
-      for (const p of left) { try { execFileSync('taskkill', ['/PID', String(p.pid), '/F', '/T'], { stdio: 'ignore' }); } catch { /* gone */ } }
+      for (const p of left) hardKill(p.pid, true);
     }
     return { sid, rid, before, orphans };
   }
