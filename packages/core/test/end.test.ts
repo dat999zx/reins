@@ -54,7 +54,7 @@ describe('end step', () => {
 
   it('warns when an end has links, cards or a prompt', () => {
     const d = validate(ok(wf('## phase plan\n> Plan it.\n\n## end\nnext: plan (max 2)\n')));
-    expect(d.map((x) => x.message)).toContain('an end step stops the workflow; its links, cards and prompt do nothing');
+    expect(d.map((x) => x.message)).toContain('an end step stops the playbook; its links, cards and prompt do nothing');
   });
 
   it('a file without end is unchanged: bug-fix compiles and validates as before the node existed', () => {

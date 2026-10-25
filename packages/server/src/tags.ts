@@ -1,4 +1,4 @@
-import { CARDS, NODES, parseWorkflow, validate, type Diagnostic, type Workflow } from '@reins/core';
+import { ABSENT_KINDS, CARDS, NODES, parseWorkflow, validate, type Diagnostic, type Workflow } from '@reins/core';
 
 export interface Tag { tag: string; arg?: string }
 export type Built = { ok: true; text: string } | { ok: false; error: string };
@@ -16,10 +16,16 @@ const SHORTHAND = new Map([['read-only', { attr: 'mode', value: 'read-only' }]])
 const FRONTMATTER = ['---', 'reins: 1', 'name: chat', 'always: []', 'budget: { turns: 20, minutes: 30 }', '---', ''];
 
 const refuse = (error: string) => ({ ok: false as const, error });
+const NO_TURN = 'No block that takes a turn is installed, so a chat message cannot be wrapped in one. The default pack is missing: reinstall Reins.';
 const needsArg = (name: string) => refuse(`#${name} needs an argument`);
 
+/** The kind a chat message is wrapped in (chatTurn): the first one in order, or undefined when no loaded block is one. */
+const chatTurn = () => [...NODES.values()].find((n) => n.chatTurn);
+
 export function buildTagged(text: string, tags: Tag[]): Built {
-  const attrs = NODES.get('phase')?.attrs ?? [];
+  const turn = chatTurn();
+  if (!turn) return refuse(NO_TURN);
+  const attrs = turn.attrs;
   const own: string[] = [];
   const seen = new Set<string>();
   const wraps: string[][] = [];
@@ -41,7 +47,7 @@ export function buildTagged(text: string, tags: Tag[]): Built {
     } else {
       const short = SHORTHAND.get(name);
       const attr = short?.attr ?? name;
-      if (!attrs.includes(attr)) return refuse(`unknown tag "${name}"`);
+      if (!attrs.includes(attr)) return refuse(`unknown tag "${name}"${ABSENT_KINDS.has(name) ? `: ${ABSENT_KINDS.get(name)}` : ''}`);
       if (short && arg !== undefined) return refuse(`#${name} takes no argument`);
       const value = short ? short.value : arg;
       if (value === undefined) return needsArg(name);
@@ -54,7 +60,7 @@ export function buildTagged(text: string, tags: Tag[]): Built {
 
   const out = [...FRONTMATTER];
   [...wraps].reverse().forEach(([kind, ...lines], i) => out.push(`${'#'.repeat(2 + i)} ${kind}`, ...lines, ''));
-  out.push(`${'#'.repeat(2 + wraps.length)} phase prompt`, ...own, ...text.split(/\r?\n/).map((l) => `> ${l}`), '');
+  out.push(`${'#'.repeat(2 + wraps.length)} ${turn.kind} prompt`, ...own, ...text.split(/\r?\n/).map((l) => `> ${l}`), '');
   for (const [kind, ...lines] of afters) out.push(`## ${kind}`, ...lines, '');
   return { ok: true, text: out.join('\n') };
 }
@@ -66,7 +72,7 @@ export function taggedWorkflow(text: string, tags: Tag[]): Tagged {
   const diagnostics = [...parsed.diagnostics, ...(parsed.workflow ? validate(parsed.workflow) : [])];
   const errors = diagnostics.filter((d) => d.severity === 'error');
   if (!parsed.workflow || errors.length) {
-    return { ok: false, error: errors.map((d) => d.message).join('; ') || 'invalid workflow', text: b.text, diagnostics };
+    return { ok: false, error: errors.map((d) => d.message).join('; ') || 'invalid playbook', text: b.text, diagnostics };
   }
   return { ok: true, text: b.text, workflow: parsed.workflow, warnings: diagnostics.filter((d) => d.severity === 'warning') };
 }
@@ -80,7 +86,7 @@ export function tagCatalogue(): TagEntry[] {
   for (const c of CARDS.values()) {
     if (!c.delivery) out.push({ name: c.kind, place: 'card', arg: c.kind, argRequired: true, enforced: !!c.policy });
   }
-  for (const a of NODES.get('phase')?.attrs ?? []) out.push({ name: a, place: 'attr', arg: a, argRequired: true, enforced: true });
+  for (const a of chatTurn()?.attrs ?? []) out.push({ name: a, place: 'attr', arg: a, argRequired: true, enforced: true });
   for (const name of SHORTHAND.keys()) out.push({ name, place: 'attr', argRequired: false, enforced: true });
   return out;
 }

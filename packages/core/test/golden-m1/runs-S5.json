@@ -1,0 +1,159 @@
+{
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "plan",
+            "kind": "phase",
+            "title": "plan"
+          },
+          {
+            "id": "gate-1",
+            "kind": "gate"
+          },
+          {
+            "id": "build",
+            "kind": "phase",
+            "title": "build"
+          },
+          {
+            "id": "gate-2",
+            "kind": "gate"
+          }
+        ],
+        "workflow": "t"
+      },
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "plan"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "plan"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "plan",
+        "text": "plan v1\nREINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "gate-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "cond": {
+          "t": "approve"
+        },
+        "step": "gate-1"
+      },
+      "type": "gate_paused"
+    },
+    {
+      "data": {
+        "card": "x",
+        "channel": "next-turn",
+        "source": "gate-changes"
+      },
+      "type": "card_delivered"
+    },
+    {
+      "data": {
+        "step": "gate-1"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "gate-1",
+        "text": "plan v2\nREINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {},
+      "type": "gate_approved"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "build"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "build"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "build",
+        "text": "built\nREINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "gate-2"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "answer": true,
+        "cond": {
+          "q": "all good",
+          "t": "llm"
+        }
+      },
+      "type": "judge"
+    },
+    {
+      "data": {},
+      "type": "run_finished"
+    }
+  ],
+  "receipt": {
+    "autoCardsFired": 0,
+    "gatesHeld": 1,
+    "guardRefusals": 0,
+    "knowlRecalls": 0,
+    "knowlSkipped": 0,
+    "knowlStores": 0,
+    "liveCardsDelivered": 1,
+    "loopAttempts": 0,
+    "readOnlyRefusals": 0,
+    "status": "done",
+    "totalCostUsd": 0,
+    "totalRefusals": 0,
+    "totalTimeMs": 15000,
+    "totalTurns": 3,
+    "verifyResults": {
+      "failed": 0,
+      "passed": 0
+    },
+    "workflow": "t"
+  },
+  "receivedTexts": [
+    "[Reins · playbook \"t\" · step 1 of 4: plan]\n\nplan\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"t\" · the user asked for changes before approving]\n\nx\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"t\" · step 3 of 4: build]\n\nbuild\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+  ],
+  "status": "done"
+}

@@ -1,0 +1,15 @@
+{
+  "reins": 1,
+  "id": "cond-llm",
+  "kind": "condition",
+  "version": "1.0.0",
+  "label": "Condition: LLM says",
+  "description": "True when a model answers yes to a question you write",
+  "main": "index.js",
+  "order": 40,
+  "pack": "default",
+  "provides": { "conditions": ["llm"] },
+  "view": {
+    "llm": { "label": "LLM says", "fresh": { "t": "llm", "q": "the plan covers every requirement" }, "param": { "key": "q", "look": "str" } }
+  }
+}

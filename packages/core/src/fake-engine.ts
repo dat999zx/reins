@@ -20,6 +20,8 @@ export interface ToolRequest {
   id?: string;
   /** The title of the provider's own task (a child of the model's task tool) this call came from; absent for the model's own calls. */
   via?: string;
+  /** Why Reins asks, shown on the card ("outside the project"). Absent: the plain card. */
+  reason?: string;
 }
 
 export interface Decision {
@@ -43,6 +45,8 @@ export interface OpenOptions {
   pendingCards?: () => string[];
   /** The provider's own cap on this process's spend (a subagent's room); undefined = none. */
   maxUsd?: number;
+  /** Live: the USD the run still allows now (the workflow's and the open slice's, the smaller), or undefined for no limit. */
+  usdRoom?: () => number | undefined;
 }
 
 export type EngineEvent =
@@ -56,7 +60,8 @@ export type EngineEvent =
   // The agent's running thinking estimate for this turn; `text` is the finished summary, when the provider sends it (a row without it is a count only).
   | { type: 'thinking'; tokens: number; text?: string }
   // The parent context after a successful turn: tokens used, and the model's window when the provider knows it.
-  | { type: 'usage'; model: string; used: number; window?: number }
+  // `used` is absent when the reply carried no usage: the size of the context is then not known (never 0).
+  | { type: 'usage'; model: string; used?: number; window?: number }
   // The provider compressed the context in place; before and after are its own figures (after leaves the system prompt out, so it is a lower bound).
   | { type: 'compacted'; trigger: string; before?: number; after?: number }
   // One adapter-side control call (a hook or an approval), so every call lands in the run log.
@@ -71,13 +76,20 @@ export interface TurnResult {
   models?: Record<string, number>;
   /** The provider's raw per-model running totals after this turn. */
   totals?: Record<string, number>;
+  /** What this turn spent, or part of it, is NOT known (a reply with no usage, a lost reply): `cost` leaves it out, and a USD limit cannot be held from here on. */
+  unknownCost?: true;
   /** The provider reported an error that no interrupt asked for. */
   isError?: boolean;
+  /** The engine ended the reply because a USD limit cannot be held (reached, or its spend or price is unknown): the Run pauses on the USD card. */
+  budgetStop?: boolean;
   events?: EngineEvent[];
 }
 
 export interface EngineSession {
   readonly sessionId: string;
+  /** True once this session has written an account of its spend that a reopen of `sessionId` reads (even if every call so far failed): the host then keeps the id. */
+  holdsSpend?(): boolean;
+  /** A rejection may carry `paid` (`cost`, `total`, `totals`, `models`: what was spent before it failed, e.g. a paid compaction); the Run counts it. */
   turn(text: string): Promise<TurnResult>;
   /** Compress the conversation in place, as one turn; a provider without one cannot compress. */
   compact?(): Promise<TurnResult>;
@@ -87,7 +99,8 @@ export interface EngineSession {
 }
 
 export interface Engine {
-  readonly id: 'claude' | 'codex';
+  /** A provider id; any string (the engines are registered by the server, not listed here). */
+  readonly id: string;
   probe(): Promise<EngineProbe>;
   open(opts: OpenOptions): Promise<EngineSession>;
 }
@@ -111,9 +124,13 @@ export interface ScriptedTurn {
   total?: number;
   totals?: Record<string, number>;
   models?: Record<string, number>;
+  unknownCost?: true;
   isError?: boolean;
+  budgetStop?: boolean;
   /** turn() rejects with this message. */
   reject?: string;
+  /** The rejection carries this as `paid` (what was spent, or not known, before it failed). */
+  paid?: Pick<TurnResult, 'cost' | 'total' | 'totals' | 'models' | 'unknownCost'>;
   /** Awaited before the turn resolves: a turn in flight. */
   hold?: () => Promise<void>;
 }
@@ -122,7 +139,7 @@ export interface ScriptedTurn {
 let sessions = 0;
 
 export class FakeEngine implements Engine {
-  readonly id = 'claude' as const;
+  readonly id = 'fake';
   receivedTexts: string[] = [];
   recordedPolicyChecks: Array<{ tool: string; input: any; policy: Policy }> = [];
   interrupted = false;
@@ -167,7 +184,7 @@ export class FakeEngine implements Engine {
         const turnEvents: EngineEvent[] = [];
 
         await scripted.hold?.();
-        if (scripted.reject !== undefined) throw new Error(scripted.reject);
+        if (scripted.reject !== undefined) throw Object.assign(new Error(scripted.reject), scripted.paid ? { paid: scripted.paid } : {});
 
         if (scripted.events) {
           for (const ev of scripted.events) {
@@ -211,7 +228,9 @@ export class FakeEngine implements Engine {
           ...(scripted.total !== undefined ? { total: scripted.total } : {}),
           ...(scripted.totals ? { totals: scripted.totals } : {}),
           ...(scripted.models ? { models: scripted.models } : {}),
+          ...(scripted.unknownCost ? { unknownCost: true as const } : {}),
           ...(scripted.isError ? { isError: true } : {}),
+          ...(scripted.budgetStop ? { budgetStop: true } : {}),
           events: turnEvents,
         };
       },

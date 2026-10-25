@@ -1,0 +1,27 @@
+{
+  "reins": 1,
+  "id": "phase",
+  "kind": "block",
+  "version": "1.0.0",
+  "label": "Phase",
+  "description": "A titled turn: the step every playbook is built from",
+  "main": "index.js",
+  "order": 10,
+  "pack": "default",
+  "required": true,
+  "provides": { "kinds": ["phase"], "attrs": ["mode"] },
+  "view": {
+    "kind": "phase",
+    "order": 10,
+    "colour": "soft",
+    "fields": [
+      { "key": "title", "label": "Title", "input": "text" },
+      { "key": "prompt", "label": "Prompt", "input": "textarea", "required": true },
+      { "key": "mode", "label": "Mode", "input": "mode", "unset": "write" }
+    ],
+    "line": [{ "field": "title" }, { "field": "prompt" }],
+    "cards": true,
+    "card": { "label": "phase", "section": "Flow" },
+    "fresh": {}
+  }
+}

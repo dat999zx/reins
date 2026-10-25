@@ -15,11 +15,11 @@ export function stable(v: unknown): unknown {
 export const json = (v: unknown) => JSON.stringify(stable(v), null, 2) + '\n';
 export const hash = (v: unknown) => createHash('sha256').update(json(v)).digest('hex');
 
-/** Compare with a recorded file; REINS_RECORD_3A=1 writes it instead (Task 0 only). */
-export function golden(name: string, value: unknown) {
-  const file = path.join(__dirname, name);
+/** Compare with a recorded file; the env flag set to 1 writes it instead (Task 0 only). */
+export function golden(name: string, value: unknown, flag = 'REINS_RECORD_3A', dir = __dirname) {
+  const file = path.join(dir, name);
   const text = json(value);
-  if (process.env.REINS_RECORD_3A === '1') {
+  if (process.env[flag] === '1') {
     fs.writeFileSync(file, text);
     return;
   }

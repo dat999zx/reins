@@ -9,7 +9,7 @@ export type Place = { parent?: string; branch: 'kids' | 'else'; index: number };
 function listIn(w: Workflow, p: { parent?: string; branch: 'kids' | 'else' }): Step[] | undefined {
   if (p.parent === undefined) return p.branch === 'kids' ? w.steps : undefined;
   const s = flatSteps(w.steps).find((x) => x.id === p.parent);
-  const g = s && KINDS[s.kind].group;
+  const g = s && KINDS[s.kind]?.group;
   if (!s || !g || (p.branch === 'else' && g !== 'kids+else')) return undefined;
   return (s[p.branch] ??= []);
 }
@@ -48,14 +48,20 @@ export function insertSteps(w: Workflow, steps: Step[], to: Place): Workflow {
   return m;
 }
 
+// The fields of a new block of this kind: a copy each time, so no two blocks share an object.
+export const freshOf = (kind: StepKind): Partial<Step> => structuredClone(KINDS[kind]?.fresh ?? {});
+
+// A new block of a kind. The view's `fresh` goes first, so it can never set the id, the kind, the cards or the links.
+export const newStep = (w: Workflow, kind: StepKind): Step =>
+  Object.assign({ id: '', kind, attrs: {}, cards: [], links: [], ...freshOf(kind) } as Step, { id: newId(w, kind), kind, cards: [], links: [] });
+
 export function addStepAt(w: Workflow, kind: StepKind, to: Place): Workflow {
-  const fresh = KINDS[kind].fresh;
-  if (!fresh) return w;
-  return insertSteps(w, [{ id: newId(w, kind), kind, attrs: {}, cards: [], links: [], ...fresh() }], to);
+  if (!KINDS[kind]?.fresh) return w;
+  return insertSteps(w, [newStep(w, kind)], to);
 }
 
 // The stack is the top-level steps before the first top-level `end`; what follows are free blocks.
-export const stackEnd = (w: Workflow): number => { const i = w.steps.findIndex((s) => s.kind === 'end'); return i === -1 ? w.steps.length : i; };
+export const stackEnd = (w: Workflow): number => { const i = w.steps.findIndex((s) => KINDS[s.kind]?.stops); return i === -1 ? w.steps.length : i; };
 
 // After a stack or nested step; anything else (no step, the end, a free block) lands before the end, never behind it.
 export function addPlace(w: Workflow, after?: string): Place {
@@ -70,7 +76,7 @@ export type Hit = { block: string; edge: 'before' | 'after' | 'into' | 'else' } 
 // The first slot of a block's own body, only if its kind has that body. Reads the model; never `listIn`, which mutates.
 function bodyStart(w: Workflow, id: string, branch: 'kids' | 'else'): Place | undefined {
   const s = flatSteps(w.steps).find((x) => x.id === id);
-  const group = s && KINDS[s.kind].group;
+  const group = s && KINDS[s.kind]?.group;
   return group && (branch === 'kids' || group === 'kids+else') ? { parent: id, branch, index: 0 } : undefined;
 }
 
@@ -110,7 +116,7 @@ export function nestPlace(w: Workflow, id: string, dir: 'in' | 'out'): Place | u
   }
   const list = at.parent === undefined ? w.steps : flatSteps(w.steps).find((s) => s.id === at.parent)?.[at.branch];
   const prev = list?.[at.index - 1];
-  return prev && KINDS[prev.kind].group ? { parent: prev.id, branch: 'kids', index: prev.kids?.length ?? 0 } : undefined;
+  return prev && KINDS[prev.kind]?.group ? { parent: prev.id, branch: 'kids', index: prev.kids?.length ?? 0 } : undefined;
 }
 
 export function deleteStep(w: Workflow, id: string): Workflow {
@@ -204,7 +210,7 @@ export type CondPath = Array<'a' | 'b'>;
 export function setCond(w: Workflow, id: string, path: CondPath, cond: Cond): Workflow {
   const m = structuredClone(w);
   const step = flatSteps(m.steps).find((s) => s.id === id);
-  if (!step || !KINDS[step.kind].line.includes('cond')) return w;
+  if (!step || !KINDS[step.kind]?.line.includes('cond')) return w;
   let holder = step as unknown as Record<string, Cond | undefined>;
   let key = 'cond';
   for (const hop of path) {

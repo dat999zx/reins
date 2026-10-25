@@ -1,0 +1,608 @@
+{
+  "blocks/review-pass.reins.md": [
+    {
+      "op": "TURN",
+      "policy": {
+        "allowShell": true,
+        "guards": [],
+        "mode": "write"
+      },
+      "src": {
+        "attrs": {},
+        "cards": [],
+        "id": "review",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 6
+        },
+        "prompt": "Review the full diff as a harsh reviewer. List real problems only.",
+        "title": "review"
+      },
+      "step": "review",
+      "top": 0
+    },
+    {
+      "op": "TURN",
+      "policy": {
+        "allowShell": true,
+        "guards": [],
+        "mode": "write"
+      },
+      "src": {
+        "attrs": {},
+        "cards": [],
+        "id": "fix",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 9
+        },
+        "prompt": "Fix the problems from the review. Nothing else.",
+        "title": "fix"
+      },
+      "step": "fix",
+      "top": 1
+    },
+    {
+      "cond": {
+        "q": "no blocking issues left",
+        "t": "llm"
+      },
+      "op": "GATE",
+      "step": "gate-1",
+      "top": 2
+    },
+    {
+      "op": "END"
+    }
+  ],
+  "bug-fix.reins.md": [
+    {
+      "op": "TURN",
+      "policy": {
+        "allowShell": true,
+        "guards": [],
+        "mode": "write"
+      },
+      "src": {
+        "attrs": {},
+        "cards": [],
+        "id": "reproduce",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 10
+        },
+        "prompt": "Write a test that reproduces the bug. It must fail for the right reason.",
+        "title": "reproduce"
+      },
+      "step": "reproduce",
+      "top": 0
+    },
+    {
+      "cond": {
+        "a": {
+          "t": "tests"
+        },
+        "t": "not"
+      },
+      "op": "GATE",
+      "step": "gate-1",
+      "top": 1
+    },
+    {
+      "max": 4,
+      "op": "LOOP_IN",
+      "step": "repeat-1",
+      "top": 2
+    },
+    {
+      "op": "TURN",
+      "policy": {
+        "allowShell": true,
+        "guards": [],
+        "mode": "write"
+      },
+      "src": {
+        "attrs": {},
+        "cards": [],
+        "id": "fix",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 20
+        },
+        "prompt": "Make the smallest change that makes the test pass.",
+        "title": "fix"
+      },
+      "step": "fix",
+      "top": 2
+    },
+    {
+      "cmd": "npm test",
+      "loopExit": 6,
+      "op": "RUN",
+      "repeatCond": {
+        "t": "tests"
+      },
+      "step": "run-1",
+      "top": 2
+    },
+    {
+      "op": "LOOP_BK",
+      "step": "repeat-1",
+      "target": 3,
+      "top": 2
+    },
+    {
+      "cond": {
+        "a": {
+          "n": 300,
+          "t": "diff"
+        },
+        "b": {
+          "glob": "src/core/**",
+          "t": "touches"
+        },
+        "t": "or"
+      },
+      "elseJump": 9,
+      "op": "IF",
+      "step": "if-1",
+      "top": 3
+    },
+    {
+      "cond": {
+        "t": "approve"
+      },
+      "op": "GATE",
+      "step": "gate-2",
+      "top": 3
+    },
+    {
+      "op": "JUMP",
+      "target": 10,
+      "top": 3
+    },
+    {
+      "op": "TURN",
+      "policy": {
+        "allowShell": true,
+        "guards": [],
+        "mode": "write"
+      },
+      "src": {
+        "attrs": {},
+        "cards": [],
+        "id": "say-1",
+        "kind": "say",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 32
+        },
+        "prompt": "Small fix. Explain the root cause in two sentences."
+      },
+      "step": "say-1",
+      "top": 3
+    },
+    {
+      "op": "END"
+    }
+  ],
+  "safe-refactor.reins.md": [
+    {
+      "cmd": "npm test",
+      "op": "RUN",
+      "step": "run-1",
+      "top": 0
+    },
+    {
+      "op": "TURN",
+      "policy": {
+        "allowShell": true,
+        "guards": [],
+        "mode": "write"
+      },
+      "src": {
+        "attrs": {},
+        "cards": [],
+        "id": "plan",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 13
+        },
+        "prompt": "List every move you will make. No code yet.",
+        "title": "plan"
+      },
+      "step": "plan",
+      "top": 1
+    },
+    {
+      "cond": {
+        "t": "approve"
+      },
+      "op": "GATE",
+      "step": "gate-1",
+      "top": 2
+    },
+    {
+      "op": "TURN",
+      "policy": {
+        "allowShell": true,
+        "guards": [
+          "src/api/**"
+        ],
+        "mode": "write"
+      },
+      "src": {
+        "attrs": {},
+        "cards": [
+          {
+            "kind": "guard",
+            "pos": {
+              "col": 7,
+              "line": 20
+            },
+            "text": "src/api/**"
+          }
+        ],
+        "id": "refactor",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 19
+        },
+        "prompt": "Move code as planned. Do not change behaviour.",
+        "title": "refactor"
+      },
+      "step": "refactor",
+      "top": 3
+    },
+    {
+      "max": 3,
+      "op": "LOOP_IN",
+      "step": "repeat-1",
+      "top": 4
+    },
+    {
+      "cmd": "npm test",
+      "loopExit": 8,
+      "op": "RUN",
+      "repeatCond": {
+        "a": {
+          "t": "tests"
+        },
+        "b": {
+          "cmd": "npm run typecheck",
+          "t": "cmd"
+        },
+        "t": "and"
+      },
+      "step": "run-2",
+      "top": 4
+    },
+    {
+      "op": "TURN",
+      "policy": {
+        "allowShell": true,
+        "guards": [],
+        "mode": "write"
+      },
+      "src": {
+        "attrs": {},
+        "cards": [],
+        "id": "fix",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 29
+        },
+        "prompt": "Restore the old behaviour. Do not change the tests.",
+        "title": "fix"
+      },
+      "step": "fix",
+      "top": 4
+    },
+    {
+      "op": "LOOP_BK",
+      "step": "repeat-1",
+      "target": 5,
+      "top": 4
+    },
+    {
+      "against": "plan",
+      "op": "VERIFY",
+      "step": "verify-1",
+      "top": 5
+    },
+    {
+      "op": "END"
+    }
+  ],
+  "tdd-loop.reins.md": [
+    {
+      "op": "RECALL",
+      "step": "recall-1",
+      "top": 0,
+      "topics": [
+        "reports",
+        "csv"
+      ]
+    },
+    {
+      "max": 8,
+      "op": "LOOP_IN",
+      "step": "repeat-1",
+      "top": 1
+    },
+    {
+      "op": "TURN",
+      "policy": {
+        "allowShell": true,
+        "guards": [],
+        "mode": "write"
+      },
+      "src": {
+        "attrs": {},
+        "cards": [],
+        "id": "red",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 17
+        },
+        "prompt": "Write exactly one failing test for the next requirement.",
+        "title": "red"
+      },
+      "step": "red",
+      "top": 1
+    },
+    {
+      "cmd": "npm test",
+      "loopExit": 7,
+      "op": "RUN",
+      "repeatCond": {
+        "a": {
+          "q": "every requirement has a test",
+          "t": "llm"
+        },
+        "b": {
+          "t": "tests"
+        },
+        "t": "and"
+      },
+      "step": "run-1",
+      "top": 1
+    },
+    {
+      "op": "TURN",
+      "policy": {
+        "allowShell": true,
+        "guards": [],
+        "mode": "write"
+      },
+      "src": {
+        "attrs": {},
+        "cards": [],
+        "id": "green",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 22
+        },
+        "prompt": "Write the least code that makes the new test pass.",
+        "title": "green"
+      },
+      "step": "green",
+      "top": 1
+    },
+    {
+      "cmd": "npm test",
+      "loopExit": 7,
+      "op": "RUN",
+      "repeatCond": {
+        "a": {
+          "q": "every requirement has a test",
+          "t": "llm"
+        },
+        "b": {
+          "t": "tests"
+        },
+        "t": "and"
+      },
+      "step": "run-2",
+      "top": 1
+    },
+    {
+      "op": "LOOP_BK",
+      "step": "repeat-1",
+      "target": 2,
+      "top": 1
+    },
+    {
+      "after": 8,
+      "op": "PLAYBOOK",
+      "playbook": "review-pass",
+      "session": "inline",
+      "step": "playbook-1",
+      "top": 2
+    },
+    {
+      "op": "PLAYBOOK_END",
+      "playbook": "review-pass",
+      "step": "playbook-1",
+      "top": 2
+    },
+    {
+      "op": "END"
+    }
+  ],
+  "upload-retry.reins.md": [
+    {
+      "op": "RECALL",
+      "step": "recall-1",
+      "top": 0,
+      "topics": [
+        "upload",
+        "retry"
+      ]
+    },
+    {
+      "op": "TURN",
+      "policy": {
+        "allowShell": true,
+        "guards": [],
+        "mode": "read-only"
+      },
+      "src": {
+        "attrs": {
+          "mode": "read-only"
+        },
+        "cards": [],
+        "id": "plan",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 14
+        },
+        "prompt": "Write a plan for adding retry to the upload endpoint.\nDo not write code. Output the plan as a numbered list, then stop.",
+        "title": "plan"
+      },
+      "step": "plan",
+      "top": 1
+    },
+    {
+      "cond": {
+        "t": "approve"
+      },
+      "op": "GATE",
+      "step": "gate-1",
+      "top": 2
+    },
+    {
+      "op": "TURN",
+      "policy": {
+        "allowShell": true,
+        "guards": [
+          "migrations/**"
+        ],
+        "mode": "write"
+      },
+      "src": {
+        "attrs": {},
+        "cards": [
+          {
+            "kind": "guard",
+            "pos": {
+              "col": 7,
+              "line": 23
+            },
+            "text": "migrations/**"
+          }
+        ],
+        "id": "implement",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 22
+        },
+        "prompt": "Implement the approved plan. Do not deviate; if you must, stop and say why.\nExplain each change in one line.",
+        "title": "implement"
+      },
+      "step": "implement",
+      "top": 3
+    },
+    {
+      "max": 5,
+      "op": "LOOP_IN",
+      "step": "repeat-1",
+      "top": 4
+    },
+    {
+      "cmd": "npm test",
+      "loopExit": 8,
+      "onPassJump": 8,
+      "op": "RUN",
+      "repeatCond": {
+        "cmd": "npm test",
+        "t": "cmd"
+      },
+      "step": "run-1",
+      "top": 4
+    },
+    {
+      "op": "TURN",
+      "policy": {
+        "allowShell": true,
+        "guards": [],
+        "mode": "write"
+      },
+      "src": {
+        "attrs": {},
+        "cards": [],
+        "id": "fix",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 33
+        },
+        "prompt": "Read the error output first. Fix the cause, not the symptom.",
+        "title": "fix"
+      },
+      "step": "fix",
+      "top": 4
+    },
+    {
+      "op": "LOOP_BK",
+      "step": "repeat-1",
+      "target": 5,
+      "top": 4
+    },
+    {
+      "against": "plan",
+      "linkMax": 2,
+      "onFailJump": 3,
+      "op": "VERIFY",
+      "step": "verify-1",
+      "top": 5
+    },
+    {
+      "after": 10,
+      "op": "PLAYBOOK",
+      "playbook": "review-pass",
+      "session": "inline",
+      "step": "playbook-1",
+      "top": 6
+    },
+    {
+      "op": "PLAYBOOK_END",
+      "playbook": "review-pass",
+      "step": "playbook-1",
+      "top": 6
+    },
+    {
+      "op": "STORE",
+      "step": "store-1",
+      "top": 7,
+      "what": "decisions"
+    },
+    {
+      "op": "END"
+    }
+  ]
+}

@@ -1,8 +1,15 @@
-import type { Receipt, Workflow } from '@reins/core';
+import type { Receipt, StepKind, Workflow } from '@reins/core';
+import { KINDS } from './canvasKinds.js';
 import { flatSteps } from './canvas.js';
 import type { LogRow } from '@reins/server/store.js';
 import { openQuestions, type Sess } from './state.js';
 import { runRows, stepStatus, type StepMap } from './stepStatus.js';
+import { dollars } from './unknown.js';
+import { trackTitle } from './stepStatus.js';
+import { statusOf } from './viewEvents.js';
+
+// What the view of a step in the run says about its usage slice (see KindView.slice).
+const sliceOf = (v: RunView, id?: string) => KINDS[v.stepsAtStart?.find((s) => s.id === id)?.kind as StepKind]?.slice;
 
 export type RunPhase = 'none' | 'busy' | 'running' | 'waiting' | 'done' | 'stopped' | 'paused' | 'failed';
 export interface RunCard { text: string; kind: 'steer' | 'now'; state: 'queued' | 'delivered' | 'unsent' }
@@ -18,11 +25,13 @@ export interface RunView {
   cards: RunCard[];
   receipt?: Receipt; error?: string;
   turns: number; cost: number; startedAt?: number; endedTs?: number;
+  costUnknown?: true;                // a reply of the run cost something nobody knows: `cost` is at least this much
   last?: { seq: number; text: string };
   stepOf: Map<number, string>;
   thinking?: number;                 // tokens, while the newest engine row of the live run is a thinking row
   slice?: { step: string; spent: number; usd: number };   // the open USD slice, from the newest run turn_ended
   sub?: { step: string; title: string; label?: string };   // the subagent at work: subagent_started, gone at its result or the run's end
+  tracks?: Array<{ key: string; title: string; paused: boolean; ended: boolean }>;   // the tracks the run started, first started first; absent when none
   usdLimit?: number;                 // the workflow's USD limit after allowances (the newest run_resumed with `usd` and no `step`)
 }
 
@@ -36,18 +45,26 @@ const clock = (ms: number) => {
 const tail = (v: RunView) => [
   `${v.turns} turn${v.turns === 1 ? '' : 's'}`,
   ...(v.startedAt !== undefined && v.endedTs !== undefined ? [clock(v.endedTs - v.startedAt)] : []),
-  `$${v.cost.toFixed(4)}`,
+  dollars(v.cost, 4, v.costUnknown),
 ];
 export const thinkingWords = (tokens: number) => `thinking… ~${tokens.toLocaleString('en-US')} tokens`;
 const where = (word: string, v: RunView) => (v.endedAt ? `${word} at \`${v.endedAt}\`` : word);
+
+// One line for one track or none ("Running `step`"), a count and the titles for more ("Running 2 at once: A, B"); a paused track says so.
+const running = (v: RunView) => {
+  const live = (v.tracks ?? []).filter((t) => !t.ended);
+  if (live.length < 2) return v.current.length ? `Running \`${v.current.at(-1)}\`` : 'Running';
+  const shown = live.slice(0, 3).map((t) => trackTitle(t.title) + (t.paused ? ' (paused)' : '')).join(', ');
+  return `Running ${live.length} at once: ${shown}${live.length > 3 ? ` and ${live.length - 3} more` : ''}`;
+};
 
 // ponytail: the newest run only; a history picker would pass a run id. Cards are matched by text, first in first out; `cards_unsent` by position (it has no run id).
 export const PHASE: Record<RunPhase, { words: (v: RunView, pos?: Pos) => string; ended: boolean; resumable: boolean }> = {
   none: { words: () => '', ended: false, resumable: false },
   // a switch card after an ended run waits in phase busy: say so, not "working"
-  busy: { words: (v, pos) => (v.open.length ? PHASE.waiting.words(v, pos) : 'The agent is working (not a workflow run).'), ended: false, resumable: false },
+  busy: { words: (v, pos) => (v.open.length ? PHASE.waiting.words(v, pos) : 'The agent is working (not a playbook run).'), ended: false, resumable: false },
   running: {
-    words: (v, pos) => `${v.current.length ? `Running \`${v.current.at(-1)}\`` : 'Running'}${pos ? ` · step ${pos.n} of ${pos.m}` : ''}${v.sub ? ` · subagent ${v.sub.title} on ${v.sub.label ?? 'the session model'}` : ''}${v.thinking !== undefined ? ` · ${thinkingWords(v.thinking)}` : ''}`,
+    words: (v, pos) => `${running(v)}${pos ? ` · step ${pos.n} of ${pos.m}` : ''}${v.sub ? ` · subagent ${v.sub.title} on ${v.sub.label ?? 'the session model'}` : ''}${v.thinking !== undefined ? ` · ${thinkingWords(v.thinking)}` : ''}`,
     ended: false, resumable: false,
   },
   waiting: {
@@ -63,9 +80,11 @@ export const PHASE: Record<RunPhase, { words: (v: RunView, pos?: Pos) => string;
   failed: { words: (v) => `${where('Failed', v)}: ${v.error ?? 'the run failed'}`, ended: true, resumable: true },
 };
 
-interface Acc { v2: boolean; inTurn: boolean; started: string[] }
+// One per track: the begin/end pairs (a step, a turn) are paired inside one track.
+interface Acc { track: string; v2: boolean; inTurn: boolean; started: string[] }
 type Fold = (r: LogRow, x: Data, v: RunView, a: Acc) => void;
 
+const trackOf = (v: RunView, key: unknown, f: (t: NonNullable<RunView['tracks']>[number]) => void) => { const t = v.tracks?.filter((k) => k.key === key).at(-1); if (t) f(t); };
 const begin = (v: RunView, path: string[]) => { v.current = path; delete v.endedAt; };
 const setStep: Fold = (_r, x, v, a) => {
   if (typeof x.step === 'string' && !(a.v2 && v.current.at(-1) === x.step)) begin(v, [x.step]);
@@ -95,25 +114,33 @@ const FOLD: Record<string, Fold> = {
     begin(v, [...parents, x.step]);
     a.started.push(x.step);
     // a block outlives nothing: its model step closes or replaces the slice, so the item goes with it
-    if (v.stepsAtStart?.find((s) => s.id === x.step)?.kind === 'model') delete v.slice;
+    if (!a.track && sliceOf(v, x.step) === 'opens') delete v.slice;
   },
   turn_started: (r, x, v, a) => { setStep(r, x, v, a); a.inTurn = true; },
-  gate_paused: setStep,
-  subagent_started: (_r, x, v) => {
-    if (typeof x.step === 'string' && typeof x.title === 'string') v.sub = { step: x.step, title: x.title, ...(typeof x.label === 'string' ? { label: x.label } : {}) };
+  track_started: (_r, x, v) => {
+    if (typeof x.track === 'string') (v.tracks ??= []).push({ key: x.track, title: typeof x.title === 'string' ? x.title : x.track, paused: false, ended: false });
   },
-  subagent_result: (_r, _x, v) => { delete v.sub; },
+  track_ended: (_r, x, v) => { trackOf(v, x.track, (t) => { t.ended = true; t.paused = false; }); },
+  run_paused: (_r, x, v, a) => { if (a.track) trackOf(v, x.track, (t) => { t.paused = true; }); },
+  subagent_started: (_r, x, v, a) => {
+    if (!a.track && typeof x.step === 'string' && typeof x.title === 'string') v.sub = { step: x.step, title: x.title, ...(typeof x.label === 'string' ? { label: x.label } : {}) };
+  },
+  subagent_result: (_r, _x, v, a) => { if (!a.track) delete v.sub; },
+  engine_cost: (_r, x, v) => { if (x.unknown === true) v.costUnknown = true; },   // a call that failed with a spend nobody knows
   say: (r, x, v) => { v.last = { seq: r.seq, text: String(x.text ?? '') }; },
   turn_failed: (r, x, v) => { v.last = { seq: r.seq, text: String(x.error ?? '') }; },
-  turn_ended: (_r, x, v) => {
+  turn_ended: (_r, x, v, a) => {
     v.turns += 1;
     if (typeof x.cost === 'number') v.cost += x.cost;
+    if (x.unknown === true || typeof x.cost !== 'number') v.costUnknown = true;
+    if (a.track) return;   // the slice meter is the main line's
     const s = x.slice;
     if (s && typeof s.step === 'string' && typeof s.spent === 'number' && typeof s.usd === 'number') v.slice = { step: s.step, spent: s.spent, usd: s.usd };
     else delete v.slice;
   },
   // the run logs the new limit with an allowance, so the meter keeps no copy of the allowance rule; a slice's allowance names its step
-  run_resumed: (_r, x, v) => {
+  run_resumed: (_r, x, v, a) => {
+    if (a.track) trackOf(v, x.track, (t) => { t.paused = false; });
     if (typeof x.usd !== 'number') return;
     if (x.step === undefined) v.usdLimit = x.usd;
     else if (v.slice && v.slice.step === x.step) v.slice = { step: v.slice.step, spent: v.slice.spent, usd: x.usd };
@@ -165,18 +192,32 @@ export function runView(s: Sess): RunView {
     cards: [], turns: 0, cost: 0, stepOf: new Map(),
     ...(workflow !== undefined ? { workflow } : {}), ...(rows.length ? { runId: rows[0]!.runId! } : {}),
   };
-  const a: Acc = { v2: false, inTurn: false, started: [] };
+  const accs = new Map<string, Acc>();
+  const paths = new Map<string, string[]>();   // each track's own path; `v.current` is the main line's
   let finish: LogRow | undefined;
   let closeAt = -1;
   for (const r of rows) {
-    FOLD[r.type]?.(r, data(r), v, a);
+    const x = data(r);
+    const track = typeof x.track === 'string' ? x.track : '';
+    let a = accs.get(track);
+    if (!a) accs.set(track, (a = { track, v2: false, inTurn: false, started: [] }));
+    // a track's row folds against the track's own path and leaves the main line's as it was
+    const main = track ? { current: v.current, endedAt: v.endedAt } : undefined;
+    if (main) { v.current = paths.get(track) ?? []; delete v.endedAt; }
+    // a kind's event whose view rule says `cursor` moves the current step like a turn does (the view carries the name, not this file)
+    (Object.hasOwn(FOLD, r.type) ? FOLD[r.type] : statusOf(r.type)?.cursor ? setStep : undefined)?.(r, x, v, a);
     const at = v.current.at(-1);
     if (at && (a.v2 || a.inTurn)) v.stepOf.set(r.seq, at);
+    if (main) {
+      paths.set(track, v.current);
+      v.current = main.current;
+      if (main.endedAt === undefined) delete v.endedAt; else v.endedAt = main.endedAt;
+    }
     if (r.type === 'turn_ended' || r.type === 'turn_failed') a.inTurn = false;
     if (END.has(r.type)) { finish = r; v.endedTs = r.ts; }
     if (r.type === 'receipt' || r.type === 'run_detached') closeAt = r.seq;
   }
-  v.went = a.started.flatMap((to, i) => (i > 0 && a.started[i - 1] !== to ? [{ from: a.started[i - 1]!, to }] : []));
+  v.went = [...accs.values()].flatMap(({ started }) => started.flatMap((to, i) => (i > 0 && started[i - 1] !== to ? [{ from: started[i - 1]!, to }] : [])));
   if (live) {
     delete v.endedTs;
     delete v.error; // resumed: the failure it left is history
@@ -235,13 +276,13 @@ export function meter(v: RunView, budget: Workflow['budget'], now: number): Mete
   const values: Array<{ key: MeterItem['key']; used: number; limit: number; text: string }> = [
     { key: 'turns', used: v.turns, limit: budget.turns, text: `${v.turns} / ${budget.turns} turns` },
     { key: 'minutes', used: ms / 60_000, limit: budget.minutes, text: `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s / ${budget.minutes}m` },
-    ...(budget.usd === undefined ? [] : [{ key: 'usd' as const, used: v.cost, limit: usd, text: `$${v.cost.toFixed(2)} / $${usd.toFixed(2)}` }]),
+    ...(budget.usd === undefined ? [] : [{ key: 'usd' as const, used: v.cost, limit: usd, text: `${dollars(v.cost, 2, v.costUnknown)} / $${usd.toFixed(2)}` }]),
     ...(v.slice ? [{ key: 'block' as const, used: v.slice.spent, limit: v.slice.usd, text: `${v.slice.step}: $${v.slice.spent.toFixed(2)} / $${v.slice.usd.toFixed(2)}` }] : []),
   ];
   return values.map(({ key, used, limit, text }) => {
     const level = used >= limit ? 'over' : used >= limit * 0.8 ? 'near' : 'ok';
     const enforced = key !== 'minutes';
-    return { key, text: text + (level === 'over' ? (key === 'block' && v.stepsAtStart?.find((s) => s.id === v.slice?.step)?.kind === 'subagent' && !v.open.some((r) => data(r).kind === 'usd') ? SUBAGENT_OVER : OVER[key]) : level === 'near' ? ' · near' : ''), level, enforced };
+    return { key, text: text + (level === 'over' ? (key === 'block' && sliceOf(v, v.slice?.step) === 'own' && !v.open.some((r) => data(r).kind === 'usd') ? SUBAGENT_OVER : OVER[key]) : level === 'near' ? ' · near' : ''), level, enforced };
   });
 }
 

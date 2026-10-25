@@ -1,0 +1,152 @@
+{
+  "autoArmed": {},
+  "commandResults": [],
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "plan",
+            "kind": "phase",
+            "title": "plan"
+          },
+          {
+            "id": "gate-1",
+            "kind": "gate"
+          },
+          {
+            "id": "build",
+            "kind": "phase",
+            "title": "build"
+          }
+        ],
+        "workflow": "t"
+      },
+      "id": "ev-1",
+      "timestamp": 1000,
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "plan"
+      },
+      "id": "ev-2",
+      "timestamp": 2000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "plan"
+      },
+      "id": "ev-3",
+      "timestamp": 3000,
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "plan",
+        "text": "REINS: done"
+      },
+      "id": "ev-4",
+      "timestamp": 4000,
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "gate-1"
+      },
+      "id": "ev-5",
+      "timestamp": 5000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "cond": {
+          "t": "approve"
+        },
+        "step": "gate-1"
+      },
+      "id": "ev-6",
+      "timestamp": 6000,
+      "type": "gate_paused"
+    }
+  ],
+  "lastRecallContext": [],
+  "lastTurnText": "REINS: done",
+  "linkCounters": {},
+  "linkLimitExtensions": {},
+  "loopCounters": {},
+  "loopLimitExtensions": {},
+  "pauseReason": {
+    "cond": {
+      "t": "approve"
+    },
+    "stepId": "gate-1",
+    "type": "gate"
+  },
+  "pendingCards": [],
+  "programCounter": 1,
+  "runCost": 0,
+  "sessionId": "P1a-main-1",
+  "status": "paused",
+  "totalTurns": 1,
+  "turnOutputs": {
+    "plan": "REINS: done"
+  },
+  "usdExtra": {},
+  "usdSpent": {},
+  "workflow": {
+    "always": [],
+    "autos": [],
+    "budget": {
+      "minutes": 60,
+      "turns": 40
+    },
+    "name": "t",
+    "steps": [
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "plan",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 8
+        },
+        "prompt": "plan",
+        "title": "plan"
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "cond": {
+          "t": "approve"
+        },
+        "id": "gate-1",
+        "kind": "gate",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 11
+        }
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "build",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 14
+        },
+        "prompt": "build",
+        "title": "build"
+      }
+    ],
+    "version": 1
+  }
+}

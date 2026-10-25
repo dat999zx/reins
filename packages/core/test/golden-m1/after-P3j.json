@@ -1,0 +1,252 @@
+{
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "a",
+            "kind": "phase",
+            "title": "a"
+          },
+          {
+            "id": "b",
+            "kind": "phase",
+            "title": "b"
+          },
+          {
+            "id": "c",
+            "kind": "phase",
+            "title": "c"
+          },
+          {
+            "id": "d",
+            "kind": "phase",
+            "title": "d"
+          },
+          {
+            "id": "verify-1",
+            "kind": "verify"
+          }
+        ],
+        "workflow": "t"
+      },
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "a"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "a"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "a",
+        "text": "a\nREINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "b"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "b"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "b",
+        "text": "b\nREINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "d"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "d"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "d",
+        "text": "d\nREINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "verify-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "verify-1"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "verify-1",
+        "text": "REINS: fail"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "pass": false
+      },
+      "type": "verify_result"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "a"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "a"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "a",
+        "text": "a2\nREINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "b"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "b"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "b",
+        "text": "b2\nREINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "jumps": 2,
+        "linkKey": "b~next->4",
+        "max": 1
+      },
+      "type": "link_budget_exceeded"
+    },
+    {
+      "data": {
+        "allowMore": 1
+      },
+      "type": "run_resumed"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "d"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "d"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "d",
+        "text": "d2\nREINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "verify-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "verify-1"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "verify-1",
+        "text": "all good"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "pass": true
+      },
+      "type": "verify_result"
+    },
+    {
+      "data": {},
+      "type": "run_finished"
+    }
+  ],
+  "receipt": {
+    "autoCardsFired": 0,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "knowlRecalls": 0,
+    "knowlSkipped": 0,
+    "knowlStores": 0,
+    "liveCardsDelivered": 0,
+    "loopAttempts": 0,
+    "readOnlyRefusals": 0,
+    "status": "done",
+    "totalCostUsd": 0,
+    "totalRefusals": 0,
+    "totalTimeMs": 20000,
+    "totalTurns": 8,
+    "verifyResults": {
+      "failed": 1,
+      "passed": 1
+    },
+    "workflow": "t"
+  },
+  "receivedTexts": [
+    "[Reins · playbook \"t\" · step 4 of 5: d]\n\nd\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"t\" · step 5 of 5: verify]\n\nCompare what you built against step \"d\":\nd2\nREINS: done\nList anything missing or extra.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: pass | fail: <what is missing>\n"
+  ],
+  "status": "done"
+}

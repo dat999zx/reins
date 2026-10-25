@@ -1,0 +1,22 @@
+{
+  "reins": 1,
+  "id": "if",
+  "kind": "block",
+  "version": "1.0.0",
+  "label": "If",
+  "description": "Runs its steps when a condition holds, its else steps when it does not",
+  "main": "index.js",
+  "order": 60,
+  "pack": "default",
+  "provides": { "kinds": ["if"], "ops": ["IF"] },
+  "view": {
+    "kind": "if",
+    "order": 60,
+    "colour": "loop",
+    "group": "kids+else",
+    "fields": [],
+    "line": ["if", "cond"],
+    "card": { "label": "if / else", "section": "Flow" },
+    "fresh": { "cond": { "t": "approve" } }
+  }
+}

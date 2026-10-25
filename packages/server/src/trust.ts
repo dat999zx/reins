@@ -1,34 +1,24 @@
 import { createHash } from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
-import { CONDS, compileProgram, condAtoms, printCond, type Cond, type Workflow } from '@reins/core';
-
-// Files claude -p runs with no prompt: their hooks, MCP servers, apiKeyHelper and permissions.allow (plan 15d 3b.4).
-const FOLDER_FILES = ['.claude/settings.json', '.claude/settings.local.json', '.mcp.json'];
-export const FOLDER_PATH = '.claude/';
-
-export function folderHash(cwd: string): { hash: string; detail: string } | undefined {
-  const found = FOLDER_FILES.flatMap((f) => {
-    try {
-      return [{ f, text: fs.readFileSync(path.join(cwd, f), 'utf8') }];
-    } catch {
-      return [];
-    }
-  });
-  if (!found.length) return undefined;
-  const h = createHash('sha256');
-  for (const x of found) h.update(`${x.f}\0${x.text.length}\0${x.text}\0`); // the length keeps file boundaries
-  return { hash: h.digest('hex'), detail: found.map((x) => `${x.f}\n${x.text.slice(0, 4096)}`).join('\n\n') };
-}
+import { CONDS, NODES, compileProgram, condAtoms, faultLine, opOf, printCond, type Cond, type Workflow } from '@reins/core';
 
 // What a workflow runs on its own (plan 15d 3b.6): RUN commands, the atoms a command judges, and the test command. No kind is named here.
 export function commandsOf(w: Workflow, resolveBlock: (name: string) => Workflow | undefined): string[] {
   const out: string[] = [];
   const conds = (c: Cond | undefined) => {
-    for (const a of condAtoms(c)) if (CONDS.get(a.t)?.judge === 'command') out.push(printCond(a));
+    for (const a of condAtoms(c)) {
+      const t = CONDS.get(a.t);
+      if (t?.judge === 'command') out.push(printCond(a));
+      // What an atom runs on its own (a mod condition says so); a throw shows as a problem line, never as an exception out of here.
+      try {
+        const own = t?.commands?.(a);
+        if (Array.isArray(own)) out.push(...own.filter((x): x is string => typeof x === 'string'));
+      } catch (e) {
+        out.push(faultLine(`condition ${a.t}, its commands`, e));
+      }
+    }
   };
   for (const i of compileProgram(w, resolveBlock)) {
-    if (i.op === 'RUN') out.push(i.cmd);
+    out.push(...(opOf(i.op)?.commands?.(i) ?? []));
     const { cond, repeatCond } = i as { cond?: Cond; repeatCond?: Cond };
     conds(cond);
     conds(repeatCond);
@@ -38,11 +28,16 @@ export function commandsOf(w: Workflow, resolveBlock: (name: string) => Workflow
   return out;
 }
 
-/** The models a workflow's own steps ask for, in program order (a kind's NODE instruction with a `model` attribute). */
-export function modelsOf(w: Workflow, resolveBlock: (name: string) => Workflow | undefined): Array<{ step: string; model: string }> {
-  const out: Array<{ step: string; model: string }> = [];
+/** A step that names a model, a reasoning level or a USD slice (a kind's NODE instruction), in program order. `switches`: its heading names the model, so the steps after it run on it. */
+export interface ModelStep { step: string; switches: boolean; model?: string; reasoning?: string; usd?: string }
+export function modelStepsOf(w: Workflow, resolveBlock: (name: string) => Workflow | undefined): ModelStep[] {
+  const out: ModelStep[] = [];
   for (const i of compileProgram(w, resolveBlock)) {
-    if (i.op === 'NODE' && i.src.attrs.model) out.push({ step: i.step, model: i.src.attrs.model });
+    if (i.op !== 'NODE') continue;
+    const { model, reasoning, usd } = i.src.attrs;
+    if (model || reasoning || usd !== undefined) {
+      out.push({ step: i.step, switches: NODES.get(i.kind)?.heading?.owns?.includes('model') === true, ...(model ? { model } : {}), ...(reasoning ? { reasoning } : {}), ...(usd !== undefined ? { usd } : {}) });
+    }
   }
   return out;
 }

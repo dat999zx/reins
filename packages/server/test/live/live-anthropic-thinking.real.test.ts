@@ -1,0 +1,74 @@
+// Row 4 of the live checks: extended thinking with a tool call. The second request carries the signed thinking block back; a missing or wrong
+// signature is a 400. Asserts the turn ends normally and the stored conversation holds a thinking block WITH a signature.
+import fs from 'node:fs';
+import path from 'node:path';
+import { afterAll, beforeAll, expect, it } from 'vitest';
+import { LONG, blocksOf, call, chatRequests, conversationLines, liveSuite, startWorld, tokens, toolCalls, twice, type World } from './live-harness.js';
+
+const MODEL = 'claude-sonnet-5-5';
+// This model refuses `type: enabled` with a budget (a real 400). Adaptive thinking only thinks when the model decides to, and `display: summarized`
+// is what makes the thinking text arrive; an easy prompt gets no thinking at all, so the prompt is a small puzzle (found by trying the API).
+const THINK_BODY = { thinking: { type: 'adaptive', display: 'summarized' }, output_config: { effort: 'medium' } };
+const FILE = '125.txt'; // the answer of the puzzle: the smallest n over 100 whose square ends in 625
+
+liveSuite('row 4: thinking, a tool call, and the signature (Anthropic wire)', { key: 'anthropic' }, () => {
+  let w: World;
+  beforeAll(async () => {
+    w = await startWorld({
+      provider: 'anthropic', model: MODEL, settings: { maxCallsPerTurn: 8 },
+      // Test-local: an effort level that sets the thinking body.
+      edit: (m) => {
+        m.efforts = [{ id: 'think', label: 'Think', body: THINK_BODY }];
+        m.defaultEffort = 'think';
+      },
+    });
+    await w.consent();
+    fs.writeFileSync(path.join(w.proj, FILE), 'hello from the file\n');
+  }, LONG);
+  afterAll(async () => { await w?.close(); }, LONG);
+
+  it('a turn that thinks, calls a tool and continues is accepted, and the stored conversation keeps the signed thinking block', async () => {
+    const attempt = (strict: boolean) => async () => {
+      w.script(
+        { thinking: { text: 'I should read hello.txt first.', signature: 'sig-thinking-0001-abcdefghijklmnop' }, ...call('Read', { file_path: FILE }), usage: tokens(1400, 220) },
+        { text: 'The file says: hello from the file.', usage: tokens(1700, 40) },
+      );
+      const s = await w.session({ effort: 'think' });
+      const prompt = strict
+        ? 'A file in the project folder is named after the smallest integer n greater than 100 whose square ends in the digits 625, with .txt appended. Think the answer through carefully, then you MUST call the Read tool on that file before you answer. After the result, say in one sentence what the file says.'
+        : 'A file in the project folder is named after the smallest integer n greater than 100 whose square ends in the digits 625, with .txt appended. Work it out by careful reasoning, then use the Read tool on that file and tell me in one sentence what it says.';
+      const out = await w.say(s, prompt);
+      const lines = conversationLines(w.dir, w.store.getSession(s)!.engineSessionId!);
+      const thinking = blocksOf(lines, 'reasoning');
+      const called = toolCalls(out.rows).some((c) => c.tool === 'Read');
+      return { onTask: out.ended && !out.failed && called && thinking.length > 0, out, s, lines, thinking };
+    };
+    const r = await twice(attempt(false), attempt(true));
+    const { out, thinking, lines } = r.result;
+    // Whatever the model did, a 400 is a failure of the wire: the turn must not have failed.
+    expect(out.failed, 'the turn failed (a 400 on the second request is a missing or wrong signature)').toBeUndefined();
+    if (!r.result.onTask) {
+      w.evidence({ row: '4', pass: 'inconclusive', notes: [`the model did not think and call a tool in two tries; reply length ${out.text.length}`] });
+      return;
+    }
+    expect(out.ended).toBe(true);
+    const signed = thinking.filter((b) => typeof b.signature === 'string' && b.signature !== '');
+    expect(signed.length).toBeGreaterThan(0);
+    const usage = lines.filter((l) => l?.usage).length;
+    expect(usage).toBeGreaterThanOrEqual(2);
+    if (w.fake) {
+      const [first, second] = chatRequests(w);
+      expect(first!.body.thinking).toEqual(THINK_BODY.thinking);
+      const back = second!.body.messages.flatMap((m: any) => (m.role === 'assistant' ? m.content : [])).filter((b: any) => b.type === 'thinking');
+      expect(back).toHaveLength(1);
+      expect(back[0].signature).toBe('sig-thinking-0001-abcdefghijklmnop');
+    }
+    w.budget.check();
+    w.evidence({
+      row: '4', pass: true,
+      counts: { tries: r.tries, thinkingBlocks: thinking.length, thinkingBlocksWithSignature: signed.length, signatureChars: signed[0].signature.length, assistantRepliesWithUsage: usage, turnEnded: out.ended, turnFailed: false },
+      notes: ['adaptive thinking, effort low, through a test-local effort level of the manifest', 'the second request was accepted (no 400)'],
+    });
+    expect(w.sweepAll().hits).toEqual([]);
+  }, LONG);
+});

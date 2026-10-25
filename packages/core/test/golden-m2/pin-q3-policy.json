@@ -1,0 +1,70 @@
+{
+  "afterOne": {
+    "allowShell": true,
+    "guards": [
+      "migrations/**"
+    ],
+    "mode": "write"
+  },
+  "afterTwo": {
+    "allowShell": true,
+    "guards": [],
+    "mode": "write"
+  },
+  "duringSub": {
+    "allowShell": true,
+    "guards": [
+      "migrations/**"
+    ],
+    "mode": "write"
+  },
+  "initial": {
+    "allowShell": true,
+    "guards": [],
+    "mode": "write"
+  },
+  "mainChecks": [
+    {
+      "input": {
+        "file_path": "migrations/x.sql"
+      },
+      "policy": {
+        "allowShell": true,
+        "guards": [
+          "migrations/**"
+        ],
+        "mode": "write"
+      },
+      "tool": "Write"
+    },
+    {
+      "input": {
+        "file_path": "src/y.ts"
+      },
+      "policy": {
+        "allowShell": true,
+        "guards": [],
+        "mode": "write"
+      },
+      "tool": "Write"
+    }
+  ],
+  "subChecks": [
+    {
+      "input": {
+        "file_path": "src/z.ts"
+      },
+      "policy": {
+        "allowShell": true,
+        "guards": [],
+        "mode": "write"
+      },
+      "tool": "Write"
+    }
+  ],
+  "subSeen": {
+    "allowShell": true,
+    "guards": [],
+    "mode": "write"
+  }
+}

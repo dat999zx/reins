@@ -70,6 +70,10 @@ export function editBeforePlan(events: RunEventRecord[]): DriftFinding | null {
   return null;
 }
 
+/** True when any of the four live drift signals fires: what the `drift` condition judges. */
+export const driftFound = (events: RunEventRecord[]): boolean =>
+  repeatedAction(events) !== null || stagnation(events) !== null || editBeforePlan(events) !== null || sameError(events) !== null;
+
 export function skipValidation(
   events: RunEventRecord[],
   stepTextOrTitle = ''

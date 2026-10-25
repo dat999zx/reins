@@ -5,27 +5,30 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Readable, Writable } from 'node:stream';
-import { printWorkflow } from '@reins/core';
-import { claudeEngine, probeClaude } from './claude/engine.js';
-import { findClaude } from './claude/find.js';
-import { doctor } from './doctor.js';
-import { serveMcp } from './mcp.js';
+import { printWorkflow, showText } from '@reins/core';
+import { doctor, doctorMods } from './doctor.js';
+import { checkEnvFrom, defaultProviderOf, makeEngineFrom, probeFrom, providerViews, redactEnvNames, sendsFromReins, shellEnvFrom, startMods } from './engines.js';
+import { parseModel } from './models.js';
+import type { Mods } from './mods/types.js';
+import { missingProviderWords, resolveSubagent, runChecks } from './run-checks.js';
+import { KEY_IN_WORKFLOW, Redactor } from './secrets.js';
 import { openUrl } from './opener.js';
 import { pickFolder } from './picker.js';
 import { runServe } from './serve.js';
 import { formatDiagnostic, loadWorkflow, startRunCli } from './run-cli.js';
-import { defaultStorePath, openStore } from './store.js';
+import { kindVersions } from './drive.js';
+import { readSetting } from './settings.js';
+import { openStore, redactingStore } from './store.js';
 
 const USAGE = `usage:
   reins                  (opens the app: starts the server and your browser)
-  reins run <file> [--engine claude] [--model <m>] [--effort <e>] [--yes]
+  reins run <file> [--provider <id>] [--model <m>] [--effort <e>] [--yes]
   reins run --resume <runId>
   reins check <file>
   reins print <file> [--write]
-  reins doctor
+  reins doctor [--no-probe]   (--no-probe: load the mods and list them; no model call)
   reins --version
-  reins serve [--port <n>]   (the local server the UI talks to; prints its address)
-  reins mcp            (internal: the approval MCP server Claude starts)`;
+  reins serve [--port <n>]   (the local server the UI talks to; prints its address)`;
 
 interface Io {
   stdout: Writable;
@@ -52,16 +55,40 @@ function parseArgs(argv: string[], booleans: string[]) {
 }
 
 export async function main(argv: string[], io: Io): Promise<number> {
-  const out = (s: string) => io.stdout.write(s + '\n');
-  const err = (s: string) => io.stderr.write(s + '\n');
-  const [cmd, ...rest] = argv;
-  const { pos, flags } = parseArgs(rest, ['yes', 'write']);
+  // The Reins folder: mods, the code cache, the store and the lock live here.
+  const home = io.env.REINS_HOME ?? os.homedir();
+  const dir = path.join(home, '.reins');
 
-  if (cmd === '--version' || cmd === '-v') {
+  if (argv[0] === '--version' || argv[0] === '-v') {
     // src/ and dist/ both sit one level under the package root
-    out(JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
+    io.stdout.write(JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version + '\n');
     return 0;
   }
+
+  // The mods are loaded first for every command: the redactor needs the key names of all of them (a rejected mod included), because
+  // everything the CLI prints, an error message too, passes through it.
+  const mods = await startMods({ dir, env: io.env });
+  const redactor = new Redactor({ home: dir, env: io.env, keyEnvNames: () => redactEnvNames(mods) });
+  try {
+    return await dispatch(argv, io, { home, dir, mods, redactor });
+  } catch (e) {
+    // The entry point prints a rejection's message; it must not carry a key.
+    throw new Error(redactor.redact(e instanceof Error ? e.message : String(e)));
+  } finally {
+    mods.dispose();
+  }
+}
+
+async function dispatch(argv: string[], io: Io, c: { home: string; dir: string; mods: Mods; redactor: Redactor }): Promise<number> {
+  const { home, dir, mods, redactor } = c;
+  // What the CLI says shows control, direction and zero-width characters written out (a path or a message can hold them), then hides keys.
+  // Keys are hidden FIRST, on the original text: an escape inside a key (a soft hyphen) would otherwise stop the redactor from seeing it.
+  const out = (s: string) => io.stdout.write(showText(redactor.redact(s), { lines: true }) + '\n');
+  const err = (s: string) => io.stderr.write(showText(redactor.redact(s), { lines: true }) + '\n');
+  const [cmd, ...rest] = argv;
+  const { pos, flags } = parseArgs(rest, ['yes', 'write', 'no-probe']);
+  // The one scrubbed env of every child this command starts, worked out when the child starts.
+  const children = shellEnvFrom(mods, io.env, redactor.has);
 
   if (cmd === 'check' && pos[0]) {
     const file = path.resolve(pos[0]);
@@ -79,20 +106,20 @@ export async function main(argv: string[], io: Io): Promise<number> {
       return 1;
     }
     const text = printWorkflow(workflow);
-    if (flags.write) fs.writeFileSync(file, text);
-    else io.stdout.write(text);
+    if (flags.write) {
+      if (redactor.has(text)) {
+        err(KEY_IN_WORKFLOW);
+        return 1;
+      }
+      fs.writeFileSync(file, text);
+    }
+    else io.stdout.write(redactor.redact(text));
     return 0;
   }
 
-  if (cmd === 'doctor') {
-    return (await doctor(out, io.env, io.env.REINS_HOME ?? os.homedir())) ? 0 : 1;
-  }
+  if (cmd === 'doctor' && flags['no-probe']) return doctorMods(out, mods) ? 0 : 1;
 
-  if (cmd === 'mcp') {
-    serveMcp(io.stdin, io.stdout, io.env.REINS_APPROVE_URL ?? '');
-    await new Promise((r) => io.stdin.on('end', r));
-    return 0;
-  }
+  if (cmd === 'doctor') return (await doctor(out, mods, { env: io.env, home: dir, holdsSecret: redactor.has }, redactor)) ? 0 : 1;
 
   if (cmd === 'serve' || cmd === undefined) {
     const raw = flags.port === undefined ? undefined : String(flags.port);
@@ -100,8 +127,6 @@ export async function main(argv: string[], io: Io): Promise<number> {
       err(`--port must be a whole number from 0 to 65535, not "${raw}".`);
       return 1;
     }
-    const bin = findClaude(io.env)?.path ?? '';
-    const home = io.env.REINS_HOME ?? os.homedir();
     // the published package carries the UI in app/; the repo builds it into packages/app/dist
     const appDir = ['../app/', '../../app/dist/'].map((u) => fileURLToPath(new URL(u, import.meta.url)))
       .find((d) => fs.existsSync(path.join(d, 'index.html')));
@@ -109,21 +134,22 @@ export async function main(argv: string[], io: Io): Promise<number> {
     const bare = cmd === undefined;
     const open = io.open ?? ((url: string) => {
       try {
-        openUrl(url, { platform: process.platform, dir: path.join(home, '.reins'), spawn, err });
+        openUrl(url, { platform: process.platform, dir: path.join(home, '.reins'), spawn, err, env: children() });
       } catch {
         err(`Open this address in your browser: ${url}`);
       }
     });
-    return runServe({
-      home,
+    const host = { env: io.env, home: dir };
+    return await runServe({
+      home, mods, redactor,
       ...(raw !== undefined ? { port: Number(raw) } : {}),
       ...(appDir ? { appDir } : {}),
-      pickFolder: (signal) => pickFolder(signal),
+      pickFolder: (signal) => pickFolder(signal, { env: children() }),
       ...(io.fetch ? { fetch: io.fetch } : {}),
+      env: io.env,
       ...(bare ? { open } : {}),
-      makeEngine: ({ model, effort, onApprove, onLive }) =>
-        claudeEngine({ bin, ...(model ? { model } : {}), ...(effort ? { effort } : {}), onApprove, onLive }),
-      probe: () => probeClaude(bin),
+      makeEngine: (consent) => makeEngineFrom(mods, host, consent, redactor),
+      probe: (provider) => probeFrom(mods, provider, host, redactor),
       out, err,
       stop: io.stop ?? new Promise<void>((resolve) => {
         process.once('SIGINT', () => resolve());
@@ -133,28 +159,64 @@ export async function main(argv: string[], io: Io): Promise<number> {
   }
 
   if (cmd === 'run' && (pos[0] || typeof flags.resume === 'string')) {
-    if (flags.engine && flags.engine !== 'claude') {
-      err(`The ${flags.engine} engine is not in Phase 2; only claude is (the Codex adapter is Phase 5).`);
+    const installed = providerViews(mods);
+    const env = checkEnvFrom(mods, { env: io.env, home: dir });
+    const named = typeof flags.provider === 'string' ? flags.provider : undefined;
+    if (named !== undefined && !env.installed(named)) {
+      err(`No provider \`${named}\` is installed.`);
       return 1;
     }
-    const found = findClaude(io.env);
-    const store = openStore(defaultStorePath());
+    const store = redactingStore(openStore(path.join(dir, 'reins.db')), redactor);
+    // A run that belongs to a chat session is resumed from the app; if that session's provider is gone, the words of spec 9.4 say why first.
+    const owner = typeof flags.resume === 'string' ? store.sessionOfRun(flags.resume) : undefined;
+    const ownerProvider = owner ? store.getSession(owner)?.engine : undefined;
+    if (ownerProvider !== undefined && !env.installed(ownerProvider)) {
+      err(missingProviderWords(ownerProvider));
+      store.close();
+      return 1;
+    }
+    const chosen = named ?? defaultProviderOf(installed, readSetting(store, 'defaultProvider'))?.id;
+    if (!chosen) {
+      err('No provider is installed.');
+      store.close();
+      return 1;
+    }
+    // `--model` is a model name like any other (spec 9.2): `<provider>:<model>` puts the run on that provider, even against `--provider`.
+    let provider = chosen;
+    let model = typeof flags.model === 'string' && flags.model ? flags.model : undefined;
+    if (model) {
+      const p = parseModel(model, chosen, env.installed);
+      if ('error' in p) {
+        err(p.error);
+        store.close();
+        return 1;
+      }
+      if (named !== undefined && p.provider !== named) err(`--model ${model} names ${p.provider}, so the run is on ${p.provider}, not ${named}.`);
+      provider = p.provider;
+      model = p.model;
+    }
+    const effort = typeof flags.effort === 'string' ? flags.effort : undefined;
+    // `reins run` asks no consent question: a provider answers only where the app already recorded the user's yes for its address.
+    const engineOf = makeEngineFrom(mods, { env: io.env, home: dir }, (id, origin) => store.hasConsent(id, origin), redactor);
+    const settings = { get maxCallsPerTurn() { return readSetting(store, 'maxCallsPerTurn'); } };
     const h = startRunCli({
+      kinds: kindVersions(mods),
       ...(pos[0] ? { file: pos[0] } : {}),
       ...(typeof flags.resume === 'string' ? { resumeId: flags.resume } : {}),
       cwd: process.cwd(),
       input: io.stdin,
       output: io.stdout,
       store,
+      redactor,
+      env: children,
       yes: flags.yes === true,
-      makeEngine: (cb) => {
-        const model = typeof flags.model === 'string' ? flags.model : undefined;
-        return claudeEngine({
-          bin: found?.path ?? '',
-          ...(model ? { model } : {}),
-          ...(typeof flags.effort === 'string' ? { effort: flags.effort } : {}),
-          ...cb,
-        });
+      fullDetail: sendsFromReins(mods, provider),
+      refuse: (w, resolveBlock) => runChecks(env, { provider, model }, w, resolveBlock),
+      makeEngine: (cb) => engineOf({ provider, ...(model ? { model } : {}), ...(effort ? { effort } : {}), settings, ...cb }),
+      subagentEngine: (s, cb) => {
+        const r = resolveSubagent(env, { provider, model, effort }, s);
+        if ('error' in r) return r;
+        return { engine: engineOf({ provider: r.provider, ...(r.model ? { model: r.model } : {}), ...(r.effort ? { effort: r.effort } : {}), settings, ...cb }), ...(r.model ? { model: r.model } : {}), fullDetail: sendsFromReins(mods, r.provider) };
       },
     });
     const onSigint = () => h.sigint();

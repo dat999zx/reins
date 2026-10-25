@@ -1,15 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
-import type { EngineProbe } from '@reins/core';
 import type { LogRow } from '@reins/server/store.js';
 import type { TagEntry } from '@reins/server/tags.js';
 import { ApiError, get, initToken, post, stream } from './api.js';
+import { setCards, setKinds } from './canvasKinds.js';
+import { setConds } from './condKinds.js';
+import { setQuestions } from './questions.js';
 import { Chat, type Provider } from './Chat.js';
+import { FirstRun } from './FirstRun.js';
+import { cardsOf, type ChooserEntry, type PackRow } from './firstRunCards.js';
 import { loadEditorState, makeSaver, type EditorState, type Tab } from './editorState.js';
+import { ProviderBanner, type Engines } from './ProviderBanner.js';
+import { Providers } from './Providers.js';
 import { Rail } from './Rail.js';
 import { afterOf, finishReplay, initial, loadSessions, pageTitle, reduceAll, takeRefill, type SessionView, type State } from './state.js';
 
 const loadedAt = Date.now();
-type Engines = Array<{ id: string } & EngineProbe>;
 
 const fromHash = () => new URLSearchParams(location.hash.slice(1)).get('s');
 const toHash = (id: string) => {
@@ -30,9 +35,36 @@ export function App() {
   const [selected, setSelected] = useState<string | null>(fromHash);
   const [tab, setTab] = useState<Tab>('chat');
   const [notice, setNotice] = useState('');
+  const [settings, setSettings] = useState(false);
   const [pathBox, setPathBox] = useState(false);
   const [path, setPath] = useState('');
   const dirty = useRef(false);
+  // The first-run screen (spec 7.3): the chooser entries while it is showing. Asked once; a failed or empty answer never holds the app back.
+  const [firstRun, setFirstRun] = useState<ChooserEntry[] | undefined>();
+  const [pack, setPack] = useState<PackRow[]>([]);
+  const [asked, setAsked] = useState(false);
+  useEffect(() => {
+    if (!token) return;
+    get<{ firstRun: boolean; chooser: ChooserEntry[]; pack?: PackRow[]; mods: Array<{ id: string; kind: string; bundled: boolean }> }>('/api/mods')
+      .then((r) => {
+        const cards = cardsOf(r.chooser, r.mods.filter((m) => m.kind === 'provider' && m.bundled).map((m) => m.id));
+        if (r.firstRun && cards.length) { setPack(r.pack ?? []); setFirstRun(cards); }
+      })
+      .catch(() => {})
+      .finally(() => setAsked(true));
+  }, [token]);
+
+  // The faces of the blocks (core's and the mods'), asked once. The workspace waits for the answer, so a saved block of a mod's kind is not read as unknown.
+  // Asked again on leaving Settings (a block may have been imported, trusted, disabled or removed there); the bump draws the new lists.
+  const [kindsReady, setKindsReady] = useState(false);
+  const [, drawKinds] = useState(0);
+  const readKinds = () => get<{ kinds: unknown; conds: unknown; cards: unknown; questions: unknown }>('/api/kinds')
+    .then((r) => { setKinds(r.kinds); setConds(r.conds); setCards(r.cards); setQuestions(r.questions); drawKinds((n) => n + 1); })
+    .catch(() => {});
+  useEffect(() => {
+    if (!token) return;
+    void readKinds().finally(() => setKindsReady(true));
+  }, [token]);
 
   const commit = (next: State) => { stRef.current = next; setSt(next); };
 
@@ -87,6 +119,17 @@ export function App() {
     return () => { stopped = true; es?.close(); clearTimeout(timer); };
   }, [token]);
 
+  // Leaving Settings: a provider may have been installed, disabled or removed, so the lists, the probes and each session's provider status are read again.
+  useEffect(() => {
+    if (settings || !ready) return;
+    void readKinds();
+    get<{ sessions: SessionView[]; engines: Engines; providers?: Provider[] }>('/api/state').then((r) => {
+      commit(loadSessions(stRef.current, r.sessions));
+      setEngines(r.engines);
+      setProviders(r.providers ?? []);
+    }).catch(() => {});
+  }, [settings]);
+
   // Editor state per cwd. The saver stays silent until the stored state has loaded, so an early change can't overwrite it.
   const [editor, setEditor] = useState<Record<string, EditorState>>({});
   const editorRef = useRef(editor);
@@ -102,7 +145,7 @@ export function App() {
   const cwd = selected ? st.sessions[selected]?.cwd : undefined;
 
   useEffect(() => {
-    if (!cwd) return;
+    if (!cwd || !kindsReady) return;
     saver.current?.s.flush();
     const s = makeSaver(cwd, undefined, undefined, (e) => flash(`Could not save the workspace layout: ${e.message}`));
     saver.current = { cwd, s };
@@ -120,7 +163,7 @@ export function App() {
       s.ready(merged);
     });
     return () => { off = true; };
-  }, [cwd]);
+  }, [cwd, kindsReady]);
 
   const onState = (c: string, patch: Partial<EditorState>) => {
     const cur = editorRef.current[c];
@@ -134,6 +177,7 @@ export function App() {
   const leave = () => !dirty.current || window.confirm('Discard unsaved changes?');
   const select = (id: string) => {
     if (id !== selected && !leave()) return;
+    setSettings(false);
     setSelected(id);
     setTab('chat');
     toHash(id);
@@ -141,7 +185,7 @@ export function App() {
 
   const start = async (cwd: string) => {
     try {
-      const v = await post<SessionView>('/api/sessions', { cwd, engine: 'claude' });
+      const v = await post<SessionView>('/api/sessions', { cwd });
       commit(loadSessions(stRef.current, [v]));
       select(v.id);
     } catch (e) {
@@ -174,20 +218,21 @@ export function App() {
   }, []);
 
   if (!token) return <div className="center"><h1>Reins</h1><p>Open the address <code>reins</code> printed.</p></div>;
-  if (!ready) return <div className="center"><p>{reconnecting ? 'Reconnecting…' : 'Loading…'}</p></div>;
+  if (!ready || !asked) return <div className="center"><p>{reconnecting ? 'Reconnecting…' : 'Loading…'}</p></div>;
+  if (firstRun) return <div className="app"><FirstRun cards={firstRun} pack={pack} onLeave={() => setFirstRun(undefined)} /></div>;
 
-  const problem = engines[0] && (!engines[0].installed || !engines[0].loggedIn) ? engines[0] : undefined;
   const sess = selected ? st.sessions[selected] : undefined;
 
   return (
     <div className="app">
       {reconnecting && <div className="banner warn" role="status">Reconnecting to the server…</div>}
-      {problem && <div className="banner bad" role="alert">{problem.problems.join(' ') || 'The engine is not ready.'}</div>}
+      <ProviderBanner engines={engines} engine={sess?.engine} />
       {notice && <div className="banner bad" role="alert">{notice}</div>}
       <div className="cols">
         <Rail
           state={st} selected={selected} onSelect={select} onNew={() => void newSession()} onPlus={(cwd) => void start(cwd)}
           onRename={(id, title) => { post(`/api/sessions/${id}/settings`, { title }).catch((e) => flash(e.message)); }}
+          onSettings={() => { if (leave()) setSettings(true); }}
           pathBox={pathBox && (
             <form className="pathbox" onSubmit={(e) => { e.preventDefault(); void start(path.trim()).then(() => setPath('')); }}>
               <label>No folder picker here. Absolute folder path
@@ -197,9 +242,9 @@ export function App() {
             </form>
           )}
         />
-        {sess ? (
+        {settings ? <Providers onClose={() => setSettings(false)} /> : sess ? (
           <Chat
-            key={sess.id} sess={sess} catalogue={catalogue} providers={providers} tab={tab}
+            key={sess.id} sess={sess} catalogue={catalogue} providers={providers} engines={engines} tab={tab}
             onTab={(t) => { if (t === tab || t !== 'chat' || leave()) { setTab(t); if (t !== tab) onState(sess.cwd, { tab: t }); } }}
             restore={editor[sess.cwd]} onState={(p) => onState(sess.cwd, p)}
             onDirty={(d) => { dirty.current = d; }} onError={flash}

@@ -1,0 +1,240 @@
+{
+  "autoArmed": {},
+  "commandResults": [],
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "split-1",
+            "kind": "split"
+          },
+          {
+            "id": "main",
+            "kind": "phase",
+            "title": "main"
+          },
+          {
+            "id": "end-1",
+            "kind": "end"
+          },
+          {
+            "id": "a",
+            "kind": "phase",
+            "title": "a"
+          },
+          {
+            "id": "end-2",
+            "kind": "end"
+          },
+          {
+            "id": "b",
+            "kind": "phase",
+            "title": "b"
+          },
+          {
+            "id": "end-3",
+            "kind": "end"
+          }
+        ],
+        "workflow": "t"
+      },
+      "id": "ev-1",
+      "timestamp": 1000,
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "split-1"
+      },
+      "id": "ev-2",
+      "timestamp": 2000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "group": "split-1",
+        "parent": "",
+        "title": "Split split-1",
+        "track": "a"
+      },
+      "id": "ev-3",
+      "timestamp": 3000,
+      "type": "track_started"
+    }
+  ],
+  "groups": [
+    {
+      "group": "split-1",
+      "keys": [
+        "a",
+        "b"
+      ],
+      "parent": "",
+      "results": []
+    }
+  ],
+  "lastRecallContext": [],
+  "linkCounters": {},
+  "linkLimitExtensions": {},
+  "loopCounters": {},
+  "loopLimitExtensions": {},
+  "pendingCards": [],
+  "programCounter": 0,
+  "programHash": "1d45d43afb9ad4",
+  "runCost": 0,
+  "status": "running",
+  "totalTurns": 0,
+  "tracks": [
+    {
+      "capped": false,
+      "group": "split-1",
+      "handback": [],
+      "key": "a",
+      "order": 0,
+      "parent": "",
+      "policy": {
+        "allowShell": true,
+        "guards": [],
+        "mode": "write"
+      },
+      "programCounter": 3,
+      "recall": [],
+      "status": "running",
+      "title": "Split split-1"
+    },
+    {
+      "capped": false,
+      "group": "split-1",
+      "handback": [],
+      "key": "b",
+      "order": 1,
+      "parent": "",
+      "policy": {
+        "allowShell": true,
+        "guards": [],
+        "mode": "write"
+      },
+      "programCounter": 5,
+      "recall": [],
+      "status": "running",
+      "title": "Split split-1"
+    }
+  ],
+  "turnOutputs": {},
+  "usdExtra": {},
+  "usdSpent": {},
+  "workflow": {
+    "always": [],
+    "autos": [],
+    "budget": {
+      "minutes": 60,
+      "turns": 40
+    },
+    "name": "t",
+    "steps": [
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "split-1",
+        "kind": "split",
+        "links": [
+          {
+            "kind": "next",
+            "pos": {
+              "col": 6,
+              "line": 9
+            },
+            "to": "a"
+          },
+          {
+            "kind": "next",
+            "pos": {
+              "col": 6,
+              "line": 10
+            },
+            "to": "b"
+          }
+        ],
+        "pos": {
+          "col": 1,
+          "line": 8
+        }
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "main",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 12
+        },
+        "prompt": "m",
+        "title": "main"
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "end-1",
+        "kind": "end",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 15
+        }
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "a",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 17
+        },
+        "prompt": "a",
+        "title": "a"
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "end-2",
+        "kind": "end",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 20
+        }
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "b",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 22
+        },
+        "prompt": "b",
+        "title": "b"
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "end-3",
+        "kind": "end",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 25
+        }
+      }
+    ],
+    "version": 1
+  }
+}

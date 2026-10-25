@@ -1,6 +1,6 @@
 import type { Cond, Diagnostic, Pos } from './model.js';
 import type { CommandResult, RunEventRecord } from './run.js';
-import { CONDS } from './conds/index.js';
+import { CONDS, isModCond } from './conds/index.js';
 
 export type JudgeKind = 'you' | 'command' | 'deterministic' | 'agent' | 'model' | 'subagent';
 
@@ -36,16 +36,26 @@ export interface EvalCtx {
   cwd: string;
   /** workflow.test, or 'npm test'. */
   testCmd: string;
-  /** The instruction being run is a RUN (its command just ran). */
+  /** The instruction being run brings a command (its op has `ranCommand`; its command just ran). */
   atRun: boolean;
   judge?: (cond: Cond, evidence: { lastText: string }) => Promise<boolean>;
   logEvent(type: RunEventRecord['type'], data: any): void;
   diffLines?: () => Promise<number>;
 }
 
-/** One condition atom. Add a file under conds/ and list it in conds/index.ts. */
+/** The one value an atom's editor box sets. `key` is a field of the atom; a mod's view may name only these four. */
+export const COND_PARAM_KEYS = ['cmd', 'q', 'n', 'glob'] as const;
+/** How the box looks: code, a text pill, a number, a glob pill. */
+export const COND_PARAM_LOOKS = ['code', 'str', 'num', 'pill'] as const;
+export interface CondParam { key: (typeof COND_PARAM_KEYS)[number]; look: (typeof COND_PARAM_LOOKS)[number]; optional?: true }
+/** What the editor needs to offer an atom: its menu words, a new atom, and the box. Plain data; a mod gives it in its manifest, never in code. */
+export interface CondView { label: string; fresh: { t: string; [field: string]: string | number | boolean }; param?: CondParam }
+
+/** One condition atom. Core registers none: each is a mod (the default pack's are under packages/server/src/mods/cond-*), added with `registerCondition`. */
 export interface CondType<C extends { t: string } = any> {
   t: string;
+  /** The editor's data for this atom (menu words, new atom, value box). For a mod (the pack's too) it comes from the manifest. */
+  view?: CondView;
   /**
    * Try this atom at the cursor. `null`: not mine, try the next atom (and leave `s.idx` as it was).
    * A diagnostic: mine but malformed, and parsing stops. Atoms are tried in CONDS order.
@@ -63,8 +73,12 @@ export interface CondType<C extends { t: string } = any> {
   globs?(c: C): string[];
   /** The validator's "costs extra model calls" warning names this. */
   modelCall?: string;
+  /** The commands this atom runs on its own: the trust list shows them, beside the atom itself when it is judged by a command. */
+  commands?(c: C): string[];
   /** Warn when the workflow sets no `test:` command. */
   needsTestCmd?: boolean;
+  /** True when this atom is judged by the very command `cmd` a block runs ('' when the block names none): the loop around that block then leaves as soon as the command passes. */
+  sameAsRun?(c: C, cmd: string): boolean;
 }
 
 export function judgeOf(cond: Cond): JudgeKind {
@@ -101,7 +115,7 @@ export function printCond(c: Cond): string {
       return `${left} or ${right}`;
     }
     default:
-      return CONDS.get(c.t)?.print(c) as string;
+      return CONDS.get((c as { t: string }).t)?.print(c) ?? '';   // an atom nobody registered (a whenever that did not parse) prints as nothing. `c` is `never` when core is compiled alone: the atoms are merged in by the pack's mods
   }
 }
 
@@ -275,12 +289,20 @@ export function parseCond(src: string, basePos: Pos = { line: 1, col: 1 }): Pars
   function parseAtom(): { cond?: Cond; diag?: Diagnostic } {
     skipWs();
     const atomStart = idx;
+    let held: { diag: Diagnostic } | undefined;
     for (const type of CONDS.values()) {
       const r = type.parse(s);
       if (r === null) { idx = atomStart; continue; }
-      if ('diag' in r) return r;
+      if ('diag' in r) {
+        // A mod atom's complaint is only the answer when no other atom takes the text.
+        if (!isModCond(type)) return r;
+        held ??= r;
+        idx = atomStart;
+        continue;
+      }
       return { cond: r as Cond };
     }
+    if (held) return held;
     return error(`Unexpected condition token at "${src.slice(atomStart, Math.min(len, atomStart + 15))}"`, atomStart);
   }
 

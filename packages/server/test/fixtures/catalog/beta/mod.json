@@ -1,0 +1,14 @@
+{
+  "reins": 1,
+  "id": "beta",
+  "kind": "provider",
+  "version": "1.0.0",
+  "label": "Beta",
+  "description": "A test provider that needs a key.",
+  "protocol": "openai-chat",
+  "baseUrl": "http://127.0.0.1:__PORT__/v1",
+  "auth": { "style": "bearer", "keyEnv": ["BETA_API_KEY"] },
+  "defaultModel": "beta-m",
+  "models": [{ "id": "beta-m", "label": "Beta M", "price": { "input": 1, "output": 2 } }],
+  "untested": true
+}

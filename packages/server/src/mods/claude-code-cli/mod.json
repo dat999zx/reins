@@ -1,0 +1,9 @@
+{
+  "reins": 1,
+  "id": "claude-code-cli",
+  "kind": "protocol",
+  "version": "1.0.0",
+  "label": "Claude Code CLI",
+  "description": "Runs the claude command line program and keeps its own conversation",
+  "main": "index.js"
+}

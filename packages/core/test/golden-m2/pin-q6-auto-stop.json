@@ -1,0 +1,19 @@
+{
+  "autoArmed": {
+    "auto-1": false
+  },
+  "pauseReason": {
+    "text": "check it",
+    "type": "stop"
+  },
+  "pc": 1,
+  "queued": [
+    {
+      "card": "check it",
+      "kind": "stop",
+      "source": "auto"
+    }
+  ],
+  "status": "paused",
+  "turns": 1
+}

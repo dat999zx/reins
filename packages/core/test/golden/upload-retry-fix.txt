@@ -1,4 +1,4 @@
-[Reins · workflow "upload-retry" · step 5 of 9: fix]
+[Reins · playbook "upload-retry" · step 5 of 9: fix]
 
 Always:
 - No new dependencies.

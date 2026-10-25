@@ -1,0 +1,170 @@
+{
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "one",
+            "kind": "phase",
+            "title": "one"
+          },
+          {
+            "id": "playbook-1",
+            "kind": "playbook",
+            "title": "pb-end"
+          },
+          {
+            "id": "two",
+            "kind": "phase",
+            "title": "two"
+          },
+          {
+            "id": "end-1",
+            "kind": "end"
+          },
+          {
+            "id": "free",
+            "kind": "phase",
+            "title": "free"
+          }
+        ],
+        "workflow": "t"
+      },
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "one"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "one"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "one",
+        "text": "one\nREINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "playbook-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "playbook": "pb-end",
+        "session": "inline",
+        "step": "playbook-1"
+      },
+      "type": "playbook_started"
+    },
+    {
+      "data": {
+        "parents": [
+          "playbook-1"
+        ],
+        "step": "playbook-1/a"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "playbook-1/a"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "playbook-1/a",
+        "text": "a\nREINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [
+          "playbook-1"
+        ],
+        "step": "playbook-1/end-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "playbook": "pb-end",
+        "step": "playbook-1"
+      },
+      "type": "playbook_done"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "two"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "two"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "two",
+        "text": "two\nREINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "end-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {},
+      "type": "run_finished"
+    }
+  ],
+  "receipt": {
+    "autoCardsFired": 0,
+    "counts": {
+      "playbooks": 1
+    },
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "knowlRecalls": 0,
+    "knowlSkipped": 0,
+    "knowlStores": 0,
+    "liveCardsDelivered": 0,
+    "loopAttempts": 0,
+    "readOnlyRefusals": 0,
+    "status": "done",
+    "totalCostUsd": 0,
+    "totalRefusals": 0,
+    "totalTimeMs": 15000,
+    "totalTurns": 3,
+    "verifyResults": {
+      "failed": 0,
+      "passed": 0
+    },
+    "workflow": "t"
+  },
+  "receivedTexts": [
+    "[Reins · playbook \"t\" · step 1 of 5: one]\n\nfirst\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"t\" · step 2 of 5: a]\n\na\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"t\" · step 3 of 5: two]\n\nsecond\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+  ],
+  "status": "done"
+}

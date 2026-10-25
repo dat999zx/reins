@@ -1,0 +1,110 @@
+{
+  "autoArmed": {},
+  "commandResults": [],
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "a",
+            "kind": "phase",
+            "title": "a"
+          },
+          {
+            "id": "b",
+            "kind": "phase",
+            "title": "b"
+          }
+        ],
+        "workflow": "t"
+      },
+      "id": "ev-1",
+      "timestamp": 1000,
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "a"
+      },
+      "id": "ev-2",
+      "timestamp": 2000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "a"
+      },
+      "id": "ev-3",
+      "timestamp": 3000,
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "a",
+        "text": "REINS: done"
+      },
+      "id": "ev-4",
+      "timestamp": 4000,
+      "type": "turn_ended"
+    }
+  ],
+  "lastRecallContext": [],
+  "lastTurnText": "REINS: done",
+  "linkCounters": {},
+  "linkLimitExtensions": {},
+  "loopCounters": {},
+  "loopLimitExtensions": {},
+  "pauseReason": {
+    "type": "run-turn-budget-used"
+  },
+  "pendingCards": [],
+  "programCounter": 1,
+  "runCost": 0,
+  "sessionId": "P5-main-1",
+  "status": "paused",
+  "totalTurns": 1,
+  "turnOutputs": {
+    "a": "REINS: done"
+  },
+  "usdExtra": {},
+  "usdSpent": {},
+  "workflow": {
+    "always": [],
+    "autos": [],
+    "budget": {
+      "minutes": 60,
+      "turns": 1
+    },
+    "name": "t",
+    "steps": [
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "a",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 8
+        },
+        "prompt": "a",
+        "title": "a"
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "b",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 11
+        },
+        "prompt": "b",
+        "title": "b"
+      }
+    ],
+    "version": 1
+  }
+}

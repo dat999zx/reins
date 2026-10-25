@@ -4,15 +4,27 @@ import type { SessionStatus } from '@reins/server/session.js';
 export interface Call { result?: unknown; refused?: string; ms?: number }
 export interface Sess {
   id: string; cwd: string; autoApprove: boolean; status: SessionStatus; rows: LogRow[]; lastSeq: number; lastTs: number; cost: number;
+  /** A reply cost something nobody knows (no cost on its row, or marked unknown): `cost` is at least this much, never the exact figure. */
+  costUnknown?: true;
   explicitTitle?: string; firstMessage?: string; engine?: string; model?: string; effort?: string;
+  /** The server's words when the session's provider is not installed or is disabled (spec 9.4). */
+  missing?: string;
+  /** The providers the session may be offered models of (installed and enabled), from the last /api/state. */
+  installed?: string[];
   replaySeq?: number;
   open: string[]; answers: Record<string, string>; closed: Record<string, string>;
   detached: string[]; calls: Record<number, Call>; queue: Array<{ seq: number; tool: string; ts: number }>; refill?: string;
 }
 export interface State { sessions: Record<string, Sess>; replayed?: boolean }
-export interface SessionView { id: string; cwd: string; title?: string; autoApprove: boolean; status: SessionStatus; createdAt?: number; updatedAt?: number; engine?: string; model?: string; effort?: string }
+export interface SessionView { id: string; cwd: string; title?: string; autoApprove: boolean; status: SessionStatus; createdAt?: number; updatedAt?: number; engine?: string; model?: string; effort?: string;
+  provider?: { status: 'ok' } | { status: 'missing' | 'gone'; words: string }; switchTo?: Array<{ provider: string }> }
 
 export const initial = (): State => ({ sessions: {} });
+
+// What /api/state says about a session's provider; it changes when a provider is installed, disabled or removed, so it is read again for a session already known.
+const providerFacts = (v: SessionView): Pick<Sess, 'missing' | 'installed'> => ({
+  ...(v.provider && v.provider.status !== 'ok' ? { missing: v.provider.words } : {}), ...(v.switchTo ? { installed: v.switchTo.map((t) => t.provider) } : {}),
+});
 
 const blank = (id: string): Sess => ({
   id, cwd: '', autoApprove: false, status: 'idle', rows: [], lastSeq: 0, lastTs: 0, cost: 0,
@@ -23,9 +35,14 @@ const d = (r: LogRow) => (r.data ?? {}) as Record<string, any>;
 export function loadSessions(state: State, views: SessionView[]): State {
   const sessions = { ...state.sessions };
   for (const v of views) {
-    if (sessions[v.id]) continue;
+    const known = sessions[v.id];
+    if (known) {
+      const { missing: _m, installed: _i, ...rest } = known;
+      if (v.provider || v.switchTo) sessions[v.id] = { ...rest, ...providerFacts(v) };
+      continue;
+    }
     sessions[v.id] = { ...blank(v.id), ...(state.replayed ? { replaySeq: 0 } : {}), cwd: v.cwd, autoApprove: v.autoApprove, status: v.status, ...(v.title ? { explicitTitle: v.title } : {}),
-      ...(v.engine ? { engine: v.engine } : {}), ...(v.model ? { model: v.model } : {}), ...(v.effort ? { effort: v.effort } : {}) };
+      ...(v.engine ? { engine: v.engine } : {}), ...(v.model ? { model: v.model } : {}), ...(v.effort ? { effort: v.effort } : {}), ...providerFacts(v) };
   }
   return { ...state, sessions };
 }
@@ -59,7 +76,8 @@ function apply(s: Sess, row: LogRow, loadedAt: number): Sess {
       if (typeof x.title === 'string') n.explicitTitle = x.title;
       if (typeof x.autoApprove === 'boolean') n.autoApprove = x.autoApprove;
       if (typeof x.model === 'string') { if (x.model) n.model = x.model; else delete n.model; } // '' is the default
-      if (typeof x.effort === 'string' && x.effort) n.effort = x.effort;
+      if (typeof x.engine === 'string' && x.engine) n.engine = x.engine; // a switch to another provider
+      if (typeof x.effort === 'string') { if (x.effort) n.effort = x.effort; else delete n.effort; } // '' drops a level the new provider lacks
       break;
     case 'message':
       if (n.firstMessage === undefined && typeof x.text === 'string') n.firstMessage = x.text.slice(0, 60);
@@ -75,8 +93,10 @@ function apply(s: Sess, row: LogRow, loadedAt: number): Sess {
       break;
     case 'turn_ended':
       if (typeof x.cost === 'number') n.cost = s.cost + x.cost;
+      if (x.unknown === true || typeof x.cost !== 'number') n.costUnknown = true;
       n.queue = [];
       break;
+    case 'engine_cost': if (x.unknown === true) n.costUnknown = true; break;   // a call that failed with a spend nobody knows
     case 'turn_failed': n.queue = []; break;
     case 'cards_unsent':
       if (row.ts >= loadedAt && Array.isArray(x.cards)) n.refill = x.cards.join('\n\n');

@@ -88,10 +88,10 @@ export function pickerExit(platform: string, code: number | null, signal: string
 
 type Ran = { missing: true } | { code: number | null; signal: string | null; stdout: string; stderr: string };
 
-function run([command, args]: Candidate, signal: AbortSignal): Promise<Ran> {
+function run([command, args]: Candidate, signal: AbortSignal, env?: NodeJS.ProcessEnv): Promise<Ran> {
   return new Promise((resolve, reject) => {
     // No windowsHide: it could hide the dialog itself.
-    const child = spawn(command, args, { shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(command, args, { shell: false, stdio: ['ignore', 'pipe', 'pipe'], ...(env ? { env } : {}) });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
     child.stdout.on('data', (c: Buffer) => out.push(c));
@@ -112,6 +112,7 @@ function run([command, args]: Candidate, signal: AbortSignal): Promise<Ran> {
 
 export async function pickFolder(
   signal: AbortSignal,
+  /** `env`: the dialog's environment (`childEnv(...)`); none = this process's. */
   o: { platform?: string; env?: NodeJS.ProcessEnv } = {},
 ): Promise<string | null> {
   const platform = o.platform ?? process.platform;
@@ -121,7 +122,7 @@ export async function pickFolder(
   if (platform === 'linux' && !env.DISPLAY && !env.WAYLAND_DISPLAY) throw new Error('No display: cannot show a folder dialog.');
   for (const candidate of candidates) {
     if (signal.aborted) return null;
-    const r = await run(candidate, signal);
+    const r = await run(candidate, signal, o.env);
     if ('missing' in r) continue;
     if (signal.aborted) return null;
     const verdict = pickerExit(platform, r.code, r.signal, r.stderr);

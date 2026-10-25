@@ -1,0 +1,15 @@
+{
+  "delivered": [
+    {
+      "card": "fresh card",
+      "channel": "next-turn"
+    }
+  ],
+  "mainTexts": [],
+  "pendingCards": [],
+  "status": "paused",
+  "subTexts": [
+    "[Reins · playbook \"t\" · step 1 of 2: research]\n\nLook.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · the run was resumed] Carry on with your task from where you stopped. If you had already finished, give your result again.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n\n\n[Reins · a note from the user]\nfresh card"
+  ]
+}

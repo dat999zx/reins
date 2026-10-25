@@ -1,7 +1,7 @@
 import type { Cond, LinkKind, Step } from '@reins/core';
 import { get, put } from './api.js';
 import { CARD_KINDS, KINDS } from './canvasKinds.js';
-import { COND_KINDS } from './condKinds.js';
+import { COND_VIEWS } from './condKinds.js';
 import { ZOOM, type Cam, type Pt } from './surface.js';
 
 export type { Pt };
@@ -25,13 +25,13 @@ const str = (v: unknown): v is string => typeof v === 'string';
 function cleanCond(c: unknown): c is Cond {
   if (!isObj(c) || !str(c.t)) return false;
   if (c.t === 'and' || c.t === 'or') return cleanCond(c.a) && cleanCond(c.b);
-  return c.t === 'not' ? cleanCond(c.a) : c.t in COND_KINDS;
+  return c.t === 'not' ? cleanCond(c.a) : c.t in COND_VIEWS;
 }
 
 // A stored step that does not read back is undefined; the caller counts it.
 export function cleanStep(raw: unknown, depth = 0): Step | undefined {
   if (!isObj(raw) || depth > 20 || !str(raw.id) || raw.id === '' || !str(raw.kind) || !(raw.kind in KINDS)) return undefined;
-  const kind = raw.kind as Step['kind'], group = KINDS[kind].group;
+  const kind = raw.kind as Step['kind'], group = KINDS[kind]?.group;
   if (!isObj(raw.attrs) || !Object.values(raw.attrs).every(str)) return undefined;
   if ((raw.title !== undefined && !str(raw.title)) || (raw.prompt !== undefined && !str(raw.prompt))) return undefined;
   if (!Array.isArray(raw.cards) || !Array.isArray(raw.links)) return undefined;

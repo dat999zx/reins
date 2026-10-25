@@ -1,83 +1,70 @@
-import type { CardKind, Step, StepKind } from '@reins/core';
+import type { CardKind, StepKind } from '@reins/core';
 
+import { showText } from '../../core/src/display.js';
+import type { KindView } from '../../core/src/nodes/fields.js';
+import { viewShapeProblem } from '../../core/src/viewShape.js';
 import type { WireKind } from './canvas.js';
-import { BUDGET_ERRORS } from './panelEdit.js';
 
-export type FieldKey = 'title' | 'prompt' | 'mode' | 'cmd' | 'max' | 'against' | 'knowl' | 'model' | 'reasoning' | 'usd';
-// `error` is what the panel says when applyField refuses the value; `inherits`: an empty model is the session's model; `ph` overrides the
-// empty pill's placeholder; `required`: the validator warns while it is empty, so the face says so.
-export type Field = {
-  key: FieldKey; label: string; input: 'text' | 'mono' | 'textarea' | 'number' | 'mode' | 'step' | 'model' | 'effort';
-  error?: string; inherits?: true; ph?: string; required?: true;
+export type { Field, KindView, Token } from '../../core/src/nodes/fields.js';
+
+// The faces of the blocks come from the server (`GET /api/kinds`, read in App.tsx); the app holds no list of its own. Empty until the first reply.
+// No prototype: a kind named `constructor` or `__proto__` in a workflow is not found, rather than finding Object's.
+export type ServedView = KindView & { trusted?: false }; // trusted: false = a mod's block whose code has not been trusted yet
+export const KINDS: Record<StepKind, ServedView> = Object.create(null);
+const kinds: Record<string, ServedView> = KINDS;
+// Re-sorts in place: importers hold this object. A view without an order goes last, in the order it came.
+const fill = (all: (Omit<ServedView, 'order' | 'colour'> & Partial<ServedView>)[]) => {
+  const sorted = all.map((v) => v as ServedView).sort((a, b) => (a.order ?? 1e9) - (b.order ?? 1e9));
+  for (const k of Object.keys(kinds)) delete kinds[k];
+  for (const v of sorted) kinds[v.kind] = v;
 };
-export type Token = string | 'cond' | 'sub' | { field: FieldKey };
-export type KindView = {
-  group?: 'kids' | 'kids+else';
-  fails?: true;
-  stops?: true; // ends the workflow: no links out, drawn as a cap
-  against?: true; // has a third wire: the step whose work it compares
-  cards?: true;
-  fields: Field[];
-  line: Token[];
-  card?: { label: string; section: 'Flow' | 'Memory' };
-  sub?(step: Step, cond?: string): string;
-  fresh?(): Partial<Step>;
-};
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+// Fills KINDS from the server's list. An entry that is not a view of the right shape is left out (the same check the server runs, core's viewShape.ts):
+// the server checks, the app does not trust. A later entry of a kind already taken is left out too, so the first one served keeps the name.
+export function setKinds(list: unknown): void {
+  const seen = new Set<string>();
+  fill(Array.isArray(list) ? list.filter((v): v is ServedView => viewShapeProblem(v, { served: true }) === undefined && !seen.has((v as ServedView).kind) && !!seen.add((v as ServedView).kind)) : []);
+}
 
-const title: Field = { key: 'title', label: 'Title', input: 'text' };
-const prompt: Field = { key: 'prompt', label: 'Prompt', input: 'textarea' };
-const mode: Field = { key: 'mode', label: 'Mode', input: 'mode' };
-const mustPrompt: Field = { ...prompt, required: true }; // phase and subagent: core warns "has no prompt"
-const reasoning: Field = { key: 'reasoning', label: 'Reasoning', input: 'effort', inherits: true };
-const usd: Field = { key: 'usd', label: 'Budget (USD)', input: 'text', error: BUDGET_ERRORS.usd, ph: 'optional' };
+// Adds a view for tests and later kinds; the disposer takes it out again.
+export function registerView(v: Omit<ServedView, 'order' | 'colour'> & Partial<ServedView>): () => void {
+  if (v.kind in kinds) throw new Error(`a view for ${v.kind} is already registered`);
+  fill([...Object.values(kinds), v]);
+  let live = true;
+  return () => {
+    if (!live) return;
+    live = false;
+    delete kinds[v.kind];
+  };
+}
 
-export const KINDS: Record<StepKind, KindView> = {
-  phase: { fields: [title, mustPrompt, mode], line: [{ field: 'title' }, { field: 'prompt' }], cards: true, card: { label: 'phase', section: 'Flow' }, fresh: () => ({}) },
-  say: { fields: [prompt, mode], line: ['say', { field: 'prompt' }], cards: true, card: { label: 'custom prompt', section: 'Flow' }, fresh: () => ({}) },
-  run: { fields: [{ key: 'cmd', label: 'Command', input: 'mono' }], line: ['run', { field: 'cmd' }], fails: true, card: { label: 'run command', section: 'Flow' }, fresh: () => ({ attrs: { cmd: 'npm test' } }) },
-  gate: { fields: [], line: ['wait until', 'cond'], card: { label: 'wait until', section: 'Flow' }, fresh: () => ({ cond: { t: 'approve' } }) },
-  repeat: {
-    group: 'kids',
-    fields: [{ key: 'max', label: 'Max', input: 'number' }],
-    line: ['repeat until', 'cond', 'max', { field: 'max' }],
-    card: { label: 'repeat until', section: 'Flow' }, fresh: () => ({ attrs: { max: '3' }, cond: { t: 'approve' } }),
-  },
-  if: { group: 'kids+else', fields: [], line: ['if', 'cond'], card: { label: 'if / else', section: 'Flow' }, fresh: () => ({ cond: { t: 'approve' } }) },
-  verify: {
-    fields: [prompt, { key: 'against', label: 'Against', input: 'step' }],
-    line: ['verify against', { field: 'against' }],
-    cards: true,
-    fails: true,
-    against: true,
-    card: { label: 'verify against', section: 'Flow' }, fresh: () => ({}),
-  },
-  recall: { fields: [{ key: 'knowl', label: 'Knowl', input: 'text' }], line: ['recall from Knowl', { field: 'knowl' }], card: { label: 'recall', section: 'Memory' }, fresh: () => ({}) },
-  store: { fields: [{ key: 'knowl', label: 'Knowl', input: 'text' }], line: ['store to Knowl', { field: 'knowl' }], card: { label: 'store', section: 'Memory' }, fresh: () => ({}) },
-  model: {
-    fields: [{ key: 'model', label: 'Model', input: 'model' }, reasoning, usd],
-    line: ['switch model to', { field: 'model' }, { field: 'reasoning' }, 'USD', { field: 'usd' }],
-    card: { label: 'switch model', section: 'Flow' }, fresh: () => ({}),
-  },
-  subagent: {
-    fields: [title, mustPrompt, mode, { key: 'model', label: 'Model', input: 'model', inherits: true }, reasoning, usd],
-    line: ['subagent', { field: 'title' }, 'on', { field: 'model' }, { field: 'reasoning' }, { field: 'mode' }, 'USD', { field: 'usd' }, { field: 'prompt' }],
-    cards: true,
-    card: { label: 'subagent', section: 'Flow' }, fresh: () => ({}),
-  },
-  end: { stops: true, fields: [], line: ['end'], card: { label: 'end', section: 'Flow' }, fresh: () => ({}) },
-  use: { fields: [], line: ['use', 'sub'], sub: (s) => s.title || s.attrs.use || s.id },
-};
+// The face of a kind the app does not know (a workflow names a block that is not loaded): a neutral block that says so, with the name shown safe.
+const cut = (s: string) => (s.length > 40 ? `${s.slice(0, 40)}...` : s);
+export const unknownView = (kind: string): ServedView => ({ kind, order: 1e9, colour: 'soft', fields: [], line: [`unknown block ${showText(cut(kind))}`] });
+// What to draw for a kind: its view, or the unknown face.
+export const viewOf = (kind: string): ServedView => kinds[kind] ?? unknownView(kind);
 
-// The handles on a block, top to bottom.
+// The one kind that ends the workflow. Empty (no block can be made of it) until the list has come.
+export const capKind = (): StepKind => (Object.values(KINDS).find((v) => v.stops)?.kind ?? '') as StepKind;
+// The handles on a block, top to bottom. The gray `next` handle is the fork's only (a view with `manyNext`); a loop that goes back uses `repeat until`.
 export const wiresOf = (kind: StepKind): WireKind[] => {
-  const k = KINDS[kind];
-  return k.stops ? [] : ['next', ...(k.fails ? ['on-fail' as const] : []), ...(k.against ? ['against' as const] : [])];
+  const k = viewOf(kind);
+  return k.stops ? [] : [...(k.manyNext ? ['next' as const] : []), ...(k.fails ? ['on-fail' as const] : []), ...(k.against ? ['against' as const] : [])];
 };
 
-// The card kinds a block holds; whenever-only kinds (now, stop) are left out.
+// The card kinds a block holds, and the words the panel uses for each; both come from the server (`GET /api/kinds`) in core's order and are empty
+// until the first reply. A card kind with no words is not offered (whenever-only kinds, now and stop, have none).
 // guard is enforced in core/src/policy.ts: the tool-approval hook blocks edits to a matching path and shell commands naming one.
-export const CARD_KINDS = ['guard'] as const satisfies readonly CardKind[];
-// The words the panel uses for a kind: a second kind is one entry here.
-export const CARD_LABEL: Record<(typeof CARD_KINDS)[number], { section: string; add: string }> = {
-  guard: { section: 'Guards', add: 'Add guard' },
-};
+export const CARD_KINDS: CardKind[] = [];
+export const CARD_LABEL: Record<string, { section: string; add: string }> = Object.create(null);
+// Fills the cards in place (importers hold these). An entry without a kind, section and add is left out.
+export function setCards(list: unknown): void {
+  CARD_KINDS.length = 0;
+  for (const k of Object.keys(CARD_LABEL)) delete CARD_LABEL[k];
+  if (!Array.isArray(list)) return;
+  for (const c of list) {
+    if (!isObj(c) || typeof c.kind !== 'string' || typeof c.section !== 'string' || typeof c.add !== 'string') continue;
+    CARD_KINDS.push(c.kind as CardKind);
+    CARD_LABEL[c.kind] = { section: c.section, add: c.add };
+  }
+}

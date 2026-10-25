@@ -1,5 +1,6 @@
 import type { Step, Workflow } from '@reins/core';
 import { addStepAt, capBackward, deleteSteps, dropSteps, insertSteps, stackEnd, takeSteps, withFreshIds, type Hit, type Place } from './blocks.js';
+import { capKind, viewOf } from './canvasKinds.js';
 import { flatSteps } from './canvas.js';
 import { LOOSE_MAX, type Layout, type Loose, type Pt } from './editorState.js';
 
@@ -67,7 +68,22 @@ export const freedBy = (w: Workflow, ids: string[]): string[] => {
   return end && ids.includes(end.id) ? tail.map((s) => s.id) : [];
 };
 
-export const ensureEnd = (w: Workflow): Workflow => (stackEnd(w) < w.steps.length ? w : addStepAt(w, 'end', { branch: 'kids', index: w.steps.length }));
+export const ensureEnd = (w: Workflow): Workflow => (stackEnd(w) < w.steps.length ? w : addStepAt(w, capKind(), { branch: 'kids', index: w.steps.length }));
+
+// A free block runs on into the block under it, unless it ends the workflow or its `next` link sends it elsewhere. A fork's `next` links are its branches, so it runs on too.
+export const fallsThrough = (s: Step): boolean => !viewOf(s.kind).stops && (viewOf(s.kind).manyNext === true || !s.links.some((l) => l.kind === 'next'));
+
+// The free blocks as they run: a block and the free blocks under it while each runs on into the next; an `end` closes the chain. A block with a place of its own (`placed`) stands alone.
+export function chains(tail: Step[], placed: ReadonlySet<string> = new Set()): Step[][] {
+  const out: Step[][] = [];
+  let open = false;
+  for (const s of tail) {
+    if (open && !placed.has(s.id)) out.at(-1)!.push(s);
+    else out.push([s]);
+    open = !placed.has(s.id) && fallsThrough(s);
+  }
+  return out;
+}
 
 // A stack step becomes a free block: behind the end (added when missing), reached only by links. Undefined for a nested, free or end step.
 export function detach(w: Workflow, id: string): { w: Workflow; capped: string[] } | undefined {
@@ -76,6 +92,16 @@ export function detach(w: Workflow, id: string): { w: Workflow; capped: string[]
   const m = structuredClone(ensureEnd(w));
   m.steps.push(...m.steps.splice(i, 1));
   return capBackward(m);
+}
+
+// `detach`, and when the free block above would run on into the new one, an `end` goes in front of it, so it starts a chain of its own. (`detach` stays the plain move.)
+export function detachApart(w: Workflow, id: string): { w: Workflow; capped: string[] } | undefined {
+  const r = detach(w, id);
+  if (!r) return r;
+  const last = r.w.steps.length - 1, above = last - 1 > stackEnd(r.w) ? r.w.steps[last - 1] : undefined;
+  if (!above || !fallsThrough(above)) return r;
+  const apart = addStepAt(r.w, capKind(), { branch: 'kids', index: last });
+  return apart === r.w ? r : { w: apart, capped: r.capped };
 }
 
 // A free block goes back into the stack: before the end, or at the slot `hit` points to. Undefined for any other step.

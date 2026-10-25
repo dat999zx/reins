@@ -1,0 +1,25 @@
+{
+  "reins": 1,
+  "id": "fireworks",
+  "kind": "provider",
+  "version": "1.0.0",
+  "label": "Fireworks",
+  "description": "Open models hosted by Fireworks AI.",
+  "homepage": "https://fireworks.ai/",
+  "protocol": "openai-chat",
+  "baseUrl": "https://api.fireworks.ai/inference/v1",
+  "auth": { "style": "bearer", "keyEnv": ["FIREWORKS_API_KEY"] },
+  "catalog": "fireworks-ai",
+  "defaultModel": "accounts/fireworks/models/glm-5p3",
+  "models": [
+    { "id": "accounts/fireworks/models/glm-5p3", "label": "GLM 5.3", "context": 1048573, "maxOutput": 262144, "tools": true, "price": { "input": 1.4, "output": 4.4, "cacheRead": 0.26 }, "_source": "https://models.dev/api.json#fireworks-ai" },
+    { "id": "accounts/fireworks/models/glm-5p3-flash", "label": "GLM 5.3 Flash", "context": 1048573, "maxOutput": 131072, "tools": true, "price": { "input": 0.15, "output": 0.5, "cacheRead": 0.03 }, "_source": "https://models.dev/api.json#fireworks-ai" },
+    { "id": "accounts/fireworks/models/deepseek-v4p1-flash", "label": "DeepSeek V4.1 Flash", "context": 1000000, "maxOutput": 384000, "tools": true, "price": { "input": 0.3, "output": 1.2, "cacheRead": 0.006 }, "_source": "https://models.dev/api.json#fireworks-ai" }
+  ],
+  "efforts": [
+    { "id": "low", "label": "Low", "body": { "reasoning_effort": "low" } },
+    { "id": "high", "label": "High", "body": { "reasoning_effort": "high" } },
+    { "id": "max", "label": "Max", "body": { "reasoning_effort": "max" } }
+  ],
+  "untested": true
+}

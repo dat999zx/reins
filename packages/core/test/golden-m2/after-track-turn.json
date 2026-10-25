@@ -1,0 +1,312 @@
+{
+  "ended": [
+    {
+      "key": "b",
+      "text": "beta"
+    },
+    {
+      "key": "a",
+      "text": ""
+    }
+  ],
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "split-1",
+            "kind": "split"
+          },
+          {
+            "id": "main",
+            "kind": "phase",
+            "title": "main"
+          },
+          {
+            "id": "end-1",
+            "kind": "end"
+          },
+          {
+            "id": "a",
+            "kind": "phase",
+            "title": "a"
+          },
+          {
+            "id": "a2",
+            "kind": "phase",
+            "title": "a2"
+          },
+          {
+            "id": "end-2",
+            "kind": "end"
+          },
+          {
+            "id": "b",
+            "kind": "phase",
+            "title": "b"
+          },
+          {
+            "id": "end-3",
+            "kind": "end"
+          }
+        ],
+        "workflow": "t"
+      },
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "split-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "group": "split-1",
+        "parent": "",
+        "title": "Split split-1",
+        "track": "a"
+      },
+      "type": "track_started"
+    },
+    {
+      "data": {
+        "group": "split-1",
+        "parent": "",
+        "title": "Split split-1",
+        "track": "b"
+      },
+      "type": "track_started"
+    },
+    {
+      "data": {
+        "step": "split-1"
+      },
+      "type": "split_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "a",
+        "track": "a"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "b",
+        "track": "b"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "a",
+        "track": "a"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "b",
+        "track": "b"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "track": "a",
+        "usd": 0.03
+      },
+      "type": "engine_cost"
+    },
+    {
+      "data": {
+        "cost": 0.03,
+        "step": "a",
+        "text": "first\nREINS: done",
+        "track": "a"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "a",
+        "track": "a"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "b",
+        "track": "b"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "a",
+        "track": "a"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "b",
+        "track": "b"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "a",
+        "text": "second\nREINS: done",
+        "track": "a"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "step": "b",
+        "text": "beta\nREINS: done",
+        "track": "b"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "a2",
+        "track": "a"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "end-3",
+        "track": "b"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "cost": 0,
+        "group": "split-1",
+        "text": "beta",
+        "title": "Split split-1",
+        "track": "b"
+      },
+      "type": "track_ended"
+    },
+    {
+      "data": {
+        "step": "a2",
+        "track": "a"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "a2",
+        "text": "REINS: done",
+        "track": "a"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "end-2",
+        "track": "a"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "cost": 0.03,
+        "group": "split-1",
+        "text": "",
+        "title": "Split split-1",
+        "track": "a"
+      },
+      "type": "track_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "split-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "split-1"
+      },
+      "type": "split_done"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "main"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "main"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "main",
+        "text": "REINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "end-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {},
+      "type": "run_finished"
+    }
+  ],
+  "opens": [
+    {
+      "costBase": 0.03,
+      "sessionId": "track-turn-sub-a",
+      "step": "a"
+    },
+    {
+      "costBase": 0,
+      "sessionId": "track-turn-sub-b",
+      "step": "b"
+    }
+  ],
+  "pauses": [],
+  "programCounter": 2,
+  "status": "done",
+  "texts": {
+    "track-turn-main-1": [
+      "[Reins · playbook \"t\" · step 2 of 8: main]\n\nm\n\nFor this step:\n- Result of a: \n- Result of b: beta\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    ],
+    "track-turn-sub-a": [
+      "[Reins · playbook \"t\" · step 4 of 8: a]\n\na\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"t\" · step 5 of 8: a2]\n\na2\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    ],
+    "track-turn-sub-b": [
+      "[Reins · playbook \"t\" · step 7 of 8: b]\n\nb\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    ]
+  },
+  "tracks": []
+}

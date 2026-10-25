@@ -1,0 +1,5208 @@
+{
+ "condOrder": [
+  "approve",
+  "tests",
+  "cmd",
+  "llm",
+  "review",
+  "done",
+  "diff",
+  "touches",
+  "attempts",
+  "same",
+  "drift"
+ ],
+ "cardOrder": [
+  "guard",
+  "now",
+  "stop"
+ ],
+ "shapes": [
+  {
+   "t": "approve",
+   "judge": "you",
+   "auto": false,
+   "hasEvalSync": false,
+   "hasEvaluate": false,
+   "hasGlobs": false,
+   "hasCommands": false,
+   "hasSameAsRun": false
+  },
+  {
+   "t": "tests",
+   "judge": "command",
+   "auto": false,
+   "needsTestCmd": true,
+   "hasEvalSync": false,
+   "hasEvaluate": true,
+   "hasGlobs": false,
+   "hasCommands": false,
+   "hasSameAsRun": true
+  },
+  {
+   "t": "cmd",
+   "judge": "command",
+   "auto": false,
+   "hasEvalSync": false,
+   "hasEvaluate": true,
+   "hasGlobs": false,
+   "hasCommands": false,
+   "hasSameAsRun": true
+  },
+  {
+   "t": "llm",
+   "judge": "model",
+   "auto": false,
+   "modelCall": "llm says",
+   "hasEvalSync": false,
+   "hasEvaluate": true,
+   "hasGlobs": false,
+   "hasCommands": false,
+   "hasSameAsRun": false
+  },
+  {
+   "t": "review",
+   "judge": "subagent",
+   "auto": false,
+   "modelCall": "reviewer approves",
+   "hasEvalSync": false,
+   "hasEvaluate": true,
+   "hasGlobs": false,
+   "hasCommands": false,
+   "hasSameAsRun": false
+  },
+  {
+   "t": "done",
+   "judge": "agent",
+   "hasEvalSync": true,
+   "hasEvaluate": false,
+   "hasGlobs": false,
+   "hasCommands": false,
+   "hasSameAsRun": false
+  },
+  {
+   "t": "diff",
+   "judge": "deterministic",
+   "hasEvalSync": false,
+   "hasEvaluate": true,
+   "hasGlobs": false,
+   "hasCommands": false,
+   "hasSameAsRun": false
+  },
+  {
+   "t": "touches",
+   "judge": "deterministic",
+   "hasEvalSync": true,
+   "hasEvaluate": false,
+   "hasGlobs": true,
+   "hasCommands": false,
+   "hasSameAsRun": false
+  },
+  {
+   "t": "attempts",
+   "judge": "deterministic",
+   "hasEvalSync": true,
+   "hasEvaluate": false,
+   "hasGlobs": false,
+   "hasCommands": false,
+   "hasSameAsRun": false
+  },
+  {
+   "t": "same",
+   "judge": "deterministic",
+   "hasEvalSync": true,
+   "hasEvaluate": false,
+   "hasGlobs": false,
+   "hasCommands": false,
+   "hasSameAsRun": false
+  },
+  {
+   "t": "drift",
+   "judge": "deterministic",
+   "hasEvalSync": true,
+   "hasEvaluate": false,
+   "hasGlobs": false,
+   "hasCommands": false,
+   "hasSameAsRun": false
+  }
+ ],
+ "cardShapes": [
+  {
+   "kind": "guard",
+   "hasTurnLine": true,
+   "hasPolicy": true,
+   "hasValidate": true
+  },
+  {
+   "kind": "now",
+   "delivery": "now",
+   "hasTurnLine": false,
+   "hasPolicy": false,
+   "hasValidate": false
+  },
+  {
+   "kind": "stop",
+   "delivery": "stop",
+   "hasTurnLine": false,
+   "hasPolicy": false,
+   "hasValidate": false
+  }
+ ],
+ "bySource": [
+  {
+   "src": "you approve",
+   "r": {
+    "cond": {
+     "t": "approve"
+    }
+   },
+   "printed": "you approve",
+   "again": {
+    "cond": {
+     "t": "approve"
+    }
+   },
+   "judge": "you",
+   "atoms": [
+    {
+     "t": "approve"
+    }
+   ]
+  },
+  {
+   "src": "tests pass",
+   "r": {
+    "cond": {
+     "t": "tests"
+    }
+   },
+   "printed": "tests pass",
+   "again": {
+    "cond": {
+     "t": "tests"
+    }
+   },
+   "judge": "command",
+   "atoms": [
+    {
+     "t": "tests"
+    }
+   ]
+  },
+  {
+   "src": "`npm run lint` passes",
+   "r": {
+    "cond": {
+     "t": "cmd",
+     "cmd": "npm run lint"
+    }
+   },
+   "printed": "`npm run lint` passes",
+   "again": {
+    "cond": {
+     "t": "cmd",
+     "cmd": "npm run lint"
+    }
+   },
+   "judge": "command",
+   "atoms": [
+    {
+     "t": "cmd",
+     "cmd": "npm run lint"
+    }
+   ]
+  },
+  {
+   "src": "`a b` passes",
+   "r": {
+    "cond": {
+     "t": "cmd",
+     "cmd": "a b"
+    }
+   },
+   "printed": "`a b` passes",
+   "again": {
+    "cond": {
+     "t": "cmd",
+     "cmd": "a b"
+    }
+   },
+   "judge": "command",
+   "atoms": [
+    {
+     "t": "cmd",
+     "cmd": "a b"
+    }
+   ]
+  },
+  {
+   "src": "llm says \"the plan is good\"",
+   "r": {
+    "cond": {
+     "t": "llm",
+     "q": "the plan is good"
+    }
+   },
+   "printed": "llm says \"the plan is good\"",
+   "again": {
+    "cond": {
+     "t": "llm",
+     "q": "the plan is good"
+    }
+   },
+   "judge": "model",
+   "atoms": [
+    {
+     "t": "llm",
+     "q": "the plan is good"
+    }
+   ]
+  },
+  {
+   "src": "llm says 'it is'",
+   "r": {
+    "cond": {
+     "t": "llm",
+     "q": "it is"
+    }
+   },
+   "printed": "llm says \"it is\"",
+   "again": {
+    "cond": {
+     "t": "llm",
+     "q": "it is"
+    }
+   },
+   "judge": "model",
+   "atoms": [
+    {
+     "t": "llm",
+     "q": "it is"
+    }
+   ]
+  },
+  {
+   "src": "llm says \"a \\\" quote\"",
+   "r": {
+    "cond": {
+     "t": "llm",
+     "q": "a \" quote"
+    }
+   },
+   "printed": "llm says \"a \" quote\"",
+   "again": {
+    "diag": {
+     "severity": "error",
+     "message": "Unexpected trailing characters \"quote\"\"",
+     "pos": {
+      "line": 1,
+      "col": 15
+     }
+    }
+   },
+   "judge": "model",
+   "atoms": [
+    {
+     "t": "llm",
+     "q": "a \" quote"
+    }
+   ]
+  },
+  {
+   "src": "reviewer approves",
+   "r": {
+    "cond": {
+     "t": "review"
+    }
+   },
+   "printed": "reviewer approves",
+   "again": {
+    "cond": {
+     "t": "review"
+    }
+   },
+   "judge": "subagent",
+   "atoms": [
+    {
+     "t": "review"
+    }
+   ]
+  },
+  {
+   "src": "reviewer approves \"is it safe\"",
+   "r": {
+    "cond": {
+     "t": "review",
+     "q": "is it safe"
+    }
+   },
+   "printed": "reviewer approves \"is it safe\"",
+   "again": {
+    "cond": {
+     "t": "review",
+     "q": "is it safe"
+    }
+   },
+   "judge": "subagent",
+   "atoms": [
+    {
+     "t": "review",
+     "q": "is it safe"
+    }
+   ]
+  },
+  {
+   "src": "agent says done",
+   "r": {
+    "cond": {
+     "t": "done"
+    }
+   },
+   "printed": "agent says done",
+   "again": {
+    "cond": {
+     "t": "done"
+    }
+   },
+   "judge": "agent",
+   "atoms": [
+    {
+     "t": "done"
+    }
+   ]
+  },
+  {
+   "src": "diff > 300 lines",
+   "r": {
+    "cond": {
+     "t": "diff",
+     "n": 300
+    }
+   },
+   "printed": "diff > 300 lines",
+   "again": {
+    "cond": {
+     "t": "diff",
+     "n": 300
+    }
+   },
+   "judge": "deterministic",
+   "atoms": [
+    {
+     "t": "diff",
+     "n": 300
+    }
+   ]
+  },
+  {
+   "src": "diff>5lines",
+   "r": {
+    "cond": {
+     "t": "diff",
+     "n": 5
+    }
+   },
+   "printed": "diff > 5 lines",
+   "again": {
+    "cond": {
+     "t": "diff",
+     "n": 5
+    }
+   },
+   "judge": "deterministic",
+   "atoms": [
+    {
+     "t": "diff",
+     "n": 5
+    }
+   ]
+  },
+  {
+   "src": "touches migrations/**",
+   "r": {
+    "cond": {
+     "t": "touches",
+     "glob": "migrations/**"
+    }
+   },
+   "printed": "touches migrations/**",
+   "again": {
+    "cond": {
+     "t": "touches",
+     "glob": "migrations/**"
+    }
+   },
+   "judge": "deterministic",
+   "atoms": [
+    {
+     "t": "touches",
+     "glob": "migrations/**"
+    }
+   ]
+  },
+  {
+   "src": "touches src/*.ts",
+   "r": {
+    "cond": {
+     "t": "touches",
+     "glob": "src/*.ts"
+    }
+   },
+   "printed": "touches src/*.ts",
+   "again": {
+    "cond": {
+     "t": "touches",
+     "glob": "src/*.ts"
+    }
+   },
+   "judge": "deterministic",
+   "atoms": [
+    {
+     "t": "touches",
+     "glob": "src/*.ts"
+    }
+   ]
+  },
+  {
+   "src": "attempts > 3",
+   "r": {
+    "cond": {
+     "t": "attempts",
+     "n": 3
+    }
+   },
+   "printed": "attempts > 3",
+   "again": {
+    "cond": {
+     "t": "attempts",
+     "n": 3
+    }
+   },
+   "judge": "deterministic",
+   "atoms": [
+    {
+     "t": "attempts",
+     "n": 3
+    }
+   ]
+  },
+  {
+   "src": "attempts>12",
+   "r": {
+    "cond": {
+     "t": "attempts",
+     "n": 12
+    }
+   },
+   "printed": "attempts > 12",
+   "again": {
+    "cond": {
+     "t": "attempts",
+     "n": 12
+    }
+   },
+   "judge": "deterministic",
+   "atoms": [
+    {
+     "t": "attempts",
+     "n": 12
+    }
+   ]
+  },
+  {
+   "src": "same error twice",
+   "r": {
+    "cond": {
+     "t": "same"
+    }
+   },
+   "printed": "same error twice",
+   "again": {
+    "cond": {
+     "t": "same"
+    }
+   },
+   "judge": "deterministic",
+   "atoms": [
+    {
+     "t": "same"
+    }
+   ]
+  },
+  {
+   "src": "drift",
+   "r": {
+    "cond": {
+     "t": "drift"
+    }
+   },
+   "printed": "drift",
+   "again": {
+    "cond": {
+     "t": "drift"
+    }
+   },
+   "judge": "deterministic",
+   "atoms": [
+    {
+     "t": "drift"
+    }
+   ]
+  },
+  {
+   "src": "not tests pass",
+   "r": {
+    "cond": {
+     "t": "not",
+     "a": {
+      "t": "tests"
+     }
+    }
+   },
+   "printed": "not tests pass",
+   "again": {
+    "cond": {
+     "t": "not",
+     "a": {
+      "t": "tests"
+     }
+    }
+   },
+   "judge": "command",
+   "atoms": [
+    {
+     "t": "tests"
+    }
+   ]
+  },
+  {
+   "src": "not (tests pass or drift)",
+   "r": {
+    "cond": {
+     "t": "not",
+     "a": {
+      "t": "or",
+      "a": {
+       "t": "tests"
+      },
+      "b": {
+       "t": "drift"
+      }
+     }
+    }
+   },
+   "printed": "not (tests pass or drift)",
+   "again": {
+    "cond": {
+     "t": "not",
+     "a": {
+      "t": "or",
+      "a": {
+       "t": "tests"
+      },
+      "b": {
+       "t": "drift"
+      }
+     }
+    }
+   },
+   "judge": "command",
+   "atoms": [
+    {
+     "t": "tests"
+    },
+    {
+     "t": "drift"
+    }
+   ]
+  },
+  {
+   "src": "tests pass and you approve or drift",
+   "r": {
+    "cond": {
+     "t": "or",
+     "a": {
+      "t": "and",
+      "a": {
+       "t": "tests"
+      },
+      "b": {
+       "t": "approve"
+      }
+     },
+     "b": {
+      "t": "drift"
+     }
+    }
+   },
+   "printed": "tests pass and you approve or drift",
+   "again": {
+    "cond": {
+     "t": "or",
+     "a": {
+      "t": "and",
+      "a": {
+       "t": "tests"
+      },
+      "b": {
+       "t": "approve"
+      }
+     },
+     "b": {
+      "t": "drift"
+     }
+    }
+   },
+   "judge": "command",
+   "atoms": [
+    {
+     "t": "tests"
+    },
+    {
+     "t": "approve"
+    },
+    {
+     "t": "drift"
+    }
+   ]
+  },
+  {
+   "src": "tests pass and (you approve or drift)",
+   "r": {
+    "cond": {
+     "t": "and",
+     "a": {
+      "t": "tests"
+     },
+     "b": {
+      "t": "or",
+      "a": {
+       "t": "approve"
+      },
+      "b": {
+       "t": "drift"
+      }
+     }
+    }
+   },
+   "printed": "tests pass and (you approve or drift)",
+   "again": {
+    "cond": {
+     "t": "and",
+     "a": {
+      "t": "tests"
+     },
+     "b": {
+      "t": "or",
+      "a": {
+       "t": "approve"
+      },
+      "b": {
+       "t": "drift"
+      }
+     }
+    }
+   },
+   "judge": "command",
+   "atoms": [
+    {
+     "t": "tests"
+    },
+    {
+     "t": "approve"
+    },
+    {
+     "t": "drift"
+    }
+   ]
+  },
+  {
+   "src": "(tests pass or drift) and not diff > 9 lines",
+   "r": {
+    "cond": {
+     "t": "and",
+     "a": {
+      "t": "or",
+      "a": {
+       "t": "tests"
+      },
+      "b": {
+       "t": "drift"
+      }
+     },
+     "b": {
+      "t": "not",
+      "a": {
+       "t": "diff",
+       "n": 9
+      }
+     }
+    }
+   },
+   "printed": "(tests pass or drift) and not diff > 9 lines",
+   "again": {
+    "cond": {
+     "t": "and",
+     "a": {
+      "t": "or",
+      "a": {
+       "t": "tests"
+      },
+      "b": {
+       "t": "drift"
+      }
+     },
+     "b": {
+      "t": "not",
+      "a": {
+       "t": "diff",
+       "n": 9
+      }
+     }
+    }
+   },
+   "judge": "command",
+   "atoms": [
+    {
+     "t": "tests"
+    },
+    {
+     "t": "drift"
+    },
+    {
+     "t": "diff",
+     "n": 9
+    }
+   ]
+  },
+  {
+   "src": "not not you approve",
+   "r": {
+    "cond": {
+     "t": "not",
+     "a": {
+      "t": "not",
+      "a": {
+       "t": "approve"
+      }
+     }
+    }
+   },
+   "printed": "not not you approve",
+   "again": {
+    "cond": {
+     "t": "not",
+     "a": {
+      "t": "not",
+      "a": {
+       "t": "approve"
+      }
+     }
+    }
+   },
+   "judge": "you",
+   "atoms": [
+    {
+     "t": "approve"
+    }
+   ]
+  },
+  {
+   "src": "  you approve  ",
+   "r": {
+    "cond": {
+     "t": "approve"
+    }
+   },
+   "printed": "you approve",
+   "again": {
+    "cond": {
+     "t": "approve"
+    }
+   },
+   "judge": "you",
+   "atoms": [
+    {
+     "t": "approve"
+    }
+   ]
+  },
+  {
+   "src": "you approve and",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Unexpected condition token at \"\"",
+     "pos": {
+      "line": 1,
+      "col": 16
+     }
+    }
+   }
+  },
+  {
+   "src": "you",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Unexpected condition token at \"you\"",
+     "pos": {
+      "line": 1,
+      "col": 1
+     }
+    }
+   }
+  },
+  {
+   "src": "you approved",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Unexpected trailing characters \"d\"",
+     "pos": {
+      "line": 1,
+      "col": 12
+     }
+    }
+   }
+  },
+  {
+   "src": "tests",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Unexpected condition token at \"tests\"",
+     "pos": {
+      "line": 1,
+      "col": 1
+     }
+    }
+   }
+  },
+  {
+   "src": "tests pass extra",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Unexpected trailing characters \"extra\"",
+     "pos": {
+      "line": 1,
+      "col": 12
+     }
+    }
+   }
+  },
+  {
+   "src": "`unterminated passes",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Unterminated command",
+     "pos": {
+      "line": 1,
+      "col": 21
+     }
+    }
+   }
+  },
+  {
+   "src": "`x` pass",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Expected \"passes\" after command",
+     "pos": {
+      "line": 1,
+      "col": 5
+     }
+    }
+   }
+  },
+  {
+   "src": "llm says",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Expected quoted string",
+     "pos": {
+      "line": 1,
+      "col": 9
+     }
+    }
+   }
+  },
+  {
+   "src": "llm says \"open",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Unterminated quoted string",
+     "pos": {
+      "line": 1,
+      "col": 15
+     }
+    }
+   }
+  },
+  {
+   "src": "reviewer approves \"open",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Unterminated quoted string",
+     "pos": {
+      "line": 1,
+      "col": 24
+     }
+    }
+   }
+  },
+  {
+   "src": "diff 300 lines",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Expected \">\" after diff",
+     "pos": {
+      "line": 1,
+      "col": 6
+     }
+    }
+   }
+  },
+  {
+   "src": "diff > lines",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Expected integer after \"diff >\"",
+     "pos": {
+      "line": 1,
+      "col": 8
+     }
+    }
+   }
+  },
+  {
+   "src": "diff > 3",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Expected \"lines\" after diff count",
+     "pos": {
+      "line": 1,
+      "col": 9
+     }
+    }
+   }
+  },
+  {
+   "src": "touches",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Expected glob pattern after \"touches\"",
+     "pos": {
+      "line": 1,
+      "col": 8
+     }
+    }
+   }
+  },
+  {
+   "src": "attempts 3",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Expected \">\" after attempts",
+     "pos": {
+      "line": 1,
+      "col": 10
+     }
+    }
+   }
+  },
+  {
+   "src": "attempts >",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Expected integer after \"attempts >\"",
+     "pos": {
+      "line": 1,
+      "col": 11
+     }
+    }
+   }
+  },
+  {
+   "src": "agent says",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Unexpected condition token at \"agent says\"",
+     "pos": {
+      "line": 1,
+      "col": 1
+     }
+    }
+   }
+  },
+  {
+   "src": "same error",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Unexpected condition token at \"same error\"",
+     "pos": {
+      "line": 1,
+      "col": 1
+     }
+    }
+   }
+  },
+  {
+   "src": "drifting",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Unexpected trailing characters \"ing\"",
+     "pos": {
+      "line": 1,
+      "col": 6
+     }
+    }
+   }
+  },
+  {
+   "src": "drift and",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Unexpected condition token at \"\"",
+     "pos": {
+      "line": 1,
+      "col": 10
+     }
+    }
+   }
+  },
+  {
+   "src": "( drift",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Expected closing parenthesis",
+     "pos": {
+      "line": 1,
+      "col": 8
+     }
+    }
+   }
+  },
+  {
+   "src": "nonsense here",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Unexpected condition token at \"nonsense here\"",
+     "pos": {
+      "line": 1,
+      "col": 1
+     }
+    }
+   }
+  },
+  {
+   "src": "",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Unexpected condition token at \"\"",
+     "pos": {
+      "line": 1,
+      "col": 1
+     }
+    }
+   }
+  },
+  {
+   "src": "touches a)b",
+   "r": {
+    "diag": {
+     "severity": "error",
+     "message": "Unexpected trailing characters \")b\"",
+     "pos": {
+      "line": 1,
+      "col": 10
+     }
+    }
+   }
+  },
+  {
+   "src": "agent says done or tests pass",
+   "r": {
+    "cond": {
+     "t": "or",
+     "a": {
+      "t": "done"
+     },
+     "b": {
+      "t": "tests"
+     }
+    }
+   },
+   "printed": "agent says done or tests pass",
+   "again": {
+    "cond": {
+     "t": "or",
+     "a": {
+      "t": "done"
+     },
+     "b": {
+      "t": "tests"
+     }
+    }
+   },
+   "judge": "agent",
+   "atoms": [
+    {
+     "t": "done"
+    },
+    {
+     "t": "tests"
+    }
+   ]
+  },
+  {
+   "src": "attempts > 2 and same error twice and drift",
+   "r": {
+    "cond": {
+     "t": "and",
+     "a": {
+      "t": "and",
+      "a": {
+       "t": "attempts",
+       "n": 2
+      },
+      "b": {
+       "t": "same"
+      }
+     },
+     "b": {
+      "t": "drift"
+     }
+    }
+   },
+   "printed": "attempts > 2 and same error twice and drift",
+   "again": {
+    "cond": {
+     "t": "and",
+     "a": {
+      "t": "and",
+      "a": {
+       "t": "attempts",
+       "n": 2
+      },
+      "b": {
+       "t": "same"
+      }
+     },
+     "b": {
+      "t": "drift"
+     }
+    }
+   },
+   "judge": "deterministic",
+   "atoms": [
+    {
+     "t": "attempts",
+     "n": 2
+    },
+    {
+     "t": "same"
+    },
+    {
+     "t": "drift"
+    }
+   ]
+  }
+ ],
+ "evals": {
+  "you approve": {
+   "empty": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-not-last": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "fails": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "refused": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "pass-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "tests pass": {
+   "empty": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-not-last": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "make"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "fails": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "refused": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "make"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "pass-not-at-run": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "`npm run lint` passes": {
+   "empty": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "npm run lint"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "npm run lint"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "done-not-last": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "fails": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "npm run lint"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "npm run lint"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "refused": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "npm run lint"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "pass-not-at-run": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "npm run lint"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "npm run lint"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "`a b` passes": {
+   "empty": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "a b"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "a b"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "done-not-last": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "a b"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "fails": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "a b"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "a b"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "refused": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "a b"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "pass-not-at-run": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "a b"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "a b"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "a b"
+    ],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "llm says \"the plan is good\"": {
+   "empty": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [
+     [
+      {
+       "t": "llm",
+       "q": "the plan is good"
+      },
+      {
+       "lastText": "all fine\nREINS: done\n"
+      }
+     ]
+    ],
+    "logged": [
+     [
+      "judge",
+      {
+       "cond": {
+        "t": "llm",
+        "q": "the plan is good"
+       },
+       "answer": true
+      }
+     ]
+    ]
+   },
+   "done-not-last": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [
+     [
+      {
+       "t": "llm",
+       "q": "the plan is good"
+      },
+      {
+       "lastText": "REINS: done\nbut more"
+      }
+     ]
+    ],
+    "logged": [
+     [
+      "judge",
+      {
+       "cond": {
+        "t": "llm",
+        "q": "the plan is good"
+       },
+       "answer": true
+      }
+     ]
+    ]
+   },
+   "fails": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [
+     [
+      {
+       "t": "llm",
+       "q": "the plan is good"
+      },
+      {
+       "lastText": ""
+      }
+     ]
+    ],
+    "logged": [
+     [
+      "judge",
+      {
+       "cond": {
+        "t": "llm",
+        "q": "the plan is good"
+       },
+       "answer": true
+      }
+     ]
+    ]
+   },
+   "refused": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [
+     [
+      {
+       "t": "llm",
+       "q": "the plan is good"
+      },
+      {
+       "lastText": "REINS: done"
+      }
+     ]
+    ],
+    "logged": [
+     [
+      "judge",
+      {
+       "cond": {
+        "t": "llm",
+        "q": "the plan is good"
+       },
+       "answer": true
+      }
+     ]
+    ]
+   },
+   "pass-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "llm says 'it is'": {
+   "empty": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [
+     [
+      {
+       "t": "llm",
+       "q": "it is"
+      },
+      {
+       "lastText": "all fine\nREINS: done\n"
+      }
+     ]
+    ],
+    "logged": [
+     [
+      "judge",
+      {
+       "cond": {
+        "t": "llm",
+        "q": "it is"
+       },
+       "answer": true
+      }
+     ]
+    ]
+   },
+   "done-not-last": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [
+     [
+      {
+       "t": "llm",
+       "q": "it is"
+      },
+      {
+       "lastText": "REINS: done\nbut more"
+      }
+     ]
+    ],
+    "logged": [
+     [
+      "judge",
+      {
+       "cond": {
+        "t": "llm",
+        "q": "it is"
+       },
+       "answer": true
+      }
+     ]
+    ]
+   },
+   "fails": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [
+     [
+      {
+       "t": "llm",
+       "q": "it is"
+      },
+      {
+       "lastText": ""
+      }
+     ]
+    ],
+    "logged": [
+     [
+      "judge",
+      {
+       "cond": {
+        "t": "llm",
+        "q": "it is"
+       },
+       "answer": true
+      }
+     ]
+    ]
+   },
+   "refused": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [
+     [
+      {
+       "t": "llm",
+       "q": "it is"
+      },
+      {
+       "lastText": "REINS: done"
+      }
+     ]
+    ],
+    "logged": [
+     [
+      "judge",
+      {
+       "cond": {
+        "t": "llm",
+        "q": "it is"
+       },
+       "answer": true
+      }
+     ]
+    ]
+   },
+   "pass-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "llm says \"a \\\" quote\"": {
+   "empty": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [
+     [
+      {
+       "t": "llm",
+       "q": "a \" quote"
+      },
+      {
+       "lastText": "all fine\nREINS: done\n"
+      }
+     ]
+    ],
+    "logged": [
+     [
+      "judge",
+      {
+       "cond": {
+        "t": "llm",
+        "q": "a \" quote"
+       },
+       "answer": true
+      }
+     ]
+    ]
+   },
+   "done-not-last": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [
+     [
+      {
+       "t": "llm",
+       "q": "a \" quote"
+      },
+      {
+       "lastText": "REINS: done\nbut more"
+      }
+     ]
+    ],
+    "logged": [
+     [
+      "judge",
+      {
+       "cond": {
+        "t": "llm",
+        "q": "a \" quote"
+       },
+       "answer": true
+      }
+     ]
+    ]
+   },
+   "fails": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [
+     [
+      {
+       "t": "llm",
+       "q": "a \" quote"
+      },
+      {
+       "lastText": ""
+      }
+     ]
+    ],
+    "logged": [
+     [
+      "judge",
+      {
+       "cond": {
+        "t": "llm",
+        "q": "a \" quote"
+       },
+       "answer": true
+      }
+     ]
+    ]
+   },
+   "refused": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [
+     [
+      {
+       "t": "llm",
+       "q": "a \" quote"
+      },
+      {
+       "lastText": "REINS: done"
+      }
+     ]
+    ],
+    "logged": [
+     [
+      "judge",
+      {
+       "cond": {
+        "t": "llm",
+        "q": "a \" quote"
+       },
+       "answer": true
+      }
+     ]
+    ]
+   },
+   "pass-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "reviewer approves": {
+   "empty": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [
+     [
+      {
+       "t": "review"
+      },
+      {
+       "lastText": "all fine\nREINS: done\n"
+      }
+     ]
+    ],
+    "logged": [
+     [
+      "judge",
+      {
+       "cond": {
+        "t": "review"
+       },
+       "answer": true
+      }
+     ]
+    ]
+   },
+   "done-not-last": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [
+     [
+      {
+       "t": "review"
+      },
+      {
+       "lastText": "REINS: done\nbut more"
+      }
+     ]
+    ],
+    "logged": [
+     [
+      "judge",
+      {
+       "cond": {
+        "t": "review"
+       },
+       "answer": true
+      }
+     ]
+    ]
+   },
+   "fails": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [
+     [
+      {
+       "t": "review"
+      },
+      {
+       "lastText": ""
+      }
+     ]
+    ],
+    "logged": [
+     [
+      "judge",
+      {
+       "cond": {
+        "t": "review"
+       },
+       "answer": true
+      }
+     ]
+    ]
+   },
+   "refused": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [
+     [
+      {
+       "t": "review"
+      },
+      {
+       "lastText": "REINS: done"
+      }
+     ]
+    ],
+    "logged": [
+     [
+      "judge",
+      {
+       "cond": {
+        "t": "review"
+       },
+       "answer": true
+      }
+     ]
+    ]
+   },
+   "pass-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "reviewer approves \"is it safe\"": {
+   "empty": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [
+     [
+      {
+       "t": "review",
+       "q": "is it safe"
+      },
+      {
+       "lastText": "all fine\nREINS: done\n"
+      }
+     ]
+    ],
+    "logged": [
+     [
+      "judge",
+      {
+       "cond": {
+        "t": "review",
+        "q": "is it safe"
+       },
+       "answer": true
+      }
+     ]
+    ]
+   },
+   "done-not-last": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [
+     [
+      {
+       "t": "review",
+       "q": "is it safe"
+      },
+      {
+       "lastText": "REINS: done\nbut more"
+      }
+     ]
+    ],
+    "logged": [
+     [
+      "judge",
+      {
+       "cond": {
+        "t": "review",
+        "q": "is it safe"
+       },
+       "answer": true
+      }
+     ]
+    ]
+   },
+   "fails": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [
+     [
+      {
+       "t": "review",
+       "q": "is it safe"
+      },
+      {
+       "lastText": ""
+      }
+     ]
+    ],
+    "logged": [
+     [
+      "judge",
+      {
+       "cond": {
+        "t": "review",
+        "q": "is it safe"
+       },
+       "answer": true
+      }
+     ]
+    ]
+   },
+   "refused": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [
+     [
+      {
+       "t": "review",
+       "q": "is it safe"
+      },
+      {
+       "lastText": "REINS: done"
+      }
+     ]
+    ],
+    "logged": [
+     [
+      "judge",
+      {
+       "cond": {
+        "t": "review",
+        "q": "is it safe"
+       },
+       "answer": true
+      }
+     ]
+    ]
+   },
+   "pass-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "agent says done": {
+   "empty": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": true,
+    "plain": true,
+    "auto": true,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-not-last": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "fails": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "refused": {
+    "sync": true,
+    "plain": true,
+    "auto": true,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "pass-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "diff > 300 lines": {
+   "empty": {
+    "sync": null,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": null,
+    "plain": true,
+    "auto": true,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-not-last": {
+    "sync": null,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "fails": {
+    "sync": null,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": null,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "refused": {
+    "sync": null,
+    "plain": true,
+    "auto": true,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "pass-not-at-run": {
+    "sync": null,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": null,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": null,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "diff>5lines": {
+   "empty": {
+    "sync": null,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": null,
+    "plain": true,
+    "auto": true,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-not-last": {
+    "sync": null,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "fails": {
+    "sync": null,
+    "plain": true,
+    "auto": true,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": null,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "refused": {
+    "sync": null,
+    "plain": true,
+    "auto": true,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "pass-not-at-run": {
+    "sync": null,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": null,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": null,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "touches migrations/**": {
+   "empty": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": true,
+    "plain": true,
+    "auto": true,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-not-last": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "fails": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "refused": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "pass-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "touches src/*.ts": {
+   "empty": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": true,
+    "plain": true,
+    "auto": true,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-not-last": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "fails": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "refused": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "pass-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "attempts > 3": {
+   "empty": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": true,
+    "plain": true,
+    "auto": true,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-not-last": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "fails": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": true,
+    "plain": true,
+    "auto": true,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "refused": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "pass-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "attempts>12": {
+   "empty": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-not-last": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "fails": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "refused": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "pass-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "same error twice": {
+   "empty": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-not-last": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "fails": {
+    "sync": true,
+    "plain": true,
+    "auto": true,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "refused": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "pass-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "drift": {
+   "empty": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-not-last": {
+    "sync": true,
+    "plain": true,
+    "auto": true,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "fails": {
+    "sync": true,
+    "plain": true,
+    "auto": true,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": true,
+    "plain": true,
+    "auto": true,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "refused": {
+    "sync": true,
+    "plain": true,
+    "auto": true,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "pass-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "not tests pass": {
+   "empty": {
+    "sync": true,
+    "plain": false,
+    "auto": true,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": true,
+    "plain": false,
+    "auto": true,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-not-last": {
+    "sync": true,
+    "plain": false,
+    "auto": true,
+    "ran": [
+     "make"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "fails": {
+    "sync": true,
+    "plain": false,
+    "auto": true,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": true,
+    "plain": false,
+    "auto": true,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "refused": {
+    "sync": true,
+    "plain": false,
+    "auto": true,
+    "ran": [
+     "make"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "pass-not-at-run": {
+    "sync": true,
+    "plain": false,
+    "auto": true,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": true,
+    "plain": false,
+    "auto": true,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": true,
+    "plain": false,
+    "auto": true,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "not (tests pass or drift)": {
+   "empty": {
+    "sync": true,
+    "plain": false,
+    "auto": true,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": true,
+    "plain": false,
+    "auto": true,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-not-last": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [
+     "make"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "fails": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "refused": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [
+     "make"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "pass-not-at-run": {
+    "sync": true,
+    "plain": false,
+    "auto": true,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": true,
+    "plain": false,
+    "auto": true,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": true,
+    "plain": false,
+    "auto": true,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "tests pass and you approve or drift": {
+   "empty": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-not-last": {
+    "sync": true,
+    "plain": true,
+    "auto": true,
+    "ran": [
+     "make"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "fails": {
+    "sync": true,
+    "plain": true,
+    "auto": true,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": true,
+    "plain": true,
+    "auto": true,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "refused": {
+    "sync": true,
+    "plain": true,
+    "auto": true,
+    "ran": [
+     "make"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "pass-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "tests pass and (you approve or drift)": {
+   "empty": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-not-last": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "make"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "fails": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "refused": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "make"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "pass-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "(tests pass or drift) and not diff > 9 lines": {
+   "empty": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-not-last": {
+    "sync": null,
+    "plain": true,
+    "auto": true,
+    "ran": [
+     "make"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "fails": {
+    "sync": null,
+    "plain": false,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": null,
+    "plain": true,
+    "auto": true,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "refused": {
+    "sync": null,
+    "plain": false,
+    "auto": false,
+    "ran": [
+     "make"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "pass-not-at-run": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "not not you approve": {
+   "empty": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-not-last": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "fails": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "refused": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "pass-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "  you approve  ": {
+   "empty": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-not-last": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "fails": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "refused": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "pass-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "agent says done or tests pass": {
+   "empty": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": true,
+    "plain": true,
+    "auto": true,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-not-last": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "make"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "fails": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "refused": {
+    "sync": true,
+    "plain": true,
+    "auto": true,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "pass-not-at-run": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": false,
+    "plain": true,
+    "auto": false,
+    "ran": [
+     "npm test"
+    ],
+    "judged": [],
+    "logged": []
+   }
+  },
+  "attempts > 2 and same error twice and drift": {
+   "empty": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-and-test": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "done-not-last": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "fails": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "stagnant-refused": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "refused": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "pass-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-not-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   },
+   "lint-at-run": {
+    "sync": false,
+    "plain": false,
+    "auto": false,
+    "ran": [],
+    "judged": [],
+    "logged": []
+   }
+  }
+ },
+ "sameAsRun": [
+  [
+   "approve",
+   [
+    null,
+    null,
+    null,
+    null
+   ]
+  ],
+  [
+   "tests",
+   [
+    true,
+    true,
+    false,
+    false
+   ]
+  ],
+  [
+   "cmd",
+   [
+    false,
+    false,
+    true,
+    false
+   ]
+  ],
+  [
+   "llm",
+   [
+    null,
+    null,
+    null,
+    null
+   ]
+  ],
+  [
+   "review",
+   [
+    null,
+    null,
+    null,
+    null
+   ]
+  ],
+  [
+   "done",
+   [
+    null,
+    null,
+    null,
+    null
+   ]
+  ],
+  [
+   "diff",
+   [
+    null,
+    null,
+    null,
+    null
+   ]
+  ],
+  [
+   "touches",
+   [
+    null,
+    null,
+    null,
+    null
+   ]
+  ],
+  [
+   "attempts",
+   [
+    null,
+    null,
+    null,
+    null
+   ]
+  ],
+  [
+   "same",
+   [
+    null,
+    null,
+    null,
+    null
+   ]
+  ],
+  [
+   "drift",
+   [
+    null,
+    null,
+    null,
+    null
+   ]
+  ]
+ ],
+ "globs": [
+  [
+   "approve",
+   null
+  ],
+  [
+   "tests",
+   null
+  ],
+  [
+   "cmd",
+   null
+  ],
+  [
+   "llm",
+   null
+  ],
+  [
+   "review",
+   null
+  ],
+  [
+   "done",
+   null
+  ],
+  [
+   "diff",
+   null
+  ],
+  [
+   "touches",
+   [
+    "a/**"
+   ]
+  ],
+  [
+   "attempts",
+   null
+  ],
+  [
+   "same",
+   null
+  ],
+  [
+   "drift",
+   null
+  ]
+ ],
+ "workflows": [
+  {
+   "name": "gates",
+   "text": "---\nreins: 1\nname: gates\nbudget: { turns: 20, minutes: 9 }\nalways: []\n---\n\n## gate\nid: g0\nuntil: you approve\n\n## gate\nid: g1\nuntil: tests pass\n\n## gate\nid: g2\nuntil: `npm run lint` passes\n\n## gate\nid: g3\nuntil: llm says \"ok\"\n\n## gate\nid: g4\nuntil: reviewer approves \"safe\"\n\n## gate\nid: g5\nuntil: agent says done\n\n## gate\nid: g6\nuntil: diff > 10 lines\n\n## gate\nid: g7\nuntil: touches src/**\n\n## gate\nid: g8\nuntil: attempts > 2\n\n## gate\nid: g9\nuntil: same error twice\n\n## gate\nid: g10\nuntil: drift\n\n## gate\nid: g11\nuntil: tests pass and llm says \"x\"\n\n## gate\nid: g12\nuntil: touches [bad\n",
+   "diagnostics": [],
+   "validate": [
+    {
+     "severity": "warning",
+     "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+     "pos": {
+      "line": 1,
+      "col": 1
+     }
+    },
+    {
+     "severity": "warning",
+     "message": "Condition uses \"llm says\" which costs extra model calls",
+     "pos": {
+      "line": 1,
+      "col": 1
+     }
+    },
+    {
+     "severity": "warning",
+     "message": "Condition uses \"reviewer approves\" which costs extra model calls",
+     "pos": {
+      "line": 1,
+      "col": 1
+     }
+    },
+    {
+     "severity": "warning",
+     "message": "Condition uses \"llm says\" which costs extra model calls",
+     "pos": {
+      "line": 1,
+      "col": 1
+     }
+    },
+    {
+     "severity": "warning",
+     "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+     "pos": {
+      "line": 1,
+      "col": 1
+     }
+    },
+    {
+     "severity": "error",
+     "message": "Invalid glob \"[bad\" in touches condition",
+     "pos": {
+      "line": 1,
+      "col": 1
+     }
+    }
+   ],
+   "validateParsed": [
+    {
+     "severity": "warning",
+     "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+     "pos": {
+      "line": 12,
+      "col": 1
+     }
+    },
+    {
+     "severity": "warning",
+     "message": "Condition uses \"llm says\" which costs extra model calls",
+     "pos": {
+      "line": 20,
+      "col": 1
+     }
+    },
+    {
+     "severity": "warning",
+     "message": "Condition uses \"reviewer approves\" which costs extra model calls",
+     "pos": {
+      "line": 24,
+      "col": 1
+     }
+    },
+    {
+     "severity": "warning",
+     "message": "Condition uses \"llm says\" which costs extra model calls",
+     "pos": {
+      "line": 52,
+      "col": 1
+     }
+    },
+    {
+     "severity": "warning",
+     "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+     "pos": {
+      "line": 52,
+      "col": 1
+     }
+    },
+    {
+     "severity": "error",
+     "message": "Invalid glob \"[bad\" in touches condition",
+     "pos": {
+      "line": 56,
+      "col": 1
+     }
+    }
+   ],
+   "printedAgain": "---\nreins: 1\nname: gates\nbudget: { turns: 20, minutes: 9 }\nalways: []\n---\n\n## gate\nid: g0\nuntil: you approve\n\n## gate\nid: g1\nuntil: tests pass\n\n## gate\nid: g2\nuntil: `npm run lint` passes\n\n## gate\nid: g3\nuntil: llm says \"ok\"\n\n## gate\nid: g4\nuntil: reviewer approves \"safe\"\n\n## gate\nid: g5\nuntil: agent says done\n\n## gate\nid: g6\nuntil: diff > 10 lines\n\n## gate\nid: g7\nuntil: touches src/**\n\n## gate\nid: g8\nuntil: attempts > 2\n\n## gate\nid: g9\nuntil: same error twice\n\n## gate\nid: g10\nuntil: drift\n\n## gate\nid: g11\nuntil: tests pass and llm says \"x\"\n\n## gate\nid: g12\nuntil: touches [bad\n",
+   "program": [
+    {
+     "op": "GATE",
+     "step": "g0",
+     "cond": {
+      "t": "approve"
+     },
+     "top": 0
+    },
+    {
+     "op": "GATE",
+     "step": "g1",
+     "cond": {
+      "t": "tests"
+     },
+     "top": 1
+    },
+    {
+     "op": "GATE",
+     "step": "g2",
+     "cond": {
+      "t": "cmd",
+      "cmd": "npm run lint"
+     },
+     "top": 2
+    },
+    {
+     "op": "GATE",
+     "step": "g3",
+     "cond": {
+      "t": "llm",
+      "q": "ok"
+     },
+     "top": 3
+    },
+    {
+     "op": "GATE",
+     "step": "g4",
+     "cond": {
+      "t": "review",
+      "q": "safe"
+     },
+     "top": 4
+    },
+    {
+     "op": "GATE",
+     "step": "g5",
+     "cond": {
+      "t": "done"
+     },
+     "top": 5
+    },
+    {
+     "op": "GATE",
+     "step": "g6",
+     "cond": {
+      "t": "diff",
+      "n": 10
+     },
+     "top": 6
+    },
+    {
+     "op": "GATE",
+     "step": "g7",
+     "cond": {
+      "t": "touches",
+      "glob": "src/**"
+     },
+     "top": 7
+    },
+    {
+     "op": "GATE",
+     "step": "g8",
+     "cond": {
+      "t": "attempts",
+      "n": 2
+     },
+     "top": 8
+    },
+    {
+     "op": "GATE",
+     "step": "g9",
+     "cond": {
+      "t": "same"
+     },
+     "top": 9
+    },
+    {
+     "op": "GATE",
+     "step": "g10",
+     "cond": {
+      "t": "drift"
+     },
+     "top": 10
+    },
+    {
+     "op": "GATE",
+     "step": "g11",
+     "cond": {
+      "t": "and",
+      "a": {
+       "t": "tests"
+      },
+      "b": {
+       "t": "llm",
+       "q": "x"
+      }
+     },
+     "top": 11
+    },
+    {
+     "op": "GATE",
+     "step": "g12",
+     "cond": {
+      "t": "touches",
+      "glob": "[bad"
+     },
+     "top": 12
+    },
+    {
+     "op": "END"
+    }
+   ],
+   "commands": [
+    "tests pass",
+    "`npm run lint` passes",
+    "tests pass",
+    "npm test"
+   ]
+  },
+  {
+   "name": "gates-with-test",
+   "text": "---\nreins: 1\nname: gates-test\ntest: make check\nbudget: { turns: 20, minutes: 9 }\nalways: []\n---\n\n## gate\nid: a\nuntil: tests pass\n",
+   "diagnostics": [],
+   "validate": [],
+   "validateParsed": [],
+   "printedAgain": "---\nreins: 1\nname: gates-test\ntest: make check\nbudget: { turns: 20, minutes: 9 }\nalways: []\n---\n\n## gate\nid: a\nuntil: tests pass\n",
+   "program": [
+    {
+     "op": "GATE",
+     "step": "a",
+     "cond": {
+      "t": "tests"
+     },
+     "top": 0
+    },
+    {
+     "op": "END"
+    }
+   ],
+   "commands": [
+    "tests pass",
+    "make check"
+   ]
+  },
+  {
+   "name": "cards",
+   "text": "---\nreins: 1\nname: cards\nbudget: { turns: 20, minutes: 9 }\nalways: []\n---\n\n## phase p0\nguard: migrations/**\n> work\n\n## phase p1\nguard: src/[bad\n> work\n\n## phase p2\nguard: a/b.ts\n> work\n\n## phase p3\nnow: look again\n> work\n\n## phase p4\nstop: ask me\n> work\n\n## phase p5\nnope: unknown card\n> work\n",
+   "diagnostics": [
+    {
+     "severity": "error",
+     "message": "Unknown attribute \"nope\"",
+     "pos": {
+      "line": 29,
+      "col": 1
+     }
+    }
+   ],
+   "validate": [
+    {
+     "severity": "error",
+     "message": "Invalid glob \"src/[bad\" in guard",
+     "pos": {
+      "line": 1,
+      "col": 1
+     }
+    },
+    {
+     "severity": "error",
+     "message": "\"now:\" is only allowed in a whenever block",
+     "pos": {
+      "line": 1,
+      "col": 1
+     }
+    },
+    {
+     "severity": "error",
+     "message": "\"stop:\" is only allowed in a whenever block",
+     "pos": {
+      "line": 1,
+      "col": 1
+     }
+    }
+   ],
+   "validateParsed": [
+    {
+     "severity": "error",
+     "message": "Invalid glob \"src/[bad\" in guard",
+     "pos": {
+      "line": 13,
+      "col": 7
+     }
+    },
+    {
+     "severity": "error",
+     "message": "\"now:\" is only allowed in a whenever block",
+     "pos": {
+      "line": 21,
+      "col": 5
+     }
+    },
+    {
+     "severity": "error",
+     "message": "\"stop:\" is only allowed in a whenever block",
+     "pos": {
+      "line": 25,
+      "col": 6
+     }
+    }
+   ],
+   "printedAgain": "---\nreins: 1\nname: cards\nbudget: { turns: 20, minutes: 9 }\nalways: []\n---\n\n## phase p0\nguard: migrations/**\n> work\n\n## phase p1\nguard: src/[bad\n> work\n\n## phase p2\nguard: a/b.ts\n> work\n\n## phase p3\nnow: look again\n> work\n\n## phase p4\nstop: ask me\n> work\n\n## phase p5\n> work\n",
+   "program": [
+    {
+     "op": "TURN",
+     "step": "p0",
+     "policy": {
+      "mode": "write",
+      "guards": [
+       "migrations/**"
+      ],
+      "allowShell": true
+     },
+     "src": {
+      "id": "p0",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [
+       {
+        "kind": "guard",
+        "text": "migrations/**"
+       }
+      ],
+      "links": [],
+      "title": "p0",
+      "prompt": "work"
+     },
+     "top": 0
+    },
+    {
+     "op": "TURN",
+     "step": "p1",
+     "policy": {
+      "mode": "write",
+      "guards": [
+       "src/[bad"
+      ],
+      "allowShell": true
+     },
+     "src": {
+      "id": "p1",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [
+       {
+        "kind": "guard",
+        "text": "src/[bad"
+       }
+      ],
+      "links": [],
+      "title": "p1",
+      "prompt": "work"
+     },
+     "top": 1
+    },
+    {
+     "op": "TURN",
+     "step": "p2",
+     "policy": {
+      "mode": "write",
+      "guards": [
+       "a/b.ts"
+      ],
+      "allowShell": true
+     },
+     "src": {
+      "id": "p2",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [
+       {
+        "kind": "guard",
+        "text": "a/b.ts"
+       }
+      ],
+      "links": [],
+      "title": "p2",
+      "prompt": "work"
+     },
+     "top": 2
+    },
+    {
+     "op": "TURN",
+     "step": "p3",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "p3",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [
+       {
+        "kind": "now",
+        "text": "look again"
+       }
+      ],
+      "links": [],
+      "title": "p3",
+      "prompt": "work"
+     },
+     "top": 3
+    },
+    {
+     "op": "TURN",
+     "step": "p4",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "p4",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [
+       {
+        "kind": "stop",
+        "text": "ask me"
+       }
+      ],
+      "links": [],
+      "title": "p4",
+      "prompt": "work"
+     },
+     "top": 4
+    },
+    {
+     "op": "TURN",
+     "step": "p5",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "p5",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [
+       {
+        "kind": "nope",
+        "text": "unknown card"
+       }
+      ],
+      "links": [],
+      "title": "p5",
+      "prompt": "work"
+     },
+     "top": 5
+    },
+    {
+     "op": "END"
+    }
+   ],
+   "commands": [
+    "npm test"
+   ]
+  },
+  {
+   "name": "autos",
+   "text": "---\nreins: 1\nname: autos\nbudget: { turns: 20, minutes: 9 }\nalways: []\n---\n\n## whenever drift or same error twice\nnow: read the output\n\n## whenever attempts > 4 and llm says \"stuck\"\nstop: ask the user\n\n## whenever touches db/** and diff > 5 lines\nguard: db/**\n\n## whenever touches [oops\nnow: x\n",
+   "diagnostics": [],
+   "validate": [
+    {
+     "severity": "warning",
+     "message": "Condition uses \"llm says\" which costs extra model calls",
+     "pos": {
+      "line": 1,
+      "col": 1
+     }
+    },
+    {
+     "severity": "error",
+     "message": "Invalid glob \"[oops\" in touches condition",
+     "pos": {
+      "line": 1,
+      "col": 1
+     }
+    }
+   ],
+   "validateParsed": [
+    {
+     "severity": "warning",
+     "message": "Condition uses \"llm says\" which costs extra model calls",
+     "pos": {
+      "line": 1,
+      "col": 1
+     }
+    },
+    {
+     "severity": "error",
+     "message": "Invalid glob \"[oops\" in touches condition",
+     "pos": {
+      "line": 1,
+      "col": 1
+     }
+    }
+   ],
+   "printedAgain": "---\nreins: 1\nname: autos\nbudget: { turns: 20, minutes: 9 }\nalways: []\n---\n\n## whenever drift or same error twice\nnow: read the output\n\n## whenever attempts > 4 and llm says \"stuck\"\nstop: ask the user\n\n## whenever touches db/** and diff > 5 lines\nguard: db/**\n\n## whenever touches [oops\nnow: x\n",
+   "program": [
+    {
+     "op": "END"
+    }
+   ],
+   "commands": [
+    "npm test"
+   ]
+  },
+  {
+   "name": "nested",
+   "text": "---\nreins: 1\nname: nested\nbudget: { turns: 20, minutes: 9 }\nalways: []\n---\n\n## repeat\nid: r\nuntil: tests pass or attempts > 3\nmax: 4\n\n### phase k\nguard: x/**\n> p\n\n## if not (drift or you approve)\nid: i\n\n### say\nid: s\n> hi\n\n### else\n\n### say\nid: t\n> no\n",
+   "diagnostics": [],
+   "validate": [
+    {
+     "severity": "warning",
+     "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+     "pos": {
+      "line": 1,
+      "col": 1
+     }
+    }
+   ],
+   "validateParsed": [
+    {
+     "severity": "warning",
+     "message": "Condition \"tests pass\" with no test command set in frontmatter falls back to \"npm test\"",
+     "pos": {
+      "line": 8,
+      "col": 1
+     }
+    }
+   ],
+   "printedAgain": "---\nreins: 1\nname: nested\nbudget: { turns: 20, minutes: 9 }\nalways: []\n---\n\n## repeat\nid: r\nuntil: tests pass or attempts > 3\nmax: 4\n\n### phase k\nguard: x/**\n> p\n\n## if not (drift or you approve)\nid: i\n\n### say\nid: s\n> hi\n\n### else\n\n### say\nid: t\n> no\n",
+   "program": [
+    {
+     "op": "LOOP_IN",
+     "step": "r",
+     "max": 4,
+     "top": 0
+    },
+    {
+     "op": "TURN",
+     "step": "k",
+     "policy": {
+      "mode": "write",
+      "guards": [
+       "x/**"
+      ],
+      "allowShell": true
+     },
+     "src": {
+      "id": "k",
+      "kind": "phase",
+      "attrs": {},
+      "cards": [
+       {
+        "kind": "guard",
+        "text": "x/**"
+       }
+      ],
+      "links": [],
+      "title": "k",
+      "prompt": "p"
+     },
+     "top": 0
+    },
+    {
+     "op": "LOOP_BK",
+     "step": "r",
+     "target": 1,
+     "cond": {
+      "t": "or",
+      "a": {
+       "t": "tests"
+      },
+      "b": {
+       "t": "attempts",
+       "n": 3
+      }
+     },
+     "top": 0
+    },
+    {
+     "op": "IF",
+     "step": "i",
+     "cond": {
+      "t": "not",
+      "a": {
+       "t": "or",
+       "a": {
+        "t": "drift"
+       },
+       "b": {
+        "t": "approve"
+       }
+      }
+     },
+     "elseJump": 6,
+     "top": 1
+    },
+    {
+     "op": "TURN",
+     "step": "s",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "s",
+      "kind": "say",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "prompt": "hi"
+     },
+     "top": 1
+    },
+    {
+     "op": "JUMP",
+     "target": 7,
+     "top": 1
+    },
+    {
+     "op": "TURN",
+     "step": "t",
+     "policy": {
+      "mode": "write",
+      "guards": [],
+      "allowShell": true
+     },
+     "src": {
+      "id": "t",
+      "kind": "say",
+      "attrs": {},
+      "cards": [],
+      "links": [],
+      "prompt": "no"
+     },
+     "top": 1
+    },
+    {
+     "op": "END"
+    }
+   ],
+   "commands": [
+    "tests pass",
+    "npm test"
+   ]
+  }
+ ],
+ "runs": {
+  "guards": {
+   "status": "done",
+   "texts": [
+    "[Reins · playbook \"cards\" · step 1 of 6: p0]\n\nwork\n\nFor this step:\n- Do not touch migrations/**. (Enforced: edits there are blocked.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"cards\" · step 2 of 6: p1]\n\nwork\n\nFor this step:\n- Do not touch src/[bad. (Enforced: edits there are blocked.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"cards\" · step 3 of 6: p2]\n\nwork\n\nFor this step:\n- Do not touch a/b.ts. (Enforced: edits there are blocked.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"cards\" · step 4 of 6: p3]\n\nwork\n\nFor this step:\n- now: look again\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"cards\" · step 5 of 6: p4]\n\nwork\n\nFor this step:\n- stop: ask me\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"cards\" · step 6 of 6: p5]\n\nwork\n\nFor this step:\n- nope: unknown card\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   ],
+   "events": [
+    [
+     "run_started",
+     {
+      "workflow": "cards",
+      "steps": [
+       {
+        "id": "p0",
+        "kind": "phase",
+        "title": "p0"
+       },
+       {
+        "id": "p1",
+        "kind": "phase",
+        "title": "p1"
+       },
+       {
+        "id": "p2",
+        "kind": "phase",
+        "title": "p2"
+       },
+       {
+        "id": "p3",
+        "kind": "phase",
+        "title": "p3"
+       },
+       {
+        "id": "p4",
+        "kind": "phase",
+        "title": "p4"
+       },
+       {
+        "id": "p5",
+        "kind": "phase",
+        "title": "p5"
+       }
+      ]
+     }
+    ],
+    [
+     "step_started",
+     {
+      "step": "p0",
+      "parents": []
+     }
+    ],
+    [
+     "turn_started",
+     {
+      "step": "p0"
+     }
+    ],
+    [
+     "engine_cost",
+     {
+      "usd": 0.01
+     }
+    ],
+    [
+     "turn_ended",
+     {
+      "step": "p0",
+      "text": "a\nREINS: done",
+      "cost": 0.01
+     }
+    ],
+    [
+     "step_started",
+     {
+      "step": "p1",
+      "parents": []
+     }
+    ],
+    [
+     "turn_started",
+     {
+      "step": "p1"
+     }
+    ],
+    [
+     "engine_cost",
+     {
+      "usd": 0.01
+     }
+    ],
+    [
+     "turn_ended",
+     {
+      "step": "p1",
+      "text": "b\nREINS: done",
+      "cost": 0.01
+     }
+    ],
+    [
+     "step_started",
+     {
+      "step": "p2",
+      "parents": []
+     }
+    ],
+    [
+     "turn_started",
+     {
+      "step": "p2"
+     }
+    ],
+    [
+     "engine_cost",
+     {
+      "usd": 0.01
+     }
+    ],
+    [
+     "turn_ended",
+     {
+      "step": "p2",
+      "text": "c\nREINS: done",
+      "cost": 0.01
+     }
+    ],
+    [
+     "step_started",
+     {
+      "step": "p3",
+      "parents": []
+     }
+    ],
+    [
+     "turn_started",
+     {
+      "step": "p3"
+     }
+    ],
+    [
+     "engine_cost",
+     {
+      "usd": 0.01
+     }
+    ],
+    [
+     "turn_ended",
+     {
+      "step": "p3",
+      "text": "d",
+      "cost": 0.01
+     }
+    ],
+    [
+     "step_started",
+     {
+      "step": "p4",
+      "parents": []
+     }
+    ],
+    [
+     "turn_started",
+     {
+      "step": "p4"
+     }
+    ],
+    [
+     "engine_cost",
+     {
+      "usd": 0.01
+     }
+    ],
+    [
+     "turn_ended",
+     {
+      "step": "p4",
+      "text": "e",
+      "cost": 0.01
+     }
+    ],
+    [
+     "step_started",
+     {
+      "step": "p5",
+      "parents": []
+     }
+    ],
+    [
+     "turn_started",
+     {
+      "step": "p5"
+     }
+    ],
+    [
+     "engine_cost",
+     {
+      "usd": 0.01
+     }
+    ],
+    [
+     "turn_ended",
+     {
+      "step": "p5",
+      "text": "f",
+      "cost": 0.01
+     }
+    ],
+    [
+     "run_finished",
+     {}
+    ]
+   ],
+   "counter": 6
+  },
+  "autoNow": {
+   "status": "done",
+   "texts": [
+    "[Reins · playbook \"auto-now\" · step 1 of 2: p]\n\nwork\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"auto-now\" · step 2 of 2: q]\n\nmore\n\nFor this step:\n- hold on a moment\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   ],
+   "events": [
+    [
+     "run_started",
+     {
+      "workflow": "auto-now",
+      "steps": [
+       {
+        "id": "p",
+        "kind": "phase",
+        "title": "p"
+       },
+       {
+        "id": "q",
+        "kind": "phase",
+        "title": "q"
+       }
+      ]
+     }
+    ],
+    [
+     "step_started",
+     {
+      "step": "p",
+      "parents": []
+     }
+    ],
+    [
+     "turn_started",
+     {
+      "step": "p"
+     }
+    ],
+    [
+     "engine_cost",
+     {
+      "usd": 0.01
+     }
+    ],
+    [
+     "turn_ended",
+     {
+      "step": "p",
+      "text": "one\nREINS: done",
+      "cost": 0.01
+     }
+    ],
+    [
+     "card_queued",
+     {
+      "card": "hold on a moment",
+      "kind": "now",
+      "source": "auto"
+     }
+    ],
+    [
+     "step_started",
+     {
+      "step": "q",
+      "parents": []
+     }
+    ],
+    [
+     "card_delivered",
+     {
+      "card": "hold on a moment",
+      "channel": "next-turn"
+     }
+    ],
+    [
+     "turn_started",
+     {
+      "step": "q"
+     }
+    ],
+    [
+     "engine_cost",
+     {
+      "usd": 0.01
+     }
+    ],
+    [
+     "turn_ended",
+     {
+      "step": "q",
+      "text": "two",
+      "cost": 0.01
+     }
+    ],
+    [
+     "run_finished",
+     {}
+    ]
+   ],
+   "counter": 2
+  },
+  "autoStop": {
+   "status": "paused",
+   "texts": [
+    "[Reins · playbook \"auto-stop\" · step 1 of 2: p]\n\nwork\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   ],
+   "events": [
+    [
+     "run_started",
+     {
+      "workflow": "auto-stop",
+      "steps": [
+       {
+        "id": "p",
+        "kind": "phase",
+        "title": "p"
+       },
+       {
+        "id": "q",
+        "kind": "phase",
+        "title": "q"
+       }
+      ]
+     }
+    ],
+    [
+     "step_started",
+     {
+      "step": "p",
+      "parents": []
+     }
+    ],
+    [
+     "turn_started",
+     {
+      "step": "p"
+     }
+    ],
+    [
+     "engine_cost",
+     {
+      "usd": 0.01
+     }
+    ],
+    [
+     "turn_ended",
+     {
+      "step": "p",
+      "text": "one\nREINS: done",
+      "cost": 0.01
+     }
+    ],
+    [
+     "card_queued",
+     {
+      "card": "check with me",
+      "kind": "stop",
+      "source": "auto"
+     }
+    ],
+    [
+     "run_paused",
+     {
+      "reason": "stop",
+      "text": "check with me"
+     }
+    ]
+   ],
+   "counter": 1
+  },
+  "gateTests": {
+   "status": "done",
+   "texts": [
+    "[Reins · playbook \"gate-tests\" · step 1 of 4: p]\n\nwork\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+   ],
+   "events": [
+    [
+     "run_started",
+     {
+      "workflow": "gate-tests",
+      "steps": [
+       {
+        "id": "p",
+        "kind": "phase",
+        "title": "p"
+       },
+       {
+        "id": "g",
+        "kind": "gate"
+       },
+       {
+        "id": "r",
+        "kind": "run"
+       },
+       {
+        "id": "g2",
+        "kind": "gate"
+       }
+      ]
+     }
+    ],
+    [
+     "step_started",
+     {
+      "step": "p",
+      "parents": []
+     }
+    ],
+    [
+     "turn_started",
+     {
+      "step": "p"
+     }
+    ],
+    [
+     "engine_cost",
+     {
+      "usd": 0.01
+     }
+    ],
+    [
+     "turn_ended",
+     {
+      "step": "p",
+      "text": "one",
+      "cost": 0.01
+     }
+    ],
+    [
+     "step_started",
+     {
+      "step": "g",
+      "parents": []
+     }
+    ],
+    [
+     "step_started",
+     {
+      "step": "r",
+      "parents": []
+     }
+    ],
+    [
+     "command_result",
+     {
+      "step": "r",
+      "exitCode": 0
+     }
+    ],
+    [
+     "step_started",
+     {
+      "step": "g2",
+      "parents": []
+     }
+    ],
+    [
+     "run_finished",
+     {}
+    ]
+   ],
+   "counter": 4
+  }
+ },
+ "tagCatalogue": [
+  {
+   "name": "guard",
+   "place": "card",
+   "arg": "guard",
+   "argRequired": true,
+   "enforced": true
+  }
+ ],
+ "conds": [
+  {
+   "label": "you approve",
+   "fresh": {
+    "t": "approve"
+   },
+   "t": "approve"
+  },
+  {
+   "label": "tests pass",
+   "fresh": {
+    "t": "tests"
+   },
+   "t": "tests"
+  },
+  {
+   "label": "command passes",
+   "fresh": {
+    "t": "cmd",
+    "cmd": "npm run lint"
+   },
+   "param": {
+    "key": "cmd",
+    "look": "code"
+   },
+   "t": "cmd"
+  },
+  {
+   "label": "LLM says",
+   "fresh": {
+    "t": "llm",
+    "q": "the plan covers every requirement"
+   },
+   "param": {
+    "key": "q",
+    "look": "str"
+   },
+   "t": "llm"
+  },
+  {
+   "label": "reviewer approves",
+   "fresh": {
+    "t": "review"
+   },
+   "param": {
+    "key": "q",
+    "look": "str",
+    "optional": true
+   },
+   "t": "review"
+  },
+  {
+   "label": "agent says done",
+   "fresh": {
+    "t": "done"
+   },
+   "t": "done"
+  },
+  {
+   "label": "diff > N lines",
+   "fresh": {
+    "t": "diff",
+    "n": 300
+   },
+   "param": {
+    "key": "n",
+    "look": "num"
+   },
+   "t": "diff"
+  },
+  {
+   "label": "touches files",
+   "fresh": {
+    "t": "touches",
+    "glob": "migrations/**"
+   },
+   "param": {
+    "key": "glob",
+    "look": "pill"
+   },
+   "t": "touches"
+  },
+  {
+   "label": "attempts > N",
+   "fresh": {
+    "t": "attempts",
+    "n": 3
+   },
+   "param": {
+    "key": "n",
+    "look": "num"
+   },
+   "t": "attempts"
+  },
+  {
+   "label": "same error twice",
+   "fresh": {
+    "t": "same"
+   },
+   "t": "same"
+  },
+  {
+   "label": "drift detected",
+   "fresh": {
+    "t": "drift"
+   },
+   "t": "drift"
+  }
+ ],
+ "cards": [
+  {
+   "section": "Guards",
+   "add": "Add guard",
+   "kind": "guard"
+  }
+ ],
+ "problems": []
+}

@@ -1,0 +1,15 @@
+{
+  "reins": 1,
+  "id": "cond-review",
+  "kind": "condition",
+  "version": "1.0.0",
+  "label": "Condition: reviewer approves",
+  "description": "True when a reviewer subagent approves",
+  "main": "index.js",
+  "order": 50,
+  "pack": "default",
+  "provides": { "conditions": ["review"] },
+  "view": {
+    "review": { "label": "reviewer approves", "fresh": { "t": "review" }, "param": { "key": "q", "look": "str", "optional": true } }
+  }
+}

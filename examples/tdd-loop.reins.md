@@ -24,7 +24,7 @@ max: 8
 
 ### run `npm test`
 
-## use review-pass
+## playbook review-pass
 
 ## whenever attempts > 3
 now: what did you verify?

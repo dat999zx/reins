@@ -1,0 +1,270 @@
+{
+  "autoArmed": {},
+  "commandResults": [],
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "split-1",
+            "kind": "split"
+          },
+          {
+            "id": "end-1",
+            "kind": "end"
+          },
+          {
+            "id": "g1",
+            "kind": "gate"
+          },
+          {
+            "id": "end-2",
+            "kind": "end"
+          },
+          {
+            "id": "g2",
+            "kind": "gate"
+          },
+          {
+            "id": "end-3",
+            "kind": "end"
+          }
+        ],
+        "workflow": "t"
+      },
+      "id": "ev-1",
+      "timestamp": 1000,
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "split-1"
+      },
+      "id": "ev-2",
+      "timestamp": 2000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "group": "split-1",
+        "parent": "",
+        "title": "Split split-1",
+        "track": "g1"
+      },
+      "id": "ev-3",
+      "timestamp": 3000,
+      "type": "track_started"
+    },
+    {
+      "data": {
+        "group": "split-1",
+        "parent": "",
+        "title": "Split split-1",
+        "track": "g2"
+      },
+      "id": "ev-4",
+      "timestamp": 4000,
+      "type": "track_started"
+    },
+    {
+      "data": {
+        "step": "split-1"
+      },
+      "id": "ev-5",
+      "timestamp": 5000,
+      "type": "split_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "g1",
+        "track": "g1"
+      },
+      "id": "ev-6",
+      "timestamp": 6000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "cond": {
+          "t": "approve"
+        },
+        "step": "g1",
+        "track": "g1"
+      },
+      "id": "ev-7",
+      "timestamp": 7000,
+      "type": "gate_paused"
+    }
+  ],
+  "groups": [
+    {
+      "group": "split-1",
+      "keys": [
+        "g1",
+        "g2"
+      ],
+      "parent": "",
+      "results": []
+    }
+  ],
+  "lastRecallContext": [],
+  "linkCounters": {},
+  "linkLimitExtensions": {},
+  "loopCounters": {},
+  "loopLimitExtensions": {},
+  "pendingCards": [],
+  "programCounter": 0,
+  "programHash": "127971d55d1282",
+  "runCost": 0,
+  "status": "running",
+  "totalTurns": 0,
+  "tracks": [
+    {
+      "capped": false,
+      "group": "split-1",
+      "handback": [],
+      "key": "g1",
+      "order": 0,
+      "parent": "",
+      "pauseReason": {
+        "cond": {
+          "t": "approve"
+        },
+        "stepId": "g1",
+        "type": "gate"
+      },
+      "policy": {
+        "allowShell": true,
+        "guards": [],
+        "mode": "write"
+      },
+      "programCounter": 2,
+      "recall": [],
+      "status": "paused",
+      "title": "Split split-1"
+    },
+    {
+      "capped": false,
+      "group": "split-1",
+      "handback": [],
+      "key": "g2",
+      "order": 1,
+      "parent": "",
+      "policy": {
+        "allowShell": true,
+        "guards": [],
+        "mode": "write"
+      },
+      "programCounter": 4,
+      "recall": [],
+      "status": "running",
+      "title": "Split split-1"
+    }
+  ],
+  "turnOutputs": {},
+  "usdExtra": {},
+  "usdSpent": {},
+  "workflow": {
+    "always": [],
+    "autos": [],
+    "budget": {
+      "minutes": 60,
+      "turns": 40
+    },
+    "name": "t",
+    "steps": [
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "split-1",
+        "kind": "split",
+        "links": [
+          {
+            "kind": "next",
+            "pos": {
+              "col": 6,
+              "line": 9
+            },
+            "to": "g1"
+          },
+          {
+            "kind": "next",
+            "pos": {
+              "col": 6,
+              "line": 10
+            },
+            "to": "g2"
+          }
+        ],
+        "pos": {
+          "col": 1,
+          "line": 8
+        }
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "end-1",
+        "kind": "end",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 12
+        }
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "cond": {
+          "t": "approve"
+        },
+        "id": "g1",
+        "kind": "gate",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 14
+        }
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "end-2",
+        "kind": "end",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 18
+        }
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "cond": {
+          "t": "approve"
+        },
+        "id": "g2",
+        "kind": "gate",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 20
+        }
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "end-3",
+        "kind": "end",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 24
+        }
+      }
+    ],
+    "version": 1
+  }
+}

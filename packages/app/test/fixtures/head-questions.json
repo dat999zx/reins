@@ -1,0 +1,651 @@
+{
+ "INPUTS": [
+  "",
+  " ",
+  "x",
+  "0",
+  "1",
+  "0.5",
+  "2",
+  " 3 ",
+  "007",
+  "10",
+  "1.5",
+  "-1",
+  "1.234",
+  "0.50",
+  " 2 ",
+  "rename it",
+  " go on ",
+  "too risky"
+ ],
+ "gate": {
+  "detail": null,
+  "actions": [
+   {
+    "label": "Approve",
+    "primary": true,
+    "field": null,
+    "answers": [
+     "approve",
+     "approve",
+     "approve",
+     "approve",
+     "approve",
+     "approve",
+     "approve",
+     "approve",
+     "approve",
+     "approve",
+     "approve",
+     "approve",
+     "approve",
+     "approve",
+     "approve",
+     "approve",
+     "approve",
+     "approve"
+    ]
+   },
+   {
+    "label": "Request changes",
+    "primary": false,
+    "field": {
+     "placeholder": "what to change"
+    },
+    "answers": [
+     null,
+     null,
+     "changes x",
+     "changes 0",
+     "changes 1",
+     "changes 0.5",
+     "changes 2",
+     "changes 3",
+     "changes 007",
+     "changes 10",
+     "changes 1.5",
+     "changes -1",
+     "changes 1.234",
+     "changes 0.50",
+     "changes 2",
+     "changes rename it",
+     "changes go on",
+     "changes too risky"
+    ]
+   },
+   {
+    "label": "Stop",
+    "primary": false,
+    "field": null,
+    "answers": [
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop"
+    ]
+   }
+  ]
+ },
+ "budget": {
+  "detail": null,
+  "actions": [
+   {
+    "label": "Allow",
+    "primary": true,
+    "field": {
+     "placeholder": "more turns",
+     "initial": "2"
+    },
+    "answers": [
+     null,
+     null,
+     null,
+     null,
+     "allow 1",
+     null,
+     "allow 2",
+     "allow 3",
+     "allow 7",
+     "allow 10",
+     null,
+     null,
+     null,
+     null,
+     "allow 2",
+     null,
+     null,
+     null
+    ]
+   },
+   {
+    "label": "Stop",
+    "primary": false,
+    "field": null,
+    "answers": [
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop"
+    ]
+   }
+  ]
+ },
+ "resume": {
+  "detail": null,
+  "actions": [
+   {
+    "label": "Resume",
+    "primary": true,
+    "field": {
+     "placeholder": "note (optional)"
+    },
+    "answers": [
+     "resume",
+     "resume",
+     "resume x",
+     "resume 0",
+     "resume 1",
+     "resume 0.5",
+     "resume 2",
+     "resume 3",
+     "resume 007",
+     "resume 10",
+     "resume 1.5",
+     "resume -1",
+     "resume 1.234",
+     "resume 0.50",
+     "resume 2",
+     "resume rename it",
+     "resume go on",
+     "resume too risky"
+    ]
+   },
+   {
+    "label": "Stop",
+    "primary": false,
+    "field": null,
+    "answers": [
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop"
+    ]
+   }
+  ]
+ },
+ "usd": {
+  "detail": null,
+  "actions": [
+   {
+    "label": "Allow",
+    "primary": true,
+    "field": {
+     "placeholder": "more USD",
+     "initial": "0.50"
+    },
+    "answers": [
+     null,
+     null,
+     null,
+     null,
+     "allow $1",
+     "allow $0.5",
+     "allow $2",
+     "allow $3",
+     "allow $007",
+     "allow $10",
+     "allow $1.5",
+     null,
+     null,
+     "allow $0.50",
+     "allow $2",
+     null,
+     null,
+     null
+    ]
+   },
+   {
+    "label": "Stop",
+    "primary": false,
+    "field": null,
+    "answers": [
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop",
+     "stop"
+    ]
+   }
+  ]
+ },
+ "tool": {
+  "detail": "json",
+  "actions": [
+   {
+    "label": "Allow",
+    "primary": true,
+    "field": null,
+    "answers": [
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y"
+    ]
+   },
+   {
+    "label": "Deny",
+    "primary": false,
+    "field": {
+     "placeholder": "reason (optional)"
+    },
+    "answers": [
+     "n",
+     "n",
+     "n x",
+     "n 0",
+     "n 1",
+     "n 0.5",
+     "n 2",
+     "n 3",
+     "n 007",
+     "n 10",
+     "n 1.5",
+     "n -1",
+     "n 1.234",
+     "n 0.50",
+     "n 2",
+     "n rename it",
+     "n go on",
+     "n too risky"
+    ]
+   }
+  ]
+ },
+ "judge": {
+  "detail": null,
+  "actions": [
+   {
+    "label": "Yes",
+    "primary": true,
+    "field": null,
+    "answers": [
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y"
+    ]
+   },
+   {
+    "label": "No",
+    "primary": false,
+    "field": null,
+    "answers": [
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n"
+    ]
+   }
+  ]
+ },
+ "trust": {
+  "detail": null,
+  "actions": [
+   {
+    "label": "Trust",
+    "primary": true,
+    "field": null,
+    "answers": [
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y",
+     "y"
+    ]
+   },
+   {
+    "label": "Don't trust",
+    "primary": false,
+    "field": null,
+    "answers": [
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n",
+     "n"
+    ]
+   }
+  ]
+ },
+ "switch": {
+  "detail": null,
+  "actions": [
+   {
+    "label": "Switch",
+    "primary": true,
+    "field": null,
+    "answers": [
+     "switch",
+     "switch",
+     "switch",
+     "switch",
+     "switch",
+     "switch",
+     "switch",
+     "switch",
+     "switch",
+     "switch",
+     "switch",
+     "switch",
+     "switch",
+     "switch",
+     "switch",
+     "switch",
+     "switch",
+     "switch"
+    ]
+   },
+   {
+    "label": "Keep the current model",
+    "primary": false,
+    "field": null,
+    "answers": [
+     "keep",
+     "keep",
+     "keep",
+     "keep",
+     "keep",
+     "keep",
+     "keep",
+     "keep",
+     "keep",
+     "keep",
+     "keep",
+     "keep",
+     "keep",
+     "keep",
+     "keep",
+     "keep",
+     "keep",
+     "keep"
+    ]
+   }
+  ]
+ },
+ "nope": {
+  "detail": null,
+  "actions": [
+   {
+    "label": "Send",
+    "primary": true,
+    "field": {
+     "placeholder": "answer"
+    },
+    "answers": [
+     null,
+     null,
+     "x",
+     "0",
+     "1",
+     "0.5",
+     "2",
+     " 3 ",
+     "007",
+     "10",
+     "1.5",
+     "-1",
+     "1.234",
+     "0.50",
+     " 2 ",
+     "rename it",
+     " go on ",
+     "too risky"
+    ]
+   }
+  ]
+ },
+ "conds": [
+  {
+   "t": "approve",
+   "label": "you approve",
+   "fresh": {
+    "t": "approve"
+   },
+   "param": null
+  },
+  {
+   "t": "tests",
+   "label": "tests pass",
+   "fresh": {
+    "t": "tests"
+   },
+   "param": null
+  },
+  {
+   "t": "cmd",
+   "label": "command passes",
+   "fresh": {
+    "t": "cmd",
+    "cmd": "npm run lint"
+   },
+   "param": {
+    "key": "cmd",
+    "look": "code"
+   }
+  },
+  {
+   "t": "llm",
+   "label": "LLM says",
+   "fresh": {
+    "t": "llm",
+    "q": "the plan covers every requirement"
+   },
+   "param": {
+    "key": "q",
+    "look": "str"
+   }
+  },
+  {
+   "t": "review",
+   "label": "reviewer approves",
+   "fresh": {
+    "t": "review"
+   },
+   "param": {
+    "key": "q",
+    "look": "str",
+    "optional": true
+   }
+  },
+  {
+   "t": "done",
+   "label": "agent says done",
+   "fresh": {
+    "t": "done"
+   },
+   "param": null
+  },
+  {
+   "t": "diff",
+   "label": "diff > N lines",
+   "fresh": {
+    "t": "diff",
+    "n": 300
+   },
+   "param": {
+    "key": "n",
+    "look": "num"
+   }
+  },
+  {
+   "t": "touches",
+   "label": "touches files",
+   "fresh": {
+    "t": "touches",
+    "glob": "migrations/**"
+   },
+   "param": {
+    "key": "glob",
+    "look": "pill"
+   }
+  },
+  {
+   "t": "attempts",
+   "label": "attempts > N",
+   "fresh": {
+    "t": "attempts",
+    "n": 3
+   },
+   "param": {
+    "key": "n",
+    "look": "num"
+   }
+  },
+  {
+   "t": "same",
+   "label": "same error twice",
+   "fresh": {
+    "t": "same"
+   },
+   "param": null
+  },
+  {
+   "t": "drift",
+   "label": "drift detected",
+   "fresh": {
+    "t": "drift"
+   },
+   "param": null
+  }
+ ],
+ "cards": {
+  "guard": {
+   "section": "Guards",
+   "add": "Add guard"
+  }
+ }
+}

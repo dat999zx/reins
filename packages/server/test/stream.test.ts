@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { EngineEvent } from '@reins/core';
-import { createStreamParser, type StreamOut } from '../src/claude/stream.js';
+import { createStreamParser, type StreamOut } from '../src/mods/claude-code-cli/stream.js';
 
 const FIX = path.resolve(__dirname, '../../../spike/fixtures');
 const fixtures = fs.readdirSync(FIX).filter((f) => f.startsWith('claude-') && f.endsWith('.jsonl'));

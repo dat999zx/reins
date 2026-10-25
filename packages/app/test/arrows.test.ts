@@ -195,3 +195,25 @@ describe('LinkLayer: arrows taken', () => {
     expect(out).not.toContain('taken by the run');
   });
 });
+
+// M3 Task 12: free blocks drawn as a chain need no arrow between them; a fork in the chain runs on into the block under it.
+describe('then arrows and chains', () => {
+  const HEAD = '---\nreins: 1\nname: demo\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n';
+  const w = (body: string) => parseWorkflow(`${HEAD}${body}`).workflow!;
+  const ids = (r: ReturnType<typeof linksToDraw>) => r.then.map((t) => `${t.from}>${t.to}`);
+  it('no arrow inside a drawn chain; an arrow where a block stands apart (it has a place of its own)', () => {
+    const f = w('## phase a\n\n## end\n\n## phase f1\n\n## phase f2\n\n## phase f3\n');
+    expect(ids(linksToDraw(f, none))).toEqual(['f1>f2', 'f2>f3']);                            // without the set: as before
+    expect(ids(linksToDraw(f, none, new Set(['f1', 'f2', 'f3'])))).toEqual([]);               // all three in one chain
+    expect(ids(linksToDraw(f, none, new Set(['f1', 'f3'])))).toEqual(['f1>f2', 'f2>f3']);    // f2 has a place of its own
+    expect(ids(linksToDraw(f, none, new Set(['f2', 'f3'])))).toEqual(['f1>f2']);
+  });
+  it('a free fork runs on into the block under it, so it has a then arrow though it has next wires', () => {
+    const f = w('## phase a\n\n## end\n\n## fork\nnext: z\n\n## phase after\n\n## end\nid: e2\n\n## phase z\n');
+    expect(ids(linksToDraw(f, none))).toEqual(['fork-1>after', 'after>e2']);
+  });
+  it('a phase with a next link still does not run on', () => {
+    const f = w('## phase a\n\n## end\n\n## phase f1\nnext: a (max 2)\n\n## phase f2\n');
+    expect(ids(linksToDraw(f, none))).toEqual([]);
+  });
+});

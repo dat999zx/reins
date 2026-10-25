@@ -1,0 +1,116 @@
+{
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "a",
+            "kind": "phase",
+            "title": "a"
+          },
+          {
+            "id": "gate-1",
+            "kind": "gate"
+          },
+          {
+            "id": "b",
+            "kind": "phase",
+            "title": "b"
+          }
+        ],
+        "workflow": "t"
+      },
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "a"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "a"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "a",
+        "text": "REINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "gate-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "cond": {
+          "t": "approve"
+        },
+        "step": "gate-1"
+      },
+      "type": "gate_paused"
+    },
+    {
+      "data": {},
+      "type": "gate_approved"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "b"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "b"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "b",
+        "text": "REINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {},
+      "type": "run_finished"
+    }
+  ],
+  "receipt": {
+    "autoCardsFired": 0,
+    "gatesHeld": 1,
+    "guardRefusals": 0,
+    "knowlRecalls": 0,
+    "knowlSkipped": 0,
+    "knowlStores": 0,
+    "liveCardsDelivered": 0,
+    "loopAttempts": 0,
+    "readOnlyRefusals": 0,
+    "status": "done",
+    "totalCostUsd": 0,
+    "totalRefusals": 0,
+    "totalTimeMs": 10000,
+    "totalTurns": 2,
+    "verifyResults": {
+      "failed": 0,
+      "passed": 0
+    },
+    "workflow": "t"
+  },
+  "receivedTexts": [
+    "[Reins · playbook \"t\" · step 1 of 3: a]\n\na\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"t\" · step 4 of 4: b]\n\nb\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+  ],
+  "status": "done"
+}

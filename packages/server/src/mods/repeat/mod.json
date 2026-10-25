@@ -1,0 +1,23 @@
+{
+  "reins": 1,
+  "id": "repeat",
+  "kind": "block",
+  "version": "1.0.0",
+  "label": "Repeat",
+  "description": "Repeats its steps until a condition passes",
+  "main": "index.js",
+  "order": 50,
+  "pack": "default",
+  "provides": { "kinds": ["repeat"], "ops": ["LOOP_IN", "LOOP_BK"], "attrs": ["max"], "events": ["loop_iteration", "loop_budget_exceeded"] },
+  "view": {
+    "kind": "repeat",
+    "order": 50,
+    "colour": "loop",
+    "group": "kids",
+    "fields": [{ "key": "max", "label": "Max", "input": "number", "check": "count" }],
+    "line": ["repeat until", "cond", "max", { "field": "max" }],
+    "card": { "label": "repeat until", "section": "Flow" },
+    "fresh": { "attrs": { "max": "3" }, "cond": { "t": "approve" } },
+    "status": { "loop_iteration": { "attempts": "attempts" }, "loop_budget_exceeded": { "state": "stuck" } }
+  }
+}

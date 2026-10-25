@@ -1,0 +1,9 @@
+{
+  "reins": 1,
+  "id": "anthropic-messages",
+  "kind": "protocol",
+  "version": "1.0.0",
+  "label": "Messages",
+  "description": "The Messages wire: Reins keeps the conversation and streams each reply",
+  "main": "index.js"
+}

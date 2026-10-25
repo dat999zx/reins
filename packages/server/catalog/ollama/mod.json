@@ -1,0 +1,18 @@
+{
+  "reins": 1,
+  "id": "ollama",
+  "kind": "provider",
+  "version": "1.0.0",
+  "label": "Ollama",
+  "description": "Models run by Ollama on this computer; no key and no cost.",
+  "homepage": "https://ollama.com/",
+  "protocol": "openai-chat",
+  "baseUrl": "http://localhost:11434/v1",
+  "auth": { "style": "none", "keyEnv": [] },
+  "defaultModel": "gpt-oss:20b",
+  "models": [
+    { "id": "gpt-oss:20b", "label": "gpt-oss 20B", "tools": true }
+  ],
+  "price": { "input": 0, "output": 0 },
+  "untested": true
+}

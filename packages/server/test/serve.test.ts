@@ -41,7 +41,7 @@ describe('reins serve', () => {
     const me = { port: Number(port), token: token! };
     const state = await request(me, 'GET', '/api/state');
     expect(state.status).toBe(200);
-    expect(state.json.engines[0]).toMatchObject({ id: 'claude', installed: true, version: '2.1.281' });
+    expect(state.json.engines[0]).toMatchObject({ id: 'claude-code', installed: true, version: '2.1.281' });
     expect(fs.existsSync(path.join(home, '.reins', 'reins.db'))).toBe(true);
     s.stop();
     expect(await s.done).toBe(0);
@@ -54,7 +54,7 @@ describe('reins serve', () => {
     const dbFile = path.join(home, '.reins', 'reins.db');
     const lockFile = path.join(home, '.reins', 'serve.lock');
     const seed = openStore(dbFile);
-    seed.createSession({ id: 's1', cwd: home, engine: 'claude' });
+    seed.createSession({ id: 's1', cwd: home, engine: 'claude-code' });
     seed.appendLog('s1', { type: 'question', data: { id: 'q', kind: 'tool', prompt: 'p' } });
     seed.close();
     expect(takeLock(lockFile, { pid: process.pid, port: 4242, token: 'tok' })).toEqual({ ok: true });

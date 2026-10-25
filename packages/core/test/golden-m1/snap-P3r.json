@@ -1,0 +1,207 @@
+{
+  "autoArmed": {},
+  "commandResults": [
+    {
+      "cmd": "npm test",
+      "exitCode": 1,
+      "output": "fail 1"
+    },
+    {
+      "cmd": "npm test",
+      "exitCode": 1,
+      "output": "fail 2"
+    }
+  ],
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "fix",
+            "kind": "phase",
+            "title": "fix"
+          },
+          {
+            "id": "run-1",
+            "kind": "run"
+          }
+        ],
+        "workflow": "t"
+      },
+      "id": "ev-1",
+      "timestamp": 1000,
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "fix"
+      },
+      "id": "ev-2",
+      "timestamp": 2000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "fix"
+      },
+      "id": "ev-3",
+      "timestamp": 3000,
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "fix",
+        "text": "REINS: done"
+      },
+      "id": "ev-4",
+      "timestamp": 4000,
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "run-1"
+      },
+      "id": "ev-5",
+      "timestamp": 5000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "exitCode": 1,
+        "step": "run-1"
+      },
+      "id": "ev-6",
+      "timestamp": 6000,
+      "type": "command_result"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "fix"
+      },
+      "id": "ev-7",
+      "timestamp": 7000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "fix"
+      },
+      "id": "ev-8",
+      "timestamp": 8000,
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "fix",
+        "text": "REINS: done"
+      },
+      "id": "ev-9",
+      "timestamp": 9000,
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "run-1"
+      },
+      "id": "ev-10",
+      "timestamp": 10000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "exitCode": 1,
+        "step": "run-1"
+      },
+      "id": "ev-11",
+      "timestamp": 11000,
+      "type": "command_result"
+    },
+    {
+      "data": {
+        "jumps": 2,
+        "linkKey": "run-1->0",
+        "max": 1
+      },
+      "id": "ev-12",
+      "timestamp": 12000,
+      "type": "link_budget_exceeded"
+    }
+  ],
+  "lastRecallContext": [],
+  "lastTurnText": "REINS: done",
+  "linkCounters": {
+    "run-1->0": 2
+  },
+  "linkLimitExtensions": {},
+  "loopCounters": {},
+  "loopLimitExtensions": {},
+  "pauseReason": {
+    "limit": 1,
+    "linkKey": "run-1->0",
+    "to": 0,
+    "type": "link-budget-used"
+  },
+  "pendingCards": [],
+  "programCounter": 1,
+  "runCost": 0,
+  "sessionId": "P3r-main-1",
+  "status": "paused",
+  "totalTurns": 2,
+  "turnOutputs": {
+    "fix": "REINS: done"
+  },
+  "usdExtra": {},
+  "usdSpent": {},
+  "workflow": {
+    "always": [],
+    "autos": [],
+    "budget": {
+      "minutes": 60,
+      "turns": 40
+    },
+    "name": "t",
+    "steps": [
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "fix",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 8
+        },
+        "prompt": "fix",
+        "title": "fix"
+      },
+      {
+        "attrs": {
+          "cmd": "npm test"
+        },
+        "cards": [],
+        "id": "run-1",
+        "kind": "run",
+        "links": [
+          {
+            "kind": "on-fail",
+            "max": 1,
+            "pos": {
+              "col": 9,
+              "line": 12
+            },
+            "to": "fix"
+          }
+        ],
+        "pos": {
+          "col": 1,
+          "line": 11
+        }
+      }
+    ],
+    "version": 1
+  }
+}

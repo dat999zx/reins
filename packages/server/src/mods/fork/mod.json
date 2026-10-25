@@ -1,0 +1,28 @@
+{
+  "reins": 1,
+  "id": "fork",
+  "kind": "block",
+  "version": "1.0.0",
+  "label": "Fork",
+  "description": "Runs several branches at the same time, then hands their results to the block under it",
+  "main": "index.js",
+  "order": 135,
+  "pack": "default",
+  "tracks": true,
+  "provides": { "kinds": ["fork"], "ops": ["FORK"], "events": ["fork_started", "fork_done"] },
+  "view": {
+    "kind": "fork",
+    "order": 135,
+    "colour": "loop",
+    "manyNext": true,
+    "fields": [],
+    "line": ["fork", "sub"],
+    "sub": "runs {links.length} at once",
+    "card": { "label": "fork", "section": "Flow" },
+    "fresh": {},
+    "rows": {
+      "fork_started": { "text": "Fork {step}: {words} started.", "className": "sx-sub" },
+      "fork_done": { "text": "Fork {step}: every branch finished.", "className": "sx-sub" }
+    }
+  }
+}

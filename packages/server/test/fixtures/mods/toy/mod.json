@@ -1,0 +1,15 @@
+{
+  "reins": 1,
+  "id": "toy",
+  "kind": "provider",
+  "version": "1.0.0",
+  "label": "Toy",
+  "description": "A provider for tests. The test fills in the port of its fake server.",
+  "protocol": "toy-echo",
+  "baseUrl": "http://127.0.0.1:__PORT__/v1",
+  "auth": { "style": "bearer", "keyEnv": ["TOY_API_KEY"] },
+  "defaultModel": "echo-1",
+  "models": [
+    { "id": "echo-1", "label": "Echo 1", "context": 100000, "maxOutput": 4000, "tools": true, "price": { "input": 1, "output": 2 } }
+  ]
+}

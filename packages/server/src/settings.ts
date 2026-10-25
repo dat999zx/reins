@@ -1,6 +1,13 @@
 import type { CatalogModel } from './catalog.js';
-import type { Provider } from './providers.js';
 import type { LogRow, Store } from './store.js';
+
+/** What a price lookup needs of a provider: its measured table (USD per million tokens) and its cache-write multiple. */
+export interface PriceTable {
+  prices: Record<string, { input: number; cacheWrite?: number }>;
+  cacheWritePerInput?: number;
+  /** The provider's default price for a model with no row of its own (local servers declare 0/0). */
+  price?: { input: number; output?: number };
+}
 
 // ponytail: the estimate uses the provider file's measured price table, else catalog prices; both can go stale; a model with no price is refused.
 export const SETTINGS = {
@@ -10,6 +17,10 @@ export const SETTINGS = {
   // The fraction of the window at which a reply is preceded by a compression. 1 is off: at 100 % the window is already full.
   autoCompressAt: { default: 0.9, valid: (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 1 },
   // A subagent's tool request: a card on the parent run (ask), or refused with a note and a hook row (deny, Hermes's default).
+  // The provider a new session uses when the request names none. '' = the provider whose manifest says `default`, else the first installed.
+  defaultProvider: { default: '', valid: (v: unknown) => typeof v === 'string' },
+  // Most model calls one reply of the API agent loop may make (after Hermes's iteration budget). Whole number, 1 or more.
+  maxCallsPerTurn: { default: 200, valid: (v: unknown) => Number.isInteger(v) && (v as number) >= 1 },
   subagentApprovals: { default: 'ask' as 'ask' | 'deny', valid: (v: unknown) => v === 'ask' || v === 'deny' },
 };
 
@@ -41,6 +52,18 @@ export function contextWindow(rows: LogRow[]): number | undefined {
     if (r.type !== 'engine' || type(r) !== 'usage') continue;
     const w = (r.data as { window?: unknown }).window;
     return typeof w === 'number' ? w : undefined;
+  }
+  return undefined;
+}
+
+/** The model of the newest usage row when that row has no window; undefined when it has one, there is none, or the model was changed after it. */
+export function modelWithoutWindow(rows: LogRow[]): string | undefined {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i]!;
+    if (r.type === 'settings' && r.data && 'model' in (r.data as object)) return undefined;
+    if (r.type !== 'engine' || type(r) !== 'usage' || typeof (r.data as { step?: unknown } | null)?.step === 'string') continue;
+    const d = r.data as { window?: unknown; model?: unknown };
+    return typeof d.window !== 'number' && typeof d.model === 'string' ? d.model : undefined;
   }
   return undefined;
 }
@@ -81,15 +104,18 @@ export interface Price { input: number; cacheWrite: number; source: 'table' | 'c
  * ponytail: tiers are chosen by the tokens of the switch, not of a later turn, and only on the catalog path: the provider's own table is flat
  * (Haiku's catalog tier above 100k tokens, 5x the input price, is not in it; the estimate stays far under the USD limit).
  */
-export function priceFor(provider: Pick<Provider, 'prices' | 'cacheWritePerInput'>, catalog: CatalogModel[], model: string, tokens: number): Price | undefined {
+export function priceFor(provider: PriceTable, catalog: CatalogModel[], model: string, tokens: number): Price | undefined {
   const t = provider.prices[model];
   if (t) return { input: t.input, cacheWrite: t.cacheWrite ?? t.input, source: 'table' };
   const price = catalog.find((m) => m.id === model)?.price;
-  if (!price || provider.cacheWritePerInput === undefined) return undefined;
-  const tier = (price.tiers ?? []).filter((x) => x.size <= tokens).sort((a, b) => b.size - a.size)[0];
-  const input = tier ? tier.input : price.input;
-  if (input === undefined) return undefined;
-  return { input, cacheWrite: input * provider.cacheWritePerInput, source: 'catalog' };
+  if (price && provider.cacheWritePerInput !== undefined) {
+    const tier = (price.tiers ?? []).filter((x) => x.size <= tokens).sort((a, b) => b.size - a.size)[0];
+    const input = tier ? tier.input : price.input;
+    if (input !== undefined) return { input, cacheWrite: input * provider.cacheWritePerInput, source: 'catalog' };
+  }
+  // Last, the provider's own default (a local server's 0/0): a cache write is billed as input, as the loop counts it (spec 6.1).
+  if (provider.price) return { input: provider.price.input, cacheWrite: provider.price.input, source: 'table' };
+  return undefined;
 }
 
 export type SwitchCheck = { refuse: string } | { ask: { prompt: string; detail: string } } | undefined;

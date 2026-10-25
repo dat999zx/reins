@@ -1,10 +1,13 @@
 import { spawn } from 'node:child_process';
+import { StringDecoder } from 'node:string_decoder';
 import { killTree } from './proc.js';
 
 export interface CommandOptions {
   cwd: string;
   timeoutMs?: number;
   onOutput?: (chunk: string) => void;
+  /** The child's environment, worked out when it starts (callers pass `shellEnvFrom(...)`); none = this process's. */
+  env?: () => NodeJS.ProcessEnv;
 }
 
 const KEEP_LINES = 200;
@@ -18,31 +21,37 @@ const KEEP_CHARS = 256 * 1024;
 export function runCommand(cmd: string, o: CommandOptions): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const timeoutMs = o.timeoutMs ?? 10 * 60_000;
   return new Promise((resolve) => {
+    // Asked here, at the start of THIS command: a provider installed or switched off since the workflow began is seen.
+    const env = o.env?.();
     const child = spawn(cmd, {
       cwd: o.cwd,
+      ...(env ? { env } : {}),
       shell: true,
       windowsHide: true,
       detached: process.platform !== 'win32',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let out = '';
-    const onData = (d: Buffer) => {
-      const s = d.toString('utf8');
+    const take = (s: string) => {
+      if (!s) return;
       o.onOutput?.(s);
       out += s;
       if (out.length > 2 * KEEP_CHARS) out = out.slice(-KEEP_CHARS);
     };
-    child.stdout.on('data', onData);
-    child.stderr.on('data', onData);
+    // One decoder per stream: a character cut between two chunks is decoded whole, so nothing downstream sees a broken one.
+    const decoders = [new StringDecoder('utf8'), new StringDecoder('utf8')];
+    child.stdout.on('data', (d: Buffer) => take(decoders[0]!.write(d)));
+    child.stderr.on('data', (d: Buffer) => take(decoders[1]!.write(d)));
 
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
-      killTree(child.pid);
+      killTree(child.pid, o.env?.() ?? env); // the kill helper is a new process: its env is worked out now, not when the command started
     }, timeoutMs);
 
     const finish = (code: number) => {
       clearTimeout(timer);
+      for (const d of decoders) take(d.end());
       if (timedOut) out += `\n[Reins: timed out after ${Math.round(timeoutMs / 1000)} s and was killed]\n`;
       const lines = out.split(/\r?\n/);
       if (lines[lines.length - 1] === '') lines.pop();

@@ -1,0 +1,22 @@
+{
+  "reins": 1,
+  "id": "gate",
+  "kind": "block",
+  "version": "1.0.0",
+  "label": "Gate",
+  "description": "Holds the run until a condition passes or you approve",
+  "main": "index.js",
+  "order": 40,
+  "pack": "default",
+  "provides": { "kinds": ["gate"], "ops": ["GATE"], "events": ["gate_paused"] },
+  "view": {
+    "kind": "gate",
+    "order": 40,
+    "colour": "gate",
+    "fields": [],
+    "line": ["wait until", "cond"],
+    "card": { "label": "wait until", "section": "Flow" },
+    "fresh": { "cond": { "t": "approve" } },
+    "status": { "gate_paused": { "state": "waiting", "gate": true, "cursor": true, "opens": true } }
+  }
+}

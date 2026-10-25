@@ -2,8 +2,8 @@
 // only with REINS_E2E=1, run by hand, never in CI. Every assertion is on session_log, not on the model's words.
 import { describe, it, expect, afterEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { claudeEngine, probeClaude } from '../src/claude/engine.js';
-import { findClaude } from '../src/claude/find.js';
+import { claudeEngine, probeClaude } from '../src/mods/claude-code-cli/engine.js';
+import { findClaude } from '../src/mods/claude-code-cli/find.js';
 import { startServer } from '../src/server.js';
 import { openStore } from '../src/store.js';
 import { until } from './helpers.js';

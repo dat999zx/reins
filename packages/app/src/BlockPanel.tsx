@@ -1,18 +1,19 @@
 import { useEffect, useRef, useState, type JSX, type KeyboardEvent } from 'react';
 import type { Step, Workflow } from '@reins/core';
-import { CARD_KINDS, CARD_LABEL, KINDS, type Field } from './canvasKinds.js';
+import { CARD_KINDS, CARD_LABEL, viewOf, type Field } from './canvasKinds.js';
 import { commitBudget, setAlways } from './blocks.js';
 import { editStep, removeLinks } from './canvas.js';
 import { applyField, applyLinkMax, budgetCount, BUDGET_HINT, fieldValue, MODES, type BudgetKey } from './panelEdit.js';
 import { OptionPicker } from './OptionPicker.js';
+import type { PickOption } from './usage.js';
 
 // The same rule as usdText in packages/core/src/format/print.ts (the app imports only core's types): two decimals when that loses nothing.
 export const usdText = (usd: number) => (Number(usd.toFixed(2)) === usd ? usd.toFixed(2) : String(usd));
 
-type Models = Array<{ id: string; label: string }>;
+type Models = PickOption[];
 export type SessionModel = { id: string; label: string }; // what a field that inherits the session's model (or reasoning level) runs on
 // `alert` is the id of the words under a refused value: the input says it is invalid and points at them.
-type InputProps = { label: string; value: string; ids: string[]; models: Models; rev: unknown; commit: (v: string) => void; alert?: string; blank?: string };
+type InputProps = { label: string; value: string; ids: string[]; models: Models; rev: unknown; commit: (v: string) => void; alert?: string; blank?: string; other?: { own?: string } };
 
 // A field shows a draft while typing and commits on blur / Enter. It re-syncs from the model after every
 // preview (`rev`), so a commit the editor dropped never leaves a value the model does not have.
@@ -46,9 +47,9 @@ const line = (type: 'text' | 'number', mono?: boolean) => function LineInput({ l
   );
 };
 
-const picker = ({ label, value, models, commit, blank }: InputProps) => (
+const picker = ({ label, value, models, commit, blank, other }: InputProps) => (
   <label className="bfield">{label}
-    <OptionPicker label={label} options={models} value={value} blank={blank} onChange={commit} />
+    <OptionPicker label={label} options={models} value={value} blank={blank} other={other} onChange={commit} />
   </label>
 );
 
@@ -86,7 +87,8 @@ const INPUTS: Record<Field['input'], (p: InputProps) => JSX.Element> = {
 // What a field that picks from a provider list reads: the list (the models or the levels) and, when it inherits, the session's own label.
 export const pickFor = (f: Field, p: { models: Models; efforts: Models; sessionModel?: SessionModel; sessionEffort?: SessionModel }) => {
   const level = f.input === 'effort';
-  return { options: level ? p.efforts : p.models, blank: f.inherits ? (level ? p.sessionEffort : p.sessionModel)?.label : undefined };
+  // a model field also takes a typed id (plain: a model of the session's provider; `provider:model` names another)
+  return { options: level ? p.efforts : p.models, blank: f.inherits ? (level ? p.sessionEffort : p.sessionModel)?.label : undefined, other: level ? undefined : {} };
 };
 
 // One panel field; a value applyField refuses is said in words under it (the file is left as it was).
@@ -99,7 +101,7 @@ export function PanelField({ f, step, ids, models, efforts, sessionModel, sessio
   const pick = pickFor(f, { models, efforts, sessionModel, sessionEffort });
   return (
     <>
-      <Input label={f.label} value={fieldValue(step, f.key)} ids={ids} models={pick.options} rev={rev} blank={pick.blank} alert={bad ? alertId : undefined}
+      <Input label={f.label} value={fieldValue(step, f.key)} ids={ids} models={pick.options} rev={rev} blank={pick.blank} other={pick.other} alert={bad ? alertId : undefined}
         commit={(v) => {
           const ok = applyField(structuredClone(step), f.key, v);
           setBad(ok ? '' : f.error ?? '');
@@ -114,12 +116,13 @@ export function BlockPanel({ step, all, cond, turn, rev, models, efforts, sessio
   step: Step; all: Step[]; cond?: string; turn?: string; rev: unknown; models: Models; efforts: Models; sessionModel?: SessionModel; sessionEffort?: SessionModel;
   onEdit: (fn: (w: Workflow) => Workflow) => void; onEditInText: () => void; onShowInChat?: () => void; onDelete: () => void;
 }) {
-  const k = KINDS[step.kind];
+  const k = viewOf(step.kind);
   const id = step.id;
   const others = all.filter((s) => s.id !== id).map((s) => s.id);
   const change = (fn: (s: Step) => void | boolean) => onEdit((w) => editStep(w, id, fn));
   const incoming = all.flatMap((s) => s.links.filter((l) => l.to === id).map((l) => ({ from: s.id, kind: l.kind })));
-  const card = CARD_LABEL[CARD_KINDS[0]];
+  const cardKind = CARD_KINDS[0]; // the first card kind the server offers; none before its reply
+  const card = cardKind === undefined ? undefined : CARD_LABEL[cardKind];
 
   return (
     <aside className="bpanel" aria-label="Block panel">
@@ -139,7 +142,7 @@ export function BlockPanel({ step, all, cond, turn, rev, models, efforts, sessio
         </div>
       )}
 
-      {k.cards && (
+      {k.cards && card && cardKind && (
         <section aria-label={card.section}>
           <h4>{card.section}</h4>
           {step.cards.map((c, i) => (
@@ -147,7 +150,7 @@ export function BlockPanel({ step, all, cond, turn, rev, models, efforts, sessio
               commit={(v) => change((s) => { s.cards[i]!.text = v; })}
               remove={() => change((s) => { s.cards.splice(i, 1); })} />
           ))}
-          <button onClick={() => change((s) => { s.cards.push({ kind: CARD_KINDS[0], text: '' }); })}>{card.add}</button>
+          <button onClick={() => change((s) => { s.cards.push({ kind: cardKind, text: '' }); })}>{card.add}</button>
         </section>
       )}
 
@@ -173,7 +176,7 @@ export function BlockPanel({ step, all, cond, turn, rev, models, efforts, sessio
 
 export function WorkflowPanel({ w, rev, onEdit }: { w: Workflow; rev: unknown; onEdit: (fn: (w: Workflow) => Workflow) => void }) {
   return (
-    <aside className="bpanel" aria-label="Workflow panel">
+    <aside className="bpanel" aria-label="Playbook panel">
       <h3>{w.name}</h3>
       {w.task && <div className="bfield">Task<span className="sx-faint">{w.task}</span></div>}
       {!w.block && <BudgetFields w={w} rev={rev} onEdit={onEdit} />}

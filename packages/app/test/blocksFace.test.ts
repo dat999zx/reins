@@ -55,19 +55,23 @@ describe('the block face', () => {
     expect(face(step('say'))).not.toContain('no prompt yet');
     expect(face(step('subagent', { prompt: 'Look.' }))).not.toContain('no prompt yet');
   });
-  it('a verify block has three handles in order, a run block two, a phase one', () => {
+  it('a verify block has two handles in order (on-fail, against), a run block one (on-fail), a phase none, and only the fork has the gray next', () => {
     const lks = (html: string) => [...html.matchAll(/data-lk="([^"]+)"/g)].map((m) => m[1]);
-    expect(lks(face(step('verify')))).toEqual(['next', 'on-fail', 'against']);
-    expect(lks(face(step('run', { attrs: { cmd: 'x' } })))).toEqual(['next', 'on-fail']);
-    expect(lks(face(step('phase')))).toEqual(['next']);
-    expect(wiresOf('verify')).toEqual(['next', 'on-fail', 'against']);
+    expect(lks(face(step('verify')))).toEqual(['on-fail', 'against']);
+    expect(lks(face(step('run', { attrs: { cmd: 'x' } })))).toEqual(['on-fail']);
+    expect(lks(face(step('phase')))).toEqual([]);
+    expect(lks(face(step('fork')))).toEqual(['next']);
+    expect(wiresOf('verify')).toEqual(['on-fail', 'against']);
+    expect(wiresOf('phase')).toEqual([]);
+    expect(wiresOf('fork')).toEqual(['next']);
     expect(wiresOf('end')).toEqual([]);
   });
-  it('handles stack by count: two get sx-two, three get sx-three, one gets neither', () => {
+  it('handles stack by count: two get sx-two, one gets neither', () => {
     const cls = (html: string) => [...html.matchAll(/class="sx-handle([^"]*)"/g)].map((m) => m[1]!.trim());
-    expect(cls(face(step('verify')))).toEqual(['sx-three', 'sx-three', 'sx-three']);
-    expect(cls(face(step('run', { attrs: { cmd: 'ls' } })))).toEqual(['sx-two', 'sx-two']);
-    expect(cls(face(step('phase', { title: 'p' })))).toEqual(['']);
+    expect(cls(face(step('verify')))).toEqual(['sx-two', 'sx-two']);
+    expect(cls(face(step('run', { attrs: { cmd: 'ls' } })))).toEqual(['']);
+    expect(cls(face(step('fork')))).toEqual(['']);
+    expect(cls(face(step('phase', { title: 'p' })))).toEqual([]);
   });
   it('a loose verify block shows its links as chips but not its against target', () => {
     const loose = step('verify', { attrs: { against: 'plan' }, links: [{ kind: 'on-fail', to: 'plan' }] as Step['links'] });
@@ -97,29 +101,28 @@ describe('the block face', () => {
     } as never));
     it('three pills: turns, minutes, USD (empty says optional)', () => {
       const html = hat({});
-      expect(html).toContain('aria-label="Turns of the workflow"');
-      expect(html).toContain('aria-label="Minutes of the workflow"');
-      expect(html).toContain('aria-label="USD of the workflow"');
-      expect(html).toMatch(/aria-label="Turns of the workflow"[^>]*value="10"/);
-      expect(html).toMatch(/aria-label="Minutes of the workflow"[^>]*value="30"/);
-      expect(html).toMatch(/aria-label="USD of the workflow" placeholder="optional"/);
-      expect(hat({ budget: { turns: 10, minutes: 30, usd: 2 } })).toMatch(/aria-label="USD of the workflow"[^>]*value="2.00"/);
+      expect(html).toContain('aria-label="Turns of the playbook"');
+      expect(html).toContain('aria-label="Minutes of the playbook"');
+      expect(html).toContain('aria-label="USD of the playbook"');
+      expect(html).toMatch(/aria-label="Turns of the playbook"[^>]*value="10"/);
+      expect(html).toMatch(/aria-label="Minutes of the playbook"[^>]*value="30"/);
+      expect(html).toMatch(/aria-label="USD of the playbook" placeholder="optional"/);
+      expect(hat({ budget: { turns: 10, minutes: 30, usd: 2 } })).toMatch(/aria-label="USD of the playbook"[^>]*value="2.00"/);
     });
     it('a block file has no budget, so no pills', () => {
-      expect(hat({ block: 'b' } as never)).not.toContain('of the workflow');
+      expect(hat({ block: 'b' } as never)).not.toContain('of the playbook');
     });
     it('the over-sum error is said under the pills, only while it is true', () => {
-      const d = { severity: 'error', message: "The blocks' budgets add up to $3.00, over the workflow's $2.00.", pos: { line: 9, col: 1 } };
-      expect(hat({}, [d])).toContain('<div class="sx-bad">The blocks&#x27; budgets add up to $3.00, over the workflow&#x27;s $2.00.</div>');
+      const d = { severity: 'error', message: "The blocks' budgets add up to $3.00, over the playbook's $2.00.", pos: { line: 9, col: 1 } };
+      expect(hat({}, [d])).toContain('<div class="sx-bad">The blocks&#x27; budgets add up to $3.00, over the playbook&#x27;s $2.00.</div>');
       expect(hat({})).not.toContain('sx-bad');
       // any other error is not the hat's to say
       expect(hat({}, [{ severity: 'error', message: 'Unknown attribute "x"', pos: { line: 9, col: 1 } }])).not.toContain('sx-bad');
       expect(hat({}, [{ severity: 'warning', message: d.message, pos: d.pos }])).not.toContain('sx-bad');
     });
   });
-  it('the two handles say what they do', () => {
-    const html = face(step('run', { attrs: { cmd: 'x' } }));
-    expect(html).toContain('title="Runs next when this block finishes. Drag to a block to link."');
-    expect(html).toContain('title="Runs if this block fails. Drag to a block to link."');
+  it('the handles say what they do', () => {
+    expect(face(step('fork'))).toContain('title="Starts a branch at the block you drag this to. Drag to a block to link."');
+    expect(face(step('run', { attrs: { cmd: 'x' } }))).toContain('title="Runs if this block fails. Drag to a block to link."');
   });
 });

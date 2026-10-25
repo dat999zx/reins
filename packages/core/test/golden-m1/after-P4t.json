@@ -1,0 +1,85 @@
+{
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "subagent-1",
+            "kind": "subagent",
+            "title": "research"
+          },
+          {
+            "id": "use",
+            "kind": "phase",
+            "title": "use"
+          }
+        ],
+        "workflow": "t"
+      },
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "subagent-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "model": "m1",
+        "step": "subagent-1",
+        "title": "research"
+      },
+      "type": "subagent_started"
+    },
+    {
+      "data": {
+        "step": "subagent-1"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {},
+      "type": "run_stopped"
+    },
+    {
+      "data": {
+        "step": "subagent-1",
+        "text": "REINS: done"
+      },
+      "type": "turn_ended"
+    }
+  ],
+  "receipt": {
+    "autoCardsFired": 0,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "knowlRecalls": 0,
+    "knowlSkipped": 0,
+    "knowlStores": 0,
+    "liveCardsDelivered": 0,
+    "loopAttempts": 0,
+    "readOnlyRefusals": 0,
+    "status": "stopped",
+    "subagents": [
+      {
+        "step": "subagent-1",
+        "title": "research",
+        "turns": 1,
+        "usd": 0
+      }
+    ],
+    "totalCostUsd": 0,
+    "totalRefusals": 0,
+    "totalTimeMs": 5000,
+    "totalTurns": 1,
+    "verifyResults": {
+      "failed": 0,
+      "passed": 0
+    },
+    "workflow": "t"
+  },
+  "receivedTexts": [],
+  "status": "stopped"
+}

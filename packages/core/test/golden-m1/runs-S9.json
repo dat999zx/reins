@@ -1,0 +1,177 @@
+{
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "one",
+            "kind": "phase",
+            "title": "one"
+          },
+          {
+            "id": "playbook-1",
+            "kind": "playbook",
+            "title": "review-pass"
+          },
+          {
+            "id": "end-1",
+            "kind": "end"
+          },
+          {
+            "id": "free",
+            "kind": "phase",
+            "title": "free"
+          }
+        ],
+        "workflow": "t"
+      },
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "one"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "one"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "one",
+        "text": "REINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "playbook-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "playbook": "review-pass",
+        "session": "inline",
+        "step": "playbook-1"
+      },
+      "type": "playbook_started"
+    },
+    {
+      "data": {
+        "parents": [
+          "playbook-1"
+        ],
+        "step": "playbook-1/review"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "playbook-1/review"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "playbook-1/review",
+        "text": "REINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [
+          "playbook-1"
+        ],
+        "step": "playbook-1/fix"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "playbook-1/fix"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "playbook-1/fix",
+        "text": "REINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [
+          "playbook-1"
+        ],
+        "step": "playbook-1/gate-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "answer": true,
+        "cond": {
+          "q": "no blocking issues left",
+          "t": "llm"
+        }
+      },
+      "type": "judge"
+    },
+    {
+      "data": {
+        "playbook": "review-pass",
+        "step": "playbook-1"
+      },
+      "type": "playbook_done"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "end-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {},
+      "type": "run_finished"
+    }
+  ],
+  "receipt": {
+    "autoCardsFired": 0,
+    "counts": {
+      "playbooks": 1
+    },
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "knowlRecalls": 0,
+    "knowlSkipped": 0,
+    "knowlStores": 0,
+    "liveCardsDelivered": 0,
+    "loopAttempts": 0,
+    "readOnlyRefusals": 0,
+    "status": "done",
+    "totalCostUsd": 0,
+    "totalRefusals": 0,
+    "totalTimeMs": 16000,
+    "totalTurns": 3,
+    "verifyResults": {
+      "failed": 0,
+      "passed": 0
+    },
+    "workflow": "t"
+  },
+  "receivedTexts": [
+    "[Reins · playbook \"t\" · step 1 of 4: one]\n\nfirst\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"t\" · step 2 of 4: review]\n\nReview the full diff as a harsh reviewer. List real problems only.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"t\" · step 2 of 4: fix]\n\nFix the problems from the review. Nothing else.\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+  ],
+  "status": "done"
+}

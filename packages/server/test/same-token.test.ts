@@ -1,6 +1,6 @@
 // The token comparison behind the hook route and the HTTP API (plan 15d 3b.7, line 1552).
 import { describe, it, expect } from 'vitest';
-import { sameToken } from '../src/hooks.js';
+import { sameToken } from '../src/token.js';
 
 describe('sameToken', () => {
   it('is true only for the same bytes', () => {

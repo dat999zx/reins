@@ -7,8 +7,13 @@ import type { Question } from '../src/drive.js';
 import { openSession, type MakeEngine } from '../src/session.js';
 import { contextSize } from '../src/settings.js';
 import { openStore, type LogRow } from '../src/store.js';
-import { folderHash, hashCommands } from '../src/trust.js';
+import { folderHash } from '../src/mods/claude-code-cli/folder.js';
+import { hashCommands } from '../src/trust.js';
+import type { Decision, ToolRequest } from '@reins/core';
 import { testEngine, type TestTurn } from './test-engine.js';
+import { usePack } from './pack-helper.js';
+
+usePack(); // M3 Task 3: the built-in kinds are the default pack's mods; this file loads the pack once
 
 const tmps: string[] = [];
 const tmp = () => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'reins-sess-')); tmps.push(d); return d; };
@@ -28,9 +33,9 @@ function setup(script: TestTurn[] = [], o: { cwd?: string; dir?: string; autoApp
   const seen: LogRow[] = [];
   const dir = o.dir ?? tmp();
   const cwd = o.cwd ?? tmp();
-  const row = store.createSession({ id: 's1', cwd, engine: 'claude', ...(o.model ? { model: o.model } : {}), ...(o.effort ? { effort: o.effort } : {}) });
-  const s = openSession({ store, makeEngine, dir, onRow: (r) => seen.push(r), ...(o.describe ? { describeModel: o.describe } : {}), ...(o.levelLabel ? { describeEffort: (_e: string, id: string) => ({ listed: true, label: o.levelLabel!(id) }) } : {}) }, row, true);
-  const reopen = () => openSession({ store, makeEngine, dir, onRow: (r) => seen.push(r), ...(o.describe ? { describeModel: o.describe } : {}), ...(o.levelLabel ? { describeEffort: (_e: string, id: string) => ({ listed: true, label: o.levelLabel!(id) }) } : {}) }, store.getSession('s1')!);
+  const row = store.createSession({ id: 's1', cwd, engine: 'claude-code', ...(o.model ? { model: o.model } : {}), ...(o.effort ? { effort: o.effort } : {}) });
+  const s = openSession({ store, makeEngine, folderTrust: t.folderTrust, dir, onRow: (r) => seen.push(r), ...(o.describe ? { describeModel: o.describe } : {}), ...(o.levelLabel ? { describeEffort: (_e: string, id: string) => ({ listed: true, label: o.levelLabel!(id) }) } : {}) }, row, true);
+  const reopen = () => openSession({ store, makeEngine, folderTrust: t.folderTrust, dir, onRow: (r) => seen.push(r), ...(o.describe ? { describeModel: o.describe } : {}), ...(o.levelLabel ? { describeEffort: (_e: string, id: string) => ({ listed: true, label: o.levelLabel!(id) }) } : {}) }, store.getSession('s1')!);
   if (o.autoApprove) s.settings({ autoApprove: true });
   const log = () => store.readLog('s1');
   const rows = (type: string) => log().filter((r) => r.type === type);
@@ -521,7 +526,7 @@ describe('tagged prompts (3b.5)', () => {
 
 const FRONT = '---\nreins: 1\nname: t\nbudget: { turns: 30, minutes: 30 }\nalways: []\n---\n\n';
 const ECHO = `${FRONT}## run \`echo hi\`\n\n## phase go\n> do it\n`;
-const WITH_BLOCK = `${FRONT}## use rp\n\n## gate\nuntil: you approve\n\n## phase go\n> do it\n`;
+const WITH_BLOCK = `${FRONT}## playbook rp\n\n## gate\nuntil: you approve\n\n## phase go\n> do it\n`;
 const rp = (cmd: string) => `---\nreins: 1\nblock: rp\n---\n\n## run \`${cmd}\`\n`;
 const put = (dir: string, name: string, text: string) => {
   const f = path.join(dir, name);
@@ -695,7 +700,7 @@ describe('/resume (3b.6, 3b.7)', () => {
   it('is 409 for an unknown run, another session\'s run, and a run that has ended', async () => {
     const x = setup([{ text: 'REINS: done' }]);
     expect(x.s.resume('nope')).toMatchObject({ ok: false, code: 409 });
-    x.store.createSession({ id: 's2', cwd: x.cwd, engine: 'claude' });
+    x.store.createSession({ id: 's2', cwd: x.cwd, engine: 'claude-code' });
     x.store.appendLog('s2', { type: 'run_started', runId: 'r9' });
     x.store.createRun({ id: 'r9', workflowPath: '', cwd: x.cwd });
     x.store.saveSnapshot('r9', { events: [] } as any);
@@ -772,6 +777,16 @@ describe('shutdown (server stop)', () => {
     expect(x.rows('run_stopped')).toHaveLength(1);
     expect(x.rows('run_detached')).toEqual([]);
     expect(x.rows('closed')).toEqual([]);
+  });
+
+  it('plain chat with a turn in flight and no question open: shutdown interrupts the turn (nothing to detach)', async () => {
+    const x = setup([{ hold: true }, { text: 'never' }]);
+    x.s.message('go');
+    await turnsStarted(x, 1);
+    const r = await Promise.race([x.s.shutdown().then(() => 'done'), new Promise((res) => setTimeout(() => res('timeout'), 3000))]);
+    expect(r).toBe('done');
+    expect(x.t.interrupts).toBe(1);
+    expect(x.t.turns).toEqual(['go']);
   });
 });
 
@@ -1266,7 +1281,7 @@ describe('model step in a run (C)', () => {
     await go(x);
     const q = await x.question('switch');
     expect(q.prompt).toBe('Switch to B?');
-    expect(q.detail).toMatch(/\nAsked by the workflow's model block `model-1`\.$/);
+    expect(q.detail).toMatch(/\nAsked by the playbook's model block `model-1`\.$/);
     expect(x.rows('question').find((r) => (r.data as Question).id === q.id)!.runId).toBe(rid(x));
     expect(x.s.status()).toBe('waiting');
     expect(x.t.turns).toEqual(['first']);
@@ -1340,7 +1355,7 @@ describe('model step in a run (C)', () => {
     s2.answer(r.id, 'resume');
     const again = await x.question('switch');
     expect(again.id).not.toBe(q.id);
-    expect(again.detail).toMatch(/Asked by the workflow's model block `model-1`\.$/);
+    expect(again.detail).toMatch(/Asked by the playbook's model block `model-1`\.$/);
     s2.answer(again.id, 'switch');
     await s2.idle();
     expect(modelRows(x)).toEqual([{ model: 'model-b' }]);
@@ -1469,7 +1484,7 @@ describe('model step in a run (C)', () => {
     await go(x);
     const q = await x.question('switch');
     expect(q.prompt).toBe('Switch to model-b?');
-    expect(q.detail).toBe("The whole conversation, 1,000 tokens, goes to model-b as input. No price is known for model-b, so the cost cannot be estimated.\nAsked by the workflow's model block `model-1`.");
+    expect(q.detail).toBe("The whole conversation, 1,000 tokens, goes to model-b as input. No price is known for model-b, so the cost cannot be estimated.\nAsked by the playbook's model block `model-1`.");
     x.s.answer(q.id, 'keep');
     await x.s.idle();
   });
@@ -1569,7 +1584,7 @@ describe('compress (B)', () => {
       const eng = t.makeEngine(e);
       return { ...eng, open: async (o) => { const s = await eng.open(o); delete s.compact; return s; } };
     };
-    const row = store.createSession({ id: 's1', cwd: tmp(), engine: 'claude' });
+    const row = store.createSession({ id: 's1', cwd: tmp(), engine: 'claude-code' });
     const s = openSession({ store, makeEngine, dir: tmp() }, row, true);
     s.message('one');
     await s.idle();
@@ -1944,7 +1959,8 @@ describe('per-model cost (C)', () => {
       addsUp(r);
     });
 
-    it("when the reply fails, the compaction's dollars go to its own turn_ended with no split and none to the run", async () => {
+    // Phase B3 (b): this used to say the dollars were an unassociated turn_ended row and none went to the run; that row was display only, not accounting.
+    it("when the reply fails, the compaction's dollars and split go to the run (its engine_cost), and no row outside the run says them", async () => {
       const x = setup([{ usage: 600_000 }, { cost: 0.02, models: { a: 0.02 } }, { reject: 'x' }]);
       x.store.putSetting('autoCompressAt', 0.5);
       x.s.message('one');
@@ -1955,8 +1971,8 @@ describe('per-model cost (C)', () => {
       await x.s.idle();
       const rid = x.rows('run_started')[0]!.runId!;
       expect(x.rows('run_detached')).toHaveLength(1);
-      expect(x.data('turn_ended')).toEqual([{ text: 'ok', cost: 0.01 }, { text: '', cost: 0.02 }]);
-      expect(runEvents(x, rid, 'engine_cost')).toEqual([]);
+      expect(x.data('turn_ended')).toEqual([{ text: 'ok', cost: 0.01 }]);
+      expect(runEvents(x, rid, 'engine_cost')).toEqual([{ usd: 0.02, models: { a: 0.02 } }]);
     });
 
     it('a Stop during the compaction still hands the run its cost and split', async () => {
@@ -2094,7 +2110,7 @@ describe('subagent (D)', () => {
     await go(x);
     const q = await x.question('resume');
     expect(says(x)).toContain('⏸ subagent-1: the subagent stopped before it answered (boom); Resume runs it on');
-    expect(x.data('note').map((d) => d.text as string).filter((t) => t.includes("Claude's session was dropped"))).toEqual([]);
+    expect(x.data('note').map((d) => d.text as string).filter((t) => t.includes("The provider's session was dropped"))).toEqual([]);
     x.s.answer(q.id, 'stop');
     await x.s.idle();
     expect(x.rows('run_stopped')).toHaveLength(1);
@@ -2345,7 +2361,7 @@ describe('subagent (D)', () => {
 
     it('says exactly what was used and what is left; the subagent is closed once before the card', async () => {
       const { x, q } = await atCard();
-      expect(q.detail).toBe('Block `subagent-1` has used $0.60 of its $0.50. The workflow\'s USD budget has $1.40 left.');
+      expect(q.detail).toBe('Block `subagent-1` has used $0.60 of its $0.50. The playbook\'s USD budget has $1.40 left.');
       expect(times(x.t.closedIds, subId(x))).toBe(1);
       x.s.answer(q.id, 'stop');
       await x.s.idle();
@@ -2436,5 +2452,39 @@ describe('subagent (D): what it inherits and how it ends', () => {
     const subId = x.t.turnsBy.find((t) => t.text.includes('Look.'))!.session;
     expect(x.t.closedIds).toContain(subId);
     expect(x.t.closedIds.filter((i) => i === subId)).toHaveLength(1);
+  });
+});
+
+describe('M2 pins (task 3)', () => {
+  it('Q13 a Stop card settles only the oldest open question; the other stays open and is answered on its own', async () => {
+    const store = openStore(':memory:');
+    const t = testEngine([{ hold: true }]);
+    let approve!: (r: ToolRequest) => Promise<Decision>;
+    const makeEngine: MakeEngine = (e) => { approve = e.onApprove; return t.makeEngine(e); };
+    const row = store.createSession({ id: 's1', cwd: tmp(), engine: 'claude-code' });
+    const s = openSession({ store, makeEngine, folderTrust: t.folderTrust, dir: tmp() }, row, true);
+    const open = () => {
+      const l = store.readLog('s1');
+      return l.filter((r) => r.type === 'question').map((r) => r.data as Question)
+        .filter((q) => !l.some((x) => (x.type === 'answer' || x.type === 'question_closed') && (x.data as any).questionId === q.id));
+    };
+    s.message('go');
+    await until(() => t.turns.length === 1);
+    const first = approve({ tool: 'Bash', input: { command: 'ls' } });
+    const second = approve({ tool: 'Bash', input: { command: 'pwd' } });
+    await until(() => open().length === 2);
+    const [q1, q2] = open() as [Question, Question];
+    expect(s.card('halt', 'stop')).toEqual({ ok: true });
+    // at once, before anything else runs: the oldest is answered stop, the newer one is still open
+    expect(store.readLog('s1').filter((r) => r.type === 'answer').map((r) => r.data)).toEqual([{ questionId: q1.id, answer: 'stop' }]);
+    expect(open().map((q) => q.id)).toEqual([q2.id]);
+    expect(s.status()).toBe('waiting');
+    expect(await first).toEqual({ behavior: 'deny', message: 'The user said no: stop' });
+    // the newer question is not answered by the card: only the end of the interrupted turn closes it
+    await s.idle();
+    expect(store.readLog('s1').filter((r) => r.type === 'answer').map((r) => r.data)).toEqual([{ questionId: q1.id, answer: 'stop' }]);
+    expect(store.readLog('s1').filter((r) => r.type === 'question_closed').map((r) => r.data)).toEqual([{ questionId: q2.id, why: expect.any(String) }]);
+    expect((await second).behavior).toBe('deny');
+    expect(t.interrupts).toBe(1);
   });
 });

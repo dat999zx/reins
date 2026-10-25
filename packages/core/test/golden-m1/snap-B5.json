@@ -1,0 +1,230 @@
+{
+  "autoArmed": {},
+  "commandResults": [],
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "repeat-1",
+            "kind": "repeat"
+          },
+          {
+            "id": "work",
+            "kind": "phase",
+            "title": "work"
+          }
+        ],
+        "workflow": "t"
+      },
+      "id": "ev-1",
+      "timestamp": 1000,
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "repeat-1"
+      },
+      "id": "ev-2",
+      "timestamp": 2000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "parents": [
+          "repeat-1"
+        ],
+        "step": "work"
+      },
+      "id": "ev-3",
+      "timestamp": 3000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "work"
+      },
+      "id": "ev-4",
+      "timestamp": 4000,
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "work",
+        "text": "REINS: done"
+      },
+      "id": "ev-5",
+      "timestamp": 5000,
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "answer": false,
+        "cond": {
+          "q": "ok",
+          "t": "llm"
+        }
+      },
+      "id": "ev-6",
+      "timestamp": 6000,
+      "type": "judge"
+    },
+    {
+      "data": {
+        "attempts": 1,
+        "step": "repeat-1"
+      },
+      "id": "ev-7",
+      "timestamp": 7000,
+      "type": "loop_iteration"
+    },
+    {
+      "data": {
+        "attempts": 1,
+        "max": 1,
+        "step": "repeat-1"
+      },
+      "id": "ev-8",
+      "timestamp": 8000,
+      "type": "loop_budget_exceeded"
+    },
+    {
+      "data": {
+        "allowMore": 1
+      },
+      "id": "ev-9",
+      "timestamp": 9000,
+      "type": "run_resumed"
+    },
+    {
+      "data": {
+        "parents": [
+          "repeat-1"
+        ],
+        "step": "work"
+      },
+      "id": "ev-10",
+      "timestamp": 10000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "work"
+      },
+      "id": "ev-11",
+      "timestamp": 11000,
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "work",
+        "text": "REINS: done"
+      },
+      "id": "ev-12",
+      "timestamp": 12000,
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "answer": false,
+        "cond": {
+          "q": "ok",
+          "t": "llm"
+        }
+      },
+      "id": "ev-13",
+      "timestamp": 13000,
+      "type": "judge"
+    },
+    {
+      "data": {
+        "attempts": 2,
+        "step": "repeat-1"
+      },
+      "id": "ev-14",
+      "timestamp": 14000,
+      "type": "loop_iteration"
+    },
+    {
+      "data": {
+        "attempts": 2,
+        "max": 2,
+        "step": "repeat-1"
+      },
+      "id": "ev-15",
+      "timestamp": 15000,
+      "type": "loop_budget_exceeded"
+    }
+  ],
+  "lastRecallContext": [],
+  "lastTurnText": "REINS: done",
+  "linkCounters": {},
+  "linkLimitExtensions": {},
+  "loopCounters": {
+    "repeat-1": 2
+  },
+  "loopLimitExtensions": {
+    "repeat-1": 1
+  },
+  "pauseReason": {
+    "limit": 2,
+    "stepId": "repeat-1",
+    "type": "budget-used"
+  },
+  "pendingCards": [],
+  "programCounter": 2,
+  "runCost": 0,
+  "sessionId": "B5-main-1",
+  "status": "paused",
+  "totalTurns": 2,
+  "turnOutputs": {
+    "work": "REINS: done"
+  },
+  "usdExtra": {},
+  "usdSpent": {},
+  "workflow": {
+    "always": [],
+    "autos": [],
+    "budget": {
+      "minutes": 60,
+      "turns": 40
+    },
+    "name": "t",
+    "steps": [
+      {
+        "attrs": {
+          "max": "1"
+        },
+        "cards": [],
+        "cond": {
+          "q": "ok",
+          "t": "llm"
+        },
+        "id": "repeat-1",
+        "kids": [
+          {
+            "attrs": {},
+            "cards": [],
+            "id": "work",
+            "kind": "phase",
+            "links": [],
+            "pos": {
+              "col": 1,
+              "line": 12
+            },
+            "prompt": "work",
+            "title": "work"
+          }
+        ],
+        "kind": "repeat",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 8
+        }
+      }
+    ],
+    "version": 1
+  }
+}

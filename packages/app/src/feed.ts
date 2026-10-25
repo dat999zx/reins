@@ -1,7 +1,8 @@
 // The Reins feed's grouping (pure, no React, no DOM): the run is a rein, its steps are knots on it, what the agent does in a step hangs under the knot.
 import type { LogRow } from '@reins/server/store.js';
 import { KINDS } from './canvasKinds.js';
-import { drawable } from './rows/hidden.js';
+import { drawable, hidden } from './rows/hidden.js';
+import { holds, statusOf } from './viewEvents.js';
 import type { RunView } from './runState.js';
 import { STATE_WORDS } from './stepStatus.js';
 
@@ -26,7 +27,7 @@ export type Piece =
       end: LogRow[] };                                  // the receipt
 export interface Feed { pieces: Piece[]; now?: Knot; cards: Map<number, CardState> }
 
-// ponytail: re-walks every row once per 16 ms batch (as mergeOutput does); make it incremental if a 5,000-row log is slow. A loop's passes are separate knots ("2nd time"); a `use` block's inner steps are knots named by their prefixed ids; rows are placed by the cursor (the strand's current knot).
+// ponytail: re-walks every row once per 16 ms batch (as mergeOutput does); make it incremental if a 5,000-row log is slow. A loop's passes are separate knots ("2nd time"); an inline playbook's inner steps are knots named by their prefixed ids; rows are placed by the cursor (the strand's current knot).
 type Data = Record<string, any>;
 type Run = Extract<Piece, { type: 'run' }>;
 type Ended = { state: 'done' | 'stopped' | 'paused' | 'failed'; why?: string; ts: number };
@@ -174,7 +175,6 @@ export const ROLE: Record<string, Fold> = {
   },
   // older logs have no step_started: the first turn or gate of a step opens its knot
   turn_started: (_w, row, x, s) => { if (s && !s.v2 && typeof x.step === 'string' && s.cur?.step !== x.step) openKnot(s, row, x.step, []); return true; },
-  gate_paused: (_w, row, x, s) => { if (s && !s.v2 && typeof x.step === 'string' && s.cur?.step !== x.step) openKnot(s, row, x.step, []); return true; },
   turn_ended: (w, row, x, s) => {
     if (s) { const k = latest(s, x.step) ?? s.cur; if (k && typeof x.cost === 'number') k.cost += x.cost; return true; }
     const k = w.plain ?? openPlain(w, row);
@@ -190,15 +190,12 @@ export const ROLE: Record<string, Fold> = {
   },
   gate_approved: () => true,
   run_resumed: () => true,
-  loop_iteration: () => true,
   link_budget_exceeded: () => true,
-  verify_result: (w, _row, x, s) => { if (s?.cur && x.pass === false) w.evidence.set(s.cur, { state: 'failed', why: 'verify' }); return true; },
   command_result: (w, _row, x, s) => {
     const k = s && latest(s, x.step);
     if (k && typeof x.exitCode === 'number') { if (x.exitCode !== 0) w.evidence.set(k, { state: 'failed', why: `exit ${x.exitCode}` }); else w.evidence.delete(k); }
     return true;
   },
-  loop_budget_exceeded: (w, _row, x, s) => { const k = s && latest(s, x.step); if (k) w.evidence.set(k, { state: 'stuck' }); return true; },
   run_finished: endOf('done'),
   run_stopped: endOf('stopped'),
   // a detach stays a bead in the middle of the strand (Resume lives on it)
@@ -224,6 +221,21 @@ export const ROLE: Record<string, Fold> = {
     return false;
   },
 };
+// A kind's event with a `status` rule in its view is structure too (not a bead), unless the views hide it: `opens` opens the step's knot in a log without
+// `step_started`; a rule that ends in `failed` or `stuck` marks the knot (the step the rule names, or the strand's current knot with `step: 'track'`).
+function kindRole(type: string): Fold | undefined {
+  const r = statusOf(type);
+  if (!r || hidden.has(type)) return undefined;
+  return (w, row, x, s) => {
+    if (r.opens && s && !s.v2 && typeof x.step === 'string' && s.cur?.step !== x.step) openKnot(s, row, x.step, []);
+    if ((r.state === 'failed' || r.state === 'stuck') && (!r.when || holds(x, r.when))) {
+      const k = r.step === 'track' ? s?.cur : s && latest(s, x.step);
+      if (k) w.evidence.set(k, { state: r.state, ...(typeof r.why === 'string' ? { why: r.why } : {}) });
+    }
+    return true;
+  };
+}
+
 // rows that open a plain turn when none is open (a question or a note never does)
 const OPENS = new Set(['engine', 'say']);
 
@@ -255,7 +267,7 @@ export function feed(rows: LogRow[], view: RunView, openQuestions: ReadonlySet<s
     const x = data(row);
     const key = row.type === 'engine' ? `engine:${x.type}` : row.type;
     const s = row.runId !== undefined ? strandOf(w, row) : undefined;
-    const role: Fold | undefined = ROLE[key];
+    const role: Fold | undefined = Object.hasOwn(ROLE, key) ? ROLE[key] : kindRole(row.type);   // own entries only: a type like `__proto__` is no role
     // a later row of the same run id (a resume's note, the next step) clears the strand's end; the receipt hangs after it
     if (s?.ended && row.type !== 'receipt' && (role !== undefined || drawable(row))) s.ended = undefined;
     if (role?.(w, row, x, s)) continue;

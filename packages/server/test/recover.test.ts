@@ -8,6 +8,9 @@ import { recover } from '../src/recover.js';
 import { openSession } from '../src/session.js';
 import { openStore } from '../src/store.js';
 import { testEngine, type TestTurn } from './test-engine.js';
+import { usePack } from './pack-helper.js';
+
+usePack(); // M3 Task 3: the built-in kinds are the default pack's mods; this file loads the pack once
 
 const tmps: string[] = [];
 const tmp = () => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'reins-rec-')); tmps.push(d); return d; };
@@ -135,7 +138,7 @@ describe('recover: the rules over a log (3b.7)', () => {
 });
 
 const FRONT = '---\nreins: 1\nname: t\nbudget: { turns: 30, minutes: 30 }\nalways: []\n---\n\n';
-const WITH_BLOCK = `${FRONT}## use rp\n\n## gate\nuntil: you approve\n\n## phase go\n> do it\n`;
+const WITH_BLOCK = `${FRONT}## playbook rp\n\n## gate\nuntil: you approve\n\n## phase go\n> do it\n`;
 const rp = (cmd: string) => `---\nreins: 1\nblock: rp\n---\n\n## run \`${cmd}\`\n`;
 const put = (dir: string, name: string, text: string) => {
   const f = path.join(dir, name);

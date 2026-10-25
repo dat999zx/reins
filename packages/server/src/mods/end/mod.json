@@ -1,0 +1,23 @@
+{
+  "reins": 1,
+  "id": "end",
+  "kind": "block",
+  "version": "1.0.0",
+  "label": "End",
+  "description": "Stops the playbook",
+  "main": "index.js",
+  "order": 130,
+  "pack": "default",
+  "required": true,
+  "provides": { "kinds": ["end"] },
+  "view": {
+    "kind": "end",
+    "order": 120,
+    "colour": "hand",
+    "stops": true,
+    "fields": [],
+    "line": ["end"],
+    "card": { "label": "end", "section": "Flow" },
+    "fresh": {}
+  }
+}

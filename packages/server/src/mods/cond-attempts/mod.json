@@ -1,0 +1,15 @@
+{
+  "reins": 1,
+  "id": "cond-attempts",
+  "kind": "condition",
+  "version": "1.0.0",
+  "label": "Condition: attempts > N",
+  "description": "True when the loops have gone round more than N times",
+  "main": "index.js",
+  "order": 90,
+  "pack": "default",
+  "provides": { "conditions": ["attempts"] },
+  "view": {
+    "attempts": { "label": "attempts > N", "fresh": { "t": "attempts", "n": 3 }, "param": { "key": "n", "look": "num" } }
+  }
+}

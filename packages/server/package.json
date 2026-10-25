@@ -4,7 +4,7 @@
   "description": "Scratch for agent loops: workflows with gates, loops and live cards for Claude Code.",
   "license": "MIT",
   "repository": "github:dat999zx/reins",
-  "files": ["dist", "app", "CHANGELOG.md"],
+  "files": ["dist", "app", "catalog", "CHANGELOG.md"],
   "bundleDependencies": ["@reins/core", "picomatch", "yaml"],
   "type": "module",
   "engines": {
@@ -14,7 +14,7 @@
     "reins": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node copy-mods.mjs && node dist/cli.js doctor --no-probe",
     "prepack": "node pack.mjs pre",
     "postpack": "node pack.mjs post"
   },

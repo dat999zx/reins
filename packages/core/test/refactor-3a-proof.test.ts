@@ -58,7 +58,7 @@ describe('3a proof: compile', () => {
       { text: WF('## repeat\nuntil: tests pass\nmax: 2\n\n### run\n\n### phase fix\n> fix'), resolve: exBlocks },
       { text: WF('## gate\n\n## if\n\n### say\n> inside'), resolve: exBlocks },
       { text: WF('## verify\nagainst: plan\non-fail: mystery-1 (max 2)\n\n## phase plan\n> p\n\n## mystery\n> m'), resolve: exBlocks },
-      { text: WF('## use vblock'), resolve: vblock },
+      { text: WF('## playbook vblock'), resolve: vblock },
       {
         text: WF('## phase all cards\nguard: migrations/**\nmode: read-only\n> do'),
         resolve: exBlocks,

@@ -1,27 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import { CONDS, parseCond, printCond, type Cond } from '@reins/core';
-import { applyParam, COND_KINDS } from '../src/condKinds.js';
+import { applyParam, COND_VIEWS, freshCond } from '../src/condKinds.js';
 
 const round = (c: Cond) => parseCond(printCond(c));
-const atom = (t: string, over: object = {}) => ({ ...COND_KINDS[t]!.fresh(), ...over }) as Cond;
+const atom = (t: string, over: object = {}) => ({ ...freshCond(t), ...over }) as Cond;
 
-describe('COND_KINDS', () => {
+describe('COND_VIEWS (the served conditions)', () => {
   it('has exactly the core atoms', () => {
-    expect(Object.keys(COND_KINDS).sort()).toEqual([...CONDS.keys()].sort());
+    expect(Object.keys(COND_VIEWS).sort()).toEqual([...CONDS.keys()].sort());
   });
   it('has unique labels', () => {
-    const labels = Object.values(COND_KINDS).map((k) => k.label);
+    const labels = Object.values(COND_VIEWS).map((k) => k.label);
     expect(new Set(labels).size).toBe(labels.length);
   });
   it('prints every fresh atom and reads it back unchanged', () => {
-    for (const [t, k] of Object.entries(COND_KINDS)) {
-      const r = round(k.fresh());
+    for (const t of Object.keys(COND_VIEWS)) {
+      const r = round(freshCond(t)!);
       expect(r.diag, t).toBeUndefined();
-      expect(r.cond, t).toEqual(k.fresh());
+      expect(r.cond, t).toEqual(freshCond(t));
     }
   });
   it('makes a new object per call', () => {
-    for (const k of Object.values(COND_KINDS)) expect(k.fresh()).not.toBe(k.fresh());
+    for (const t of Object.keys(COND_VIEWS)) expect(freshCond(t)).not.toBe(freshCond(t));
   });
 });
 

@@ -1,0 +1,12 @@
+{
+  "reins": 1,
+  "id": "card-stop",
+  "kind": "card",
+  "version": "1.0.0",
+  "label": "Card: stop",
+  "description": "Pauses the run and shows you the text",
+  "main": "index.js",
+  "order": 30,
+  "pack": "default",
+  "provides": { "cards": ["stop"] }
+}

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { compileProgram, compileTurn, NODES, parseWorkflow, printCond, printWorkflow, type Step } from '@reins/core';
 import { loadWorkflowText } from './run-cli.js';
+import { KEY_IN_WORKFLOW } from './secrets.js';
 import { under } from './session.js';
 
 export type Scope = 'project' | 'user';
@@ -26,7 +27,7 @@ export function resolveWorkflowPath(
   if (!name.endsWith('.reins.md') || name.includes(':')) return denied(400, 'The file name must end in .reins.md and have no colon.');
   const roots: Record<Scope, string> = { project: path.join(cwd, '.reins', 'workflows'), user: path.join(dir, 'workflows') };
   const scope = (['project', 'user'] as const).find((s) => path.relative(roots[s], path.dirname(abs)) === '');
-  if (!scope) return denied(400, 'The workflow must be directly in <session folder>/.reins/workflows or ~/.reins/workflows.');
+  if (!scope) return denied(400, 'The playbook must be directly in <session folder>/.reins/workflows or ~/.reins/workflows.');
   const folder = roots[scope];
   const realCwd = real(cwd);
   const outside = () => denied(400, 'The .reins folder must stay inside the session folder.');
@@ -39,16 +40,16 @@ export function resolveWorkflowPath(
     }
   }
   if (o.forWrite) {
-    try { fs.mkdirSync(folder, { recursive: true }); } catch { return denied(400, 'Cannot create the workflows folder.'); }
+    try { fs.mkdirSync(folder, { recursive: true }); } catch { return denied(400, 'Cannot create the playbooks folder.'); }
   }
   const realFolder = real(folder);
-  if (!realFolder) return o.missingOk ? { abs, scope } : o.forWrite ? denied(400, 'Cannot create the workflows folder.') : denied(404, 'No such workflow.');
+  if (!realFolder) return o.missingOk ? { abs, scope } : o.forWrite ? denied(400, 'Cannot create the playbooks folder.') : denied(404, 'No such playbook.');
   if (scope === 'project' && (!realCwd || !under(realFolder, realCwd))) return outside();
 
   if (there(abs)) {
-    if (real(abs) !== path.join(realFolder, name)) return denied(400, 'The file is a link that leaves the workflows folder, or does not resolve.');
+    if (real(abs) !== path.join(realFolder, name)) return denied(400, 'The file is a link that leaves the playbooks folder, or does not resolve.');
   } else if (!o.forWrite && !o.missingOk) {
-    return denied(404, 'No such workflow.');
+    return denied(404, 'No such playbook.');
   }
   return { abs, scope };
 }
@@ -61,14 +62,16 @@ export function readWorkflow(cwd: string, dir: string, p: string): Reply {
   return { status: 200, body: { path: r.abs, text, diagnostics: loadWorkflowText(text, r.abs).diagnostics } };
 }
 
-export function writeWorkflow(cwd: string, dir: string, p: string, text: string, create: boolean): Reply {
+/** `hasKey`: true when the text holds a known key (the redactor's `has`); such text is refused, not written. */
+export function writeWorkflow(cwd: string, dir: string, p: string, text: string, create: boolean, hasKey?: (text: string) => boolean): Reply {
   const r = resolveWorkflowPath(cwd, dir, p, { forWrite: true });
   if ('error' in r) return reply(r);
+  if (hasKey?.(text)) return reply(denied(400, KEY_IN_WORKFLOW));
   // ponytail: a link swapped in between the check and this write is followed; local attackers only. O_NOFOLLOW if it matters.
   try {
     fs.writeFileSync(r.abs, text, create ? { flag: 'wx' } : {});
   } catch (e) {
-    return (e as NodeJS.ErrnoException).code === 'EEXIST' ? { status: 409, body: { error: 'A workflow with that name already exists.' } } : reply(denied(400, 'Cannot write the file.'));
+    return (e as NodeJS.ErrnoException).code === 'EEXIST' ? { status: 409, body: { error: 'A playbook with that name already exists.' } } : reply(denied(400, 'Cannot write the file.'));
   }
   return { status: 200, body: { diagnostics: loadWorkflowText(text, r.abs).diagnostics } };
 }

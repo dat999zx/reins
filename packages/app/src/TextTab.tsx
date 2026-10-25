@@ -3,7 +3,7 @@ import type { Diagnostic, StepKind, Workflow } from '@reins/core';
 import { addStep, deleteSteps, newId, setCond } from './blocks.js';
 import { FULL, pruneLayout, removeLoose, STATE_MAX, stateBytes } from './arrange.js';
 import { stepIds, stepKey, withoutNested, type Key } from './selection.js';
-import { COND_KINDS } from './condKinds.js';
+import { freshCond } from './condKinds.js';
 import { ApiError, get, post, put } from './api.js';
 import { restoreFile, restoreStep, type CanvasView, type EditorState, type Layout, type Tab } from './editorState.js';
 import { highlight, lineOffset } from './highlight.js';
@@ -17,6 +17,7 @@ import { flatSteps } from './canvas.js';
 import { KINDS } from './canvasKinds.js';
 import { Workspace, type EditOpts } from './Workspace.js';
 import { Palette } from './Palette.js';
+import { ShareButton, shareName } from './ShareWorkflow.js';
 import type { Start } from './useDrag.js';
 import { ENDED, StatusCtx, StepChips } from './StepChips.js';
 import { EARLIER } from './FeedView.js';
@@ -170,7 +171,7 @@ export function TextTab({ view, onView, sess, models, efforts, sessionModel, ses
       if (file === null || !prev?.workflow) return false;
       if (busy.current || prev.for !== text) { setMsg(WAIT); return false; }
       if (prev.reformats && !confirmed.current.has(file)) {
-        if (!window.confirm('Editing with Blocks or the Budget form reformats this workflow file. Comments, unknown lines, frontmatter comments and unknown keys, and custom order are not kept. Continue?')) return false;
+        if (!window.confirm('Editing with Blocks or the Budget form reformats this playbook file. Comments, unknown lines, frontmatter comments and unknown keys, and custom order are not kept. Continue?')) return false;
         confirmed.current.add(file);
       }
       const next = fn(prev.workflow);
@@ -261,7 +262,7 @@ export function TextTab({ view, onView, sess, models, efforts, sessionModel, ses
       await refresh();
       await open(rel, true);
     } catch (e) {
-      setMsg(e instanceof ApiError && e.status === 409 ? 'A workflow with that name already exists.' : (e as Error).message);
+      setMsg(e instanceof ApiError && e.status === 409 ? 'A playbook with that name already exists.' : (e as Error).message);
     }
   };
   const startRun = () => {
@@ -338,8 +339,6 @@ export function TextTab({ view, onView, sess, models, efforts, sessionModel, ses
     pendingLine.current = undefined;
   }, [view]);
   const visual = view !== 'text';
-  // a step of a kind the app has no entry for (a stray `## Notes` heading) would crash the visual tabs
-  const known = !prev?.workflow || flatSteps(prev.workflow.steps).every((s) => s.kind in KINDS);
   const sel = stepId && prev?.workflow ? flatSteps(prev.workflow.steps).find((s) => s.id === stepId) : undefined;
 
   // The run panel's handle sits in the editor bar (Blocks only, as the dock did); its body floats over the canvas, so nothing moves when it opens.
@@ -349,17 +348,18 @@ export function TextTab({ view, onView, sess, models, efforts, sessionModel, ses
 
   // The slot is checked before edit(): a declined rewrite confirm or a busy editor must not show this note.
   const cond = (t: string) => {
-    if (!sel || !KINDS[sel.kind].line.includes('cond')) return setMsg('Select a wait until, repeat until or if block first.');
+    if (!sel || !KINDS[sel.kind]?.line.includes('cond')) return setMsg('Select a wait until, repeat until or if block first.');
     if (sel.cond && 'a' in sel.cond) return setMsg('This condition has and / or / not: drop a card on one part of it, or edit it in Text.');
-    edit((w) => setCond(w, sel.id, [], COND_KINDS[t]!.fresh()));
+    const fresh = freshCond(t);
+    if (fresh) edit((w) => setCond(w, sel.id, [], fresh));
   };
 
   return (
     <div className="texttab">
       <aside className="wflist">
         <form onSubmit={(e) => { e.preventDefault(); void create(); }}>
-          <input aria-label="Workflow name" placeholder="new-workflow-name" value={name} onChange={(e) => setName(e.target.value)} />
-          <button type="submit" disabled={!name}>New workflow</button>
+          <input aria-label="Playbook name" placeholder="new-playbook-name" value={name} onChange={(e) => setName(e.target.value)} />
+          <button type="submit" disabled={!name}>New playbook</button>
         </form>
         <ul>
           {list.map((w) => (
@@ -369,9 +369,9 @@ export function TextTab({ view, onView, sess, models, efforts, sessionModel, ses
               </button>
             </li>
           ))}
-          {list.length === 0 && <li className="hint">No workflows yet.</li>}
+          {list.length === 0 && <li className="hint">No playbooks yet.</li>}
         </ul>
-        {view === 'blocks' && prev?.workflow && known && <Palette onAdd={add} onCond={cond} press={press} />}
+        {view === 'blocks' && prev?.workflow && <Palette onAdd={add} onCond={cond} press={press} />}
       </aside>
       <section className="editor">
         {view === 'blocks' && !showDock && (sess.status === 'waiting' ? <p className="sx-dockline">The agent is waiting for you in Chat. <button onClick={() => onChat()}>Chat</button></p>
@@ -379,19 +379,20 @@ export function TextTab({ view, onView, sess, models, efforts, sessionModel, ses
             const entry = list.find((w) => w.name === run.workflow);
             if (entry) void open(entry.path); else setMsg(`Open \`${run.workflow}\` from the list.`);
           }}>Open it</button></p> : null)}
-        {file === null ? <>{dock && <div className="ebar">{dock}</div>}<p className="hint">Pick a workflow, or make a new one.</p></> : (
+        {file === null ? <>{dock && <div className="ebar">{dock}</div>}<p className="hint">Pick a playbook, or make a new one.</p></> : (
           <>
             <div className="ebar">
               <b className="sx-wfname" title={file.split(/[\\/]/).at(-1)}>{file.split(/[\\/]/).at(-1)}</b>{dirty && <span className="dirty" title="Unsaved changes" role="img" aria-label="unsaved changes"> ●</span>}
               {dock}
               <span className="grow" />
               <button onClick={() => void save()} disabled={!dirty}>Save</button>
+              <ShareButton name={shareName(file)} text={text} disabled={dirty} />
               {view === 'text' && run.phase === 'waiting' && <><span role="status">Waiting for you. Answer in Blocks or Chat.</span><button onClick={() => onView('blocks')}>Blocks</button></>}
               <button className="primary" onClick={() => void startRun()} disabled={dirty || sessionBusy}
                 title={dirty ? 'Save first: a run uses the saved file.' : sessionBusy ? 'A run or a chat turn is going. Stop it first.' : undefined}>Run</button>
             </div>
-            {visual && prev && !(prev.workflow && known) && <p className="hint">This file does not parse. Fix it in the Text tab.</p>}
-            {visual && prev?.workflow && known && (
+            {visual && prev && !prev.workflow && <p className="hint">This file does not parse. Fix it in the Text tab.</p>}
+            {visual && prev?.workflow && (
               <div className="canvaswrap" tabIndex={-1}
                 onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveWithDraft(); } }}>
                 <StatusCtx.Provider value={{ status: run.steps, show: showStatus, ended, ...(run.thinking !== undefined ? { thinking: run.thinking } : {}) }}>
@@ -406,7 +407,7 @@ export function TextTab({ view, onView, sess, models, efforts, sessionModel, ses
                   </aside>
                 ) : sel ? <BlockPanel key={sel.id} step={sel} all={flatSteps(prev.workflow.steps)} cond={prev.steps.find((s) => s.id === sel.id)?.cond}
                   turn={prev.turn} rev={prev} models={models} efforts={efforts} sessionModel={sessionModel} sessionEffort={sessionEffort} onEdit={edit} onShowInChat={ran(sel.id) ? () => onChat(sel.id) : undefined} onDelete={() => del([stepKey(sel.id)], toWorkspace)} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />
-                  : [...sels].some((k) => k.startsWith('l:')) ? <aside className="bpanel" aria-label="Loose block"><p className="hint">Loose block: not part of the workflow, never runs. Drag it into the script to use it.</p></aside>
+                  : [...sels].some((k) => k.startsWith('l:')) ? <aside className="bpanel" aria-label="Loose block"><p className="hint">Loose block: not part of the playbook, never runs. Drag it into the script to use it.</p></aside>
                   : <WorkflowPanel w={prev.workflow} rev={prev} onEdit={edit} />}
               </div>
             )}
@@ -422,7 +423,7 @@ export function TextTab({ view, onView, sess, models, efforts, sessionModel, ses
                     </div>
                   ))}
                 </pre>
-                <textarea ref={ta} aria-label="Workflow text" spellCheck={false} wrap="off" value={text}
+                <textarea ref={ta} aria-label="Playbook text" spellCheck={false} wrap="off" value={text}
                   onChange={(e) => setText(e.target.value)} onKeyDown={onKey} onScroll={mirror} />
               </div>
             </div>}
@@ -439,7 +440,7 @@ export function TextTab({ view, onView, sess, models, efforts, sessionModel, ses
                 {(prev?.steps ?? []).map((s) => (
                   <li key={s.id} className={s.id === now ? 'sx-now-step' : undefined} aria-current={s.id === now ? 'step' : undefined} style={{ paddingLeft: s.depth * 14 }}>
                     <button aria-pressed={s.id === stepId} onClick={() => setStepId(s.id)}>{s.kind}{s.title ? ` ${s.title}` : ''}</button>
-                    {/* ponytail: a use step gets no chip; its inlined steps run as block/id, which no listed id matches */}
+                    {/* ponytail: a playbook step gets no chip; its inlined steps run as step/id, which no listed id matches */}
                     {showStatus && run.steps[s.id] && <StepChips i={run.steps[s.id]!} />}
                   </li>
                 ))}

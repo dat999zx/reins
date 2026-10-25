@@ -1,0 +1,870 @@
+{
+  "approve": {
+    "reason": "the answer word 'approve' to a gate question, and the permission decision values of the CLI hooks. Not the approve condition.",
+    "files": {
+      "packages/server/src/drive.ts": [
+        "| { t: 'approve' }",
+        "if (/^(approve|a|y|yes)$/i.test(a)) return { t: 'approve' };",
+        "if (ans.t === 'approve') run.approve(p.track);"
+      ],
+      "packages/server/src/loop/engine.ts": [
+        "emit({ type: 'hook', event: 'approve', tool: c.name, decision: d.behavior, ...(d.message ? { reason: redAll(d.message) } : {}) });"
+      ],
+      "packages/server/src/mods/claude-code-cli/hooks.ts": [
+        "o.onEvent({ type: 'hook', event: String(msg.hook_event_name ?? 'approve'), tool: String(msg.tool_name ?? ''), decision: 'deny', reason });",
+        "o.onEvent({ type: 'hook', event: 'approve', tool, decision: d.behavior, ...(d.message ? { reason: d.message } : {}) });"
+      ],
+      "packages/server/src/mods/claude-code-cli/mcp.ts": [
+        "name: 'approve',",
+        "} else if (m.method === 'tools/call' && m.params?.name === 'approve') {"
+      ],
+      "packages/server/src/questions/gate.ts": [
+        "{ label: 'Approve', primary: true, answer: 'approve' },"
+      ],
+      "packages/server/src/run-cli.ts": [
+        "if (o.yes && q.kind === 'gate') { say('  approved (--yes)'); return Promise.resolve('approve'); }"
+      ]
+    }
+  },
+  "attempts": {
+    "reason": "`attempts` as a count field of a step's status and the status rule key. Not the attempts condition.",
+    "files": {
+      "packages/app/src/stepStatus.ts": [
+        "export interface StepInfo { state?: StepState; attempts?: number; refusals: number; cost: number; why?: string; model?: string }"
+      ],
+      "packages/core/src/nodes/fields.ts": [
+        "attempts?: string; cursor?: true; gate?: true; opens?: true;"
+      ],
+      "packages/core/src/viewShape.ts": [
+        "const RULE_KEYS = ['when', 'step', 'state', 'why', 'attempts', 'cursor', 'gate', 'opens', 'label'];"
+      ]
+    }
+  },
+  "cmd": {
+    "reason": "`cmd` as a parameter name (a command string), and core's COND_PARAM_KEYS list of condition parameters. Not the cmd condition.",
+    "files": {
+      "packages/app/src/condKinds.ts": [
+        "cmd: (v) => v !== '' && !v.includes('`'),"
+      ],
+      "packages/core/src/cond.ts": [
+        "runCommand(cmd: string): Promise<{ exitCode: number; stdout: string; stderr: string }>;",
+        "export const COND_PARAM_KEYS = ['cmd', 'q', 'n', 'glob'] as const;",
+        "sameAsRun?(c: C, cmd: string): boolean;"
+      ],
+      "packages/core/src/nodes/index.ts": [
+        "command(cmd: string): Promise<CommandOutcome>;"
+      ],
+      "packages/core/src/run.ts": [
+        "cmd: string;",
+        "commandRunner?: (cmd: string) => Promise<CommandOutcome>;",
+        "private commandRunner: (cmd: string) => Promise<CommandOutcome>;",
+        "const listed = (cmd: string) => (op.commands?.(instr) ?? []).includes(cmd);",
+        "recordCommandResult(cmd: string, exitCode: number, output: string, t: Track = this.main) {"
+      ],
+      "packages/server/src/commands.ts": [
+        "export function runCommand(cmd: string, o: CommandOptions): Promise<{ exitCode: number; stdout: string; stderr: string }> {"
+      ],
+      "packages/server/src/doctor.ts": [
+        "function run(cmd: string, args: string[], env: NodeJS.ProcessEnv): string | undefined {"
+      ],
+      "packages/server/src/opener.ts": [
+        "command = 'cmd';"
+      ]
+    }
+  },
+  "diff": {
+    "reason": "`git diff` argument. Not the diff condition.",
+    "files": {
+      "packages/server/src/drive.ts": [
+        "return git(cwd, ['diff', '--numstat', base], env).split('\\n').reduce((n, l) => {"
+      ]
+    }
+  },
+  "done": {
+    "reason": "a status word: run, step or receipt state 'done', a `done?:` flag, an API stop reason. Not the done condition.",
+    "files": {
+      "packages/app/src/feed.ts": [
+        "export type KnotState = 'running' | 'waiting' | 'done' | 'failed' | 'stuck' | 'stopped' | 'paused';",
+        "type Ended = { state: 'done' | 'stopped' | 'paused' | 'failed'; why?: string; ts: number };",
+        "const ENDED: Record<Ended['state'], KnotState> = { done: 'done', stopped: 'stopped', paused: 'paused', failed: 'failed' };",
+        "done: { words: STATE_WORDS.done, open: false, mark: 'dot' },",
+        "const state = !dur ? words : k.state === 'done' && worked ? `${words} in ${dur}` : `${words} · ${dur}`;",
+        "closePlain(w, row.ts, 'done');",
+        "run_finished: endOf('done'),",
+        "else k.state = next ? 'done' : live ? 'running' : 'stopped';"
+      ],
+      "packages/app/src/history.ts": [
+        "export type History = { done: Entry[]; undone: Entry[] };",
+        "export const emptyHistory = (): History => ({ done: [], undone: [] });",
+        "changed(e.before, e.after) ? { done: [...h.done, e].slice(-cap), undone: [] } : h;",
+        "return e.after.text !== text ? 'stale' : { h: { done: h.done.slice(0, -1), undone: [...h.undone, e] }, to: e.before };",
+        "return e.before.text !== text ? 'stale' : { h: { done: [...h.done, e], undone: h.undone.slice(0, -1) }, to: e.after };"
+      ],
+      "packages/app/src/runState.ts": [
+        "export type RunPhase = 'none' | 'busy' | 'running' | 'waiting' | 'done' | 'stopped' | 'paused' | 'failed';",
+        "done: { words: (v) => ['Done', ...tail(v)].join(' · '), ended: true, resumable: false },",
+        "else v.phase = finish?.type === 'run_stopped' ? 'stopped' : finish?.type === 'run_detached' ? (v.error !== undefined ? 'failed' : 'paused') : 'done';"
+      ],
+      "packages/app/src/StepChips.tsx": [
+        "done: { text: '✓', words: STATE_WORDS.done },"
+      ],
+      "packages/app/src/stepStatus.ts": [
+        "{ active: 'running', done: 'done', waiting: 'waiting for you', stuck: 'out of attempts', failed: 'failed', stopped: 'stopped', paused: 'left paused' };",
+        "const finish = (m: StepMap, cur: Cursor, sh: Shared) => retag(m, 'active', 'done', (id) => !mine(sh, cur, id) || held(sh, id));",
+        "retag(m, 'active', 'done', (id) => id === d.step || parents.includes(id) || !mine(sh, cur, id) || held(sh, id));",
+        "i.state = d.step === cur.gate ? 'waiting' : 'done';",
+        "if (cur.gate && m[cur.gate]) m[cur.gate]!.state = 'done';",
+        "run_finished: (m) => retag(m, 'active', 'done'),"
+      ],
+      "packages/app/src/Workspace.tsx": [
+        "const track = (move: (m: globalThis.PointerEvent) => void, done: (m: globalThis.PointerEvent) => void, onStop: () => void, esc: boolean) => {"
+      ],
+      "packages/core/src/nodes/fields.ts": [
+        "export type StatusState = 'active' | 'done' | 'waiting' | 'stuck' | 'failed';"
+      ],
+      "packages/core/src/receipt.ts": [
+        "status: 'done' | 'stopped' | 'failed' | 'paused' | 'running';",
+        "status = 'done';",
+        "if (status !== 'done' && status !== 'stopped') status = 'paused';"
+      ],
+      "packages/core/src/run.ts": [
+        "export type RunStatus = 'running' | 'paused' | 'done' | 'stopped';",
+        "done?: true;",
+        "this.status = 'done';",
+        "this.status = 'done';"
+      ],
+      "packages/core/src/viewShape.ts": [
+        "const STATES: Record<StatusState, 1> = { active: 1, done: 1, waiting: 1, stuck: 1, failed: 1 };"
+      ],
+      "packages/server/src/drive.ts": [
+        "if (run.status !== 'stopped' && run.status !== 'done') for (const p of run.pauses()) if (p.track !== undefined) ask(p);",
+        "const result = detached && run.status !== 'done' && run.status !== 'stopped' ? 'detached' : 'finished';"
+      ],
+      "packages/server/src/live-models.ts": [
+        "const inflight = new Map<string, { version: string; done: Promise<void> }>();"
+      ],
+      "packages/server/src/loop/engine.ts": [
+        "let done: Extract<WireEvent, { type: 'done' }> | undefined;"
+      ],
+      "packages/server/src/loop/types.ts": [
+        "| { type: 'done'; stop?: string; extra?: Extra };"
+      ],
+      "packages/server/src/mods/anthropic-messages/index.ts": [
+        "yield { type: 'done', ...(stop ? { stop } : {}), ...(unknownBlocks.length ? { extra: { [UNKNOWN]: unknownBlocks } } : {}) };"
+      ],
+      "packages/server/src/mods/openai-chat/index.ts": [
+        "yield { type: 'done', ...(stop ? { stop } : {}), ...(Object.keys(messageExtra).length ? { extra: messageExtra } : {}) };"
+      ],
+      "packages/server/src/run-cli.ts": [
+        "export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; sigint: () => void } {",
+        "if (run && run.status !== 'stopped' && run.status !== 'done') void run.stop();",
+        "return { runId, status: active.status, exitCode: active.status === 'done' ? 0 : 1, receipt: r };"
+      ],
+      "packages/server/src/server.ts": [
+        "if (req.method === 'POST' && id === 'first-run' && action === 'done') reply = await firstRunDone(env);"
+      ],
+      "packages/server/src/session.ts": [
+        "if (r.status === 'done' && !stopping && all.length) return all.join('\\n\\n');"
+      ]
+    }
+  },
+  "drift": {
+    "reason": "the workflow's `drift:` front-matter key (limits for drift detection). Not the drift condition.",
+    "files": {
+      "packages/core/src/format/parse.ts": [
+        "...(fm.drift ? { drift: fm.drift } : {}),"
+      ],
+      "packages/core/src/model.ts": [
+        "drift?: { repeat?: number; stagnation?: number };"
+      ]
+    }
+  },
+  "end": {
+    "reason": "a position or span called end: a text range, a stream's 'end' event, the canvas drop zone and `top: 'end'` hit (the cap is found by its view's `stops`, never by name), a feed row's end time.",
+    "files": {
+      "packages/app/src/arrange.ts": [
+        "export function splitAtEnd(w: Workflow): { stack: Step[]; end?: Step; tail: Step[] } {",
+        "return { stack: w.steps.slice(0, i), end: w.steps[i], tail: w.steps.slice(i + 1) };",
+        "export function attach(w: Workflow, id: string, hit: Hit = { top: 'end' }): { w: Workflow; capped: string[] } | undefined {"
+      ],
+      "packages/app/src/blocks.ts": [
+        "export type Hit = { block: string; edge: 'before' | 'after' | 'into' | 'else' } | { top: 'start' | 'end' } | { body: string; branch: 'kids' | 'else' };"
+      ],
+      "packages/app/src/BlocksPane.tsx": [
+        "const hat = zone({ type: 'hat' }), end = zone({ type: 'end' });",
+        "const { stack: inStack, end: cap, tail } = splitAtEnd(w);"
+      ],
+      "packages/app/src/feed.ts": [
+        "start: number; end?: number;       // row ts (display only; order is by seq)",
+        "end: LogRow[] };                                  // the receipt",
+        "const piece: Run = { type: 'run', runId: row.runId!, workflow: '', newest: false, state: 'live', items: [], end: [] };",
+        "Object.assign(k, { state, end: ts }, why !== undefined ? { why } : {});"
+      ],
+      "packages/app/src/gesture.ts": [
+        "export type Zone = { type: 'block' | 'cap' | 'chead' | 'body' | 'mid' | 'foot' | 'hat' | 'end' | 'hex' | 'loose' | 'free' | 'surface'; id?: string; branch?: 'kids' | 'else'; path?: string };",
+        "case 'end': return { hit: { top: 'end' } };",
+        "case 'end': return { el: z, cls: 'sx-end' };"
+      ],
+      "packages/app/src/tags.ts": [
+        "export interface Picker { start: number; end: number; matches: TagEntry[] }",
+        "return matches.length ? { start: caret - m[1]!.length - 1, end: caret, matches } : null;",
+        "export function takeTag(text: string, at: { start: number; end: number }): { text: string; caret: number } {"
+      ],
+      "packages/app/src/TextTab.tsx": [
+        "el.setRangeText('  ', el.selectionStart, el.selectionEnd, 'end');"
+      ],
+      "packages/app/src/Workspace.tsx": [
+        "putEnd: () => { const keys = [...sel].filter((k) => k.startsWith('l:')); if (keys.length) unparkTo(keys, { top: 'end' }); },"
+      ],
+      "packages/core/src/viewShape.ts": [
+        "if (v.stops !== undefined && (v.stops !== true || !packed)) return '`view.stops` is only for a block of the default pack (its `end`); no other block can end the playbook.';"
+      ],
+      "packages/server/src/mods/claude-code-cli/hooks.ts": [
+        "req.on('end', () => {"
+      ],
+      "packages/server/src/mods/claude-code-cli/mcp.ts": [
+        "res.on('end', () => {"
+      ],
+      "packages/server/src/server.ts": [
+        "req.on('end', () => resolve(size > MAX_BODY ? { tooBig: true } : { text: Buffer.concat(chunks).toString('utf8') }));"
+      ]
+    }
+  },
+  "gate": {
+    "reason": "the pause and question type `gate` core raises (PauseReason, Question.kind, awaiting(track,'gate')), the 'gate' palette colour and status rule key. A pause type, not a lookup of the gate block.",
+    "files": {
+      "packages/app/src/stepStatus.ts": [
+        "interface Cursor { track: string; step?: string; gate?: string; v2?: boolean }"
+      ],
+      "packages/core/src/nodes/fields.ts": [
+        "attempts?: string; cursor?: true; gate?: true; opens?: true;",
+        "kind: string; order: number; colour: 'soft' | 'hard' | 'gate' | 'loop' | 'verify' | 'hand' | 'mem' | 'mine';"
+      ],
+      "packages/core/src/run.ts": [
+        "changeRequest?: { note: string; gate: PauseReason };",
+        "| 'gate'",
+        "changeRequest?: { note: string; gate: PauseReason };",
+        "changeRequest?: { note: string; gate: PauseReason };",
+        "const MOD_PAUSES: readonly string[] = ['gate', 'budget-used', 'link-budget-used', 'agent-blocked', 'stop'];",
+        "private changeRequest?: { note: string; gate: PauseReason };",
+        "const f = this.awaiting(track, 'gate');",
+        "private async sendChanges(t: Track, note: string, gate: PauseReason) {",
+        "t.policy = { ...t.policy, pendingGate: gate.stepId ?? 'gate' };",
+        "gate.stepId ?? 'gate',",
+        "const f = this.awaiting(track, 'gate');",
+        "const cr = t.changeRequest as { note?: unknown; gate?: unknown } | undefined;"
+      ],
+      "packages/core/src/viewShape.ts": [
+        "const COLOURS: Record<KindView['colour'], 1> = { soft: 1, hard: 1, gate: 1, loop: 1, verify: 1, hand: 1, mem: 1, mine: 1 };",
+        "const RULE_KEYS = ['when', 'step', 'state', 'why', 'attempts', 'cursor', 'gate', 'opens', 'label'];",
+        "for (const k of ['cursor', 'gate', 'opens'] as const) if (r[k] !== undefined && r[k] !== true) return `${at}.${k} must be true, or left out.`;"
+      ],
+      "packages/server/src/drive.ts": [
+        "export interface Question { id: string; kind: 'gate' | 'budget' | 'resume' | 'tool' | 'judge' | 'trust' | 'switch' | 'usd'; prompt: string; detail?: string;",
+        "export function parseAnswer(kind: 'gate' | 'budget' | 'resume' | 'usd', a: string): Answer {",
+        "if (kind === 'gate') {",
+        "if (p.type === 'gate') {",
+        "const a = await io.ask({ id: questionId(), kind: 'gate', prompt: 'approve / changes <note> / stop', ...title });",
+        "const ans = parseAnswer('gate', a);"
+      ],
+      "packages/server/src/questions/gate.ts": [
+        "kind: 'gate',"
+      ],
+      "packages/server/src/run-cli.ts": [
+        "if (o.yes && q.kind === 'gate') { say('  approved (--yes)'); return Promise.resolve('approve'); }"
+      ],
+      "packages/server/src/session.ts": [
+        "const detaches = open.length > 0 && open.every((p) => ['gate', 'budget', 'resume', 'switch', 'usd'].includes(p.q.kind))"
+      ]
+    }
+  },
+  "guard": {
+    "reason": "the reason text of a refusal that the receipt counts as a guard refusal. Not the guard card.",
+    "files": {
+      "packages/core/src/receipt.ts": [
+        "if (ev.data?.reason?.includes('guard')) {"
+      ]
+    }
+  },
+  "model": {
+    "reason": "the model a request, setting, usage row or field names (`model:` data, the 'model' field input, JudgeKind): data about the model in use, not the model block.",
+    "files": {
+      "packages/app/src/BlockPanel.tsx": [
+        "model: picker,"
+      ],
+      "packages/app/src/BlocksPane.tsx": [
+        "if (f?.input === 'model' || f?.input === 'effort') {"
+      ],
+      "packages/app/src/Chat.tsx": [
+        "onChange={(v) => post(`${base}/settings`, { model: v }).catch((err) => onError(err.message))} />"
+      ],
+      "packages/app/src/Providers.tsx": [
+        "{provider ? [info.host, `${info.models} ${info.models === 1 ? 'model' : 'models'}`, info.replaces, info.newer, info.keyShown].filter(Boolean).join(' · ') : otherMeta(row, used)}"
+      ],
+      "packages/app/src/state.ts": [
+        "explicitTitle?: string; firstMessage?: string; engine?: string; model?: string; effort?: string;",
+        "export interface SessionView { id: string; cwd: string; title?: string; autoApprove: boolean; status: SessionStatus; createdAt?: number; updatedAt?: number; engine?: string; model?: string; effort?: string;",
+        "...(v.engine ? { engine: v.engine } : {}), ...(v.model ? { model: v.model } : {}), ...(v.effort ? { effort: v.effort } : {}), ...providerFacts(v) };"
+      ],
+      "packages/app/src/stepStatus.ts": [
+        "export interface StepInfo { state?: StepState; attempts?: number; refusals: number; cost: number; why?: string; model?: string }"
+      ],
+      "packages/app/src/usage.ts": [
+        "export interface Usage { model: string; used: number; window?: number; stale: boolean; compressed?: true; unknown?: true } // unknown: the reply gave no figure, `used` means nothing; compressed: `used` is the provider's figure after a compaction, a lower bound",
+        "const d = (r.data ?? {}) as { type?: string; model?: unknown; used?: unknown; window?: unknown; after?: unknown; step?: unknown };",
+        "return { model: d.model, used: after ?? (typeof d.used === 'number' ? d.used : 0), ...(unknown ? { unknown: true as const } : {}), ...(typeof d.window === 'number' ? { window: d.window } : {}), stale, ...(compacted ? { compressed: true as const } : {}) };",
+        "export function shownModel(sess: { engine?: string; model?: string | null }, usage: Usage | undefined, providers: Array<{ id: string; defaultModel: string }>): string | undefined {"
+      ],
+      "packages/core/src/cond.ts": [
+        "export type JudgeKind = 'you' | 'command' | 'deterministic' | 'agent' | 'model' | 'subagent';"
+      ],
+      "packages/core/src/fake-engine.ts": [
+        "model?: string;",
+        "| { type: 'usage'; model: string; used?: number; window?: number }",
+        "model?: string;"
+      ],
+      "packages/core/src/nodes/fields.ts": [
+        "key: string; label: string; input: 'text' | 'mono' | 'textarea' | 'number' | 'mode' | 'step' | 'model' | 'effort';",
+        "label?: { model: string; name: string; when?: StatusWhen };"
+      ],
+      "packages/core/src/nodes/index.ts": [
+        "switchModel?(model: string, step: string): Promise<SwitchOutcome>;"
+      ],
+      "packages/core/src/receipt.ts": [
+        "models?: Array<{ model: string; usd: number; turns: number; label?: string; unknown?: true }>;"
+      ],
+      "packages/core/src/run.ts": [
+        "model?: string;",
+        "model?: string;",
+        "switchModel?: (model: string, step: string) => Promise<SwitchOutcome>;",
+        "private switchModel?: (model: string, step: string) => Promise<SwitchOutcome>;",
+        "return { session: await this.engine.open({ ...open, ...(reasoning ? { effort: reasoning } : {}), pendingCards: () => [] }), ...(o.model ? { model: o.model, label: o.model } : {}), cap: 'process' };",
+        "...(step.attrs.model ? { model: step.attrs.model } : {}),",
+        "this.logEvent('subagent_started', { step: id, title, ...(opened.model ? { model: opened.model } : {}), ...(opened.label ? { label: opened.label } : {}), ...(resumed ? { resumed: true } : {}) }, t);",
+        "...(usage ? { model: usage.model } : {}),"
+      ],
+      "packages/core/src/validate.ts": [
+        "for (const k of ['model', 'reasoning']) {"
+      ],
+      "packages/core/src/viewShape.ts": [
+        "const INPUTS: Record<Field['input'], 1> = { text: 1, mono: 1, textarea: 1, number: 1, mode: 1, step: 1, model: 1, effort: 1 };",
+        "if (!isObj(l) || extraKey(l, ['model', 'name', 'when']) !== undefined || !goodName(l.model) || !goodName(l.name)) return `${at}.label must be { \"model\": a data name, \"name\": a data name }.`;"
+      ],
+      "packages/server/src/cli.ts": [
+        "return { engine: engineOf({ provider: r.provider, ...(r.model ? { model: r.model } : {}), ...(r.effort ? { effort: r.effort } : {}), settings, ...cb }), ...(r.model ? { model: r.model } : {}), fullDetail: sendsFromReins(mods, r.provider) };"
+      ],
+      "packages/server/src/engines.ts": [
+        "model: (model) => {"
+      ],
+      "packages/server/src/loop/store.ts": [
+        "model: string;",
+        "appendUnknownSpend(model: string): void;",
+        "return { model: v.model, input: v.input as number, output: v.output as number, cacheRead: v.cacheRead as number, cacheWrite: v.cacheWrite as number, ...(v.reasoning !== undefined ? { reasoning: v.reasoning as number } : {}), ...(v.cost !== undefined ? { cost: v.cost as number } : {}) };",
+        "model: u.model, input: u.input, output: u.output, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite,"
+      ],
+      "packages/server/src/loop/types.ts": [
+        "model: string;"
+      ],
+      "packages/server/src/loop/wire-util.ts": [
+        "export const RESERVED_BODY = ['model', 'messages', 'tools', 'stream', 'stream_options'] as const;",
+        "export function mergeBodies(base: Obj, p: ProviderManifest, model: string, effort: string | undefined): Obj {"
+      ],
+      "packages/server/src/models.ts": [
+        "export type ParsedModel = { provider: string; model: string };",
+        "if (cut < 0) return text ? { provider: sessionProvider, model: text } : { error: `Unknown model${where}: no model is named.` };",
+        "if (!ID_SHAPE.test(prefix)) return { provider: sessionProvider, model: text };"
+      ],
+      "packages/server/src/mods/actions.ts": [
+        "return done('ok', `Reached ${host}: ${ids.length} ${ids.length === 1 ? 'model' : 'models'}.`, { host, models: ids.length });"
+      ],
+      "packages/server/src/mods/anthropic-messages/index.ts": [
+        "const base: Obj = { model: req.model, max_tokens: size(req.maxOutput) ?? size(p.models.find((x) => x.id === req.model)?.maxOutput) ?? DEFAULT_MAX_TOKENS, messages: toMessages(req) };"
+      ],
+      "packages/server/src/mods/claude-code-cli/engine.ts": [
+        "model?: string;"
+      ],
+      "packages/server/src/mods/claude-code-cli/index.ts": [
+        "...(host.model ? { model: host.model } : {}), ...(host.effort ? { effort: host.effort } : {}),"
+      ],
+      "packages/server/src/mods/claude-code-cli/stream.ts": [
+        "text: string; totalCostUsd: number; isError: boolean; usage?: { model: string; used: number; window?: number };",
+        "let initModel: string | undefined, model: string | undefined, usage: any;",
+        "function usageOf(model: string | undefined, u: any, modelUsage: any, windows?: Record<string, number>) {"
+      ],
+      "packages/server/src/mods/openai-chat/index.ts": [
+        "const base: Obj = { model: req.model, messages: toMessages(req, p) };"
+      ],
+      "packages/server/src/mods/types.ts": [
+        "model?: string;"
+      ],
+      "packages/server/src/run-checks.ts": [
+        "listed?(provider: string, model: string): boolean;",
+        "export interface RunSession { provider: string; model?: string | undefined }",
+        "interface Used { step?: string; switches?: boolean; provider: string; before: string; model: string; reasoning?: string }",
+        "used.push({ step: s.step, switches: s.switches, provider: at, before, model: name, ...(s.reasoning !== undefined ? { reasoning: s.reasoning } : {}) });",
+        "env: CheckEnv, base: { provider: string; model?: string | undefined; effort?: string | undefined }, o: { step: string; model?: string | undefined; reasoning?: string | undefined },",
+        "): { provider: string; model?: string; effort?: string } | { error: string } {",
+        "const model = 'model' in p ? p.model : same ? base.model : undefined;",
+        "const c: Ctx = { env, w: { budget: { turns: 0, minutes: 0 } }, usd: undefined, used: [{ step: o.step, provider: p.provider, before: base.provider, model: named, ...(o.reasoning !== undefined ? { reasoning: o.reasoning } : {}) }] };"
+      ],
+      "packages/server/src/run-cli.ts": [
+        "{ engine: Engine; model?: string; /** Same meaning as `fullDetail`, for this subagent's provider. */ fullDetail?: boolean } | { error: string };",
+        "const { step: _s, title: _t, asks: _a, reasoning, model: _m, ...open } = s;",
+        "const session = await made.engine.open({ ...open, ...(made.model && s.model ? { model: made.model } : {}), ...(reasoning ? { effort: reasoning } : {}), pendingCards: () => [] });",
+        "return { session, ...(made.model ? { model: made.model, label: made.model } : {}) };"
+      ],
+      "packages/server/src/server.ts": [
+        "title?: unknown; path?: unknown; create?: unknown; stepId?: unknown; runId?: unknown; cwd?: unknown; engine?: unknown; model?: unknown; effort?: unknown;",
+        "let named: { provider: string; model: string } | undefined;",
+        "...(model !== undefined ? { model: named ? named.model : model, ...(named ? { provider: named.provider } : {}), ...target } : {}),",
+        "id: r.id, cwd: r.cwd, engine: r.engine, model: r.model, effort: r.effort, title: r.title,",
+        "for (const k of ['model', 'effort', 'title'] as const) if (b[k] !== undefined && !str(b[k])) return fail(400, `${k} must be a string.`);",
+        "model: str(b.model) ? b.model : provider.defaultModel,"
+      ],
+      "packages/server/src/session.ts": [
+        "interface Chose { model: string; label?: string }",
+        "const { model, label } = v as { model?: unknown; label?: unknown };",
+        "model?: string; effort?: string;",
+        "export type DescribeModel = (engine: string, model: string, used: number | undefined) =>",
+        "...(cur.model ? { model: cur.model } : {}),",
+        "store.updateSession(id, { model: p.from ?? null, ...(moved ? { engine: p.fromEngine, effort: p.fromEffort ?? null } : {}) });",
+        "log('settings', { model: p.from ?? '', ...(moved ? { engine: p.fromEngine } : {}) });",
+        "store.updateSession(id, { model: to || null, ...(moving ? { engine: target } : {}), ...(dropLevel ? { effort: null } : {}) });",
+        "log('settings', { model: to, ...(moving ? { engine: target } : {}), ...(dropLevel ? { effort: '' } : {}) });",
+        "if (!moving && (cur.model ?? '') === model) { chose = { model: name, label: d.label }; return { to: 'same', label: d.label }; }",
+        "chose = { model: name, label: d.label };",
+        "const why = runChecks(checkEnv(), { provider: cur.engine, model: cur.model ?? undefined }, w, resolveBlock);",
+        "const r = resolveSubagent(checkEnv(), { provider: cur.engine, model: cur.model ?? undefined, effort: cur.effort ?? undefined }, o);",
+        "const { step: _s, title: _t, asks: _a, reasoning: _r, model: _m, ...rest } = o;",
+        "function settings(p: { autoApprove?: boolean; title?: string; model?: string; provider?: string; estimate?: number | undefined; label?: string; source?: 'table' | 'catalog'; effort?: string; effortLabel?: string }): Ack {"
+      ],
+      "packages/server/src/settings.ts": [
+        "if (r.type === 'settings' && r.data && 'model' in (r.data as object)) return undefined;",
+        "if (r.type === 'settings' && r.data && 'model' in (r.data as object)) return undefined;",
+        "const d = r.data as { window?: unknown; model?: unknown };",
+        "export function priceFor(provider: PriceTable, catalog: CatalogModel[], model: string, tokens: number): Price | undefined {"
+      ],
+      "packages/server/src/store.ts": [
+        "id: string; cwd: string; engine: string; model?: string; effort?: string; title?: string;",
+        "...(r.model != null ? { model: r.model } : {}),",
+        "const sessionColumns = { autoApprove: 'auto_approve', title: 'title', engine: 'engine', engineSessionId: 'engine_session_id', model: 'model', effort: 'effort' } as const;",
+        "...(s.model !== undefined ? { model: r(s.model) } : {}),",
+        "...(typeof patch.model === 'string' ? { model: r(patch.model) } : {}),",
+        "createSession(s: { id: string; cwd: string; engine: string; model?: string; effort?: string; title?: string }): SessionRow {",
+        "updateSession(id: string, patch: { autoApprove?: boolean; title?: string; engine?: string; engineSessionId?: string; model?: string | null; effort?: string | null }) {"
+      ],
+      "packages/server/src/trust.ts": [
+        "export interface ModelStep { step: string; switches: boolean; model?: string; reasoning?: string; usd?: string }",
+        "out.push({ step: i.step, switches: NODES.get(i.kind)?.heading?.owns?.includes('model') === true, ...(model ? { model } : {}), ...(reasoning ? { reasoning } : {}), ...(usd !== undefined ? { usd } : {}) });"
+      ]
+    }
+  },
+  "now": {
+    "reason": "the live-card word `now` (steer / now / stop): core's LiveCardKind and interrupt, the session's card route, the app's composer buttons; also `now` as a clock function (`opts.now`). Control vocabulary, not a lookup of the card mod.",
+    "files": {
+      "packages/app/src/api.ts": [
+        "export const sendCard = (id: string, kind: 'steer' | 'now' | 'stop', text = '') => post(`/api/sessions/${id}/card`, { kind, text });"
+      ],
+      "packages/app/src/Chat.tsx": [
+        "const thinking = useMemo(() => { const now = thinkingNow(sess.rows); return { heads: thinkingHeads(sess.rows), ...(busy && now ? { now: now.seq } : {}) }; }, [sess]);"
+      ],
+      "packages/app/src/Composer.tsx": [
+        "const card = (kind: 'now' | 'stop') =>",
+        "sendCard(id, kind, kind === 'stop' ? '' : text.trim()).then(() => { if (kind === 'now') setText(''); }).catch(fail);",
+        "{busy && <button disabled={!text.trim()} onClick={() => void card('now')}>Now</button>}"
+      ],
+      "packages/app/src/feed.ts": [
+        "export interface Feed { pieces: Piece[]; now?: Knot; cards: Map<number, CardState> }",
+        "if ((x.kind === 'steer' || x.kind === 'now') && x.source !== 'auto') {"
+      ],
+      "packages/app/src/panelEdit.ts": [
+        "key: BudgetKey, raw: string, now: { turns: number; minutes: number }, drafts: { turns: string; minutes: string },"
+      ],
+      "packages/app/src/Rail.tsx": [
+        "return s < 60 ? 'now' : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : `${Math.floor(s / 86400)}d`;"
+      ],
+      "packages/app/src/rows.tsx": [
+        "thinking?: { heads: Set<number>; now?: number }; running?: boolean; seenSeq?: number;"
+      ],
+      "packages/app/src/RunDock.tsx": [
+        "const send = (kind: 'steer' | 'now' | 'stop') => {",
+        "<button type=\"button\" disabled={!working || sending || !draft.trim()} title=\"Interrupt the agent and deliver this card now\" onClick={() => send('now')}>Now</button>"
+      ],
+      "packages/app/src/runState.ts": [
+        "export interface RunCard { text: string; kind: 'steer' | 'now'; state: 'queued' | 'delivered' | 'unsent' }",
+        "if ((x.kind === 'steer' || x.kind === 'now') && x.source !== 'auto') v.cards.push({ text: String(x.card ?? ''), kind: x.kind, state: 'queued' });",
+        "export function meter(v: RunView, budget: Workflow['budget'], now: number): MeterItem[] {"
+      ],
+      "packages/core/src/cards/index.ts": [
+        "delivery?: 'now' | 'stop';"
+      ],
+      "packages/core/src/run.ts": [
+        "interruptCard?: { text: string; kind: 'now' | 'stop' };",
+        "export type LiveCardKind = 'steer' | 'now' | 'stop';",
+        "now?: () => number;",
+        "private interruptCard?: { text: string; kind: 'now' | 'stop' };",
+        "if (kind === 'now' && held) {",
+        "if (held?.kind === 'now') this.pendingCards.push(held.text);",
+        "} else if (kind === 'now') {",
+        "if (held?.kind === 'now') this.pendingCards.push(held.text);   // only the main line holds a now card",
+        "if (held?.kind === 'now') this.pendingCards.push(held.text);",
+        "now: opts.now,"
+      ],
+      "packages/server/src/catalog.ts": [
+        "export function createCatalog(o: { file: string; fetch?: typeof fetch; now?: () => number; url?: string }) {"
+      ],
+      "packages/server/src/live-models.ts": [
+        "now?: () => number;"
+      ],
+      "packages/server/src/loop/paths.ts": [
+        "now?: () => number;"
+      ],
+      "packages/server/src/loop/retry.ts": [
+        "export function retryAfterMs(header: string | undefined, now: number = Date.now()): number | undefined {",
+        "export function retryDelay(attempt: number, header: string | undefined, random: () => number, now?: number): number {"
+      ],
+      "packages/server/src/loop/tools.ts": [
+        "now?: () => number;",
+        "const files = state.single ? [t.abs] : walkFiles(t.abs, { allowDir: (abs) => allowed(abs) !== undefined, signal: ctx.signal, state, deadline, now: ctx.now ?? Date.now, ...(ctx.maxEntries ? { maxEntries: ctx.maxEntries } : {}) });"
+      ],
+      "packages/server/src/recover.ts": [
+        ".filter((r) => r.type === 'card_queued' && r.runId === undefined && (data(r).kind === 'steer' || data(r).kind === 'now'))"
+      ],
+      "packages/server/src/run-cli.ts": [
+        "else if (line.startsWith('/now ')) run.queueCard(line.slice(5).trim(), 'now');"
+      ],
+      "packages/server/src/server.ts": [
+        "if (b.kind !== 'steer' && b.kind !== 'now' && b.kind !== 'stop') return fail(400, \"kind must be 'steer', 'now' or 'stop'.\");"
+      ],
+      "packages/server/src/session.ts": [
+        "let intent: { kind: 'now'; text: string } | { kind: 'stop' } | undefined;",
+        "function route(text: string, kind: 'steer' | 'now' | 'stop') {",
+        "intent = { kind: 'now', text };",
+        "if (it?.kind === 'now') queue.unshift(it.text);",
+        "function card(text: string, kind: 'steer' | 'now' | 'stop'): Ack {"
+      ]
+    }
+  },
+  "phase": {
+    "reason": "RunPhase and the ended-phase of the app's run state (live / ended). Not the phase block.",
+    "files": {
+      "packages/app/src/runState.ts": [
+        "runId?: string; workflow?: string; live: boolean; phase: RunPhase;",
+        "live, phase: 'none', steps: stepStatus(rows), current: [], went: [], open: openQuestions(s),"
+      ],
+      "packages/app/src/StepChips.tsx": [
+        "export const StatusCtx = createContext<{ status: StepMap; show: boolean; ended?: { id: string; phase: keyof typeof ENDED }; thinking?: number }>({ status: {}, show: false });"
+      ],
+      "packages/app/src/TextTab.tsx": [
+        "const ended = showStatus && run.endedAt && endedPhase ? { id: run.endedAt, phase: endedPhase } : undefined;"
+      ]
+    }
+  },
+  "recall": {
+    "reason": "the `recall` and `store` services (Knowl) core hands a block through vm.services and takes from the host, and the host's `recall` list of a track. Not a lookup of the recall block.",
+    "files": {
+      "packages/core/src/nodes/index.ts": [
+        "readonly services: { recall?: (topics: string[]) => Promise<string[]>; store?: (what: string, summary: string) => Promise<void> };"
+      ],
+      "packages/core/src/run.ts": [
+        "recall: string[];",
+        "recall?: (topics: string[]) => Promise<string[]>;",
+        "recall: string[];",
+        "handback: [...(s.seed ?? [])], policy: { mode: 'write', guards: [], allowShell: true }, recall: [],",
+        "get services() { return { recall: recall(), store: store() }; },",
+        "capped: t.capped, recall: [...t.recall], policy: structuredClone(t.policy),",
+        "policy: structuredClone(s.policy), recall: [...s.recall],",
+        "recall: opts.recall,"
+      ]
+    }
+  },
+  "repeat": {
+    "reason": "a `repeat` count inside the workflow's `drift:` key. Not the repeat block.",
+    "files": {
+      "packages/core/src/model.ts": [
+        "drift?: { repeat?: number; stagnation?: number };"
+      ]
+    }
+  },
+  "run": {
+    "reason": "the word run: the feed piece type 'run', a `run:` thunk or tool field, the run command. Not the run block.",
+    "files": {
+      "packages/app/src/Chat.tsx": [
+        "const strand = f.pieces.find((p) => p.type === 'run' && p.newest);",
+        "const k = step === undefined || strand?.type !== 'run' ? undefined : strand.items.flatMap((i) => ('knot' in i ? [i.knot] : [])).filter((x) => x.step === step).at(-1);"
+      ],
+      "packages/app/src/feed.ts": [
+        "| { type: 'run'; runId: string; workflow: string; newest: boolean; state: KnotState | 'live';",
+        "type Run = Extract<Piece, { type: 'run' }>;",
+        "const piece: Run = { type: 'run', runId: row.runId!, workflow: '', newest: false, state: 'live', items: [], end: [] };"
+      ],
+      "packages/app/src/FeedView.tsx": [
+        "type Run = Extract<Piece, { type: 'run' }>;",
+        "s: Run; run: RunView; ctx: BeadCtx; open: Record<string, boolean>; onToggle(key: string, next: boolean): void; onBlock(runId: string, step: string): void;",
+        "interface PieceProps { ctx: BeadCtx; run: RunView; open: Record<string, boolean>; onToggle(key: string, next: boolean): void; onBlock(runId: string, step: string): void }",
+        "run: (p, c) => <Strand key={p.runId} s={p} run={c.run} ctx={c.ctx} open={c.open} onToggle={c.onToggle} onBlock={c.onBlock} />,",
+        "f: FeedData; sess: Sess; run: RunView; act: Actions; thinking: NonNullable<Ctx['thinking']>; open: Record<string, boolean>; onToggle(key: string, next: boolean): void;"
+      ],
+      "packages/app/src/RunDock.tsx": [
+        "run: RunView; sess: Sess; act: Actions; budget?: Workflow['budget']; pos?: Pos;"
+      ],
+      "packages/app/src/TextTab.tsx": [
+        "sess: Sess; models: Array<{ id: string; label: string }>; efforts: Array<{ id: string; label: string }>; sessionModel?: { id: string; label: string }; sessionEffort?: { id: string; label: string }; run: RunView; act: Actions; restore?: EditorState; onState: (patch: Partial<EditorState>) => void; onDirty: (dirty: boolean) => void; onRun: () => void;"
+      ],
+      "packages/server/src/cli.ts": [
+        "if (cmd === 'run' && (pos[0] || typeof flags.resume === 'string')) {"
+      ],
+      "packages/server/src/drive.ts": [
+        "export async function driveRun(run: Run, io: DriveIo, save: () => void): Promise<{ result: 'finished' | 'detached'; error?: string }> {",
+        "async function onPause(run: Run, io: DriveIo, p: PauseReason): Promise<boolean> {"
+      ],
+      "packages/server/src/loop/engine.ts": [
+        "type Prep = { text: string; isError: true; denied: boolean } | { run: () => Promise<ToolOut>; parallel: boolean; ask?: ToolRequest; same?: string };",
+        "run: async () => {",
+        "const runIt = async (r: { run: () => Promise<ToolOut> }): Promise<ToolOut | undefined> => {",
+        "if (ready.every((r) => 'run' in r && r.parallel)) {",
+        "const outs = await Promise.all(ready.map((r) => runIt(r as { run: () => Promise<ToolOut> })));",
+        "if ('run' in r) {",
+        "if (!('run' in fresh)) {"
+      ],
+      "packages/server/src/loop/tools.ts": [
+        "run: (input, ctx) => (name === shellToolName(ctx.platform) ? runShell(input as { command: string; timeout?: number }, ctx) : fail(noTool(name, ctx.platform, true))),"
+      ],
+      "packages/server/src/server.ts": [
+        "run: (s, b) => (str(b.path) && b.path ? fromAck(s.runFile(b.path)) : fail(400, 'path must be a non-empty string.')),"
+      ]
+    }
+  },
+  "same": {
+    "reason": "`same` as an outcome word (SwitchOutcome 'same') and as the key that dedupes tool approvals. Not the same condition.",
+    "files": {
+      "packages/core/src/nodes/index.ts": [
+        "export type SwitchOutcome = { to: 'switched' | 'same' | 'kept'; label: string } | { to: 'stop' } | { to: 'closed' };"
+      ],
+      "packages/server/src/loop/engine.ts": [
+        "type Prep = { text: string; isError: true; denied: boolean } | { run: () => Promise<ToolOut>; parallel: boolean; ask?: ToolRequest; same?: string };",
+        "...(ask ? { ask, same: JSON.stringify([tool.name, target?.abs, target?.root, inside, target?.scope]) } : {}),"
+      ],
+      "packages/server/src/session.ts": [
+        "if (!moving && (cur.model ?? '') === model) { chose = { model: name, label: d.label }; return { to: 'same', label: d.label }; }"
+      ]
+    }
+  },
+  "say": {
+    "reason": "the `say` output callback of the CLI and doctor, the retry table's `say:` function, the chat's 'say' event and its row. Not the say block.",
+    "files": {
+      "packages/app/src/feed.ts": [
+        "const OPENS = new Set(['engine', 'say']);"
+      ],
+      "packages/app/src/rows/say.tsx": [
+        "export const type = 'say';"
+      ],
+      "packages/app/src/runState.ts": [
+        "say: (r, x, v) => { v.last = { seq: r.seq, text: String(x.text ?? '') }; },"
+      ],
+      "packages/server/src/doctor.ts": [
+        "export async function doctor(say: (s: string) => void, mods: Mods, host: Pick<EngineHost, 'env' | 'home' | 'holdsSecret'>, redactor?: Redactor): Promise<boolean> {",
+        "export function doctorMods(say: (s: string) => void, loaded: Mods): boolean {"
+      ],
+      "packages/server/src/loop/retry.ts": [
+        "rate: { retry: true, say: (who) => `${who} is rate limiting (429); tried ${TRIES} times.` },",
+        "server: { retry: true, say: (who, code) => `${who} had a server error (${code}).` },",
+        "network: { retry: true, say: (_who, _code, what) => what },",
+        "stall: { retry: false, say: (who) => `${who} stopped sending for ${STALL_MS / 1000} s.` },",
+        "auth: { retry: false, say: (who, code, keyEnv) => `${who} refused the key (${code}). Check ${keyEnv} or Settings > Providers.` },",
+        "notFound: { retry: false, say: (who, _code, model) => `${who} has no model ${model} (404).` },",
+        "bad: { retry: false, say: (who, code, body) => `${who} refused the request (${code}): ${body}` },",
+        "unpaired: { retry: false, say: (_who, _code, body) => body },",
+        "context: { retry: false, say: (_who, _code, model) => `The conversation is too long for ${model} even after compressing.` },",
+        "redirect: { retry: false, say: (who) => `${who} answered with a redirect to another address; Reins does not follow it with your key.` },",
+        "consent: { retry: false, say: (_who, _code, what) => what },",
+        "refused: { retry: false, say: (_who, _code, what) => what },"
+      ],
+      "packages/server/src/session.ts": [
+        "say: (text) => log('say', { text }, runId),"
+      ]
+    }
+  },
+  "stop": {
+    "reason": "the live-card and pause word `stop`: run.stop(), PauseReason 'stop', the stop button and /stop, the answer word of a question. Core's control vocabulary, not a lookup of the card mod.",
+    "files": {
+      "packages/app/src/api.ts": [
+        "export const sendCard = (id: string, kind: 'steer' | 'now' | 'stop', text = '') => post(`/api/sessions/${id}/card`, { kind, text });"
+      ],
+      "packages/app/src/Composer.tsx": [
+        "else if (body === '/stop') await sendCard(id, 'stop');",
+        "const card = (kind: 'now' | 'stop') =>",
+        "sendCard(id, kind, kind === 'stop' ? '' : text.trim()).then(() => { if (kind === 'now') setText(''); }).catch(fail);",
+        "{busy && <button className=\"danger\" onClick={() => void card('stop')}>Stop</button>}"
+      ],
+      "packages/app/src/questions.ts": [
+        "export const offersStop = (kind: string) => actionsFor(kind).some((a) => a.build('') === 'stop');"
+      ],
+      "packages/app/src/RunDock.tsx": [
+        "const send = (kind: 'steer' | 'now' | 'stop') => {",
+        "const text = kind === 'stop' ? '' : draft.trim();",
+        ".then(() => { if (kind !== 'stop') setDraft((d) => (d.trim() === text ? '' : d)); }) // text typed since the send stays",
+        "{!run.open.some((r) => offersStop((r.data as { kind: string }).kind)) && <button type=\"button\" className=\"danger\" disabled={!working || sending} title=\"Stop the run\" onClick={() => send('stop')}>Stop</button>}"
+      ],
+      "packages/core/src/cards/index.ts": [
+        "delivery?: 'now' | 'stop';"
+      ],
+      "packages/core/src/nodes/index.ts": [
+        "export type SwitchOutcome = { to: 'switched' | 'same' | 'kept'; label: string } | { to: 'stop' } | { to: 'closed' };"
+      ],
+      "packages/core/src/run.ts": [
+        "interruptCard?: { text: string; kind: 'now' | 'stop' };",
+        "| 'stop';",
+        "export type LiveCardKind = 'steer' | 'now' | 'stop';",
+        "const MOD_PAUSES: readonly string[] = ['gate', 'budget-used', 'link-budget-used', 'agent-blocked', 'stop'];",
+        "private interruptCard?: { text: string; kind: 'now' | 'stop' };",
+        "} else if (kind === 'stop' && this.tracks.size) {",
+        "} else if (kind === 'stop' && held?.kind === 'stop') {",
+        "if (held?.kind === 'stop') continue;   // already stopping: its interrupt is in flight",
+        "t.interruptCard = { text, kind: 'stop' };",
+        "return this.interruptCard?.kind === 'stop' || this.status === 'stopped' || [...this.tracks.values()].some((t) => t.interruptCard?.kind === 'stop');",
+        "this.pauseTrack(t, { type: 'stop', text, ...(stepId ? { stepId } : {}) });",
+        "this.logEvent('run_paused', { reason: 'stop', text, ...(stepId ? { stepId } : {}) }, t);",
+        "stop: () => this.stop(),",
+        "const f = this.awaiting(track, 'stop', 'agent-blocked');",
+        "if (!sub && result.isError && t.interruptCard?.kind !== 'stop' && this.guardUsd(t, result)) {",
+        "if (card.kind === 'stop') {",
+        "const written = this.status === 'paused' && this.pauseReason?.type === 'stop' && this.pauseReason.text === card.text;"
+      ],
+      "packages/server/src/cli.ts": [
+        "stop?: Promise<void>;",
+        "stop: io.stop ?? new Promise<void>((resolve) => {"
+      ],
+      "packages/server/src/drive.ts": [
+        "| { t: 'stop' }",
+        "if (a === 'stop') return { t: 'stop' };",
+        "if (a === 'stop') return { t: 'stop' };",
+        "if (a === 'stop') return { t: 'stop' };",
+        "if (a === 'stop') return { t: 'stop' };",
+        "else if (ans.t === 'stop') await run.stop();",
+        "else if (ans.t === 'stop') await run.stop();",
+        "} else if (ans.t === 'stop') await run.stop();",
+        "if (p.type === 'agent-blocked' || p.type === 'stop') {",
+        "io.say(p.type === 'stop' ? (p.stepId ? `⏸ ${p.stepId}: ${p.text}` : `⏹ stopped by a card: ${p.text}`) : `⏸ the agent is blocked: ${p.reason}`);",
+        "else if (ans.t === 'stop') await run.stop();"
+      ],
+      "packages/server/src/loop/engine.ts": [
+        "how: { repair?: boolean; again?: () => Promise<'ok' | 'cancelled' | { stop: string } | undefined> } = {},",
+        "): Promise<Reply | 'cancelled' | { stop: string }> {",
+        "async function compactNow(signal: AbortSignal, trigger: 'manual' | 'overflow'): Promise<{ before: number; after: number } | 'none' | 'cancelled' | { stop: string }> {",
+        "if (reply === 'cancelled' || 'stop' in reply) return reply;",
+        "if (done === 'cancelled' || done === 'none' || 'stop' in done) return done === 'none' ? undefined : done;",
+        "if ('stop' in reply) return stopForBudget(reply.stop);",
+        "if (typeof done === 'object' && 'stop' in done) {"
+      ],
+      "packages/server/src/loop/fileio.ts": [
+        "export function readBoundedSync(abs: string, max: number, stop?: () => boolean): Bounded | 'notfile' | 'stopped' {"
+      ],
+      "packages/server/src/loop/types.ts": [
+        "| { type: 'done'; stop?: string; extra?: Extra };"
+      ],
+      "packages/server/src/questions/budget.ts": [
+        "{ label: 'Stop', answer: 'stop' },"
+      ],
+      "packages/server/src/questions/gate.ts": [
+        "{ label: 'Stop', answer: 'stop' },"
+      ],
+      "packages/server/src/questions/resume.ts": [
+        "{ label: 'Stop', answer: 'stop' },"
+      ],
+      "packages/server/src/questions/usd.ts": [
+        "{ label: 'Stop', answer: 'stop' },"
+      ],
+      "packages/server/src/run-cli.ts": [
+        "if (a) a('stop');",
+        "else run?.queueCard('Stop. The user pressed Ctrl-C.', 'stop');",
+        "for (const a of asks.splice(0)) a('stop');",
+        "if (line === '/stop') run.queueCard('Stop. The user halted the run from the terminal.', 'stop');"
+      ],
+      "packages/server/src/serve.ts": [
+        "stop: Promise<void>;"
+      ],
+      "packages/server/src/server.ts": [
+        "if (b.kind !== 'steer' && b.kind !== 'now' && b.kind !== 'stop') return fail(400, \"kind must be 'steer', 'now' or 'stop'.\");",
+        "if (!str(b.text) || (!b.text.trim() && b.kind !== 'stop')) return fail(400, 'text must be a non-empty string.');"
+      ],
+      "packages/server/src/session.ts": [
+        "let intent: { kind: 'now'; text: string } | { kind: 'stop' } | undefined;",
+        "if (a === 'stop') return { to: 'stop' };",
+        "if (stopping || intent?.kind === 'stop' || run?.stopHeld) {",
+        "if (intent?.kind === 'stop') return undefined;",
+        "intent = { kind: 'stop' };",
+        "function route(text: string, kind: 'steer' | 'now' | 'stop') {",
+        "if (kind === 'stop') stopOpening();",
+        "if (!plainActive) { if (kind !== 'stop') queue.push(text); }",
+        "else if (kind === 'stop') void applyStop();",
+        "if (!ok || stopping || it?.kind === 'stop') {",
+        "function card(text: string, kind: 'steer' | 'now' | 'stop'): Ack {",
+        "const gone = kind !== 'stop' ? providerGone() : undefined;",
+        "if (kind !== 'stop') return startPlain(text, true);",
+        "if (kind === 'stop' && oldest) {",
+        "if (k === 'tool' || k === 'judge') route(text, 'stop');",
+        "settle(oldest.q.id, 'stop');"
+      ]
+    }
+  },
+  "store": {
+    "reason": "the conversation and settings store objects (`store:` options) and the Knowl `store` service. Not the store block.",
+    "files": {
+      "packages/core/src/nodes/index.ts": [
+        "readonly services: { recall?: (topics: string[]) => Promise<string[]>; store?: (what: string, summary: string) => Promise<void> };"
+      ],
+      "packages/core/src/run.ts": [
+        "store?: (what: string, summary: string) => Promise<void>;",
+        "get services() { return { recall: recall(), store: store() }; },",
+        "store: opts.store,"
+      ],
+      "packages/server/src/engines.ts": [
+        "export function consentFrom(mods: Mods, store: Pick<Store, 'hasConsent' | 'grantConsent'>): NonNullable<SessionDeps['consent']> {"
+      ],
+      "packages/server/src/recover.ts": [
+        "export function recover(store: Store): void {"
+      ],
+      "packages/server/src/run-cli.ts": [
+        "store: Store;"
+      ],
+      "packages/server/src/server.ts": [
+        "store: Store;",
+        "interface Ctx { store: Store; describe: DescribeModel; describeEffort: DescribeEffort; installed: (provider: string) => boolean }",
+        "const deps: SessionDeps = { kinds: () => kindVersions(mods), store: o.store, makeEngine: (a) => o.makeEngine({ ...a, settings }), dir: o.dir, env: children, ...(o.redactor ? { redactor: o.redactor } : {}), describeModel, describeEffort, folderTrust: folderTrustFrom(mods), providers: checkEnvFrom(mods, { env: o.env ?? process.env, home: o.dir }), consent: asks, origin: (provider) => providerOrigin(mods, provider), generation: (provider) => providerGeneration(mods, provider), onRow: (row) => { for (const f of subs) f(row); } };",
+        "return 'fail' in r ? r.fail : actions[m[2]!]!(s, r.b, { store: o.store, describe: describeModel, describeEffort, installed: deps.providers!.installed });"
+      ],
+      "packages/server/src/session.ts": [
+        "store: Store; makeEngine: MakeEngine; dir: string; onRow?: (row: LogRow) => void; describeModel?: DescribeModel; describeEffort?: DescribeEffort;"
+      ],
+      "packages/server/src/settings.ts": [
+        "export function readSetting<K extends keyof typeof SETTINGS>(store: Store, key: K): (typeof SETTINGS)[K]['default'] {"
+      ],
+      "packages/server/src/store.ts": [
+        "export function redactingStore(store: Store, redactor: Pick<Redactor, 'redactJson' | 'has'>): Store {"
+      ]
+    }
+  },
+  "subagent": {
+    "reason": "JudgeKind 'subagent' (who judges a condition) and the `subagent:` service run.ts hands a block as vm.subagent. Not a lookup of the subagent block.",
+    "files": {
+      "packages/core/src/cond.ts": [
+        "export type JudgeKind = 'you' | 'command' | 'deterministic' | 'agent' | 'model' | 'subagent';"
+      ],
+      "packages/core/src/run.ts": [
+        "subagent: (s, usd) => this.subagentTurn(t, s, usd),"
+      ]
+    }
+  },
+  "verify": {
+    "reason": "the palette colour name `verify` of a block view (KindView.colour). Not the verify block.",
+    "files": {
+      "packages/core/src/nodes/fields.ts": [
+        "kind: string; order: number; colour: 'soft' | 'hard' | 'gate' | 'loop' | 'verify' | 'hand' | 'mem' | 'mine';"
+      ],
+      "packages/core/src/viewShape.ts": [
+        "const COLOURS: Record<KindView['colour'], 1> = { soft: 1, hard: 1, gate: 1, loop: 1, verify: 1, hand: 1, mem: 1, mine: 1 };"
+      ]
+    }
+  }
+}

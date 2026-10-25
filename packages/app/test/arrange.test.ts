@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseWorkflow, printWorkflow, type Step } from '@reins/core';
-import { addLoose, attach, detach, ensureEnd, freedBy, HOME, moveItems, nextKey, park, pruneLayout, removeLoose, selfContained, splitAtEnd, stateBytes, unpark } from '../src/arrange.js';
+import { addLoose, attach, chains, detach, detachApart, ensureEnd, freedBy, HOME, moveItems, nextKey, park, pruneLayout, removeLoose, selfContained, splitAtEnd, stateBytes, unpark } from '../src/arrange.js';
 import { flatSteps } from '../src/canvas.js';
 import { LOOSE_MAX, type Layout } from '../src/editorState.js';
 
@@ -252,5 +252,39 @@ describe('free blocks: the steps after the first top-level end', () => {
     expect(moveItems(lay, ['s:a'], { x: 5, y: 5 }).free).toEqual({ a: { x: 6, y: 7 }, b: { x: 10, y: 20 } });
     expect(lay.free!.a).toEqual({ x: 1, y: 2 });
     expect(moveItems({}, ['s:a'], { x: 5, y: 5 })).toEqual({});
+  });
+});
+
+// M3 Task 12: free blocks as chains; a detached block starts a chain of its own.
+describe('chains and detachApart', () => {
+  const wf = (body: string) => parseWorkflow(`${HEAD}${body}`).workflow!;
+  const ids2 = (l: Step[][]) => l.map((c) => c.map((s) => s.id));
+  const tailOf = (text: string) => splitAtEnd(wf(text)).tail;
+  it('free blocks with no wire and no end between them are one chain; an end closes it; a next link breaks it', () => {
+    expect(ids2(chains(tailOf('## phase a\n\n## end\n\n## phase f1\n\n## phase f2\n\n## phase f3\n')))).toEqual([['f1', 'f2', 'f3']]);
+    expect(ids2(chains(tailOf('## phase a\n\n## end\n\n## phase f1\n\n## end\nid: e2\n\n## phase f3\n')))).toEqual([['f1', 'e2'], ['f3']]);
+    expect(ids2(chains(tailOf('## phase a\n\n## end\n\n## phase f1\nnext: a (max 2)\n\n## phase f2\n')))).toEqual([['f1'], ['f2']]);
+    expect(chains([])).toEqual([]);
+  });
+  it('a block with a place of its own stands alone and breaks the chain on both sides', () => {
+    const tail = tailOf('## phase a\n\n## end\n\n## phase f1\n\n## phase f2\n\n## phase f3\n');
+    expect(ids2(chains(tail, new Set(['f2'])))).toEqual([['f1'], ['f2'], ['f3']]);
+    expect(ids2(chains(tail, new Set(['f1'])))).toEqual([['f1'], ['f2', 'f3']]);
+  });
+  it('a fork keeps its chain: its next wires are branches, it runs on', () => {
+    expect(ids2(chains(tailOf('## phase a\n\n## end\n\n## fork\nnext: z\n\n## phase after\n\n## end\nid: e2\n\n## phase z\n')))).toEqual([['fork-1', 'after', 'e2'], ['z']]);
+  });
+  it('detachApart puts an end in front of the new free block when the free block above would run on into it; the old chain is unchanged', () => {
+    const w = wf('## phase plan\n\n## phase build\n\n## end\n\n## phase fix\n\n## phase other\n');
+    const r = detachApart(w, 'plan')!;
+    expect(r.w.steps.map((s) => s.id)).toEqual(['build', 'end-1', 'fix', 'other', 'end-2', 'plan']);
+    expect(ids2(chains(splitAtEnd(r.w).tail))).toEqual([['fix', 'other', 'end-2'], ['plan']]);
+    expect(detach(w, 'plan')!.w.steps.map((s) => s.id)).toEqual(['build', 'end-1', 'fix', 'other', 'plan']);   // the plain move stays as it was
+  });
+  it('and no end when the block above already ends the chain, when there is no free block, or when it goes elsewhere', () => {
+    expect(detachApart(wf('## phase plan\n\n## phase build\n\n## end\n\n## phase fix\n\n## end\nid: e2\n'), 'plan')!.w.steps.map((s) => s.id)).toEqual(['build', 'end-1', 'fix', 'e2', 'plan']);
+    expect(detachApart(wf('## phase plan\n\n## phase build\n'), 'plan')!.w.steps.map((s) => s.id)).toEqual(['build', 'end-1', 'plan']);
+    expect(detachApart(wf('## phase plan\n\n## phase build\n\n## end\n\n## phase fix\nnext: build (max 2)\n'), 'plan')!.w.steps.map((s) => s.id)).toEqual(['build', 'end-1', 'fix', 'plan']);
+    expect(detachApart(wf('## phase plan\n\n## end\n'), 'nope')).toBeUndefined();
   });
 });

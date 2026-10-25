@@ -60,6 +60,8 @@ export interface Workflow {
   steps: Step[];
   autos: AutoCard[];
   block?: string;
+  /** Set only by a host that reads a block file for a playbook: what the parser said about the file (errors and warnings), so the playbook can show them. */
+  problems?: Diagnostic[];
 }
 
 export interface Diagnostic {

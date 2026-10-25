@@ -1,0 +1,20 @@
+{
+  "reins": 1,
+  "id": "lm-studio",
+  "kind": "provider",
+  "version": "1.0.0",
+  "label": "LM Studio",
+  "description": "Models run by LM Studio's local server on this computer; no key and no cost.",
+  "homepage": "https://lmstudio.ai/",
+  "protocol": "openai-chat",
+  "baseUrl": "http://localhost:1234/v1",
+  "auth": { "style": "none", "keyEnv": [] },
+  "defaultModel": "openai/gpt-oss-20b",
+  "models": [
+    { "id": "openai/gpt-oss-20b", "label": "gpt-oss 20B", "tools": true },
+    { "id": "qwen/qwen3-coder-30b", "label": "Qwen3 Coder 30B", "tools": true },
+    { "id": "qwen/qwen3-30b-a3b-2507", "label": "Qwen3 30B A3B", "tools": true }
+  ],
+  "price": { "input": 0, "output": 0 },
+  "untested": true
+}

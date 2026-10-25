@@ -3,7 +3,7 @@ import { slugify } from './util.js';
 
 export type RenameResult = { workflow: Workflow } | { error: string };
 
-// ponytail: a `use` block's inner `against:` is not prefixed on inlining, so it names the parent's id and is not rewritten here
+// A playbook's inner steps are not steps of this workflow: their ids (`<step>/<id>`) and their `against:` are made when the program is compiled, so none is rewritten here
 export function renameStep(w: Workflow, from: string, to: string): RenameResult {
   const ids = new Set<string>();
   const collect = (steps: Step[]) => {

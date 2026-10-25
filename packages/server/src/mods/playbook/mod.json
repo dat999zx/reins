@@ -1,0 +1,39 @@
+{
+  "reins": 1,
+  "id": "playbook",
+  "kind": "block",
+  "version": "1.0.0",
+  "label": "Playbook",
+  "description": "Runs another playbook file from the blocks folder as one block, with inputs and outputs",
+  "main": "index.js",
+  "order": 140,
+  "pack": "default",
+  "tracks": true,
+  "reads": { "noun": "playbook", "folder": "blocks", "name": ["title", "playbook"] },
+  "provides": {
+    "kinds": ["playbook"],
+    "ops": ["PLAYBOOK", "PLAYBOOK_END"],
+    "attrs": ["input", "output", "session", "usd", "playbook"],
+    "events": ["playbook_started", "playbook_done"]
+  },
+  "view": {
+    "kind": "playbook",
+    "order": 150,
+    "colour": "mine",
+    "fields": [
+      { "key": "title", "label": "Playbook file", "input": "text" },
+      { "key": "input", "label": "Inputs", "input": "text", "ph": "name = value; name = value" },
+      { "key": "output", "label": "Outputs", "input": "text", "ph": "step ids, separated by commas" },
+      { "key": "session", "label": "Session", "input": "text", "ph": "same session" },
+      { "key": "usd", "label": "Budget (USD)", "input": "text", "error": "USD must be an amount above 0, like 2.50. Leave it empty for no USD limit.", "ph": "optional", "check": "usd" }
+    ],
+    "line": ["playbook", "sub", { "field": "session" }, "USD", { "field": "usd" }],
+    "sub": "{title|attrs.playbook|id}",
+    "card": { "label": "playbook", "section": "Flow" },
+    "fresh": {},
+    "rows": {
+      "playbook_started": { "text": "Playbook {playbook} started.", "className": "sx-sub" },
+      "playbook_done": { "text": "Playbook {playbook} finished.", "className": "sx-sub" }
+    }
+  }
+}

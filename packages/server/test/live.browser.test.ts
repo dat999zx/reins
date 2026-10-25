@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, type Browser, type Locator, type Page } from 'playwright';
-import { claudeEngine } from '../src/claude/engine.js';
+import { claudeEngine } from '../src/mods/claude-code-cli/engine.js';
 import { startServer, type Server } from '../src/server.js';
 import { openStore, type Store } from '../src/store.js';
 import { FAKE_CLAUDE, fakeSetup } from './helpers.js';
@@ -75,7 +75,7 @@ describe.skipIf(skip)('live run e2e', () => {
     const folders = [folderA, folderB];
     store = openStore(':memory:');
     srv = await startServer({
-      store, dir: tmpDir(), appDir: APP,
+      store, dir: tmpDir(), appDir: APP, catalogDir: path.join(tmpDir(), 'no-catalog'), // no catalog: a fresh home would show the first-run chooser instead of the app
       probe: async () => PROBE,
       pickFolder: async () => folders.shift() ?? null,
       makeEngine: ({ model, effort, onApprove, onLive }) =>
@@ -220,7 +220,7 @@ describe.skipIf(skip)('live run e2e', () => {
 
     // L1b: correctness on a scrollable replay; the 500-row measurements run manually in spike/verify/live/perf.mjs.
     expect(await log.locator('.sx-nowbar [role="status"]').count()).toBe(1);
-    const c = await fetch(new URL('/api/sessions', srv.url), { method: 'POST', headers: { Authorization: `Bearer ${srv.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd: folderB, engine: 'claude' }) }).then(async (r) => { expect(r.ok).toBe(true); return r.json(); }) as { id: string };
+    const c = await fetch(new URL('/api/sessions', srv.url), { method: 'POST', headers: { Authorization: `Bearer ${srv.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd: folderB, engine: 'claude-code' }) }).then(async (r) => { expect(r.ok).toBe(true); return r.json(); }) as { id: string };
     const initialSeq = store!.readLog(c.id).at(-1)?.seq ?? 0;
     const add = (type: string, data: unknown, runId?: string) => store!.appendLog(c.id, { type, data, ...(runId ? { runId } : {}) });
     for (let turn = 0; turn < 6; turn++) {
@@ -381,7 +381,7 @@ describe.skipIf(skip)('live run e2e', () => {
     await dockCard('gate').getByRole('button', { name: 'Approve', exact: true }).click();
     await dock.getByRole('status').getByText('Done ·', { exact: false }).waitFor();
     await tab('Text').click();
-    const editor = page.getByRole('textbox', { name: 'Workflow text' });
+    const editor = page.getByRole('textbox', { name: 'Playbook text' });
     await editor.fill(`${await editor.inputValue()} `);
     await tab('Blocks').click();
     expect(await page.getByRole('button', { name: 'Run', exact: true }).getAttribute('title')).toBe('Save first: a run uses the saved file.');
@@ -599,7 +599,7 @@ describe.skipIf(skip)('live run e2e', () => {
     await page.locator('.wflist button', { has: page.locator('.sx-wfname', { hasText: /^decl$/ }) }).click();
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     await dockCard('trust').getByRole('button', { name: "Don't trust", exact: true }).click();
-    await dock.getByRole('status').getByText('The run did not start: The workflow is not trusted, so it did not run.', { exact: false }).waitFor();
+    await dock.getByRole('status').getByText('The run did not start: The playbook is not trusted, so it did not run.', { exact: false }).waitFor();
     await dock.getByRole('button', { name: 'Dismiss', exact: true }).click();
     expect(await dock.count()).toBe(0);
 
@@ -607,14 +607,14 @@ describe.skipIf(skip)('live run e2e', () => {
     // The estimate depends on list prices; this step tests the switch, not the limit.
     store!.putSetting('switchApprovalUsd', 100);
     const model = page.getByRole('combobox', { name: 'Model', exact: true });
-    expect(await model.inputValue()).toBe('claude-sonnet-5-5');
-    expect(await model.locator('option').allInnerTexts()).toEqual(['Opus 5.5', 'Sonnet 5.5', 'Haiku 5.5', 'Fable 5.1']);
-    await model.selectOption('claude-opus-5-5');
+    expect(await model.inputValue()).toBe('claude-code:claude-sonnet-5-5');
+    expect(await model.locator('option').allInnerTexts()).toEqual(['Opus 5.5', 'Sonnet 5.5', 'Haiku 5.5', 'Fable 5.1', 'Other model...']);
+    await model.selectOption('claude-code:claude-opus-5-5');
     await tab('Chat').click();
     await page.getByText('Model set to Opus 5.5 from the next reply.', { exact: false }).waitFor();
     await page.reload();
     await rail.waitFor();
-    await expect.poll(() => model.inputValue()).toBe('claude-opus-5-5');
+    await expect.poll(() => model.inputValue()).toBe('claude-code:claude-opus-5-5');
     const costOf = async () => Number((await page.getByLabel('Session cost').innerText()).replace('$', ''));
     const c0 = await costOf();
     if ((await tab('Chat').getAttribute('aria-selected')) !== 'true') await tab('Chat').click();
@@ -627,7 +627,7 @@ describe.skipIf(skip)('live run e2e', () => {
 
     // LS. A switch over a limit asks with a card: the title and the select wait, Keep leaves the model, Switch applies it.
     store!.putSetting('switchApprovalTokens', 1000);
-    await model.selectOption('claude-sonnet-5-5');
+    await model.selectOption('claude-code:claude-sonnet-5-5');
     const sq = page.getByRole('region', { name: 'switch question', exact: true });
     await sq.locator('.qprompt').waitFor();
     expect(await sq.locator('.qprompt').innerText()).toContain('Switch to Sonnet 5.5?');
@@ -638,12 +638,12 @@ describe.skipIf(skip)('live run e2e', () => {
     expect(await model.getAttribute('title')).toBe('Answer the switch question first.');
     await sq.getByRole('button', { name: 'Keep the current model', exact: true }).click();
     await expect.poll(() => sq.count()).toBe(0);
-    expect(await model.inputValue()).toBe('claude-opus-5-5');
+    expect(await model.inputValue()).toBe('claude-code:claude-opus-5-5');
     await expect.poll(() => page.title()).toBe('Reins');
-    await model.selectOption('claude-sonnet-5-5');
+    await model.selectOption('claude-code:claude-sonnet-5-5');
     await sq.getByRole('button', { name: 'Switch', exact: true }).click();
     await page.getByText('Model set to Sonnet 5.5 from the next reply.', { exact: false }).waitFor();
-    await expect.poll(() => model.inputValue()).toBe('claude-sonnet-5-5');
+    await expect.poll(() => model.inputValue()).toBe('claude-code:claude-sonnet-5-5');
     store!.putSetting('switchApprovalTokens', 200_000);
 
     // LP. Compress: the button sends /compact on the switched model's process, the feed says how many tokens of conversation remain
@@ -673,7 +673,7 @@ describe.skipIf(skip)('live run e2e', () => {
     await dockCard('trust').getByRole('button', { name: 'Trust', exact: true }).click();
     const modelQ = dockCard('switch');
     await modelQ.waitFor();
-    expect(await modelQ.locator('.qdetail').innerText()).toMatch(/Asked by the workflow's model block `model-1`\.$/);
+    expect(await modelQ.locator('.qdetail').innerText()).toMatch(/Asked by the playbook's model block `model-1`\.$/);
     await dock.getByRole('status').getByText('Waiting for you · switch question', { exact: false }).waitFor();
     const spawnsBefore = fake.log().filter((e) => e.kind === 'args').length;
     await modelQ.getByRole('button', { name: 'Switch', exact: true }).click();
@@ -694,7 +694,7 @@ describe.skipIf(skip)('live run e2e', () => {
     // every wait is on the receipt row, never a timer. fake-claude's turn index is per process, so the subagent's process plays P (0.0640898).
     await tab('Blocks').click();
     await page.locator('.wflist button', { has: page.locator('.sx-wfname', { hasText: /^sub$/ }) }).click();
-    expect(await model.inputValue()).toBe('claude-opus-5-5');
+    expect(await model.inputValue()).toBe('claude-code:claude-opus-5-5');
     const spawnsAtSub = fake.log().filter((e) => e.kind === 'args').length;
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     await dockCard('trust').getByRole('button', { name: 'Trust', exact: true }).click();

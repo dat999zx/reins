@@ -1,0 +1,15 @@
+{
+  "reins": 1,
+  "id": "cond-diff",
+  "kind": "condition",
+  "version": "1.0.0",
+  "label": "Condition: diff > N lines",
+  "description": "True when the change is longer than N lines",
+  "main": "index.js",
+  "order": 70,
+  "pack": "default",
+  "provides": { "conditions": ["diff"] },
+  "view": {
+    "diff": { "label": "diff > N lines", "fresh": { "t": "diff", "n": 300 }, "param": { "key": "n", "look": "num" } }
+  }
+}

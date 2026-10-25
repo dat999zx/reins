@@ -32,6 +32,14 @@ describe('receiptFields', () => {
   });
 });
 
+describe('receiptFields: counts', () => {
+  it('ends with one row per count a kind brought, and equals today\'s list without counts', () => {
+    expect(receiptFields({ ...base, gatesHeld: 1, counts: { hops: 1 } }).slice(-2)).toEqual([['gates held', '1'], ['hops', '1']]);
+    expect(receiptFields({ ...base, counts: { hops: 1 } })).toEqual([...receiptFields(base), ['hops', '1']]);
+    expect(receiptFields({ ...base, counts: {} })).toEqual(receiptFields(base));
+  });
+});
+
 describe('receiptFields: subagents', () => {
   it('says the dollars and turns per subagent after the models, and nothing without any', () => {
     const subagents = [{ step: 's', title: 'research', usd: 0.0640898, turns: 1 }, { step: 't', title: 'check', usd: 0.2, turns: 2 }];

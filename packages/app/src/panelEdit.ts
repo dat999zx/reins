@@ -1,20 +1,25 @@
 import type { Link, Step } from '@reins/core';
-import type { FieldKey } from './canvasKinds.js';
+import { USD_ERROR } from '../../core/src/nodes/fields.js';
+import { KINDS } from './canvasKinds.js';
 
 // The two modes of a step. An absent `mode:` is the first, so choosing it removes the attribute.
 export const MODES = [{ value: 'write', label: 'write' }, { value: 'read-only', label: 'read-only' }] as const;
 
-export const fieldValue = (s: Step, key: FieldKey): string =>
-  (key === 'title' ? s.title : key === 'prompt' ? s.prompt : s.attrs[key] || (key === 'mode' ? MODES[0].value : undefined)) ?? '';
+// The rules of a field (check, unset) are the step's own kind's field with that key; another kind's view never speaks for this step.
+const fieldOf = (s: Step, key: string) => KINDS[s.kind]?.fields.find((f) => f.key === key);
+
+export const fieldValue = (s: Step, key: string): string =>
+  (key === 'title' ? s.title : key === 'prompt' ? s.prompt : s.attrs[key] || fieldOf(s, key)?.unset) ?? '';
 
 const validMax = (v: string) => /^\d+$/.test(v) && Number.isSafeInteger(Number(v)) && Number(v) >= 1;
 
 // Mutates the step (call it inside editStep, which clones). Empty text removes the field.
 // Returns false when the value is refused (nothing changed).
-export function applyField(s: Step, key: FieldKey, v: string): boolean {
-  if (key === 'max' && !validMax(v)) return false;
-  if (key === 'mode' && v === MODES[0].value) v = '';
-  if (key === 'usd') {
+export function applyField(s: Step, key: string, v: string): boolean {
+  const f = fieldOf(s, key);
+  if (f?.check === 'count' && !validMax(v)) return false;
+  if (f?.unset !== undefined && v === f.unset) v = '';
+  if (f?.check === 'usd') {
     const r = parseBudget('usd', v);
     if ('error' in r) return false;
     if (r.value === undefined) delete s.attrs.usd;
@@ -39,7 +44,7 @@ export type BudgetKey = 'turns' | 'minutes' | 'usd';
 export const BUDGET_ERRORS: Record<BudgetKey, string> = {
   turns: 'Turns must be a whole number, 1 or more.',
   minutes: 'Minutes must be a whole number, 1 or more.',
-  usd: 'USD must be an amount above 0, like 2.50. Leave it empty for no USD limit.',
+  usd: USD_ERROR,
 };
 export const BUDGET_BOTH = 'Fill in both Turns and Minutes.';
 // The over-sum error of core's validate (what the hat says under its pills).

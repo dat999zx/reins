@@ -145,9 +145,6 @@ describe('addStep', () => {
     expect(ids(addStep(w, 'phase').steps)).toEqual(['plan', 'build', 'r', 'i', 'v', id]);
     expect(ids(addStep(w, 'phase', 'nope').steps).at(-1)).toBe(id);
   });
-  it('does nothing for a kind with no fresh', () => {
-    expect(addStep(w, 'use')).toBe(w);
-  });
   it('add then delete gives the same bytes', () => {
     expect(printWorkflow(deleteStep(addStep(w, 'phase', 'build'), newId(w, 'phase')))).toBe(printWorkflow(w));
   });
@@ -167,12 +164,11 @@ describe('addStepAt', () => {
     const noElse = parse(`${HEAD}## if tests pass\nid: i2\n\n### phase y\n`);
     expect(ids(find(addStepAt(noElse, 'phase', { parent: 'i2', branch: 'else', index: 0 }), 'i2').else)).toEqual(['phase-1']);
   });
-  it('does nothing for a place with no list, or a kind with no fresh', () => {
+  it('does nothing for a place with no list', () => {
     expect(addStepAt(w, 'phase', { parent: 'plan', branch: 'kids', index: 0 })).toBe(w);
     expect(addStepAt(w, 'phase', { parent: 'nope', branch: 'kids', index: 0 })).toBe(w);
     expect(addStepAt(w, 'phase', { parent: 'r', branch: 'else', index: 0 })).toBe(w);
     expect(addStepAt(w, 'phase', { branch: 'else', index: 0 })).toBe(w);
-    expect(addStepAt(w, 'use', { branch: 'kids', index: 0 })).toBe(w);
   });
   it('never mutates its input', () => {
     const before = structuredClone(w);

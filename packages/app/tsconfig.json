@@ -9,5 +9,5 @@
     "types": ["vite/client", "node"],
     "paths": { "@reins/server/*": ["../server/src/*"] }
   },
-  "include": ["src", "test", "vite.config.ts"]
+  "include": ["src", "test", "vite.config.ts", "../server/src/mods/*/index.ts"]
 }

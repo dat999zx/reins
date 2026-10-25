@@ -1,18 +1,18 @@
 import type { Workflow } from '@reins/core';
-import { splitAtEnd } from './arrange.js';
+import { fallsThrough, splitAtEnd } from './arrange.js';
 import { AGAINST, edgeId, flatSteps, type Mark } from './canvas.js';
-import { KINDS } from './canvasKinds.js';
 import type { Pt, Rect } from './surface.js';
 
 export type LinkRef = { from: string; index: number; kind: string; to: string };
 export type LinkArrow = LinkRef & { mark?: Mark };
 
-export function linksToDraw(w: Workflow, wires: Map<string, Mark>): { arrows: LinkArrow[]; missing: LinkRef[]; then: Array<{ from: string; to: string }> } {
+// `chained`: the free blocks drawn in a chain (no place of their own). Two of them one above the other run on into each other by their position, so no arrow is drawn between them.
+export function linksToDraw(w: Workflow, wires: Map<string, Mark>, chained?: ReadonlySet<string>): { arrows: LinkArrow[]; missing: LinkRef[]; then: Array<{ from: string; to: string }> } {
   const all = flatSteps(w.steps), ids = new Set(all.map((s) => s.id));
   const arrows: LinkArrow[] = [], missing: LinkRef[] = [];
   // a free block with no `next` runs into the free block under it
   const tail = splitAtEnd(w).tail;
-  const then = tail.flatMap((s, i) => (tail[i + 1] && !KINDS[s.kind].stops && !s.links.some((l) => l.kind === 'next') ? [{ from: s.id, to: tail[i + 1]!.id }] : []));
+  const then = tail.flatMap((s, i) => (tail[i + 1] && fallsThrough(s) && !(chained?.has(s.id) && chained.has(tail[i + 1]!.id)) ? [{ from: s.id, to: tail[i + 1]!.id }] : []));
   for (const s of all) {
     s.links.forEach((l, index) => {
       const ref = { from: s.id, index, kind: l.kind, to: l.to };
@@ -37,12 +37,13 @@ export function taken(arrows: LinkArrow[], then: Array<{ from: string; to: strin
 }
 
 // From the right side of `from`; into the left side of `to` when it is clearly further right, else round the right of both (a bracket).
-const geo = (from: Rect, to: Rect, lane: number) => {
+// cr: the right edge of a block's cost chips; a bracket runs past them, so its lane clears both ends' chips.
+const geo = (from: Rect & { cr?: number }, to: Rect & { cr?: number }, lane: number) => {
   const x1 = from.x + from.w, x2 = to.x + to.w;
-  return { x1, y1: from.y + from.h / 2, y2: to.y + to.h / 2, x2, curve: to.x - x1 > 40, out: Math.max(x1, x2) + 24 + 10 * lane };
+  return { x1, y1: from.y + from.h / 2, y2: to.y + to.h / 2, x2, curve: to.x - x1 > 40, out: Math.max(x1, x2, from.cr ?? -Infinity, to.cr ?? -Infinity) + 24 + 10 * lane };
 };
 
-export function arrowPath(from: Rect, to: Rect, lane: number): string {
+export function arrowPath(from: Rect & { cr?: number }, to: Rect & { cr?: number }, lane: number): string {
   const { x1, y1, y2, x2, curve, out } = geo(from, to, lane);
   if (curve) {
     const c = Math.max(20, (to.x - x1) / 2);

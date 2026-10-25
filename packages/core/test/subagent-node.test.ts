@@ -66,7 +66,7 @@ describe('subagent step: validate', () => {
   });
 
   it('slices of a model block and a subagent are summed against the workflow USD', () => {
-    expect(errors(wf('## model m\nusd: 1.10\n\n## subagent r\nusd: 1.90\n> Go.\n'))).toEqual(["The blocks' budgets add up to $3.00, over the workflow's $2.00."]);
+    expect(errors(wf('## model m\nusd: 1.10\n\n## subagent r\nusd: 1.90\n> Go.\n'))).toEqual(["The blocks' budgets add up to $3.00, over the playbook's $2.00."]);
     expect(errors(wf('## model m\nusd: 1.10\n\n## subagent r\nusd: 0.90\n> Go.\n'))).toEqual([]);
   });
 
@@ -102,11 +102,12 @@ describe('subagent step: compile', () => {
     expect(prog[0]).toMatchObject({ op: 'NODE', step: 'subagent-1', kind: 'subagent', src: w.steps[0] });
   });
 
-  it('inside use the id is prefixed', () => {
+  it('inside a playbook the id is prefixed', () => {
     const block = parseWorkflow('---\nreins: 1\nblock: b\n---\n\n## subagent r\n> Look.\n').workflow!;
-    const w = ok(wf('## use b\n'));
+    const w = ok(wf('## playbook b\n'));
     const prog = compileProgram(w, (n) => (n === 'b' ? block : undefined));
-    expect(prog[0]).toMatchObject({ op: 'NODE', step: 'b/subagent-1', kind: 'subagent', src: { id: 'b/subagent-1' } });
+    expect(prog.map((i) => i.op)).toEqual(['PLAYBOOK', 'NODE', 'PLAYBOOK_END', 'END']);
+    expect(prog[1]).toMatchObject({ op: 'NODE', step: 'playbook-1/subagent-1', kind: 'subagent', src: { id: 'playbook-1/subagent-1' } });
   });
 });
 

@@ -4,8 +4,8 @@ import { PassThrough } from 'node:stream';
 import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { serveMcp } from '../src/mcp.js';
-import { startHookServer } from '../src/hooks.js';
+import { serveMcp } from '../src/mods/claude-code-cli/mcp.js';
+import { startHookServer } from '../src/mods/claude-code-cli/hooks.js';
 
 let close: (() => Promise<void>) | undefined;
 afterEach(async () => { await close?.(); close = undefined; });
@@ -67,7 +67,7 @@ describe('approval MCP server', () => {
 
   it('runs as its own process from source, the way Claude starts it', async () => {
     const s = await server(() => ({ behavior: 'allow' }));
-    const file = fileURLToPath(new URL('../src/mcp.ts', import.meta.url));
+    const file = fileURLToPath(new URL('../src/mods/claude-code-cli/mcp.ts', import.meta.url));
     const child = spawn(process.execPath, [file], { env: { ...process.env, REINS_APPROVE_URL: s.approveUrl }, stdio: ['pipe', 'pipe', 'ignore'] });
     try {
       const call = client(child.stdin as unknown as PassThrough, child.stdout as unknown as PassThrough);

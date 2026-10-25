@@ -1,0 +1,394 @@
+{
+  "noFns": {
+    "events": [
+      {
+        "data": {
+          "steps": [
+            {
+              "id": "one",
+              "kind": "phase",
+              "title": "one"
+            },
+            {
+              "id": "say-1",
+              "kind": "say"
+            },
+            {
+              "id": "recall-1",
+              "kind": "recall"
+            },
+            {
+              "id": "use",
+              "kind": "phase",
+              "title": "use"
+            },
+            {
+              "id": "after",
+              "kind": "phase",
+              "title": "after"
+            },
+            {
+              "id": "store-1",
+              "kind": "store"
+            }
+          ],
+          "workflow": "t"
+        },
+        "type": "run_started"
+      },
+      {
+        "data": {
+          "parents": [],
+          "step": "one"
+        },
+        "type": "step_started"
+      },
+      {
+        "data": {
+          "step": "one"
+        },
+        "type": "turn_started"
+      },
+      {
+        "data": {
+          "step": "one",
+          "text": "one\nREINS: done"
+        },
+        "type": "turn_ended"
+      },
+      {
+        "data": {
+          "parents": [],
+          "step": "say-1"
+        },
+        "type": "step_started"
+      },
+      {
+        "data": {
+          "step": "say-1"
+        },
+        "type": "turn_started"
+      },
+      {
+        "data": {
+          "step": "say-1",
+          "text": "say\nREINS: done"
+        },
+        "type": "turn_ended"
+      },
+      {
+        "data": {
+          "parents": [],
+          "step": "recall-1"
+        },
+        "type": "step_started"
+      },
+      {
+        "data": {
+          "skipped": "no recall function",
+          "topics": [
+            "upload"
+          ]
+        },
+        "type": "recall"
+      },
+      {
+        "data": {
+          "parents": [],
+          "step": "use"
+        },
+        "type": "step_started"
+      },
+      {
+        "data": {
+          "step": "use"
+        },
+        "type": "turn_started"
+      },
+      {
+        "data": {
+          "step": "use",
+          "text": "used\nREINS: done"
+        },
+        "type": "turn_ended"
+      },
+      {
+        "data": {
+          "parents": [],
+          "step": "after"
+        },
+        "type": "step_started"
+      },
+      {
+        "data": {
+          "step": "after"
+        },
+        "type": "turn_started"
+      },
+      {
+        "data": {
+          "step": "after",
+          "text": "after\nREINS: done"
+        },
+        "type": "turn_ended"
+      },
+      {
+        "data": {
+          "parents": [],
+          "step": "store-1"
+        },
+        "type": "step_started"
+      },
+      {
+        "data": {
+          "step": "store-1"
+        },
+        "type": "turn_started"
+      },
+      {
+        "data": {
+          "step": "store-1",
+          "text": "decision text\nREINS: done"
+        },
+        "type": "turn_ended"
+      },
+      {
+        "data": {
+          "skipped": "no store function",
+          "what": "decision"
+        },
+        "type": "store"
+      },
+      {
+        "data": {},
+        "type": "run_finished"
+      }
+    ],
+    "receipt": {
+      "autoCardsFired": 0,
+      "gatesHeld": 0,
+      "guardRefusals": 0,
+      "knowlRecalls": 0,
+      "knowlSkipped": 2,
+      "knowlStores": 0,
+      "liveCardsDelivered": 0,
+      "loopAttempts": 0,
+      "readOnlyRefusals": 0,
+      "status": "done",
+      "totalCostUsd": 0,
+      "totalRefusals": 0,
+      "totalTimeMs": 19000,
+      "totalTurns": 5,
+      "verifyResults": {
+        "failed": 0,
+        "passed": 0
+      },
+      "workflow": "t"
+    },
+    "receivedTexts": [
+      "[Reins · playbook \"t\" · step 1 of 6: one]\n\nfirst\n\nFor this step:\n- Do not touch migrations/**. (Enforced: edits there are blocked.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"t\" · step 2 of 6: say]\n\nhello\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"t\" · step 4 of 6: use]\n\nuse it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"t\" · step 5 of 6: after]\n\nafter\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"t\" · step 6 of 6: store]\n\nProvide a one-paragraph decision summary for \"decision\".\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    ],
+    "status": "done"
+  },
+  "withFns": {
+    "events": [
+      {
+        "data": {
+          "steps": [
+            {
+              "id": "one",
+              "kind": "phase",
+              "title": "one"
+            },
+            {
+              "id": "say-1",
+              "kind": "say"
+            },
+            {
+              "id": "recall-1",
+              "kind": "recall"
+            },
+            {
+              "id": "use",
+              "kind": "phase",
+              "title": "use"
+            },
+            {
+              "id": "after",
+              "kind": "phase",
+              "title": "after"
+            },
+            {
+              "id": "store-1",
+              "kind": "store"
+            }
+          ],
+          "workflow": "t"
+        },
+        "type": "run_started"
+      },
+      {
+        "data": {
+          "parents": [],
+          "step": "one"
+        },
+        "type": "step_started"
+      },
+      {
+        "data": {
+          "step": "one"
+        },
+        "type": "turn_started"
+      },
+      {
+        "data": {
+          "step": "one",
+          "text": "one\nREINS: done"
+        },
+        "type": "turn_ended"
+      },
+      {
+        "data": {
+          "parents": [],
+          "step": "say-1"
+        },
+        "type": "step_started"
+      },
+      {
+        "data": {
+          "step": "say-1"
+        },
+        "type": "turn_started"
+      },
+      {
+        "data": {
+          "step": "say-1",
+          "text": "say\nREINS: done"
+        },
+        "type": "turn_ended"
+      },
+      {
+        "data": {
+          "parents": [],
+          "step": "recall-1"
+        },
+        "type": "step_started"
+      },
+      {
+        "data": {
+          "context": [
+            "PRIOR: upload retries"
+          ],
+          "topics": [
+            "upload"
+          ]
+        },
+        "type": "recall"
+      },
+      {
+        "data": {
+          "parents": [],
+          "step": "use"
+        },
+        "type": "step_started"
+      },
+      {
+        "data": {
+          "step": "use"
+        },
+        "type": "turn_started"
+      },
+      {
+        "data": {
+          "step": "use",
+          "text": "used\nREINS: done"
+        },
+        "type": "turn_ended"
+      },
+      {
+        "data": {
+          "parents": [],
+          "step": "after"
+        },
+        "type": "step_started"
+      },
+      {
+        "data": {
+          "step": "after"
+        },
+        "type": "turn_started"
+      },
+      {
+        "data": {
+          "step": "after",
+          "text": "after\nREINS: done"
+        },
+        "type": "turn_ended"
+      },
+      {
+        "data": {
+          "parents": [],
+          "step": "store-1"
+        },
+        "type": "step_started"
+      },
+      {
+        "data": {
+          "step": "store-1"
+        },
+        "type": "turn_started"
+      },
+      {
+        "data": {
+          "step": "store-1",
+          "text": "decision text\nREINS: done"
+        },
+        "type": "turn_ended"
+      },
+      {
+        "data": {
+          "summary": "decision text",
+          "what": "decision"
+        },
+        "type": "store"
+      },
+      {
+        "data": {},
+        "type": "run_finished"
+      }
+    ],
+    "receipt": {
+      "autoCardsFired": 0,
+      "gatesHeld": 0,
+      "guardRefusals": 0,
+      "knowlRecalls": 1,
+      "knowlSkipped": 0,
+      "knowlStores": 1,
+      "liveCardsDelivered": 0,
+      "loopAttempts": 0,
+      "readOnlyRefusals": 0,
+      "status": "done",
+      "totalCostUsd": 0,
+      "totalRefusals": 0,
+      "totalTimeMs": 19000,
+      "totalTurns": 5,
+      "verifyResults": {
+        "failed": 0,
+        "passed": 0
+      },
+      "workflow": "t"
+    },
+    "receivedTexts": [
+      "[Reins · playbook \"t\" · step 1 of 6: one]\n\nfirst\n\nFor this step:\n- Do not touch migrations/**. (Enforced: edits there are blocked.)\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"t\" · step 2 of 6: say]\n\nhello\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"t\" · step 4 of 6: use]\n\nContext from Knowl:\n- PRIOR: upload retries\n\nuse it\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"t\" · step 5 of 6: after]\n\nafter\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+      "[Reins · playbook \"t\" · step 6 of 6: store]\n\nProvide a one-paragraph decision summary for \"decision\".\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+    ],
+    "status": "done"
+  }
+}

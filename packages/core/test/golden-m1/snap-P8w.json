@@ -1,0 +1,149 @@
+{
+  "autoArmed": {},
+  "commandResults": [],
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "a",
+            "kind": "phase",
+            "title": "a"
+          },
+          {
+            "id": "b",
+            "kind": "phase",
+            "title": "b"
+          },
+          {
+            "id": "c",
+            "kind": "phase",
+            "title": "c"
+          }
+        ],
+        "workflow": "t"
+      },
+      "id": "ev-1",
+      "timestamp": 1000,
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "a"
+      },
+      "id": "ev-2",
+      "timestamp": 2000,
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "a"
+      },
+      "id": "ev-3",
+      "timestamp": 3000,
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "usd": 1.5
+      },
+      "id": "ev-4",
+      "timestamp": 4000,
+      "type": "engine_cost"
+    },
+    {
+      "data": {
+        "cost": 1.5,
+        "step": "a",
+        "text": "a\nREINS: done"
+      },
+      "id": "ev-5",
+      "timestamp": 5000,
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "spent": 1.5,
+        "usd": 1
+      },
+      "id": "ev-6",
+      "timestamp": 6000,
+      "type": "budget_reached"
+    }
+  ],
+  "lastRecallContext": [],
+  "lastTurnText": "a\nREINS: done",
+  "linkCounters": {},
+  "linkLimitExtensions": {},
+  "loopCounters": {},
+  "loopLimitExtensions": {},
+  "pauseReason": {
+    "limit": 1,
+    "spent": 1.5,
+    "type": "usd-budget-used"
+  },
+  "pendingCards": [],
+  "programCounter": 1,
+  "runCost": 1.5,
+  "sessionId": "P8w-main-1",
+  "status": "paused",
+  "totalTurns": 1,
+  "turnOutputs": {
+    "a": "a\nREINS: done"
+  },
+  "usdExtra": {},
+  "usdSpent": {},
+  "workflow": {
+    "always": [],
+    "autos": [],
+    "budget": {
+      "minutes": 60,
+      "turns": 40,
+      "usd": 1
+    },
+    "name": "t",
+    "steps": [
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "a",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 8
+        },
+        "prompt": "a",
+        "title": "a"
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "b",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 11
+        },
+        "prompt": "b",
+        "title": "b"
+      },
+      {
+        "attrs": {},
+        "cards": [],
+        "id": "c",
+        "kind": "phase",
+        "links": [],
+        "pos": {
+          "col": 1,
+          "line": 14
+        },
+        "prompt": "c",
+        "title": "c"
+      }
+    ],
+    "version": 1
+  }
+}

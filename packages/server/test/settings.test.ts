@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import type { CatalogModel } from '../src/catalog.js';
+import { providerViews, startMods } from '../src/engines.js';
 import { contextSize, contextWindow, detachedRuns, priceFor, stillOverAfterCompaction, readSetting, switchEstimate, switchCheck } from '../src/settings.js';
 import { openStore, type LogRow } from '../src/store.js';
 
@@ -181,6 +185,38 @@ describe('priceFor', () => {
     expect(priceFor(provider, [], 'c', 1)).toBeUndefined();
     expect(priceFor(provider, cat(), 'c', 1)).toBeUndefined();
     expect(priceFor({ prices: {} }, cat({ input: 3, output: 9 }), 'c', 1)).toBeUndefined();
+  });
+
+  // Milestone P, Task 15 (spec 6.1, 6.2): a provider's default price, and no cacheWritePerInput needed for it.
+  it('the provider default price is the last resort: a cache write is billed as input, and no cacheWritePerInput is needed', () => {
+    const local = { prices: {}, price: { input: 0, output: 0 } };
+    expect(priceFor(local, [], 'any-model', 1000)).toEqual({ input: 0, cacheWrite: 0, source: 'table' });
+    expect(priceFor({ prices: {}, price: { input: 0.5, output: 1 } }, [], 'x', 1)).toEqual({ input: 0.5, cacheWrite: 0.5, source: 'table' });
+    // a catalog price without cacheWritePerInput cannot be priced from the catalog: the default is used
+    expect(priceFor(local, cat({ input: 3, output: 9 }), 'c', 1)).toEqual({ input: 0, cacheWrite: 0, source: 'table' });
+  });
+  it('the model\'s table row and the catalog come before the provider default', () => {
+    const p = { ...provider, price: { input: 0, output: 0 } };
+    expect(priceFor(p, cat({ input: 9, output: 9 }), 't', 1000)).toEqual({ input: 2, cacheWrite: 4, source: 'table' });
+    expect(priceFor(p, cat({ input: 3, output: 9 }), 'c', 1000)).toEqual({ input: 3, cacheWrite: 6, source: 'catalog' });
+    expect(priceFor(p, [], 'unlisted', 1000)).toEqual({ input: 0, cacheWrite: 0, source: 'table' });
+  });
+  it('a provider with no default price and no table row still has no price (a USD budget on it is refused)', () => {
+    expect(priceFor({ prices: {} }, [], 'c', 1)).toBeUndefined();
+  });
+  it('the claude manifest\'s estimate is what pin 4 recorded', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reins-settings-'));
+    const mods = await startMods({ dir, env: {} });
+    try {
+      const claude = providerViews(mods).find((p) => p.id === 'claude-code')!;
+      expect(claude.price).toBeUndefined();
+      const pin = JSON.parse(fs.readFileSync(path.join(__dirname, 'golden-p', 'state.json'), 'utf8')).prices as Record<string, unknown>;
+      for (const m of ['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-5-5', 'claude-fable-5-1']) expect(priceFor(claude, [], m, 10_000)).toEqual(pin[m]);
+      expect(priceFor(claude, [], 'claude-extra-8', 10_000)).toBeUndefined();
+    } finally {
+      mods.dispose();
+      fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    }
   });
 });
 

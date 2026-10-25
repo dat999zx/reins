@@ -5,9 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 import type { EngineProbe } from '@reins/core';
 import type { Catalog } from '../src/catalog.js';
-import { claudeEngine } from '../src/claude/engine.js';
+import { claudeEngine } from '../src/mods/claude-code-cli/engine.js';
 import type { Question } from '../src/drive.js';
 import { startServer, type Server } from '../src/server.js';
+import type { Redactor } from '../src/secrets.js';
 import { openStore, type LogRow, type Store } from '../src/store.js';
 import { FAKE_CLAUDE, fakeSetup, until, type FakeTurn } from './helpers.js';
 
@@ -23,7 +24,7 @@ function rmTemp(d: string) {
 }
 
 export function tmpDir(): string {
-  const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-http-')));
+  const d = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-http-')));
   undo.push(() => rmTemp(d));
   return d;
 }
@@ -115,6 +116,8 @@ export interface BootOptions {
   dir?: string;
   fake?: Fake;
   catalog?: Catalog;                              // the model catalog; none = the provider file's list only, no network
+  redactor?: Redactor;                            // secrets to hide (secrets.test.ts); none = nothing is hidden
+  env?: NodeJS.ProcessEnv;                        // the env workflow commands start from (secrets.test.ts); none = this process's
 }
 
 /** A server on a free port. Sessions run in `cwd` (the fake's temp folder), so the fake log sits beside them. */
@@ -130,6 +133,8 @@ export async function boot(turns: FakeTurn[] = [], o: BootOptions = {}) {
     probe: o.probe ?? (async () => { probes++; return PROBE; }),
     ...(o.heartbeatMs ? { heartbeatMs: o.heartbeatMs } : {}),
     ...(o.catalog ? { catalog: o.catalog } : {}),
+    ...(o.redactor ? { redactor: o.redactor } : {}),
+    ...(o.env ? { env: o.env } : {}),
     makeEngine: ({ model, effort, onApprove, onLive }) =>
       claudeEngine({ bin: FAKE_CLAUDE, ...(model ? { model } : {}), ...(effort ? { effort } : {}), onApprove, onLive }),
   });
@@ -139,7 +144,7 @@ export async function boot(turns: FakeTurn[] = [], o: BootOptions = {}) {
   return {
     srv, store, dir, cwd, fake, api, probes: () => probes,
     async session(extra: Record<string, unknown> = {}): Promise<string> {
-      const r = await api('POST', '/api/sessions', { body: { cwd, engine: 'claude', ...extra } });
+      const r = await api('POST', '/api/sessions', { body: { cwd, engine: 'claude-code', ...extra } });
       if (r.status !== 200) throw new Error(`POST /api/sessions: ${r.status} ${r.text}`);
       return r.json.id as string;
     },

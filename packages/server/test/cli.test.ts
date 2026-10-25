@@ -58,21 +58,17 @@ describe('reins print', () => {
 });
 
 describe('reins doctor', () => {
-  it('reports node, sqlite, claude path/version/login, codex, knowl and global hooks', async () => {
+  it('reports node, sqlite, each installed provider with its version and login, and knowl', async () => {
     fakeSetup([]);
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'reins-home-'));
-    fs.mkdirSync(path.join(home, '.claude'));
-    fs.writeFileSync(path.join(home, '.claude', 'settings.json'), JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'x' }] }], PreToolUse: [] }, enabledPlugins: { 'ponytail@ponytail': true } }));
     const r = await cli(['doctor'], { REINS_CLAUDE: FAKE_CLAUDE, REINS_HOME: home });
     expect(r.out).toMatch(/node\s+v\d+/);
     expect(r.out).toMatch(/node:sqlite\s+ok/);
-    expect(r.out).toContain(`claude     ${FAKE_CLAUDE} (REINS_CLAUDE)`);
+    expect(r.out).toMatch(/provider\s+claude-code/);
     expect(r.out).toMatch(/version\s+2\.1\.281/);
     expect(r.out).toMatch(/login\s+logged in/);
-    expect(r.out).toMatch(/codex/);
     expect(r.out).toMatch(/knowl/);
-    expect(r.out).toMatch(/SessionStart/);
-    expect(r.out).toMatch(/ponytail@ponytail/);
+    expect(r.out).not.toMatch(/codex/);
   }, 60_000);
 });
 
@@ -82,9 +78,9 @@ describe('reins', () => {
     expect(r.code).toBe(1);
     expect(r.err).toMatch(/usage/i);
   });
-  it('refuses the codex engine in Phase 2', async () => {
-    const r = await cli(['run', path.join(EXAMPLES, 'upload-retry.reins.md'), '--engine', 'codex']);
+  it('refuses a provider that is not installed', async () => {
+    const r = await cli(['run', path.join(EXAMPLES, 'upload-retry.reins.md'), '--provider', 'codex']);
     expect(r.code).toBe(1);
-    expect(r.err).toMatch(/codex/i);
+    expect(r.err).toContain('No provider `codex` is installed.');
   });
 });

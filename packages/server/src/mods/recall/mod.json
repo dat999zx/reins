@@ -1,0 +1,22 @@
+{
+  "reins": 1,
+  "id": "recall",
+  "kind": "block",
+  "version": "1.0.0",
+  "label": "Recall",
+  "description": "Asks Knowl for context on some topics; the next turn carries it",
+  "main": "index.js",
+  "order": 90,
+  "pack": "default",
+  "provides": { "kinds": ["recall"], "attrs": ["knowl"], "ops": ["RECALL"], "events": ["recall"] },
+  "view": {
+    "kind": "recall",
+    "order": 80,
+    "colour": "mem",
+    "icon": "round",
+    "fields": [{ "key": "knowl", "label": "Knowl", "input": "text" }],
+    "line": ["recall from Knowl", { "field": "knowl" }],
+    "card": { "label": "recall", "section": "Memory" },
+    "fresh": {}
+  }
+}

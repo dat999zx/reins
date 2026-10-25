@@ -1,0 +1,15 @@
+{
+  "reins": 1,
+  "id": "cond-drift",
+  "kind": "condition",
+  "version": "1.0.0",
+  "label": "Condition: drift detected",
+  "description": "True when the run shows a drift signal",
+  "main": "index.js",
+  "order": 110,
+  "pack": "default",
+  "provides": { "conditions": ["drift"] },
+  "view": {
+    "drift": { "label": "drift detected", "fresh": { "t": "drift" } }
+  }
+}

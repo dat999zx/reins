@@ -352,7 +352,15 @@
     "autos": [],
     "diags": [
       {
-        "message": "Block \"nope\" not found",
+        "message": "Unknown step kind \"use\"",
+        "pos": {
+          "col": 1,
+          "line": 7
+        },
+        "severity": "error"
+      },
+      {
+        "message": "Unknown step kind \"use\"",
         "pos": {
           "col": 1,
           "line": 7
@@ -365,9 +373,7 @@
     ],
     "tree": [
       {
-        "attrs": {
-          "use": "nope"
-        },
+        "attrs": {},
         "cards": [],
         "id": "use-1",
         "kind": "use",
@@ -375,8 +381,7 @@
         "pos": {
           "col": 1,
           "line": 7
-        },
-        "title": "nope"
+        }
       }
     ]
   },

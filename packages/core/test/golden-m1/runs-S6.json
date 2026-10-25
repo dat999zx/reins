@@ -1,0 +1,148 @@
+{
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "if-1",
+            "kind": "if"
+          },
+          {
+            "id": "yes1",
+            "kind": "phase",
+            "title": "yes1"
+          },
+          {
+            "id": "no1",
+            "kind": "phase",
+            "title": "no1"
+          },
+          {
+            "id": "if-2",
+            "kind": "if"
+          },
+          {
+            "id": "yes2",
+            "kind": "phase",
+            "title": "yes2"
+          },
+          {
+            "id": "no2",
+            "kind": "phase",
+            "title": "no2"
+          }
+        ],
+        "workflow": "t"
+      },
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "if-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "answer": true,
+        "cond": {
+          "q": "first",
+          "t": "llm"
+        }
+      },
+      "type": "judge"
+    },
+    {
+      "data": {
+        "parents": [
+          "if-1"
+        ],
+        "step": "yes1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "yes1"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "yes1",
+        "text": "REINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "if-2"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "answer": false,
+        "cond": {
+          "q": "second",
+          "t": "llm"
+        }
+      },
+      "type": "judge"
+    },
+    {
+      "data": {
+        "parents": [
+          "if-2"
+        ],
+        "step": "no2"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "step": "no2"
+      },
+      "type": "turn_started"
+    },
+    {
+      "data": {
+        "step": "no2",
+        "text": "REINS: done"
+      },
+      "type": "turn_ended"
+    },
+    {
+      "data": {},
+      "type": "run_finished"
+    }
+  ],
+  "receipt": {
+    "autoCardsFired": 0,
+    "gatesHeld": 0,
+    "guardRefusals": 0,
+    "knowlRecalls": 0,
+    "knowlSkipped": 0,
+    "knowlStores": 0,
+    "liveCardsDelivered": 0,
+    "loopAttempts": 0,
+    "readOnlyRefusals": 0,
+    "status": "done",
+    "totalCostUsd": 0,
+    "totalRefusals": 0,
+    "totalTimeMs": 11000,
+    "totalTurns": 2,
+    "verifyResults": {
+      "failed": 0,
+      "passed": 0
+    },
+    "workflow": "t"
+  },
+  "receivedTexts": [
+    "[Reins · playbook \"t\" · step 1 of 2: yes1]\n\ny1\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n",
+    "[Reins · playbook \"t\" · step 2 of 2: no2]\n\nn2\n\nWhen you finish this step, end your reply with exactly one line:\nREINS: done | blocked: <reason>\n"
+  ],
+  "status": "done"
+}

@@ -1,5 +1,5 @@
 <CWD>/wf.reins.md:21:1: warning: Condition uses "llm says" which costs extra model calls
-Reins · run <ID> · workflow "golden-answers" · <CWD>
+Reins · run <ID> · playbook "golden-answers" · <CWD>
 Type a line to send a card (steer). /now <text> interrupts and sends it. /stop halts the run.
 
 ── blocked ──
@@ -132,7 +132,7 @@ allow <n> more / stop
 ⏹ run stopped
 
 ── Receipt ──
-workflow golden-answers · stopped · 6 turns · <N> s · $<COST>
+playbook golden-answers · stopped · 6 turns · <N> s · $<COST>
 models claude-sonnet-5 $0.1540 (6 turns) · not split by model $0.2425
 gates held 2 · refusals 0 (guard 0, read-only 0) · loop attempts 2
 cards: live delivered 2, auto fired 0 · verify 0 pass / 0 fail · Knowl 0 recalls, 0 stores

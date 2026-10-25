@@ -1,0 +1,21 @@
+{
+  "reins": 1,
+  "id": "toy-ask",
+  "kind": "block",
+  "version": "1.0.0",
+  "label": "Toy ask",
+  "description": "A data block for tests: no code, one prompt about `topic` (and `mode`, if given).",
+  "order": 150,
+  "provides": { "kinds": ["ask"], "attrs": ["topic", "mode"] },
+  "turn": "Answer about {topic} in one line. Mode: {mode|topic}.",
+  "statusLine": "REINS: done | blocked: <reason>",
+  "view": {
+    "kind": "ask",
+    "order": 150,
+    "colour": "soft",
+    "fields": [{ "key": "topic", "label": "Topic", "input": "text" }],
+    "line": ["ask", { "field": "topic" }],
+    "card": { "label": "ask", "section": "Flow" },
+    "fresh": { "attrs": { "topic": "cats" } }
+  }
+}

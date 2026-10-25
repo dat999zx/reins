@@ -351,7 +351,7 @@ describe('preview (3c.9)', () => {
     expect((await send({ workflow: { ...model, budget: null } })).status).toBe(400);
     const broken = await send({ workflow: { ...model, steps: [{ id: 'a', kind: 'phase', links: 5, attrs: {} }] } });
     expect(broken.status).toBe(400);
-    expect(broken.json.error).toBe('The workflow model is malformed.');
+    expect(broken.json.error).toBe('The playbook model is malformed.');
     expect((await send({ workflow: model, stepId: 5 })).status).toBe(400);
     expect((await send({ text: TEXT, stepId: 5 })).status).toBe(400);
     expect((await send({ workflow: model })).status).toBe(200);

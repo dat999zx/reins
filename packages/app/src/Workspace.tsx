@@ -3,13 +3,13 @@ import type { Diagnostic, Step, Workflow } from '@reins/core';
 import { BlocksPane } from './BlocksPane.js';
 import { ContextMenu } from './ContextMenu.js';
 import { itemsFor, type MenuCtx, type MenuTarget } from './menus.js';
-import { addLoose, attach, detach, ensureEnd, freedBy, FULL, HOME, moveItems, park, removeLoose, selfContained, splitAtEnd, unpark } from './arrange.js';
-import { addStepAt, capBackward, dropPlace, dropSteps, duplicateSteps, moveStep, nestPlace, newId, placeOf, setCond, stackEnd, takeSteps, type Hit, type Place } from './blocks.js';
+import { addLoose, attach, detachApart, ensureEnd, freedBy, FULL, HOME, moveItems, park, removeLoose, selfContained, splitAtEnd, unpark } from './arrange.js';
+import { addStepAt, capBackward, dropPlace, dropSteps, duplicateSteps, moveStep, nestPlace, newId, newStep, placeOf, setCond, stackEnd, takeSteps, type Hit, type Place } from './blocks.js';
 import { KINDS } from './canvasKinds.js';
 import { flatSteps, marksOf, removeLinks, setLink, type WireKind } from './canvas.js';
 import { lanes, linksToDraw, taken } from './arrows.js';
 import { LinkLayer } from './LinkLayer.js';
-import { COND_KINDS } from './condKinds.js';
+import { freshCond, standInCond } from './condKinds.js';
 import { LOOSE_MAX, type Layout } from './editorState.js';
 import { cx } from './generic.js';
 import { DRAG_PX, pickGesture, type Press } from './gesture.js';
@@ -71,21 +71,31 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, models, ef
 
   // Arrows: each block's first row, measured once per model change or size change in the script's own coordinates, so a hat drag or a zoom needs no measuring.
   // A block with a place of its own (a free block) is measured from its own origin, named by c.
-  const [rects, setRects] = useState(new Map<string, Rect & { c?: string }>());
+  const [rects, setRects] = useState(new Map<string, Rect & { c?: string; cr?: number }>());
   const measure = () => {
     const s = view.current?.querySelector<HTMLElement>('.sx-script');
     if (!s) return;
     const z = camRef.current.zoom, q = (v: number) => Math.round((v / z) * 100) / 100;
-    const next = new Map<string, Rect & { c?: string }>();
+    const next = new Map<string, Rect & { c?: string; cr?: number }>();
+    // cr: the right edge of the block's own cost chips. over: how far the widest chip of the stack reaches past the script, so the free column starts after it.
+    let over = 0;
+    const sw = q(s.getBoundingClientRect().width);
     for (const el of view.current!.querySelectorAll<HTMLElement>('.blk[data-id]')) {
       const c = el.closest<HTMLElement>('.sx-placed'), o = (c ?? s).getBoundingClientRect();
       const b = el.getBoundingClientRect(), row = el.querySelector('.sx-row')?.getBoundingClientRect() ?? b;
-      next.set(el.dataset.id!, { x: q(b.left - o.left), y: q(row.top - o.top), w: q(b.width), h: q(row.height), ...(c && { c: c.dataset.zid }) });
+      const chips = [...el.querySelectorAll<HTMLElement>('.sx-st > .sstate')].filter((k) => k.closest('.blk[data-id]') === el);
+      const cr = chips.length ? q(Math.max(...chips.map((k) => k.getBoundingClientRect().right)) - o.left) : undefined;
+      if (cr !== undefined && !c && !el.closest('.sx-autofree')) over = Math.max(over, cr - sw);
+      next.set(el.dataset.id!, { x: q(b.left - o.left), y: q(row.top - o.top), w: q(b.width), h: q(row.height), ...(c && { c: c.dataset.zid }), ...(cr !== undefined && { cr }) });
     }
+    const chipOver = `${Math.max(0, over)}px`;
+    const moved = s.style.getPropertyValue('--chip-over') !== chipOver;
+    s.style.setProperty('--chip-over', chipOver);
+    if (moved) requestAnimationFrame(measure); // the free column just moved, so its blocks are measured again at the new place
     setRects((p) => (JSON.stringify([...p]) === JSON.stringify([...next]) ? p : next));
   };
   const wires = useMemo(() => marksOf(w, diags, text).wires, [w, diags, text]);
-  const { arrows, missing, then } = useMemo(() => linksToDraw(w, wires), [w, wires]);
+  const { arrows, missing, then } = useMemo(() => linksToDraw(w, wires, new Set(splitAtEnd(w).tail.filter((s) => !lay.free?.[s.id]).map((s) => s.id))), [w, wires, lay.free]);
   const tail = useMemo(() => splitAtEnd(w).tail, [w]);
   const freeIds = useMemo(() => new Set(tail.map((s) => s.id)), [tail]);
   // A free block sits outside the script's box, so it is observed itself: a pill typed into it moves its arrows.
@@ -97,6 +107,12 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, models, ef
     els.forEach((el) => ro.observe(el));
     return () => ro.disconnect();
   }, [tailKey]);
+  // A cost chip arrives as text inside the page, not as a size change of the script, so the page's changes are measured too.
+  useEffect(() => {
+    const mo = new MutationObserver(measure);
+    mo.observe(view.current!, { subtree: true, childList: true, characterData: true });
+    return () => mo.disconnect();
+  }, []);
   const base = useRef(new Map<string, Pt>()); // the world places of the free blocks when a press began
   // Where each free block stands now, read from the page: an unplaced one has no saved place until something moves it.
   const freePlaces = () => {
@@ -277,7 +293,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, models, ef
   };
   const menuCtx = (m: { id: string }): MenuCtx => {
     const s = flatSteps(w.steps).find((x) => x.id === m.id);
-    return { count: sel.size, topLevel: !!s && placeOf(w, s.id)?.parent === undefined, free: freeIds.has(m.id), isEnd: !!s && !!KINDS[s.kind].stops, clip: clip.length > 0, ran: !!ran?.(m.id) };
+    return { count: sel.size, topLevel: !!s && placeOf(w, s.id)?.parent === undefined, free: freeIds.has(m.id), isEnd: !!s && !!KINDS[s.kind]?.stops, clip: clip.length > 0, ran: !!ran?.(m.id) };
   };
   // One place decides what a point or an element is: the context menu and the Shift+F10 key both come here.
   const openOn = (t: Element | null, at: Pt) => {
@@ -363,7 +379,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, models, ef
       const q = (s: string) => view.current!.querySelector(s)?.getBoundingClientRect(), vr = view.current!.getBoundingClientRect();
       const s = q('.sx-script'), b = q(`.blk[data-id="${CSS.escape(id)}"]`);
       const at = s && b && toWorld(camRef.current, { x: s.right - vr.left + 40, y: b.top - vr.top }), others = Object.fromEntries(freePlaces());
-      flow([id], detach, `\`${id}\` is now a free block: it runs only when a link points to it.`, at && ((l) => ({ ...l, free: { ...others, ...l.free, [id]: at } })));
+      flow([id], detachApart, `\`${id}\` is now a free block: it runs only when a link points to it.`, at && ((l) => ({ ...l, free: { ...others, ...l.free, [id]: at } })));
     },
     attach: (id) => flow([id], attach, `\`${id}\` is back in the stack.`),
     putEnd: () => { const keys = [...sel].filter((k) => k.startsWith('l:')); if (keys.length) unparkTo(keys, { top: 'end' }); },
@@ -391,20 +407,23 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, models, ef
   const drag = useDrag({
     view, ghosts, cam: () => camRef.current, setCam: (c, save) => (save ? commit(c) : set(c)),
     legal: (src, t) => {
-      if ('hex' in t) return 'cond' in src && setCond(w, t.hex.id, t.hex.path, { t: 'approve' }) !== w;
+      if ('hex' in t) {
+        const stand = standInCond();   // the first condition the server offers stands in for the dragged one; none before its reply
+        return 'cond' in src && stand !== undefined && setCond(w, t.hex.id, t.hex.path, stand) !== w;
+      }
       if ('move' in src) {
         const free = src.move.filter((k) => k.startsWith('s:')).map((k) => k.slice(2)), to = 'hit' in t ? dropPlace(w, t.hit) : undefined;
         if (free.length) return 'hit' in t && free.every((id) => attach(w, id, t.hit));
         return !!to && unpark(w, looseOf(src.move).map((l) => l.step), to).w !== w;
       }
-      if ('surface' in t) return 'kind' in src ? !!KINDS[src.kind].fresh : 'id' in src && park(w, src.ids ?? [src.id]).w !== w;
+      if ('surface' in t) return 'kind' in src ? !!KINDS[src.kind]?.fresh : 'id' in src && park(w, src.ids ?? [src.id]).w !== w;
       if ('id' in src) return 'hit' in t && dropSteps(w, src.ids ?? [src.id], t.hit) !== w;
       const place = 'hit' in t ? dropPlace(w, t.hit) : undefined;
-      return !!place && 'kind' in src && addStepAt(w, 'phase', place) !== w;
+      return !!place && 'kind' in src && addStepAt(w, src.kind, place) !== w;
     },
     drop: (src, t, pt) => {
       const place = 'hit' in t ? dropPlace(w, t.hit) : undefined;
-      if ('hex' in t && 'cond' in src) onEdit((m) => setCond(m, t.hex.id, t.hex.path, COND_KINDS[src.cond]!.fresh()));
+      if ('hex' in t && 'cond' in src) { const fresh = freshCond(src.cond); if (fresh) onEdit((m) => setCond(m, t.hex.id, t.hex.path, fresh)); }
       else if ('hit' in t && 'id' in src) {
         const ids = src.ids ?? [src.id];
         moved((m) => dropSteps(m, ids, t.hit), ids);
@@ -414,7 +433,7 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, models, ef
       }
       else if ('surface' in t && 'id' in src) parkIds(src.ids ?? [src.id], src.id, pt);
       else if ('surface' in t && 'kind' in src) {
-        stash([{ id: newId(w, src.kind), kind: src.kind, attrs: {}, cards: [], links: [], ...KINDS[src.kind].fresh!() }], [pt]);
+        stash([newStep(w, src.kind)], [pt]);
       } else if (place && 'kind' in src && onEdit((m) => addStepAt(m, src.kind, place))) one(newId(w, src.kind));
     },
     move: (keys, d) => { onLayout((l) => moveItems(keys.some((k) => k.startsWith('s:')) ? { ...l, free: { ...Object.fromEntries(base.current), ...l.free } } : l, keys, d)); },
@@ -430,11 +449,11 @@ export function Workspace({ w, steps, diags, text, sel, primary, rev, models, ef
   press.current = drag.press;
   const hatMoving = !!drag.keys?.includes('hat');
   const scriptAt = { x: home.x + (hatMoving ? drag.d?.x ?? 0 : 0), y: home.y + (hatMoving ? drag.d?.y ?? 0 : 0) };
-  const world = new Map([...rects].map(([id, r]): [string, Rect] => { const o = (r.c ? freeAt.get(r.c) : scriptAt) ?? scriptAt; return [id, { x: r.x + o.x, y: r.y + o.y, w: r.w, h: r.h }]; }));
+  const world = new Map([...rects].map(([id, r]): [string, Rect & { cr?: number }] => { const o = (r.c ? freeAt.get(r.c) : scriptAt) ?? scriptAt; return [id, { x: r.x + o.x, y: r.y + o.y, w: r.w, h: r.h, ...(r.cr !== undefined && { cr: r.cr + o.x }) }]; }));
   const parking = !!drag.src && !!drag.ok && !drag.over; // a step over bare surface: a release parks it
   useEffect(() => {
     if (!parking) return;
-    onNote('Release to park: it leaves the workflow.');
+    onNote('Release to park: it leaves the playbook.');
     return () => onNote('');
   }, [parking]);
 

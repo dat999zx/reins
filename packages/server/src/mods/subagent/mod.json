@@ -1,0 +1,43 @@
+{
+  "reins": 1,
+  "id": "subagent",
+  "kind": "block",
+  "version": "1.0.0",
+  "label": "Subagent",
+  "description": "A step that runs in its own session, on its own model and USD budget",
+  "main": "index.js",
+  "order": 120,
+  "pack": "default",
+  "tracks": true,
+  "provides": { "kinds": ["subagent"], "attrs": ["model", "reasoning", "usd", "mode"] },
+  "view": {
+    "kind": "subagent",
+    "order": 110,
+    "colour": "mine",
+    "slice": "own",
+    "fields": [
+      { "key": "title", "label": "Title", "input": "text" },
+      { "key": "prompt", "label": "Prompt", "input": "textarea", "required": true },
+      { "key": "mode", "label": "Mode", "input": "mode", "unset": "write" },
+      { "key": "model", "label": "Model", "input": "model", "inherits": true },
+      { "key": "reasoning", "label": "Reasoning", "input": "effort", "inherits": true },
+      { "key": "usd", "label": "Budget (USD)", "input": "text", "error": "USD must be an amount above 0, like 2.50. Leave it empty for no USD limit.", "ph": "optional", "check": "usd" }
+    ],
+    "line": ["subagent", { "field": "title" }, "on", { "field": "model" }, { "field": "reasoning" }, { "field": "mode" }, "USD", { "field": "usd" }, { "field": "prompt" }],
+    "cards": true,
+    "card": { "label": "subagent", "section": "Flow" },
+    "fresh": {},
+    "coreRows": ["subagent_started", "subagent_result"],
+    "rows": {
+      "subagent_started": {
+        "text": "Subagent {title} {resumed?'resumed'|'started'} on {label|model|'the session model'}.",
+        "className": "sx-sub"
+      },
+      "subagent_result": {
+        "text": "Subagent {title} handed back its result{cost?' ('}{cost:usd}{unknown?' + ?'}{cost?')'}.",
+        "details": "{text}",
+        "className": "sx-sub"
+      }
+    }
+  }
+}

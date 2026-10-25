@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { CARDS, NODES, parseWorkflow, printWorkflow, validate, type Step, type StepKind } from '@reins/core';
 import { CARD_KINDS, CARD_LABEL, KINDS } from '../src/canvasKinds.js';
+import { freshOf } from '../src/blocks.js';
 import { BUDGET_ERRORS, applyField } from '../src/panelEdit.js';
+import { fill } from '../src/template.js';
 
 const step = (kind: string, over: Partial<Step> = {}): Step =>
   ({ id: 'x', kind, attrs: {}, cards: [], links: [], ...over }) as Step;
@@ -9,6 +11,10 @@ const step = (kind: string, over: Partial<Step> = {}): Step =>
 describe('KINDS', () => {
   it('has exactly the core node kinds', () => {
     expect(Object.keys(KINDS).sort()).toEqual([...NODES.keys()].sort());
+  });
+  it('lists the kinds in the palette order', () => {
+    expect(Object.keys(KINDS).slice(0, 12)).toEqual(['phase', 'say', 'run', 'gate', 'repeat', 'if', 'verify', 'recall', 'store', 'model', 'subagent', 'end']);
+    for (const k of Object.keys(KINDS).slice(12)) expect(KINDS[k as StepKind].order, k).toBeGreaterThan(130);
   });
   it('mirrors fails and container from core', () => {
     for (const k of NODES.keys()) {
@@ -28,11 +34,11 @@ describe('KINDS', () => {
     expect(CARD_KINDS).toEqual([...CARDS.values()].filter((c) => !c.delivery).map((c) => c.kind));
   });
   it('only end stops the workflow', () => {
-    expect((Object.keys(KINDS) as StepKind[]).filter((k) => KINDS[k].stops)).toEqual(['end']);
+    expect((Object.keys(KINDS) as StepKind[]).slice(0, 12).filter((k) => KINDS[k].stops)).toEqual(['end']);
   });
-  it('only use has sub', () => {
-    expect((Object.keys(KINDS) as StepKind[]).filter((k) => KINDS[k].sub)).toEqual(['use']);
-    expect(KINDS.use.sub!(step('use', { attrs: { use: 'lint-fix' } }))).toBe('lint-fix');
+  it('only the fork and the playbook have sub; the playbook\'s is the file name', () => {
+    expect((Object.keys(KINDS) as StepKind[]).filter((k) => KINDS[k].sub)).toEqual(['fork', 'playbook']);
+    expect(fill(KINDS.playbook.sub!, step('playbook', { attrs: { playbook: 'lint-fix' } }))).toBe('lint-fix');
   });
 });
 
@@ -47,7 +53,7 @@ describe('line', () => {
   it("'cond' is in exactly the kinds whose fresh step has a cond", () => {
     const withCond = kinds.filter((k) => KINDS[k].line.includes('cond')).sort();
     expect(withCond).toEqual(['gate', 'if', 'repeat']);
-    expect(kinds.filter((k) => KINDS[k].fresh?.().cond).sort()).toEqual(withCond);
+    expect(kinds.filter((k) => KINDS[k].fresh?.cond).sort()).toEqual(withCond);
   });
 });
 
@@ -71,7 +77,7 @@ describe('field hints', () => {
     const base = '---\nreins: 1\nname: t\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n## phase plan\n> Plan it.\n';
     for (const k of (Object.keys(KINDS) as StepKind[]).filter((x) => KINDS[x].fields.some((f) => f.key === 'prompt'))) {
       const w = parseWorkflow(base).workflow!;
-      w.steps.push({ id: `${k}-1`, kind: k, attrs: {}, cards: [], links: [], ...KINDS[k].fresh!() });
+      w.steps.push({ id: `${k}-1`, kind: k, attrs: {}, cards: [], links: [], ...KINDS[k].fresh! });
       const warns = validate(w).some((d) => d.severity === 'warning' && d.message.includes('has no prompt'));
       expect(!!KINDS[k].fields.find((f) => f.key === 'prompt')!.required, k).toBe(warns);
     }
@@ -79,19 +85,20 @@ describe('field hints', () => {
 });
 
 describe('fresh', () => {
-  const withFresh = [...NODES.keys()].filter((k) => k !== 'use').sort();
-  it('exists for every kind but use', () => {
+  const withFresh = [...NODES.keys()].sort();
+  it('exists for every kind', () => {
     expect((Object.keys(KINDS) as StepKind[]).filter((k) => KINDS[k].fresh).sort()).toEqual(withFresh);
   });
   for (const k of withFresh) {
     it(`${k}: prints, reads back with no errors, same bytes, default id`, () => {
       const base = '---\nreins: 1\nname: t\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n## phase plan\n> Plan it.\n';
       const w = parseWorkflow(base).workflow!;
-      w.steps.push({ id: `${k}-1`, kind: k as StepKind, attrs: {}, cards: [], links: [], ...KINDS[k as StepKind].fresh!() });
+      w.steps.push({ id: `${k}-1`, kind: k as StepKind, attrs: {}, cards: [], links: [], ...KINDS[k as StepKind].fresh! });
       const text = printWorkflow(w);
       const r = parseWorkflow(text);
       expect(r.diagnostics).toEqual([]);
-      expect(validate(r.workflow!).filter((d) => d.severity === 'error')).toEqual([]);
+      // a new fork has no wires yet: "has no branches" is its one error until the first wire is drawn (M3 Task 9)
+      expect(validate(r.workflow!).filter((d) => d.severity === 'error' && !(k === 'fork' && d.message.includes('has no branches')))).toEqual([]);
       expect(printWorkflow(r.workflow!)).toBe(text);
       expect(r.workflow!.steps[1]!.id).toBe(`${k}-1`);
       expect(text).not.toContain('\nid:');
@@ -141,7 +148,7 @@ describe('fresh', () => {
     expect(CARD_KINDS).toEqual(['guard']);
     expect(CARD_LABEL.guard).toEqual({ section: 'Guards', add: 'Add guard' });
   });
-  it('gives a new attrs object per call', () => {
-    expect(KINDS.repeat.fresh!().attrs).not.toBe(KINDS.repeat.fresh!().attrs);
+  it('gives a new attrs object per call of freshOf', () => {
+    expect(freshOf('repeat').attrs).not.toBe(freshOf('repeat').attrs);
   });
 });

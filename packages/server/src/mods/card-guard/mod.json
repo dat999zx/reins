@@ -1,0 +1,15 @@
+{
+  "reins": 1,
+  "id": "card-guard",
+  "kind": "card",
+  "version": "1.0.0",
+  "label": "Card: guard",
+  "description": "A path the agent may not touch",
+  "main": "index.js",
+  "order": 10,
+  "pack": "default",
+  "provides": { "cards": ["guard"] },
+  "view": {
+    "guard": { "section": "Guards", "add": "Add guard" }
+  }
+}

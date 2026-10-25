@@ -1,0 +1,59 @@
+{
+  "commands": [
+    "npm test",
+    "npm test"
+  ],
+  "events": [
+    {
+      "data": {
+        "steps": [
+          {
+            "id": "repeat-1",
+            "kind": "repeat"
+          },
+          {
+            "id": "run-1",
+            "kind": "run"
+          },
+          {
+            "id": "fix",
+            "kind": "phase",
+            "title": "fix"
+          }
+        ],
+        "workflow": "t"
+      },
+      "type": "run_started"
+    },
+    {
+      "data": {
+        "parents": [],
+        "step": "repeat-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "parents": [
+          "repeat-1"
+        ],
+        "step": "run-1"
+      },
+      "type": "step_started"
+    },
+    {
+      "data": {
+        "exitCode": 0,
+        "step": "run-1"
+      },
+      "type": "command_result"
+    },
+    {
+      "data": {},
+      "type": "run_finished"
+    }
+  ],
+  "programCounter": 4,
+  "receivedTexts": [],
+  "status": "done"
+}

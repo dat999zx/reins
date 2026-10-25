@@ -1,0 +1,22 @@
+{
+  "reins": 1,
+  "id": "run",
+  "kind": "block",
+  "version": "1.0.0",
+  "label": "Run",
+  "description": "Runs a shell command and follows its result",
+  "main": "index.js",
+  "order": 30,
+  "pack": "default",
+  "provides": { "kinds": ["run"], "ops": ["RUN"], "attrs": ["cmd"] },
+  "view": {
+    "kind": "run",
+    "order": 30,
+    "colour": "hard",
+    "fails": true,
+    "fields": [{ "key": "cmd", "label": "Command", "input": "mono" }],
+    "line": ["run", { "field": "cmd" }],
+    "card": { "label": "run command", "section": "Flow" },
+    "fresh": { "attrs": { "cmd": "npm test" } }
+  }
+}
