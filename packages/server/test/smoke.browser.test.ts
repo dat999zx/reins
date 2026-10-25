@@ -633,13 +633,17 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     const hat1 = await hatBox();
     expect(Math.abs(hat1.x - hat0.x - 80)).toBeLessThanOrEqual(2);
     expect(Math.abs(hat1.y - hat0.y - 40)).toBeLessThanOrEqual(2);
-    const mid = { x: hat1.x + hat1.width / 2, y: hat1.y + hat1.height / 2 };
+    // The pivot is the hat's title text. The middle of the whole hat is not stable: the hat holds the budget inputs, and over an input the wheel is left to the input (no zoom), so
+    // where the middle falls depends on the font (it landed on an input on macOS).
+    const nameBox = async () => (await page.locator('.sx-hat > b').first().boundingBox())!;
+    const name1 = await nameBox();
+    const mid = { x: name1.x + name1.width / 2, y: name1.y + name1.height / 2 };
     await page.mouse.move(mid.x, mid.y);
     await page.mouse.wheel(0, -240);
     await expect.poll(async () => parseInt(await zoomLabel.innerText(), 10), { timeout: W }).toBeGreaterThan(100);
-    const hat2 = await hatBox();
-    expect(Math.abs(hat2.x + hat2.width / 2 - mid.x)).toBeLessThanOrEqual(3);
-    expect(Math.abs(hat2.y + hat2.height / 2 - mid.y)).toBeLessThanOrEqual(3);
+    const name2 = await nameBox();
+    expect(Math.abs(name2.x + name2.width / 2 - mid.x)).toBeLessThanOrEqual(3);
+    expect(Math.abs(name2.y + name2.height / 2 - mid.y)).toBeLessThanOrEqual(3);
     await page.getByRole('button', { name: 'Reset zoom' }).click();
     await expect.poll(() => zoomLabel.innerText(), { timeout: W }).toBe('100%');
 
