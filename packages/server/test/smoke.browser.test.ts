@@ -883,6 +883,9 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     // 8e.5b. S-against: a verify block's blue handle, dragged onto a block, writes `against:`; select the arrow and press Delete: the line is gone
     await card('verify against').click();
     await row('verify-1').waitFor();
+    // The new block lands low on the canvas, where the zoom buttons sit over its handles on a taller layout (a macOS or Linux runner): fit the script into view first.
+    await page.getByRole('button', { name: 'Fit' }).click();
+    await holds(async () => ({ v: await row('verify-1').boundingBox(), p: await row('plan').boundingBox() }));
     await row('verify-1').locator('.sx-row').first().hover();
     const vb = (await row('verify-1').locator('.sx-handle[data-lk="against"]').boundingBox())!;
     await drag(centre(vb), centre((await row('plan').locator('.sx-row').first().boundingBox())!));
