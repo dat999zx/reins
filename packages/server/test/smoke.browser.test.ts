@@ -624,12 +624,16 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     // 8e.0c. a plain drag on bare surface pans; the wheel zooms toward the cursor
     await blocksTab.click();
     const hatBox = async () => (await page.locator('.sx-hat').boundingBox())!;
+    // The canvas may still be settling after the tab switch (on a slower machine the hat moved after it was measured): measure once a box holds still.
+    const holds = (box: () => Promise<unknown>) => expect.poll(async () => { const a = JSON.stringify(await box()); await page.waitForTimeout(150); return a === JSON.stringify(await box()); }, { timeout: W }).toBe(true);
+    await holds(hatBox);
     const hat0 = await hatBox();
     const from = await empty();
     await page.mouse.move(from.x, from.y);
     await page.mouse.down();
     await page.mouse.move(from.x + 80, from.y + 40, { steps: 8 });
     await page.mouse.up();
+    await holds(hatBox);
     const hat1 = await hatBox();
     expect(Math.abs(hat1.x - hat0.x - 80)).toBeLessThanOrEqual(2);
     expect(Math.abs(hat1.y - hat0.y - 40)).toBeLessThanOrEqual(2);
@@ -641,6 +645,7 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await page.mouse.move(mid.x, mid.y);
     await page.mouse.wheel(0, -240);
     await expect.poll(async () => parseInt(await zoomLabel.innerText(), 10), { timeout: W }).toBeGreaterThan(100);
+    await holds(nameBox);
     const name2 = await nameBox();
     expect(Math.abs(name2.x + name2.width / 2 - mid.x)).toBeLessThanOrEqual(3);
     expect(Math.abs(name2.y + name2.height / 2 - mid.y)).toBeLessThanOrEqual(3);
