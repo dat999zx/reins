@@ -887,7 +887,15 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     const vb = (await row('verify-1').locator('.sx-handle[data-lk="against"]').boundingBox())!;
     await drag(centre(vb), centre((await row('plan').locator('.sx-row').first().boundingBox())!));
     const against = page.locator('[data-link="verify-1/-1"]');
-    await against.waitFor({ state: 'attached', timeout: W });
+    try { await against.waitFor({ state: 'attached', timeout: 4000 }); } catch (e) {
+      // DIAG (temporary): what the page looks like when the wire did not appear
+      const a = centre(vb), b2 = centre((await row('plan').locator('.sx-row').first().boundingBox())!);
+      const info = await page.evaluate(`(() => { const h = (x, y) => { const e = document.elementFromPoint(x, y); return e ? e.outerHTML.slice(0, 200) : null; }; return { at: h(${a.x}, ${a.y}), to: h(${b2.x}, ${b2.y}), vp: [innerWidth, innerHeight], links: [...document.querySelectorAll('[data-link]')].map((l) => l.getAttribute('data-link')), handles: [...document.querySelectorAll('[data-id="verify-1"] .sx-handle')].map((x) => x.className + '|' + x.getAttribute('data-lk')) }; })()`);
+      console.log('DIAG ' + JSON.stringify({ vb, a, b2, info }));
+      const shot = (await page.screenshot({ type: 'jpeg', quality: 45 })).toString('base64');
+      for (let i = 0; i < shot.length; i += 3000) console.log('SHOT' + String(i / 3000).padStart(4, '0') + ' ' + shot.slice(i, i + 3000));
+      throw e;
+    }
     await textTab.click();
     expect(await editor.inputValue()).toContain('against: plan\n');
     await blocksTab.click();
