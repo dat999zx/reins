@@ -10,8 +10,13 @@ export function checkMode(step: Step, ctx: ValidateCtx): void {
   }
 }
 
-export function turnInstr(step: Step): Instr {
+/** A step's policy: what its turn may do. A subagent's own session runs under the same one. */
+export function policyOf(step: Step): Policy {
   const policy: Policy = { mode: step.attrs.mode === 'read-only' ? 'read-only' : 'write', guards: [], allowShell: true };
   for (const card of step.cards) CARDS.get(card.kind)?.policy?.(card, policy);
-  return { op: 'TURN', step: step.id, policy, src: step };
+  return policy;
+}
+
+export function turnInstr(step: Step): Instr {
+  return { op: 'TURN', step: step.id, policy: policyOf(step), src: step };
 }

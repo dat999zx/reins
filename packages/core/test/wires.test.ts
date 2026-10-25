@@ -211,17 +211,6 @@ describe('Task 4: validator, wires that cannot work', () => {
   const diags = (steps: Step[]) => validate(wf(steps));
   const L = (kind: Link['kind'], to: string, max?: number): Link => ({ kind, to, ...(max !== undefined ? { max } : {}) });
 
-  it.each([
-    ['on-pass', '`on-pass` has no effect; use `next`'],
-    ['retry', '`retry` has no effect; use a backward `next` with `max`'],
-    ['verify-against', '`verify-against` has no effect; use `against:`'],
-    ['hand-off', '`hand-off` has no effect; use a handoff step'],
-  ] as const)('warns about the deprecated %s wire', (kind, msg) => {
-    const d = diags([phase('a'), phase('b', [L(kind, 'a', 1)])]);
-    expect(d.filter((x) => x.severity === 'error')).toEqual([]);
-    expect(d.map((x) => x.message)).toContain(msg);
-  });
-
   it('warns about on-fail on a step that cannot fail, naming kinds from the registry and not the step', () => {
     const d = diags([phase('a'), phase('step-b', [L('on-fail', 'a', 1)])]);
     const w = d.filter((x) => x.message.startsWith('on-fail only applies to'));

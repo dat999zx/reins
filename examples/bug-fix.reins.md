@@ -8,7 +8,6 @@ always:
 ---
 
 ## phase reproduce
-note: write a failing test first
 > Write a test that reproduces the bug. It must fail for the right reason.
 
 ## gate
@@ -19,7 +18,6 @@ until: tests pass
 max: 4
 
 ### phase fix
-note: smallest change that works
 > Make the smallest change that makes the test pass.
 
 ### run `npm test`
@@ -33,7 +31,3 @@ until: you approve
 
 ### say
 > Small fix. Explain the root cause in two sentences.
-
-## handoff
-to: fresh session
-focus: what broke and why

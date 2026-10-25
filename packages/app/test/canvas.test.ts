@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseWorkflow, printWorkflow, type Diagnostic, type Workflow } from '@reins/core';
-import { editStep, flatSteps, marksOf, removeLinks, setLink } from '../src/canvas.js';
+import { AGAINST, editStep, flatSteps, marksOf, removeLinks, setLink } from '../src/canvas.js';
 
 const TEXT = `---
 reins: 1
@@ -36,7 +36,7 @@ id: i
 ### phase no
 
 ## whenever drift
-nudge: look up
+now: look up
 `;
 
 const parse = (text: string): Workflow => parseWorkflow(text).workflow!;
@@ -55,8 +55,8 @@ describe('setLink', () => {
     expect(links(setLink(a, 'plan', 'next', 'fix'), 'plan')).toStrictEqual([{ kind: 'next', to: 'fix' }]);
   });
   it('keeps links of other kinds', () => {
-    const a = setLink(parse(withPlanLink('retry: build')), 'plan', 'next', 'fix');
-    expect(links(a, 'plan').map((l) => l.kind)).toEqual(['retry', 'next']);
+    const a = setLink(parse(withPlanLink('on-fail: build')), 'plan', 'next', 'fix');
+    expect(links(a, 'plan').map((l) => l.kind)).toEqual(['on-fail', 'next']);
   });
   it('adds max 3 to a backward link', () => {
     expect(links(setLink(w, 'fix', 'next', 'plan'), 'fix')).toStrictEqual([{ kind: 'next', to: 'plan', max: 3 }]);
@@ -77,11 +77,47 @@ describe('setLink', () => {
   });
 });
 
+describe('the against wire', () => {
+  const V = parse(TEXT.replace('## phase build\n', '## verify\nid: v\n\n## phase build\n'));
+  const against = (x: Workflow) => flatSteps(x.steps).find((s) => s.id === 'v')!;
+  it('sets the attribute, not a link', () => {
+    const s = against(setLink(V, 'v', 'against', 'plan'));
+    expect(s.attrs.against).toBe('plan');
+    expect(s.links).toStrictEqual([]);
+  });
+  it('replaces the old target and survives a second call', () => {
+    const a = setLink(setLink(V, 'v', 'against', 'plan'), 'v', 'against', 'build');
+    expect(against(a).attrs.against).toBe('build');
+    expect(against(setLink(a, 'v', 'against', 'build')).attrs.against).toBe('build');
+  });
+  it('ignores itself, and adds no max to a backward target', () => {
+    expect(setLink(V, 'v', 'against', 'v')).toBe(V);
+    expect(against(setLink(V, 'v', 'against', 'plan')).attrs).toStrictEqual({ against: 'plan' });
+  });
+  it('removeLinks with the against ref clears only that attribute', () => {
+    const w = parse(TEXT.replace('## phase build\n', '## verify\nid: v\nagainst: plan\non-fail: plan (max 2)\n\n## phase build\n'));
+    const s = against(removeLinks(w, [{ from: 'v', index: AGAINST }]));
+    expect(s.attrs.against).toBeUndefined();
+    expect(s.links.map((l) => l.kind)).toEqual(['on-fail']);
+  });
+  it('removeLinks of an ordinary link leaves the against attribute alone', () => {
+    const w = parse(TEXT.replace('## phase build\n', '## verify\nid: v\nagainst: plan\non-fail: plan (max 2)\n\n## phase build\n'));
+    const s = against(removeLinks(w, [{ from: 'v', index: 0 }]));
+    expect(s.attrs.against).toBe('plan');
+    expect(s.links).toEqual([]);
+  });
+  it('prints and parses back as the same attribute line', () => {
+    const text = printWorkflow(setLink(V, 'v', 'against', 'plan'));
+    expect(text).toContain('## verify\nid: v\nagainst: plan');
+    expect(against(parse(text)).attrs.against).toBe('plan');
+  });
+});
+
 describe('removeLinks', () => {
   it('removes several refs on one step and keeps the rest in order', () => {
-    const w = parse(TEXT.replace('## phase plan\n', '## phase plan\nnext: build\non-pass: fix\nretry: build\non-fail: fix (max 2)\n'));
+    const w = parse(TEXT.replace('## phase plan\n', '## phase plan\nnext: build\non-fail: fix (max 2)\nnext: fix\n'));
     const out = removeLinks(w, [{ from: 'plan', index: 0 }, { from: 'plan', index: 2 }]);
-    expect(flatSteps(out.steps).find((s) => s.id === 'plan')!.links.map((l) => l.kind)).toEqual(['on-pass', 'on-fail']);
+    expect(flatSteps(out.steps).find((s) => s.id === 'plan')!.links.map((l) => l.kind)).toEqual(['on-fail']);
   });
 });
 
@@ -122,7 +158,7 @@ describe('marksOf', () => {
     expect(marks([diag(lineOf(text, '> Build it.'))]).steps.get('build')).toBe('error');
   });
   it('marks nothing for line 1, a whenever block or an else heading', () => {
-    for (const line of [1, lineOf(text, '## whenever'), lineOf(text, 'nudge: look up'), lineOf(text, '### else')]) {
+    for (const line of [1, lineOf(text, '## whenever'), lineOf(text, 'now: look up'), lineOf(text, '### else')]) {
       const m = marks([diag(line)]);
       expect([m.steps.size, m.wires.size], `line ${line}`).toEqual([0, 0]);
     }

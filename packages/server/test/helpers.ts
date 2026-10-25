@@ -12,15 +12,19 @@ export interface FakeTurn {
   text?: string;
   ignoreInterrupt?: boolean;
   delayMs?: number;
+  /** With `cumulative`: the result carries no modelUsage. */
+  noModelUsage?: boolean;
+  /** With `cumulative`: the raw per-model running totals the result carries, instead of the fake's own sums. */
+  modelUsage?: Record<string, number>;
 }
 
 /** A temp project folder plus a fake-claude script; `log()` reads what the fake saw. */
-export function fakeSetup(turns: FakeTurn[], delayMs = 10) {
+export function fakeSetup(turns: FakeTurn[], delayMs = 10, extra: Record<string, unknown> = {}) {
   // realpath: the fake reports process.cwd(), which is the real path (macOS /var → /private/var).
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-fake-')));
   const logFile = path.join(dir, '.fake-log.jsonl');
   const scriptFile = path.join(dir, '.fake-script.json');
-  fs.writeFileSync(scriptFile, JSON.stringify({ log: logFile, delayMs, turns }));
+  fs.writeFileSync(scriptFile, JSON.stringify({ log: logFile, delayMs, turns, ...extra }));
   process.env.FAKE_CLAUDE_SCRIPT = scriptFile;
   return {
     dir,

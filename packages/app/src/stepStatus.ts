@@ -4,11 +4,13 @@ export type StepState = 'active' | 'done' | 'waiting' | 'stuck' | 'failed';
 // One vocabulary for a step's state: the feed's knots, the block chips, the dock and the Text list all read it.
 export const STATE_WORDS: Record<StepState | 'stopped' | 'paused', string> =
   { active: 'running', done: 'done', waiting: 'waiting for you', stuck: 'out of attempts', failed: 'failed', stopped: 'stopped', paused: 'left paused' };
-export interface StepInfo { state?: StepState; attempts?: number; refusals: number; cost: number; why?: string }
+/** `model` is the model the step's reply ran on, as the provider reported it (turn_ended.model), labelled when the run's own model_switched rows gave a label. */
+export interface StepInfo { state?: StepState; attempts?: number; refusals: number; cost: number; why?: string; model?: string }
+const MODEL_WHY: Record<string, string> = { switched: 'now', same: 'already on', kept: 'kept' };
 export type StepMap = Record<string, StepInfo>;
 
 // v2: the run logged step_started, so steps start there and a turn only confirms its own step.
-interface Cursor { step?: string; gate?: string; v2?: boolean }
+interface Cursor { step?: string; gate?: string; v2?: boolean; labels?: Record<string, string> }
 type Data = Record<string, any>;
 type Handler = (m: StepMap, cur: Cursor, data: Data) => void;
 
@@ -31,6 +33,12 @@ const handlers: Record<string, Handler> = {
     if (i.state !== 'waiting') { i.state = 'active'; delete i.why; }
     cur.step = d.step;
   },
+  subagent_started: (m, cur, d) => {
+    if (typeof d.step !== 'string') return;
+    const name = typeof d.label === 'string' ? d.label : typeof d.model === 'string' ? d.model : undefined;
+    if (name) at(m, d.step).model = name;
+    if (typeof d.label === 'string' && typeof d.model === 'string') (cur.labels ??= {})[d.model] = d.label;
+  },
   command_result: (m, _cur, d) => {
     if (typeof d.step === 'string' && typeof d.exitCode === 'number' && d.exitCode !== 0) Object.assign(at(m, d.step), { state: 'failed', why: `exit ${d.exitCode}` });
   },
@@ -48,6 +56,7 @@ const handlers: Record<string, Handler> = {
     if (typeof d.step !== 'string') return;
     const i = at(m, d.step);
     if (typeof d.cost === 'number') i.cost += d.cost;
+    if (typeof d.model === 'string') i.model = cur.labels?.[d.model] ?? d.model;
     i.state = d.step === cur.gate ? 'waiting' : 'done';
   },
   gate_paused: (m, cur, d) => {
@@ -61,7 +70,17 @@ const handlers: Record<string, Handler> = {
     delete cur.gate;
   },
   question: (m, cur, d) => {
-    if (d.kind === 'resume' && cur.step) at(m, cur.step).state = 'waiting';
+    if ((d.kind === 'resume' || d.kind === 'switch') && cur.step) at(m, cur.step).state = 'waiting';
+  },
+  // done at once: step_started moves only `active` steps on, so a `waiting` model step would stay waiting
+  model_switched: (m, cur, d) => {
+    if (typeof d.step !== 'string') return;
+    const i = at(m, d.step);
+    i.state = 'done';
+    const label = typeof d.label === 'string' ? d.label : undefined;
+    const words = label && MODEL_WHY[d.how as string];
+    if (words) i.why = `${words} ${label}`; else delete i.why;
+    if (label && typeof d.model === 'string' && (d.how === 'switched' || d.how === 'same')) (cur.labels ??= {})[d.model] = label;
   },
   loop_iteration: (m, _cur, d) => {
     if (typeof d.step === 'string' && typeof d.attempts === 'number') at(m, d.step).attempts = d.attempts;

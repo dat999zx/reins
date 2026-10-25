@@ -6,6 +6,19 @@ import { NODES, defaultId, headingOwns } from '../nodes/index.js';
 // An always rule is printed bare only when YAML reads it back as the same string; else as a JSON string (valid YAML).
 const plain = (s: string) => { try { return YAML.parse(s, { logLevel: 'error' }) === s; } catch { return false; } };
 
+/** A USD limit as text: two decimals when that loses nothing, else the number as it is (0.0001 stays 0.0001). */
+export const usdText = (usd: number): string => (Number(usd.toFixed(2)) === usd ? usd.toFixed(2) : String(usd));
+
+/**
+ * A key a heading owns is not printed as a line: its own kind prints it in the heading, and a kind that does not list it
+ * has no line for it (a stray `cmd:` on a phase stays unprinted). A kind that lists a key another kind's heading owns
+ * (a subagent's `model:`) prints it as a line.
+ */
+function ownedElsewhere(kind: string, k: string, owned: Set<string>): boolean {
+  const n = NODES.get(kind);
+  return !!n?.heading?.owns?.includes(k) || (owned.has(k) && !n?.attrs.includes(k));
+}
+
 export function printWorkflow(w: Workflow): string {
   const parts: string[] = [];
   const owned = headingOwns();
@@ -24,13 +37,11 @@ export function printWorkflow(w: Workflow): string {
       return s;
     };
     if (w.task) fm.push(`task: ${quoteYaml(w.task)}`);
-    if (w.engine) fm.push(`engine: ${w.engine}`);
-    if (w.model) fm.push(`model: ${w.model}`);
     if (w.test) fm.push(`test: ${w.test}`);
 
     const usdStr =
       w.budget.usd !== undefined
-        ? `, usd: ${w.budget.usd.toFixed(2)}`
+        ? `, usd: ${usdText(w.budget.usd)}`
         : '';
     fm.push(`budget: { turns: ${w.budget.turns}, minutes: ${w.budget.minutes}${usdStr} }`);
 
@@ -76,7 +87,7 @@ export function printWorkflow(w: Workflow): string {
     // Attributes in canonical order
     if (step.attrs.mode) lines.push(`mode: ${step.attrs.mode}`);
 
-    // Cards (guards, notes, nudges, etc.)
+    // Cards (guards)
     for (const card of step.cards) {
       lines.push(`${card.kind}: ${card.text}`);
     }
@@ -88,12 +99,10 @@ export function printWorkflow(w: Workflow): string {
     if (step.attrs.max) lines.push(`max: ${step.attrs.max}`);
     if (step.attrs.against) lines.push(`against: ${step.attrs.against}`);
     if (step.attrs.knowl) lines.push(`knowl: ${step.attrs.knowl}`);
-    if (step.attrs.to) lines.push(`to: ${step.attrs.to}`);
-    if (step.attrs.focus) lines.push(`focus: ${step.attrs.focus}`);
 
     // Extra attrs not handled
     for (const [k, v] of Object.entries(step.attrs)) {
-      if (['id', 'mode', 'until', 'max', 'against', 'knowl', 'to', 'focus'].includes(k) || owned.has(k)) {
+      if (['id', 'mode', 'until', 'max', 'against', 'knowl'].includes(k) || ownedElsewhere(step.kind, k, owned)) {
         continue;
       }
       lines.push(`${k}: ${v}`);

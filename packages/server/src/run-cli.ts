@@ -19,7 +19,7 @@ export interface RunCliOptions {
   input: Readable;
   output: Writable;
   store: Store;
-  makeEngine: (io: { onApprove: (r: ToolRequest) => Promise<Decision>; onLive: (e: EngineEvent) => void; workflow: Workflow }) => Engine;
+  makeEngine: (io: { onApprove: (r: ToolRequest) => Promise<Decision>; onLive: (e: EngineEvent) => void }) => Engine;
   /** Approve gates and terminal judge questions without asking. Never touches guards or tool approvals. */
   yes?: boolean;
 }
@@ -125,7 +125,7 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
     const workflow = loaded.workflow;
 
     const cwd = o.cwd;
-    const engine = o.makeEngine({ onApprove: (r) => askTool(io, r), onLive: printLive, workflow });
+    const engine = o.makeEngine({ onApprove: (r) => askTool(io, r), onLive: printLive });
     const runOpts = runOptions(io, {
       workflow, engine, cwd, resolveBlock: loaded.resolveBlock,
       onEvent: (ev) => {
@@ -179,13 +179,20 @@ export function startRunCli(o: RunCliOptions): { done: Promise<RunCliResult>; si
     else if (ev.type === 'store' && d.skipped) say('· store skipped: Knowl is not wired up until Phase 6');
     else if (ev.type === 'verify_result') say(d.pass ? '✓ verify: pass' : '✗ verify: fail');
     else if (ev.type === 'loop_iteration') say(`↻ ${d.step}: attempt ${d.attempts}`);
-    else if (ev.type === 'handoff') say(`· handoff to ${d.to}: summary recorded`);
+    else if (ev.type === 'model_switched' && d.how === 'unsupported') say(`· ${d.step}: this runner cannot switch models; the steps run on the CLI's model`);
+    else if (ev.type === 'subagent_started') say(`· ${d.step}: subagent ${d.title} ${d.resumed ? 'resumed' : 'started'} on ${d.label ?? d.model ?? "the CLI's model"}`);
+    else if (ev.type === 'subagent_result') say(`· ${d.step}: handed back its result ($${Number(d.cost ?? 0).toFixed(4)})`);
+    else if (ev.type === 'budget_warning') say(`· ${d.text}`);
     else if (ev.type === 'run_stopped') say('⏹ run stopped');
   }
 
   function printReceipt(r: Receipt, runId: string) {
     say('\n── Receipt ──');
     say(`workflow ${r.workflow} · ${r.status} · ${r.totalTurns} turns · ${Math.round(r.totalTimeMs / 1000)} s · $${r.totalCostUsd.toFixed(4)}`);
+    if (r.models) {
+      const split = r.models.map((m) => `${m.model} $${m.usd.toFixed(4)} (${m.turns} turn${m.turns === 1 ? '' : 's'})`).join(' · ');
+      say(`models ${split}${r.unsplitUsd ? ` · not split by model $${r.unsplitUsd.toFixed(4)}` : ''}`);
+    }
     say(`gates held ${r.gatesHeld} · refusals ${r.totalRefusals} (guard ${r.guardRefusals}, read-only ${r.readOnlyRefusals}) · loop attempts ${r.loopAttempts}`);
     say(`cards: live delivered ${r.liveCardsDelivered}, auto fired ${r.autoCardsFired} · verify ${r.verifyResults.passed} pass / ${r.verifyResults.failed} fail · Knowl ${r.knowlRecalls} recalls, ${r.knowlStores} stores${r.knowlSkipped ? `, ${r.knowlSkipped} skipped` : ''}`);
     say(`run id ${runId}`);

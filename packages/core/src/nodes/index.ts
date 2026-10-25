@@ -1,5 +1,6 @@
 import type { Diagnostic, Pos, Step, Workflow } from '../model.js';
 import type { Instr } from '../compile.js';
+import type { RunEventRecord } from '../run.js';
 import phase from './phase.js';
 import say from './say.js';
 import run from './run.js';
@@ -10,8 +11,26 @@ import verify from './verify.js';
 import use from './use.js';
 import recall from './recall.js';
 import store from './store.js';
-import handoff from './handoff.js';
+import model from './model.js';
+import subagent from './subagent.js';
 import end from './end.js';
+
+/** What the host did with a model step. `label` names the model in use afterwards. One member per `to`, so `r.label` narrows. */
+export type SwitchOutcome = { to: 'switched' | 'same' | 'kept'; label: string } | { to: 'stop' } | { to: 'closed' };
+export interface ExecCtx {
+  /** The host puts the session on `model` before the next turn; absent in a host that cannot (the terminal). */
+  switchModel?(model: string, step: string): Promise<SwitchOutcome>;
+  /** The host puts the session on reasoning level `level` before the next turn; absent in a host that cannot (the terminal). */
+  setReasoning?(level: string, step: string): void;
+  /** Opens `step`'s USD slice from here on; undefined closes the one that is open. */
+  slice(step: string, usd: number | undefined): void;
+  log(type: RunEventRecord['type'], data: unknown): void;
+  /** Pauses the run at this step (a `stop` pause with this step's id): Resume runs the step again. */
+  pause(text: string): void;
+  stop(): Promise<void>;
+  /** Runs a subagent step (D): its own engine session, model and USD slice. True once its result waits for the next turn; false when the run paused or stopped. */
+  subagent(step: Step, usd: number | undefined): Promise<boolean>;
+}
 
 export interface HeadingCtx { line: number; col: number; push(d: Diagnostic): void }
 export interface CompileCtx {
@@ -35,6 +54,8 @@ export interface NodeType {
   container?: 'kids' | 'kids+else';
   /** True when the step can fail, so an on-fail link on it can fire. */
   fails?: true;
+  /** True when this kind's exec runs a turn compiled from the step's own prompt, so a preview can show it. */
+  sendsTurn?: true;
   heading?: {
     parse(arg: string, step: Step, ctx: HeadingCtx): boolean;
     print(step: Step): { text: string; condInHeading: boolean };
@@ -47,6 +68,8 @@ export interface NodeType {
     links?(step: Step, ctx: ValidateCtx): void;
   };
   compile(step: Step, ctx: CompileCtx): void;
+  /** Runs this kind's NODE instruction (P12): 'next' moves on; 'stay' leaves the counter (the run paused or stopped). */
+  exec?(step: Step, ctx: ExecCtx): Promise<'next' | 'stay'>;
   defaultPrompt?(step: Step): string | undefined;
   statusLine?: string;
   /** How a chat tag of this kind builds a step (3b.5). `arg` names the attribute the tag's argument fills. */
@@ -54,7 +77,7 @@ export interface NodeType {
 }
 
 export const NODES = new Map<string, NodeType>(
-  [phase, say, run, gate, repeat, ifNode, verify, use, recall, store, handoff, end].map((n) => [n.kind, n]),
+  [phase, say, run, gate, repeat, ifNode, verify, use, recall, store, model, subagent, end].map((n) => [n.kind, n]),
 );
 
 export function defaultId(step: { kind: string; title?: string }, counters: Record<string, number>): string {
@@ -76,5 +99,6 @@ export { default as verifyNode } from './verify.js';
 export { default as useNode } from './use.js';
 export { default as recallNode } from './recall.js';
 export { default as storeNode } from './store.js';
-export { default as handoffNode } from './handoff.js';
+export { default as modelNode } from './model.js';
+export { default as subagentNode } from './subagent.js';
 export { default as endNode } from './end.js';

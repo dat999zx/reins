@@ -115,7 +115,7 @@ describe('hook endpoint', () => {
     expect(allow.json).toEqual({ behavior: 'allow', updatedInput: { file_path: 'x' } });
     const deny = await post(a.srv.approveUrl, { tool_name: 'PowerShell', input: { command: 'rm -r .' }, tool_use_id: 't2' });
     expect(deny.json).toEqual({ behavior: 'deny', message: 'not now' });
-    expect(a.approvals).toEqual([{ tool: 'Edit', input: { file_path: 'x' } }, { tool: 'PowerShell', input: { command: 'rm -r .' } }]);
+    expect(a.approvals).toEqual([{ tool: 'Edit', input: { file_path: 'x' }, id: 't1' }, { tool: 'PowerShell', input: { command: 'rm -r .' }, id: 't2' }]);
     expect(a.events.filter((e) => e.type === 'hook').map((e: any) => [e.event, e.decision])).toEqual([['approve', 'allow'], ['approve', 'deny']]);
   });
 
@@ -124,6 +124,20 @@ describe('hook endpoint', () => {
     const r = await post(a.srv.approveUrl, { tool_name: 'Write', input: { file_path: 'D:\\coding\\reins-scratch\\migrations\\2.sql' } });
     expect(r.json.behavior).toBe('deny');
     expect(a.approvals).toHaveLength(0);
+  });
+
+  it('a string tool_use_id reaches onApprove as id; none gives no id key; a non-string one is ignored', async () => {
+    const a = await start();
+    await post(a.srv.approveUrl, { tool_name: 'Bash', input: { command: 'ls' }, tool_use_id: 'toolu_1' });
+    await post(a.srv.approveUrl, { tool_name: 'Bash', input: { command: 'ls' } });
+    await post(a.srv.approveUrl, { tool_name: 'Bash', input: { command: 'ls' }, tool_use_id: 7 });
+    expect(a.approvals).toEqual([
+      { tool: 'Bash', input: { command: 'ls' }, id: 'toolu_1' },
+      { tool: 'Bash', input: { command: 'ls' } },
+      { tool: 'Bash', input: { command: 'ls' } },
+    ]);
+    expect('id' in a.approvals[1]).toBe(false);
+    expect('id' in a.approvals[2]).toBe(false);
   });
 });
 

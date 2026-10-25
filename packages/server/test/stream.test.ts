@@ -84,6 +84,150 @@ describe('stream parser on every recorded fixture', () => {
   });
 });
 
+describe('usage', () => {
+  const init = (model: string) => ({ type: 'system', subtype: 'init', session_id: 's', model });
+  const a = (model: string, u: Record<string, unknown>, parent: string | null = null) => ({ type: 'assistant', parent_tool_use_id: parent, message: { model, content: [], usage: u } });
+  const res = (extra: Record<string, unknown> = {}) => ({ type: 'result', result: 'x', total_cost_usd: 0.1, is_error: false, ...extra });
+  const run = (ms: unknown[], o?: Parameters<typeof createStreamParser>[0]) => {
+    const parse = createStreamParser(o);
+    return ms.map((m) => parse(m)).find((x) => x.result)!.result!;
+  };
+  const four = { input_tokens: 1, cache_creation_input_tokens: 2, cache_read_input_tokens: 3, output_tokens: 4 };
+
+  it('turns.jsonl: the parent context after turn 0, with the window from modelUsage', () => {
+    expect(replay('claude-2.1.281-turns.jsonl').results[0]!.usage).toEqual({ model: 'claude-sonnet-5', used: 30550, window: 1000000 });
+  });
+
+  it('every fixture result that is not an error carries a usage with a model and tokens', () => {
+    for (const f of fixtures.filter((x) => !x.endsWith('-compact.jsonl'))) {
+      const r = replay(f);
+      for (const x of r.results.filter((y) => !y.isError)) {
+        expect(x.usage, f).toBeDefined();
+        expect(x.usage!.model, f).not.toBe('');
+        expect(x.usage!.used, f).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('interrupt-ctl: the interrupted (error) result has no usage; the next one has', () => {
+    const r = replay('claude-2.1.281-interrupt-ctl.jsonl');
+    expect(r.results[0]!.usage).toBeUndefined();
+    expect(r.results[1]!.usage).toBeDefined();
+  });
+
+  it('window falls back to the table; modelUsage wins; no table, no window key', () => {
+    expect(run([init('m'), a('m', four), res()], { windows: { m: 500 } }).usage).toEqual({ model: 'm', used: 10, window: 500 });
+    expect(run([init('m'), a('m', four), res()]).usage).toEqual({ model: 'm', used: 10 });
+    expect('window' in run([init('m'), a('m', four), res()]).usage!).toBe(false);
+    expect(run([init('m'), a('m', four), res({ modelUsage: { m: { contextWindow: 900 } } })], { windows: { m: 500 } }).usage).toEqual({ model: 'm', used: 10, window: 900 });
+  });
+
+  it('a sidechain line never counts: the parent line does', () => {
+    const r = run([init('m'), a('m', four), a('sub', { ...four, input_tokens: 999_999 }, 'toolu_1'), res()]);
+    expect(r.usage).toEqual({ model: 'm', used: 10 });
+  });
+
+  it('a tool-heavy turn counts its last parent message', () => {
+    const g = (n: number) => ({ ...four, input_tokens: n });
+    expect(run([init('m'), a('m', g(10)), a('m', g(20)), a('m', g(30)), res()]).usage!.used).toBe(30 + 2 + 3 + 4);
+  });
+
+  it('malformed token fields give no usage; a malformed window gives usage without one', () => {
+    for (const bad of ['7', -1, 1.5, NaN, undefined]) {
+      expect(run([init('m'), a('m', { ...four, cache_read_input_tokens: bad }), res()]).usage).toBeUndefined();
+    }
+    const noField: Record<string, unknown> = { ...four };
+    delete noField.output_tokens;
+    expect(run([init('m'), a('m', noField), res()]).usage).toBeUndefined();
+    for (const w of [0, -5, 1.5, '1e6']) {
+      expect(run([init('m'), a('m', four), res({ modelUsage: { m: { contextWindow: w } } })]).usage).toEqual({ model: 'm', used: 10 });
+    }
+  });
+
+  it('a failed turn has no usage', () => {
+    expect(run([init('m'), a('m', four), res({ is_error: true })]).usage).toBeUndefined();
+  });
+
+  it('the model is the last parent message model, else the init model', () => {
+    expect(run([init('i'), a('m', four), res()]).usage!.model).toBe('m');
+    expect(run([init('i'), { type: 'assistant', parent_tool_use_id: null, message: { content: [], usage: four } }, res()]).usage!.model).toBe('i');
+  });
+
+  it('a result resets what was kept: a result with no assistant line has no usage', () => {
+    const parse = createStreamParser();
+    parse(init('m'));
+    parse(a('m', four));
+    expect(parse(res()).result!.usage).toBeDefined();
+    expect(parse(res()).result!.usage).toBeUndefined();
+  });
+});
+
+describe('byModel (cost per model, C)', () => {
+  const res = (modelUsage?: unknown) => ({ type: 'result', result: 'x', total_cost_usd: 0.1, is_error: false, ...(modelUsage === undefined ? {} : { modelUsage }) });
+  const by = (modelUsage?: unknown) => createStreamParser()(res(modelUsage)).result!.byModel;
+
+  it('turns.jsonl: each result carries its model figure, equal to the total of a one-model session', () => {
+    const r = replay('claude-2.1.281-turns.jsonl');
+    expect(r.results.map((x) => x.byModel)).toEqual([{ 'claude-sonnet-5': 0.0640898 }, { 'claude-sonnet-5': 0.0802364 }, { 'claude-sonnet-5': 0.0871622 }]);
+  });
+
+  it('the compact fixture: three results, figures 0.0068948, 0.00962756, 0.01168894', () => {
+    const r = replay('claude-2.1.293-compact.jsonl');
+    expect(r.results.map((x) => Object.values(x.byModel!)[0])).toEqual([0.0068948, 0.00962756, 0.01168894]);
+  });
+
+  it('two-models.jsonl (real CLI, M8): both models, and the parts sum to the total', () => {
+    const r = replay('claude-2.1.293-two-models.jsonl');
+    const last = r.results.at(-1)!;
+    expect(last.byModel).toEqual({ 'claude-haiku-5-5': 0.01128855, 'claude-sonnet-5-5': 0.154664 });
+    expect(last.totalCostUsd).toBeCloseTo(0.16595255, 9);
+    expect(Object.values(last.byModel!).reduce((a, b) => a + b, 0)).toBeCloseTo(last.totalCostUsd, 9);
+  });
+
+  it('a figure that is not a finite number >= 0 drops the whole split; none at all is none', () => {
+    expect(by({ a: { costUSD: 0.5 } })).toEqual({ a: 0.5 });
+    expect(by({ a: { costUSD: 0.5 }, b: { costUSD: 0 } })).toEqual({ a: 0.5, b: 0 });
+    for (const bad of ['1', -1, NaN, null, undefined]) expect(by({ a: { costUSD: 0.5 }, b: { costUSD: bad } })).toBeUndefined();
+    // JSON has no Infinity, but 1e999 parses to it: it must not reach a running total
+    const huge = JSON.parse('{"a":{"costUSD":0.5},"b":{"costUSD":1e999}}');
+    expect(by(huge)).toBeUndefined();
+    expect(by({})).toBeUndefined();
+    expect(by(undefined)).toBeUndefined();
+    expect(by('x')).toBeUndefined();
+  });
+});
+
+describe('compacted', () => {
+  const init = { type: 'system', subtype: 'init', session_id: 's', model: 'm' };
+  const boundary = (meta: Record<string, unknown>) => ({ type: 'system', subtype: 'compact_boundary', compact_metadata: meta });
+  const asst = { type: 'assistant', parent_tool_use_id: null, message: { model: 'm', content: [], usage: { input_tokens: 1, cache_creation_input_tokens: 2, cache_read_input_tokens: 3, output_tokens: 4 } } };
+  const res = { type: 'result', result: '', total_cost_usd: 0.1, is_error: false };
+  const feed = (...ms: unknown[]) => { const parse = createStreamParser(); const outs = ms.map((m) => parse(m)); return { events: outs.flatMap((o) => o.events), result: outs.find((o) => o.result)!.result! }; };
+
+  it('the recorded /compact turn: one compacted event with the provider figures, no usage; the next turn is measured', () => {
+    const r = replay('claude-2.1.293-compact.jsonl');
+    expect(r.events.filter((e) => e.type === 'compacted')).toEqual([{ type: 'compacted', trigger: 'manual', before: 34469, after: 4795 }]);
+    // the replayed summary lines are not drawn: the whole fixture holds only the two answers' texts
+    expect(r.events.map((e) => e.type)).toEqual(['text', 'compacted', 'thinking', 'text']);
+    expect(r.results).toHaveLength(3);
+    expect(r.results[1]!.usage).toBeUndefined();
+    expect(r.results[1]!.isError).toBe(false);
+    expect(r.results[2]!.usage).toBeDefined();
+  });
+
+  it('a usage seen before the boundary is dropped; one seen after it is kept', () => {
+    expect(feed(init, asst, boundary({ trigger: 'auto', pre_tokens: 9, post_tokens: 2 }), res).result.usage).toBeUndefined();
+    expect(feed(init, boundary({ trigger: 'auto', pre_tokens: 9, post_tokens: 2 }), asst, res).result.usage).toEqual({ model: 'm', used: 10 });
+  });
+
+  it('a figure that is not a count is left out; no trigger is unknown; auto is kept', () => {
+    const e = feed(init, boundary({ pre_tokens: '9', post_tokens: -1 }), res).events[0]!;
+    expect(e).toEqual({ type: 'compacted', trigger: 'unknown' });
+    expect('before' in e || 'after' in e).toBe(false);
+    expect(feed(init, boundary({ trigger: 'auto', pre_tokens: 9, post_tokens: 2 }), res).events[0]).toEqual({ type: 'compacted', trigger: 'auto', before: 9, after: 2 });
+  });
+});
+
 describe('thinking tokens', () => {
   const tokens = (events: EngineEvent[]) => events.flatMap((e) => (e.type === 'thinking' ? [e.tokens] : []));
   const line = (e: number) => ({ type: 'system', subtype: 'thinking_tokens', estimated_tokens: e, estimated_tokens_delta: e });
@@ -105,6 +249,22 @@ describe('thinking tokens', () => {
     expect(tokens(r.events)).toEqual([50]);
   });
 
+  it('summarized fixture: the thinking block text comes out once, with the last estimate, then the text', () => {
+    const r = replay('claude-2.1.293-thinking-summarized.jsonl');
+    const block = r.lines.flatMap((m) => (m.type === 'assistant' ? m.message.content : [])).find((b: any) => b.type === 'thinking' && b.thinking);
+    const withText = r.events.filter((e) => e.type === 'thinking' && e.text !== undefined);
+    expect(withText).toEqual([{ type: 'thinking', tokens: 210, text: block.thinking }]);
+    expect(r.events.at(-1)!.type).toBe('text');
+    expect(r.events.filter((e) => e.type === 'thinking' && e.text === undefined).length).toBeGreaterThan(0);
+  });
+
+  it('a thinking block with text is emitted whole and ends its burst; an empty one emits nothing', () => {
+    const think = block({ type: 'thinking', thinking: 'because', signature: 's' });
+    expect(feed(line(50), think, line(30))).toEqual([
+      { type: 'thinking', tokens: 50 }, { type: 'thinking', tokens: 50, text: 'because' }, { type: 'thinking', tokens: 80 },
+    ]);
+  });
+
   it('one long burst emits its start and each further 1,000 tokens', () => {
     const lines = Array.from({ length: 21 }, (_, i) => line(50 + i * 100));
     expect(tokens(feed(...lines))).toEqual([50, 1050, 2050]);
@@ -123,5 +283,56 @@ describe('thinking tokens', () => {
     expect(tokens(feed(line(50), line(200), empty, line(260)))).toEqual([50]);
     expect(tokens(feed(line(50), line(200), block({ type: 'text', text: 'hi' }), line(260)))).toEqual([50, 460]);
     expect(tokens(feed(line(50), line(200), block({ type: 'tool_use', id: 't', name: 'Read', input: {} }), line(30)))).toEqual([50, 230]);
+  });
+});
+
+describe('via: which task a tool call belongs to', () => {
+  const asst = (id: string, name: string, input: unknown, parent: string | null = null) =>
+    ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name, input }] }, parent_tool_use_id: parent });
+  const PARENT = 'toolu_01FZapCrLaz5DEt6fixYy8jT';
+  const CHILD = 'toolu_01XxTapXhzAcjre733F5ZqH9';
+
+  it("the recorded task-child session: the child's tool call is via 'probe child'; the parent's own and an unknown id have none", () => {
+    const lines = fs.readFileSync(path.join(FIX, 'claude-2.1.293-task-child.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    const parse = createStreamParser();
+    for (const m of lines) parse(m);
+    expect(parse.via(CHILD)).toBe('probe child');
+    expect(parse.via(PARENT)).toBeUndefined();
+    expect(parse.via('toolu_nope')).toBeUndefined();
+    expect(parse.via('toolu_01MB6m8eSaiF6xgXcB2h3KSC')).toBeUndefined(); // the Agent call itself is the parent's own
+  });
+
+  it('an id is unknown until its assistant line has been parsed', () => {
+    const parse = createStreamParser();
+    parse(asst('a1', 'Agent', { description: 'dig' }));
+    expect(parse.via('c1')).toBeUndefined();
+    parse(asst('c1', 'Bash', {}, 'a1'));
+    expect(parse.via('c1')).toBe('dig');
+  });
+
+  it('the task tool is Agent or Task; any other tool with a child is no task', () => {
+    const parse = createStreamParser();
+    parse(asst('a1', 'Task', { description: 'old name' }));
+    parse(asst('c1', 'Bash', {}, 'a1'));
+    parse(asst('a2', 'Read', { description: 'not a task' }));
+    parse(asst('c2', 'Bash', {}, 'a2'));
+    expect(parse.via('c1')).toBe('old name');
+    expect(parse.via('c2')).toBeUndefined();
+  });
+
+  it("an empty or missing description falls back to the subagent type, then to 'task'", () => {
+    const parse = createStreamParser();
+    parse(asst('a1', 'Agent', { description: '  ', subagent_type: 'explorer' }));
+    parse(asst('a2', 'Agent', { prompt: 'x' }));
+    parse(asst('a3', 'Agent', { description: 'real', subagent_type: 'explorer' }));
+    for (const [a, c] of [['a1', 'c1'], ['a2', 'c2'], ['a3', 'c3']] as const) parse(asst(c, 'Bash', {}, a));
+    expect([parse.via('c1'), parse.via('c2'), parse.via('c3')]).toEqual(['explorer', 'task', 'real']);
+  });
+
+  it('a title is trimmed: spaces around the description never reach the card', () => {
+    const parse = createStreamParser();
+    parse(asst('a1', 'Agent', { description: '  dig into it  ' }));
+    parse(asst('c1', 'Bash', {}, 'a1'));
+    expect(parse.via('c1')).toBe('dig into it');
   });
 });

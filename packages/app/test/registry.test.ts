@@ -4,6 +4,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { drawable, hidden, renderRow, rowTypes } from '../src/rows.js';
 import { engineEvents } from '../src/rows/engine.js';
 import { initial, reduce } from '../src/state.js';
+import { createElement } from 'react';
+import { QuestionCard } from '../src/QuestionCard.js';
 
 const row = (type: string, data: unknown = {}): LogRow => ({ sessionId: 's', seq: 1, ts: 1, type, data });
 const sess = reduce(initial(), row('note'), 0).sessions.s!;
@@ -39,6 +41,8 @@ describe('row registry', () => {
 
   it('draws a step start as a divider and hides command_result', () => {
     expect(JSON.stringify(renderRow(row('step_started', { step: 'plan', parents: [] }), ctx))).toMatch(/sx-stepdiv.*"step ","plan"/);
+    // the say line, the notes and the chips already tell these; a generic details row would repeat them as JSON
+    for (const type of ['model_switched', 'budget_reached']) expect(hidden.has(type), type).toBe(true);
     expect(hidden.has('command_result')).toBe(true);
     expect(renderRow(row('command_result', { step: 'run-1', exitCode: 1 }), ctx)).toBeNull();
   });
@@ -83,6 +87,19 @@ describe('thinking row', () => {
     expect(text(renderRow(t(1509, 2), { ...ctx, thinking: { heads } }))).toBe('thought ~1,509 tokens');
     expect(text(renderRow(t(1509, 2), { ...ctx, thinking: { heads, now: 9 } }))).toBe('thought ~1,509 tokens');
   });
+
+  it('a row with text is a Reasoning block: open while live, collapsed after, text in the body', () => {
+    const r = { ...row('engine', { type: 'thinking', tokens: 210, text: 'it is 17 x 23' }), seq: 2 };
+    const live = renderToStaticMarkup(renderRow(r, { ...ctx, thinking: { heads, now: 2 } }) as never);
+    const done = renderToStaticMarkup(renderRow(r, { ...ctx, thinking: { heads } }) as never);
+    expect(live).toMatch(/<details class="row think" open="">/);
+    expect(done).toMatch(/<details class="row think">/);
+    expect(done).toContain('<summary>Reasoning ~210 tokens</summary>');
+    expect(done).toContain('it is 17 x 23');
+    expect(renderRow(r, { ...ctx, thinking: { heads: new Set() } })).toBeNull();
+    const noCount = { ...row('engine', { type: 'thinking', text: 'why' }), seq: 2 };
+    expect(renderToStaticMarkup(renderRow(noCount, { ...ctx, thinking: { heads } }) as never)).toContain('<summary>Reasoning</summary>');
+  });
 });
 describe('drawable and card words', () => {
   it('drawable is false for every hidden type and the silent engine events, true for engine text', () => {
@@ -90,6 +107,28 @@ describe('drawable and card words', () => {
     for (const t of ['tool_result', 'hook', 'cost']) expect(drawable(row('engine', { type: t }))).toBe(false);
     expect(drawable(row('engine', { type: 'text', text: 'x' }))).toBe(true);
     expect(drawable(row('note', { text: 'x' }))).toBe(true);
+  });
+
+  it('a compacted engine event says how many tokens of conversation remain, never "before → after"', () => {
+    const c = (data: object) => row('engine', { type: 'compacted', trigger: 'manual', ...data });
+    const r = c({ before: 33_781, after: 3_873 });
+    const html = renderToStaticMarkup(renderRow(r, ctx) as never);
+    expect(drawable(r)).toBe(true);
+    expect(text(renderRow(r, ctx))).toBe('Compressed: 4k tokens of conversation remain; the next reply measures the full context.');
+    expect(html).toContain('title="The provider&#x27;s figures: 33,781 tokens before, 3,873 after; before includes the system prompt, after does not."');
+    expect(text(renderRow(c({ trigger: 'auto', before: 33_781, after: 3_873 }), ctx))).toBe(
+      'Compressed: 4k tokens of conversation remain; the next reply measures the full context. (by the provider)');
+    expect(text(renderRow(c({ after: 3_873 }), ctx))).toContain('Compressed: 4k tokens');
+    expect(renderToStaticMarkup(renderRow(c({ after: 3_873 }), ctx) as never)).toContain(
+      'title="The provider&#x27;s figure: 3,873 tokens after; it does not include the system prompt."');
+    expect(text(renderRow(c({}), ctx))).toBe('Compressed.');
+    expect(text(renderRow(c({ trigger: 'auto' }), ctx))).toBe('Compressed. (by the provider)');
+  });
+
+  it('a usage engine event draws nothing', () => {
+    const r = row('engine', { type: 'usage', model: 'm', used: 1 });
+    expect(drawable(r)).toBe(false);
+    expect(renderRow(r, ctx)).toBeNull();
   });
 
   it('renderRow returns null exactly when drawable is false', () => {
@@ -104,5 +143,46 @@ describe('drawable and card words', () => {
     expect(text(renderRow(q, { ...ctx, card: new Map([[q.seq, { state: 'mid-turn' as const, landed: 'build' }]]) }))).toBe('steer card x · card delivered (mid-turn) · in build');
     expect(text(renderRow(q, ctx))).toBe('steer card x');
     expect(text(renderRow(q, { ...ctx, card: new Map([[q.seq, { state: 'bogus' as never }]]) }))).toBe('steer card x');
+  });
+});
+
+describe('subagent rows and the titled card', () => {
+  it('draws the start and the result of a subagent as rows of their own files, and neither is hidden', () => {
+    for (const t of ['subagent_started', 'subagent_result', 'budget_warning']) {
+      expect(rowTypes(), t).toContain(t);
+      expect(hidden.has(t), t).toBe(false);
+      expect(drawable(row(t, {})), t).toBe(true);
+    }
+    expect(text(renderRow(row('subagent_started', { title: 'research', label: 'Haiku 5.5' }), ctx))).toBe('Subagent research started on Haiku 5.5.');
+    expect(text(renderRow(row('subagent_started', { title: 'research', resumed: true }), ctx))).toBe('Subagent research resumed on the session model.');
+    expect(text(renderRow(row('subagent_started', { title: 'research', model: 'claude-haiku-5-5' }), ctx))).toBe('Subagent research started on claude-haiku-5-5.');
+    expect(text(renderRow(row('subagent_started', { title: 'research', label: 'Haiku 5.5', model: 'claude-haiku-5-5' }), ctx))).toBe('Subagent research started on Haiku 5.5.');
+    const html = renderToStaticMarkup(renderRow(row('subagent_result', { title: 'research', text: 'found it', cost: 0.0640898 }), ctx) as never);
+    expect(html).toContain('<summary>Subagent research handed back its result ($0.0641).</summary>');
+    expect(html).toContain('<div class="md"><p>found it</p></div>');
+    expect(html).toMatch(/^<details/);
+  });
+
+  it('a budget warning draws exactly its text', () => {
+    const t = 'Subagent research went over its $0.50 budget; its result was kept.';
+    const r = row('budget_warning', { text: t });
+    expect(drawable(r)).toBe(true);
+    expect(text(renderRow(r, ctx))).toBe(t);
+  });
+
+  it('a tool card titled with its subagent names it in the card, the region and the answered line; one with no title is as before', () => {
+    const q = { id: 'q1', kind: 'tool', prompt: '? Allow Bash: ls  [y / n <reason>]', title: 'Subagent research (`subagent-1`)' };
+    const draw = (data: object, s = sess) => renderToStaticMarkup(createElement(QuestionCard, { row: row('question', data), sess: s, answer: async () => {} }));
+    const open = draw(q);
+    expect(open).toContain('<div class="qtitle">Subagent research (`subagent-1`)</div>');
+    expect(open).toContain('aria-label="tool question: Subagent research (`subagent-1`)"');
+    expect(text(createElement(QuestionCard, { row: row('question', q), sess: { ...sess, answers: { q1: 'y' } }, answer: async () => {} })))
+      .toBe('Subagent research (`subagent-1`) · tool · answered: y');
+    expect(draw(q, { ...sess, closed: { q1: 'the run stopped' } })).toContain('Subagent research (`subagent-1`) · tool · closed: the run stopped');
+    const plain = draw({ id: 'q2', kind: 'tool', prompt: 'p' });
+    expect(plain).not.toContain('qtitle');
+    expect(plain).toContain('aria-label="tool question"');
+    expect(text(createElement(QuestionCard, { row: row('question', { id: 'q2', kind: 'tool', prompt: 'p' }), sess: { ...sess, answers: { q2: 'n' } }, answer: async () => {} })))
+      .toBe('tool · answered: n');
   });
 });

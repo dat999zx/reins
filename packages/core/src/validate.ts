@@ -5,6 +5,7 @@ import { CONDS } from './conds/index.js';
 import { NODES, nodeAttrs, headingOwns, type ValidateCtx } from './nodes/index.js';
 import { condAtoms } from './cond.js';
 import { compileProgram } from './compile.js';
+import { usdText } from './format/print.js';
 
 export function validate(
   w: Workflow,
@@ -140,6 +141,33 @@ export function validate(
     NODES.get(step.kind)?.validate?.late?.(step, vctx(pos));
   }
 
+  // D5: block budgets (`usd:` on a kind that owns it) are carved out of the workflow's USD budget; with none set, they are caps of their own.
+  // ponytail: a block file's slices (`use`) are not counted here: the run enforces them anyway; count through resolveBlock if it bites.
+  const owns = (s: Step) => NODES.get(s.kind)?.attrs.includes('usd') === true;
+  const validUsd = (s: Step) => /^\d+(\.\d{1,2})?$/.test(s.attrs.usd!.trim()) && Number(s.attrs.usd) > 0;   // the app's parseBudget rule (panelEdit.ts:60)
+  for (const s of allSteps) {
+    if (s.attrs.usd === undefined) continue;
+    const pos = s.pos || { line: 1, col: 1 };
+    if (!owns(s)) diagnostics.push({ severity: 'warning', message: `\`usd:\` does nothing on a ${s.kind} step`, pos });
+    else if (!validUsd(s)) {
+      diagnostics.push({ severity: 'error', message: `Budget (USD) of \`${s.id}\` must be an amount above 0, like 0.50.`, pos });
+    }
+  }
+  // A `model:` or `reasoning:` line is parsed on any kind (a subagent owns both), so the kinds that do not own it say so here.
+  const ownsKey = (s: Step, k: string) => { const n = NODES.get(s.kind); return !!n && (n.attrs.includes(k) || !!n.heading?.owns?.includes(k)); };
+  for (const s of allSteps) {
+    for (const k of ['model', 'reasoning']) {
+      if (s.attrs[k] !== undefined && !ownsKey(s, k)) diagnostics.push({ severity: 'warning', message: `\`${k}:\` does nothing on a ${s.kind} step`, pos: s.pos || { line: 1, col: 1 } });
+    }
+  }
+  // Only valid slices are summed: a malformed one already has its own error.
+  const sliced = allSteps.filter((s) => s.attrs.usd !== undefined && owns(s) && validUsd(s));
+  if (!w.block && sliced.length) {
+    const pos = sliced[0]!.pos || { line: 1, col: 1 };
+    const sum = sliced.reduce((a, s) => a + (Number(s.attrs.usd) || 0), 0);
+    if (w.budget.usd !== undefined && sum > w.budget.usd + 1e-9) diagnostics.push({ severity: 'error', message: `The blocks' budgets add up to $${usdText(Math.round(sum * 100) / 100)}, over the workflow's $${usdText(w.budget.usd)}.`, pos });
+  }
+
   // Ids inside each container's body (all depths), for the jump-into-a-loop rule.
   const bodies = new Map<Step, Set<string>>();
   const collectBody = (s: Step, into: Set<string>) => {
@@ -149,12 +177,6 @@ export function validate(
     if (NODES.get(s.kind)?.container === 'kids') { const b = new Set<string>(); collectBody(s, b); bodies.set(s, b); }
   }
   const failKinds = [...NODES.values()].filter((n) => n.fails).map((n) => n.kind);
-  const DEPRECATED: Record<string, string> = {
-    'on-pass': '`on-pass` has no effect; use `next`',
-    retry: '`retry` has no effect; use a backward `next` with `max`',
-    'verify-against': '`verify-against` has no effect; use `against:`',
-    'hand-off': '`hand-off` has no effect; use a handoff step',
-  };
 
   // Rule 3 and Rule 4 (backward link): link targets and verify against
   for (const step of allSteps) {
@@ -172,8 +194,6 @@ export function validate(
       diagnostics.push({ severity: 'warning', message: `on-fail only applies to ${failKinds.join(', ')}`, pos });
     }
     for (const link of step.links) {
-      const msg = DEPRECATED[link.kind];
-      if (msg) diagnostics.push({ severity: 'warning', message: msg, pos: link.pos || pos });
       for (const [loop, body] of bodies) {
         if (body.has(link.to) && !body.has(step.id)) {
           diagnostics.push({

@@ -47,15 +47,59 @@ describe('dock facts', () => {
     v.turns = 1; v.cost = 0;
     for (const i of meter(v, w.budget, 60_000)) expect(i.text).not.toContain('near');
   });
-  it('minutes and money report unenforced limits; ended time freezes; absent usd stays absent', () => {
+  it('minutes report an unenforced limit and USD an enforced one; ended time freezes; absent usd stays absent', () => {
     const v = view([started()]); v.startedAt = 0; v.cost = 5;
     const items = meter(v, w.budget, 31 * 60_000);
-    for (const item of items.slice(1)) expect(item).toMatchObject({ level: 'over', enforced: false, text: expect.stringContaining('over (not enforced)') });
+    expect(items[1]).toMatchObject({ level: 'over', enforced: false, text: expect.stringContaining('over (not enforced)') });
+    expect(items[2]).toMatchObject({ level: 'over', enforced: true, text: expect.stringContaining(' · USD budget used: the run pauses') });
     v.endedTs = 60_000;
     expect(meter(v, { turns: 40, minutes: 30 }, 31 * 60_000)).toEqual([
       { key: 'turns', text: '0 / 40 turns', level: 'ok', enforced: true },
       { key: 'minutes', text: '1m 00s / 30m', level: 'ok', enforced: false },
     ]);
+  });
+  it('a block item goes when its model step starts again, not only at the next reply', () => {
+    reset();
+    const steps = [{ id: 'plan', kind: 'phase' }, { id: 'model-1', kind: 'model' }];
+    const slice = { step: 'model-1', spent: 0.52, usd: 0.5 };
+    const open = [started(steps), row('turn_ended', { step: 'plan', cost: 0.52, slice })];
+    expect(view(open).slice).toEqual(slice);
+    expect(view([...open, ss('plan')]).slice).toEqual(slice);
+    expect(view([...open, ss('model-1')]).slice).toBeUndefined();
+  });
+
+  it('a block item shows the open slice as enforced, and goes when a later turn carries none', () => {
+    reset();
+    const slice = { step: 'model-1', spent: 0.52, usd: 0.5 };
+    const v = view([started(), row('turn_ended', { step: 'plan', cost: 0.52, slice })]);
+    expect(v.slice).toEqual(slice);
+    const items = meter(v, w.budget, 0);
+    expect(items.map((i) => i.key)).toEqual(['turns', 'minutes', 'usd', 'block']);
+    expect(items[3]).toEqual({ key: 'block', text: 'model-1: $0.52 / $0.50 · block budget used: the run pauses', level: 'over', enforced: true });
+    const near = meter({ ...v, slice: { step: 'model-1', spent: 0.4, usd: 0.5 } }, w.budget, 0)[3]!;
+    expect(near).toMatchObject({ text: 'model-1: $0.40 / $0.50 · near', level: 'near', enforced: true });
+    const later = view([started(), row('turn_ended', { step: 'plan', cost: 0.52, slice }), row('turn_ended', { step: 'b', cost: 0.1 })]);
+    expect(later.slice).toBeUndefined();
+    expect(meter(later, w.budget, 0).map((i) => i.key)).toEqual(['turns', 'minutes', 'usd']);
+  });
+  it('the USD item reads the limit the run logged on an allowance, not the file\'s', () => {
+    reset();
+    const v = view([started(), row('turn_ended', { step: 'plan', cost: 5 }), row('run_resumed', { allowUsd: 2, usd: 7 })]);
+    expect(v.usdLimit).toBe(7);
+    expect(meter(v, w.budget, 0)[2]).toEqual({ key: 'usd', text: '$5.00 / $7.00', level: 'ok', enforced: true });
+    // a slice's allowance names its step: it is not the workflow's limit
+    const s = view([started(), row('run_resumed', { allowUsd: 1, usd: 1.5, step: 'model-1' })]);
+    expect(s.usdLimit).toBeUndefined();
+    // ...and it raises the open slice's limit until the next turn reports it
+    const slice = { step: 'model-1', spent: 0.52, usd: 0.5 };
+    const k = view([started(), row('turn_ended', { step: 'plan', cost: 0.52, slice }), row('run_resumed', { allowUsd: 1, usd: 1.52, step: 'model-1' })]);
+    expect(k.slice).toEqual({ step: 'model-1', spent: 0.52, usd: 1.52 });
+    expect(meter(k, w.budget, 0)[3]).toEqual({ key: 'block', text: 'model-1: $0.52 / $1.52', level: 'ok', enforced: true });
+    // an allowance that names another step leaves this slice alone
+    const other = view([started(), row('turn_ended', { step: 'plan', cost: 0.52, slice }), row('run_resumed', { allowUsd: 1, usd: 9, step: 'other' })]);
+    expect(other.slice).toEqual(slice);
+    // a slice with a figure that is not a number is no slice
+    expect(view([started(), row('turn_ended', { step: 'plan', cost: 0.52, slice: { step: 'model-1', spent: 0.52, usd: 'x' } })]).slice).toBeUndefined();
   });
   it('does not report a refused start before a busy-to-idle transition', () => {
     reset(); const before = status('idle');
@@ -174,6 +218,11 @@ describe('runView phase', () => {
     reset();
     expect(PHASE.failed.words(view([started(), ss('build'), row('run_detached', { error: 'x' })]))).toBe('Failed at `build`: x');
     expect(PHASE.busy.words(view([status('running')]))).toBe('The agent is working (not a workflow run).');
+  });
+
+  it('busy says it waits when a question is open (a switch card after an ended run)', () => {
+    reset();
+    expect(PHASE.busy.words(view([ask('q1', 'switch'), status('waiting')]))).toBe('Waiting for you · switch question');
   });
 });
 
@@ -317,6 +366,16 @@ describe('thinking', () => {
     expect(thinkingHeads([]).size).toBe(0);
   });
 
+  it('thinkingHeads: a row with text is the burst\'s one head; the token-only rows of that burst do not draw', () => {
+    reset();
+    const a = think(50), b = think(317);
+    const words = row('engine', { type: 'thinking', tokens: 317, text: 'because' });
+    expect([...thinkingHeads([a, b, words])]).toEqual([words.seq]);
+    expect([...thinkingHeads([a, words, text('hi'), think(9)])]).toEqual([words.seq, expect.any(Number)]);
+    // count rows that come after the text row of the same burst do not draw either
+    expect([...thinkingHeads([a, words, think(400)])]).toEqual([words.seq]);
+  });
+
   it('RunView.thinking is the head tokens only while it is the run newest engine row and the run is live', () => {
     reset();
     const live = [status('running'), started(), ss('plan'), think(50), think(317)];
@@ -352,5 +411,44 @@ describe('sameSteps, firstRowOf', () => {
     expect(firstRowOf(v, rows, 'b')).toBe(rows[3]!.seq);
     expect(firstRowOf(v, rows, 'zz')).toBeUndefined();
     expect(firstRowOf(v, rows.filter((r) => r.type !== 'step_started'), 'b')).toBe(rows[4]!.seq);
+  });
+});
+
+describe('a subagent in the run view', () => {
+  const steps = [{ id: 'plan', kind: 'phase' }, { id: 'subagent-1', kind: 'subagent' }, { id: 'model-1', kind: 'model' }];
+  const budget = { turns: 40, minutes: 30, usd: 4 };
+  const slice = (step: string) => ({ step, spent: 0.55, usd: 0.5 });
+  it('the handle names the subagent at work and its model until its result, and the run end drops it', () => {
+    reset();
+    const open = [started(steps), ss('subagent-1'), row('subagent_started', { step: 'subagent-1', title: 'research', label: 'Haiku 5.5' }), row('turn_started', { step: 'subagent-1' })];
+    expect(view(open).sub).toEqual({ step: 'subagent-1', title: 'research', label: 'Haiku 5.5' });
+    expect(PHASE.running.words(view(open))).toBe('Running `subagent-1` · subagent research on Haiku 5.5');
+    const bare = [started(steps), ss('subagent-1'), row('subagent_started', { step: 'subagent-1', title: 'research' }), row('turn_started', { step: 'subagent-1' })];
+    expect(PHASE.running.words(view(bare))).toBe('Running `subagent-1` · subagent research on the session model');
+    const done = [...open, row('subagent_result', { step: 'subagent-1', title: 'research', text: 'x', cost: 0.06 })];
+    expect(view(done).sub).toBeUndefined();
+    expect(PHASE.running.words(view(done))).toBe('Running `subagent-1`');
+    expect(view([...open, row('run_stopped')]).sub).toBeUndefined();
+  });
+  it("a subagent's reply feeds the cost and the block item; over its slice the words say it is not a pause", () => {
+    reset();
+    const ok = view([started(steps), row('turn_ended', { step: 'subagent-1', cost: 0.06, slice: { step: 'subagent-1', spent: 0.06, usd: 0.5 } })]);
+    expect(ok.cost).toBe(0.06);
+    expect(meter(ok, budget, 0)[3]!.text).toBe('subagent-1: $0.06 / $0.50');
+    const sub = view([started(steps), row('turn_ended', { step: 'subagent-1', cost: 0.55, slice: slice('subagent-1') })]);
+    expect(meter(sub, budget, 0)[3]).toEqual({ key: 'block', text: 'subagent-1: $0.55 / $0.50 · subagent budget used', level: 'over', enforced: true });
+    const model = view([started(steps), row('turn_ended', { step: 'plan', cost: 0.55, slice: slice('model-1') })]);
+    expect(meter(model, budget, 0)[3]!.text).toBe('model-1: $0.55 / $0.50 · block budget used: the run pauses');
+    // a capped reply pauses on the usd card: the words are the block's, which name the pause
+    const capped = view([started(steps), row('turn_ended', { step: 'subagent-1', cost: 0.55, slice: slice('subagent-1') }), row('question', { id: 'q1', kind: 'usd', prompt: 'x' })]);
+    expect(meter(capped, budget, 0)[3]!.text).toBe('subagent-1: $0.55 / $0.50 · block budget used: the run pauses');
+    // any other open question (a tool card) does not pause on the money: the subagent words stay
+    const tool = view([started(steps), row('turn_ended', { step: 'subagent-1', cost: 0.55, slice: slice('subagent-1') }), row('question', { id: 'q2', kind: 'tool', prompt: 'x' })]);
+    expect(meter(tool, budget, 0)[3]!.text).toContain('subagent budget used');
+    // only the block item takes the subagent words: the workflow's own USD item, over while a subagent slice is open, keeps its own
+    const wf = meter(view([started(steps), row('turn_ended', { step: 'subagent-1', cost: 5, slice: slice('subagent-1') })]), budget, 0);
+    const usd = wf.find((i) => i.key === 'usd')!;
+    expect(usd.level).toBe('over');
+    expect(usd.text).not.toContain('subagent budget used');
   });
 });

@@ -6,12 +6,20 @@ import type { Actions } from './rows.js';
 import { receiptFields } from './rows/receipt.js';
 import { meter, PHASE, thinkingWords, type Pos, type RunCard, type RunView } from './runState.js';
 import type { Sess } from './state.js';
+import { offersStop } from './questions.js';
 
 const CARD_STATE: Record<RunCard['state'], string> = { queued: 'queued', delivered: 'delivered', unsent: 'not sent' };
+const METER_WORDS = { turns: 'turns', minutes: 'minutes', usd: 'USD', block: 'block USD' };
 
+// One panel, two places: what each surface shows. Chat has no cards, steer box or meter: its log, Composer and header already have them.
+export type Surface = 'chat' | 'blocks';
+export const SURFACE: Record<Surface, { cards: boolean; steer: boolean; follow: boolean; autoOpen: boolean; meter: boolean; live: boolean; jump: string }> = {
+  blocks: { cards: true, steer: true, follow: true, autoOpen: true, meter: true, live: true, jump: 'Chat' },
+  chat: { cards: false, steer: false, follow: false, autoOpen: false, meter: false, live: false, jump: 'Blocks' },
+};
 export function RunDock(p: {
   run: RunView; sess: Sess; act: Actions; budget?: Workflow['budget']; pos?: Pos;
-  match: boolean; open: boolean; onOpen(o: boolean): void; starting?: string; onChat(): void; onDismiss(): void;
+  surface: Surface; match: boolean; open: boolean; onOpen(o: boolean): void; starting?: string; onJump(): void; onDismiss(): void;
   following: boolean; onFollow?(on: boolean): void; // absent when the open file is not the run's or no longer matches: there is nothing to follow
 }): ReactNode {
   const { run, sess, act, open, onOpen } = p;
@@ -26,8 +34,10 @@ export function RunDock(p: {
   const [error, setError] = useState<string>();
   const [now, setNow] = useState(Date.now);
   const phase = PHASE[run.phase];
+  const s = SURFACE[p.surface];
   // ponytail: the budget shown is the open file's; step N of M counts as the agent's header does.
-  const items = p.budget ? meter(run, p.budget, now) : [];
+  const items = s.meter && p.budget ? meter(run, p.budget, now) : [];
+  const cue = phase.ended ? undefined : items.find((i) => i.level !== 'ok');
   const near = items.find((i) => i.key === 'turns' && i.level === 'near');
   // the token count changes at every burst: it is shown, but kept out of the live region
   const { thinking, ...still } = run;
@@ -40,7 +50,7 @@ export function RunDock(p: {
     return () => clearInterval(timer);
   }, [run.live, run.runId]);
   useEffect(() => {
-    if (ids.some((q) => !seen.current.has(q))) onOpen(true);
+    if (s.autoOpen && ids.some((q) => !seen.current.has(q))) onOpen(true);
     for (const q of ids) seen.current.add(q);
   }, [ids.join('|')]);
   useLayoutEffect(() => {
@@ -62,41 +72,55 @@ export function RunDock(p: {
       .catch((e: Error) => setError(e.message))
       .finally(() => setSending(false));
   };
+  // Chat: the card is in the log. Close the body first (it floats over the Composer), then take the focus there.
+  const goToQuestion = () => {
+    onOpen(false);
+    const el = document.querySelector<HTMLElement>(`.log [data-qid="${CSS.escape(ids[0]!)}"] button`);
+    el?.scrollIntoView({ block: 'nearest' });
+    el?.focus({ preventScroll: true });
+  };
   return <section className="sx-dock" aria-label="Run">
-    <div className="sx-dockline">
-      <span className="sx-dockstatus" title={status + count}><span role="status">{status}</span>{count}</span>
-      {/* an ended run's status line already says its turns, time and cost */}
-      {!phase.ended && items.map((i) => <span key={i.key} className={`sx-meter ${i.level === 'ok' ? '' : 'warn'}`} title={i.text}>{i.text}</span>)}
+    <div className="sx-dockline" data-waiting={run.open.length > 0 || undefined}>
+      <span className="sx-dockstatus" title={status + count}>{s.live ? <span role="status">{status}</span> : status}{count}</span>
+      {/* the meter itself is in the body; the handle only says when an item is near or over */}
+      {cue && <span className="sx-meter warn" title={cue.text}>{cue.level === 'over' ? 'Over' : 'Near'}: {METER_WORDS[cue.key]}{cue.level === 'over' && !cue.enforced ? ' (not enforced)' : ''}</span>}
       {!p.match && run.stepsAtStart && <span className="sx-docknotice" role="note">The file changed since this run started; marks are hidden.</span>}
-      {run.live && p.onFollow && <button aria-pressed={p.following} title="Keep the running block in view" onClick={() => p.onFollow!(!p.following)}>Follow</button>}
-      <button onClick={p.onChat}>Chat</button>
+      {s.follow && run.live && p.onFollow && <button aria-pressed={p.following} title="Keep the running block in view" onClick={() => p.onFollow!(!p.following)}>Follow</button>}
       <button ref={toggle} aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => onOpen(!open)}>{open ? 'Hide the run' : 'Show the run'}</button>
     </div>
-    {open && <div className="sx-dockbody" id={id} ref={body}>
-      {run.open.map((row) => <QuestionCard key={(row.data as { id: string }).id} row={row} sess={sess} answer={(qid, answer) => {
+    {open && <div className="sx-dockbody" id={id} ref={body}
+      onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onOpen(false); toggle.current?.focus(); } }}>
+      {!phase.ended && items.length > 0 && <div className="sx-meters">{items.map((i) => <span key={i.key} className={`sx-meter ${i.level === 'ok' ? '' : 'warn'}`} title={i.text}>{i.text}</span>)}</div>}
+      {s.cards && run.open.map((row) => <QuestionCard key={(row.data as { id: string }).id} row={row} sess={sess} answer={(qid, answer) => {
         moveFocus.current = true;
         return act.answer(qid, answer).catch((e) => { moveFocus.current = false; throw e; });
       }} />)}
+      {!s.cards && run.open.length > 0 && <div className="btns">
+        <span>Answer it in the log.</span>
+        <button onClick={goToQuestion}>Go to the question</button>
+      </div>}
       {run.last && <p className="sx-latest" title={run.last.text}>{run.last.text}</p>}
-      {!phase.ended && <form className="sx-steer" onSubmit={(e) => { e.preventDefault(); if (draft.trim()) send('steer'); }}>
+      {s.steer && !phase.ended && <form className="sx-steer" onSubmit={(e) => { e.preventDefault(); if (draft.trim()) send('steer'); }}>
         <textarea ref={steer} aria-label="Steer the agent" rows={1} value={draft} disabled={!working} placeholder="Steer the agent (sent as a card)…"
           onChange={(e) => { setDraft(e.target.value); setError(undefined); }}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); if (draft.trim()) send('steer'); } }} />
         <button type="submit" disabled={!working || sending || !draft.trim()}>Send</button>
         <button type="button" disabled={!working || sending || !draft.trim()} title="Interrupt the agent and deliver this card now" onClick={() => send('now')}>Now</button>
-        <button type="button" className="danger" disabled={!working || sending} title="Stop the run" onClick={() => send('stop')}>Stop</button>
+        {/* a card that offers Stop (gate, budget, resume) is the same effect at a pause: one Stop on screen */}
+        {!run.open.some((r) => offersStop((r.data as { kind: string }).kind)) && <button type="button" className="danger" disabled={!working || sending} title="Stop the run" onClick={() => send('stop')}>Stop</button>}
       </form>}
       {error && !phase.ended && <div className="bad" role="alert">{error}</div>}
       {run.cards.length > 0 && <ul className="sx-cards" aria-label="Cards sent">
         {run.cards.map((c, i) => <li key={i}><span className="sx-cardtext" title={c.text}>“{c.text}”</span> <span className="sx-cardstate">{CARD_STATE[c.state]}</span></li>)}
       </ul>}
-      {phase.ended && <>
-        {run.receipt && <dl className="sx-dockreceipt">{receiptFields(run.receipt).map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>}
-        <div className="btns">
+      {phase.ended && run.receipt && <dl className="sx-dockreceipt">{receiptFields(run.receipt).map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>}
+      <div className="btns">
+        <button onClick={p.onJump}>{s.jump}</button>
+        {phase.ended && <>
           {phase.resumable && sess.status === 'idle' && run.runId && <button onClick={() => act.resume(run.runId!)}>Resume</button>}
           <button onClick={p.onDismiss}>Dismiss</button>
-        </div>
-      </>}
+        </>}
+      </div>
     </div>}
   </section>;
 }

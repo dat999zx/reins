@@ -52,11 +52,11 @@ Put workflows in `<project>/.reins/workflows/` or `~/.reins/workflows/`. More in
 
 | | |
 |---|---|
-| **Steps** | `phase`, `say`, `turn`, `run` (a shell command), `gate`, `verify`, `if` / `else`, `repeat`, `recall`, `store`, `handoff`, `end` (stops the workflow), `use` (reuse a block) |
+| **Steps** | `phase`, `say`, `turn`, `run` (a shell command), `gate`, `verify`, `if` / `else`, `repeat`, `recall`, `store`, `end` (stops the workflow), `use` (reuse a block) |
 | **Conditions** | `tests`, `cmd`, `diff`, `touches`, `same`, `attempts`, `drift`, `done`, `approve`, `llm`, `review`, joined with `and` / `or` / `not` |
 | **Wires** | `next` jumps to a step, `on-fail` goes back and retries (with a max) |
-| **Auto cards** | `## whenever <condition>` fires a card by itself, e.g. `whenever attempts > 3` |
-| **Live cards** | Drop onto a running session: `nudge`, `role`, `guard`, `checkpoint`, `budget`, `stop`, `undo`, `note`, `now` |
+| **Auto cards** | `## whenever <condition>` fires a `now:` or `stop:` card by itself, e.g. `whenever attempts > 3` |
+| **Live cards** | Drop onto a running session: `guard`, `stop`, `now` |
 | **Budgets** | Every loop has a `max`; the run has turns, minutes and dollars. Each run ends with a receipt |
 
 Reins checks a workflow before it runs (unknown steps, bad globs, dead wires, unreachable steps).

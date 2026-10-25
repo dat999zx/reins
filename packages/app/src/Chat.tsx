@@ -6,12 +6,17 @@ import type { EditorState, Tab } from './editorState.js';
 import { Feed } from './FeedView.js';
 import { feed } from './feed.js';
 import type { Actions } from './rows.js';
-import { runView, thinkingHeads, thinkingNow } from './runState.js';
+import { RunDock, type Surface } from './RunDock.js';
+import { PHASE, runView, thinkingHeads, thinkingNow } from './runState.js';
 import { TextTab } from './TextTab.js';
-import { mergeOutput, title, type Sess } from './state.js';
+import { mergeOutput, openQuestions, title, type Sess } from './state.js';
+import { OptionPicker } from './OptionPicker.js';
+import { compressBlock, compressBusy, contextWords, effortBlock, hasReplied, pickerBlock, shownEffort, shownModel, usageOf } from './usage.js';
 
-export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState, onDirty, onError }: {
-  sess: Sess; catalogue: TagEntry[]; takeRefill: (input: string) => string; tab: Tab; onTab: (t: Tab) => void;
+export type Provider = { id: string; label: string; defaultModel: string; defaultEffort: string; efforts: Array<{ id: string; label: string }>; models: Array<{ id: string; label: string; window?: number }> };
+
+export function Chat({ sess, catalogue, providers, takeRefill, tab, onTab, restore, onState, onDirty, onError }: {
+  sess: Sess; catalogue: TagEntry[]; providers: Provider[]; takeRefill: (input: string) => string; tab: Tab; onTab: (t: Tab) => void;
   restore?: EditorState; onState: (patch: Partial<EditorState>) => void;
   onDirty: (dirty: boolean) => void; onError: (message: string) => void;
 }) {
@@ -19,7 +24,7 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
   const log = useRef<HTMLDivElement>(null);
   const [stick, setStick] = useState(true);
   const [fresh, setFresh] = useState(false);
-  const [dockOpen, setDockOpen] = useState(false);
+  const [dockOpen, setDockOpen] = useState<Record<Surface, boolean>>({ chat: false, blocks: false }); // the panel's body is open or closed per surface
   // ponytail: Dismiss is in memory; a reload shows the last run's marks again.
   const [dismissed, setDismissed] = useState<string>();
   const [open, setOpen] = useState<Record<string, boolean>>({}); // the user's open / closed choice per knot, in memory
@@ -27,7 +32,26 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
   const [focus, setFocus] = useState<{ key: string; n: number }>();
   const rows = useMemo(() => mergeOutput(sess.rows), [sess.rows]);
   const busy = sess.status === 'running' || sess.status === 'waiting';
+  const usage = useMemo(() => usageOf(sess.rows), [sess.rows, sess.lastSeq]);
+  const models = providers.find((p) => p.id === sess.engine)?.models ?? [];
+  const shown = shownModel(sess, usage, providers) ?? '';
+  const sessionModel = { id: shown, label: `${models.find((m) => m.id === shown)?.label ?? shown} (session)` };
+  const efforts = providers.find((p) => p.id === sess.engine)?.efforts ?? [];
+  const level = shownEffort(sess, providers) ?? '';
+  const sessionEffort = { id: level, label: `${efforts.find((e) => e.id === level)?.label ?? level} (session)` };
+  // The stream's window wins; the catalog's (from /api/state) only fills a gap.
+  const ctx = contextWords(usage, models.find((m) => m.id === shown)?.window);
+  const asking = openQuestions(sess).some((r) => (r.data as { kind?: string }).kind === 'switch');
+  const block = pickerBlock({ busy, detached: sess.detached.length, asking });
+  const effortOff = effortBlock(busy);
+  // the server accepts Compress while only a switch card waits (it closes the card)
+  const cb = compressBlock({
+    busy: compressBusy(sess.status, openQuestions(sess).map((r) => (r.data as { kind?: string }).kind)),
+    replied: hasReplied(sess.rows),
+  });
   const run = useMemo(() => runView(sess), [sess]);
+  // the panel shows for a run that is live or just ended, not for a plain turn (busy) or a run the user dismissed
+  const chatPanel = run.phase !== 'none' && run.phase !== 'busy' && !(run.runId === dismissed && PHASE[run.phase].ended);
   const f = useMemo(() => feed(rows, run, new Set(sess.open)), [rows, run, sess.open]);
   // only the head of a thinking burst draws; it says "thinking…" while it is the newest engine row of a busy session
   const thinking = useMemo(() => { const now = thinkingNow(sess.rows); return { heads: thinkingHeads(sess.rows), ...(busy && now ? { now: now.seq } : {}) }; }, [sess]);
@@ -88,6 +112,20 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
           <div className="faint" title={sess.cwd}>{sess.cwd}</div>
         </div>
         <span className={`status ${sess.status}`}><span className={`dot ${sess.status}`} /> {sess.status}</span>
+        <label className="sx-model">
+          Model
+          <OptionPicker label="Model" options={models} value={shown} disabled={block !== undefined}
+            title={block ?? (usage ? `In use: ${usage.model}` : undefined)}
+            onChange={(v) => post(`${base}/settings`, { model: v }).catch((err) => onError(err.message))} />
+        </label>
+        <label className="sx-model">
+          Reasoning
+          <OptionPicker label="Reasoning" options={efforts} value={level} disabled={effortOff !== undefined} title={effortOff}
+            onChange={(v) => post(`/settings`, { effort: v }).catch((err) => onError(err.message))} />
+        </label>
+        <span className="sx-ctx" title={ctx.title}>{ctx.text}</span>
+        <button className="sx-compress" disabled={cb !== undefined} title={cb ?? 'Summarise the conversation so far to free context. It costs one model call.'}
+          onClick={() => post(`${base}/compress`).catch((e) => onError(e.message))}>Compress</button>
         <span className="faint" aria-label="Session cost">${sess.cost.toFixed(4)}</span>
         <label className="switch">
           <input type="checkbox" checked={sess.autoApprove} onChange={(e) => post(`${base}/settings`, { autoApprove: e.target.checked }).catch((e) => onError(e.message))} />
@@ -111,12 +149,14 @@ export function Chat({ sess, catalogue, takeRefill, tab, onTab, restore, onState
               if (bottom) setFresh(false);
             }} />
           {fresh && <button className="pill" onClick={() => { setStick(true); setFresh(false); log.current!.scrollTop = log.current!.scrollHeight; }}>Jump to live ↓</button>}
-          <Composer key={sess.id} id={sess.id} cwd={sess.cwd} busy={busy} catalogue={catalogue} takeRefill={takeRefill} />
+          <Composer key={sess.id} id={sess.id} cwd={sess.cwd} busy={busy} catalogue={catalogue} takeRefill={takeRefill}
+            bar={chatPanel && <RunDock run={run} sess={sess} act={act} surface="chat" match following={false}
+              open={dockOpen.chat} onOpen={(o) => setDockOpen((d) => ({ ...d, chat: o }))} onJump={() => onTab('blocks')} onDismiss={() => setDismissed(run.runId)} />} />
         </>
       ) : (
         restore === undefined ? <p className="hint">Loading…</p>
-          : <TextTab view={tab} onView={onTab} sess={sess} run={run} act={act} restore={restore} onState={onState} onDirty={onDirty} onRun={() => onTab('chat')}
-            reveal={reveal} onRevealed={() => setReveal(undefined)} onChat={onChat} dockOpen={dockOpen} onDockOpen={setDockOpen} dismissed={dismissed} onDismiss={setDismissed} />
+          : <TextTab view={tab} onView={onTab} sess={sess} models={models} efforts={efforts} sessionModel={sessionModel} sessionEffort={sessionEffort} run={run} act={act} restore={restore} onState={onState} onDirty={onDirty} onRun={() => onTab('chat')}
+            reveal={reveal} onRevealed={() => setReveal(undefined)} onChat={onChat} dockOpen={dockOpen.blocks} onDockOpen={(o) => setDockOpen((d) => ({ ...d, blocks: o }))} dismissed={dismissed} onDismiss={setDismissed} />
       )}
     </main>
   );

@@ -21,6 +21,9 @@ export interface RunView {
   last?: { seq: number; text: string };
   stepOf: Map<number, string>;
   thinking?: number;                 // tokens, while the newest engine row of the live run is a thinking row
+  slice?: { step: string; spent: number; usd: number };   // the open USD slice, from the newest run turn_ended
+  sub?: { step: string; title: string; label?: string };   // the subagent at work: subagent_started, gone at its result or the run's end
+  usdLimit?: number;                 // the workflow's USD limit after allowances (the newest run_resumed with `usd` and no `step`)
 }
 
 type Data = Record<string, any>;
@@ -41,9 +44,10 @@ const where = (word: string, v: RunView) => (v.endedAt ? `${word} at \`${v.ended
 // ponytail: the newest run only; a history picker would pass a run id. Cards are matched by text, first in first out; `cards_unsent` by position (it has no run id).
 export const PHASE: Record<RunPhase, { words: (v: RunView, pos?: Pos) => string; ended: boolean; resumable: boolean }> = {
   none: { words: () => '', ended: false, resumable: false },
-  busy: { words: () => 'The agent is working (not a workflow run).', ended: false, resumable: false },
+  // a switch card after an ended run waits in phase busy: say so, not "working"
+  busy: { words: (v, pos) => (v.open.length ? PHASE.waiting.words(v, pos) : 'The agent is working (not a workflow run).'), ended: false, resumable: false },
   running: {
-    words: (v, pos) => `${v.current.length ? `Running \`${v.current.at(-1)}\`` : 'Running'}${pos ? ` · step ${pos.n} of ${pos.m}` : ''}${v.thinking !== undefined ? ` · ${thinkingWords(v.thinking)}` : ''}`,
+    words: (v, pos) => `${v.current.length ? `Running \`${v.current.at(-1)}\`` : 'Running'}${pos ? ` · step ${pos.n} of ${pos.m}` : ''}${v.sub ? ` · subagent ${v.sub.title} on ${v.sub.label ?? 'the session model'}` : ''}${v.thinking !== undefined ? ` · ${thinkingWords(v.thinking)}` : ''}`,
     ended: false, resumable: false,
   },
   waiting: {
@@ -66,13 +70,13 @@ const begin = (v: RunView, path: string[]) => { v.current = path; delete v.ended
 const setStep: Fold = (_r, x, v, a) => {
   if (typeof x.step === 'string' && !(a.v2 && v.current.at(-1) === x.step)) begin(v, [x.step]);
 };
-const ends: Fold = (_r, _x, v) => { v.endedAt = v.current.at(-1); v.current = []; delete v.error; }; // an old error goes with the next end; run_detached sets its own after
+const ends: Fold = (_r, _x, v) => { v.endedAt = v.current.at(-1); v.current = []; delete v.error; delete v.sub; }; // an old error goes with the next end; run_detached sets its own after
 const delivered = (text: unknown, v: RunView) => {
   const c = v.cards.find((k) => k.state === 'queued' && k.text === text);
   if (c) c.state = 'delivered';
 };
 const ENGINE: Record<string, Fold> = {
-  text: (r, x, v) => { v.last = { seq: r.seq, text: String(x.text ?? '') }; },
+  text: (r, x, v) => { if (typeof x.step !== 'string') v.last = { seq: r.seq, text: String(x.text ?? '') }; },   // a subagent's text (it has a step) is not the run's reply
   card_delivered: (_r, x, v) => delivered(x.card, v),
 };
 
@@ -90,12 +94,30 @@ const FOLD: Record<string, Fold> = {
     const parents: string[] = Array.isArray(x.parents) ? x.parents.filter((p: unknown) => typeof p === 'string') : [];
     begin(v, [...parents, x.step]);
     a.started.push(x.step);
+    // a block outlives nothing: its model step closes or replaces the slice, so the item goes with it
+    if (v.stepsAtStart?.find((s) => s.id === x.step)?.kind === 'model') delete v.slice;
   },
   turn_started: (r, x, v, a) => { setStep(r, x, v, a); a.inTurn = true; },
   gate_paused: setStep,
+  subagent_started: (_r, x, v) => {
+    if (typeof x.step === 'string' && typeof x.title === 'string') v.sub = { step: x.step, title: x.title, ...(typeof x.label === 'string' ? { label: x.label } : {}) };
+  },
+  subagent_result: (_r, _x, v) => { delete v.sub; },
   say: (r, x, v) => { v.last = { seq: r.seq, text: String(x.text ?? '') }; },
   turn_failed: (r, x, v) => { v.last = { seq: r.seq, text: String(x.error ?? '') }; },
-  turn_ended: (_r, x, v) => { v.turns += 1; if (typeof x.cost === 'number') v.cost += x.cost; },
+  turn_ended: (_r, x, v) => {
+    v.turns += 1;
+    if (typeof x.cost === 'number') v.cost += x.cost;
+    const s = x.slice;
+    if (s && typeof s.step === 'string' && typeof s.spent === 'number' && typeof s.usd === 'number') v.slice = { step: s.step, spent: s.spent, usd: s.usd };
+    else delete v.slice;
+  },
+  // the run logs the new limit with an allowance, so the meter keeps no copy of the allowance rule; a slice's allowance names its step
+  run_resumed: (_r, x, v) => {
+    if (typeof x.usd !== 'number') return;
+    if (x.step === undefined) v.usdLimit = x.usd;
+    else if (v.slice && v.slice.step === x.step) v.slice = { step: v.slice.step, spent: v.slice.spent, usd: x.usd };
+  },
   card_queued: (_r, x, v) => {
     if ((x.kind === 'steer' || x.kind === 'now') && x.source !== 'auto') v.cards.push({ text: String(x.card ?? ''), kind: x.kind, state: 'queued' });
   },
@@ -113,14 +135,18 @@ const END = new Set(['run_finished', 'run_stopped', 'run_detached']);
 
 const thinkingRow = (r: LogRow) => r.type === 'engine' && data(r).type === 'thinking';
 
-/** Seqs of the last thinking row of each burst: the thinking rows of one run with no other engine row between them. The parser emits several per burst; only the head draws. */
+/** Seqs of the head of each burst: the thinking rows of one run with no other engine row between them. The parser emits several count rows per burst and, with summaries on, one row with the text: the text row draws, else the last count row. */
 export function thinkingHeads(rows: LogRow[]): Set<number> {
   const heads = new Set<number>();
   let prev: LogRow | undefined;
+  let texted = false;   // the burst already has its text row
   for (const r of rows) {
     if (r.type !== 'engine') continue;
-    if (prev && thinkingRow(prev) && thinkingRow(r) && prev.runId === r.runId) heads.delete(prev.seq);
-    if (thinkingRow(r)) heads.add(r.seq);
+    const same = prev && thinkingRow(prev) && thinkingRow(r) && prev.runId === r.runId;
+    if (!same) texted = false;
+    else if (!texted) heads.delete(prev!.seq);
+    if (thinkingRow(r) && typeof data(r).text === 'string') { heads.add(r.seq); texted = true; }
+    else if (thinkingRow(r) && !texted) heads.add(r.seq);
     prev = r;
   }
   return heads;
@@ -193,19 +219,29 @@ export function stepPos(w: Workflow, current: string[]): Pos | undefined {
   return i < 0 ? undefined : { n: i + 1, m: w.steps.length };
 }
 
-export type MeterItem = { key: 'turns' | 'minutes' | 'usd'; text: string; level: 'ok' | 'near' | 'over'; enforced: boolean };
+export type MeterItem = { key: 'turns' | 'minutes' | 'usd' | 'block'; text: string; level: 'ok' | 'near' | 'over'; enforced: boolean };
+const OVER: Record<MeterItem['key'], string> = {
+  turns: ' · turn budget used: the run stops',
+  minutes: ' · over (not enforced)',
+  usd: ' · USD budget used: the run pauses',
+  block: ' · block budget used: the run pauses',
+};
+// a subagent's finished reply over its slice does not pause the run (it is noted and its result kept); a capped reply does, on the usd card, and then the block's words apply
+const SUBAGENT_OVER = ' · subagent budget used';
 export function meter(v: RunView, budget: Workflow['budget'], now: number): MeterItem[] {
   const ms = Math.max(0, (v.endedTs ?? now) - (v.startedAt ?? now));
   const seconds = Math.floor(ms / 1000);
+  const usd = v.usdLimit ?? budget.usd ?? 0;
   const values: Array<{ key: MeterItem['key']; used: number; limit: number; text: string }> = [
     { key: 'turns', used: v.turns, limit: budget.turns, text: `${v.turns} / ${budget.turns} turns` },
     { key: 'minutes', used: ms / 60_000, limit: budget.minutes, text: `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s / ${budget.minutes}m` },
-    ...(budget.usd === undefined ? [] : [{ key: 'usd' as const, used: v.cost, limit: budget.usd, text: `$${v.cost.toFixed(2)} / $${budget.usd.toFixed(2)}` }]),
+    ...(budget.usd === undefined ? [] : [{ key: 'usd' as const, used: v.cost, limit: usd, text: `$${v.cost.toFixed(2)} / $${usd.toFixed(2)}` }]),
+    ...(v.slice ? [{ key: 'block' as const, used: v.slice.spent, limit: v.slice.usd, text: `${v.slice.step}: $${v.slice.spent.toFixed(2)} / $${v.slice.usd.toFixed(2)}` }] : []),
   ];
   return values.map(({ key, used, limit, text }) => {
     const level = used >= limit ? 'over' : used >= limit * 0.8 ? 'near' : 'ok';
-    const enforced = key === 'turns';
-    return { key, text: text + (level === 'over' ? enforced ? ' · turn budget used: the run stops' : ' · over (not enforced)' : level === 'near' ? ' · near' : ''), level, enforced };
+    const enforced = key !== 'minutes';
+    return { key, text: text + (level === 'over' ? (key === 'block' && v.stepsAtStart?.find((s) => s.id === v.slice?.step)?.kind === 'subagent' && !v.open.some((r) => data(r).kind === 'usd') ? SUBAGENT_OVER : OVER[key]) : level === 'near' ? ' · near' : ''), level, enforced };
   });
 }
 

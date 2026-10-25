@@ -94,7 +94,7 @@ export async function startHookServer(o: HookServerOptions) {
     const input = msg.input ?? {};
     // The approval tool only runs after PreToolUse passed, but a guard must hold even if it didn't.
     const reason = checkTool(o.policy(), tool, input, o.cwd);
-    const d: Decision = reason ? { behavior: 'deny', message: reason } : await o.onApprove({ tool, input });
+    const d: Decision = reason ? { behavior: 'deny', message: reason } : await o.onApprove({ tool, input, ...(typeof msg.tool_use_id === 'string' ? { id: msg.tool_use_id } : {}) });
     o.onEvent({ type: 'hook', event: 'approve', tool, decision: d.behavior, ...(d.message ? { reason: d.message } : {}) });
     return d.behavior === 'allow'
       ? { behavior: 'allow', updatedInput: input }

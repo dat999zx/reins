@@ -40,8 +40,7 @@ describe('Task 1.6: The Compiler', () => {
     // 8  VERIFY   step=verify-1  against=plan  → on fail: JUMP 3 (link max 2)
     // 9  USE ...  (inlined review-pass: review, fix, gate-1)
     // 12 STORE    step=store-1
-    // 13 HANDOFF  step=handoff-1
-    // 14 END
+    // 13 END
 
     expect(instrs[0]).toMatchObject({
       op: 'RECALL',
@@ -126,12 +125,6 @@ describe('Task 1.6: The Compiler', () => {
     });
 
     expect(instrs[13]).toMatchObject({
-      op: 'HANDOFF',
-      step: 'handoff-1',
-      to: 'fresh session',
-    });
-
-    expect(instrs[14]).toMatchObject({
       op: 'END',
     });
   });

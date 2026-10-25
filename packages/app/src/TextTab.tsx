@@ -12,7 +12,7 @@ import type { Sess } from './state.js';
 import { didNotStart, firstRowOf, PHASE, sameSteps, stepPos, type RunView } from './runState.js';
 import { RunDock } from './RunDock.js';
 import type { Actions } from './rows.js';
-import { BlockPanel, WorkflowPanel } from './BlockPanel.js';
+import { BlockPanel, BudgetFields, WorkflowPanel } from './BlockPanel.js';
 import { flatSteps } from './canvas.js';
 import { KINDS } from './canvasKinds.js';
 import { Workspace, type EditOpts } from './Workspace.js';
@@ -37,9 +37,9 @@ const toWorkspace = (ok: boolean) => { if (ok) document.querySelector<HTMLElemen
 const template = (name: string) =>
   `---\nreins: 1\nname: ${name}\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n## phase plan\n> Plan the change.\n\n## phase build\n> Make the change.\n`;
 
-export function TextTab({ view, onView, sess, run, act, restore, onState, onDirty, onRun, reveal, onRevealed, onChat, dockOpen, onDockOpen, dismissed, onDismiss }: {
+export function TextTab({ view, onView, sess, models, efforts, sessionModel, sessionEffort, run, act, restore, onState, onDirty, onRun, reveal, onRevealed, onChat, dockOpen, onDockOpen, dismissed, onDismiss }: {
   view: Exclude<Tab, 'chat'>; onView: (t: Exclude<Tab, 'chat'>) => void;
-  sess: Sess; run: RunView; act: Actions; restore?: EditorState; onState: (patch: Partial<EditorState>) => void; onDirty: (dirty: boolean) => void; onRun: () => void;
+  sess: Sess; models: Array<{ id: string; label: string }>; efforts: Array<{ id: string; label: string }>; sessionModel?: { id: string; label: string }; sessionEffort?: { id: string; label: string }; run: RunView; act: Actions; restore?: EditorState; onState: (patch: Partial<EditorState>) => void; onDirty: (dirty: boolean) => void; onRun: () => void;
   reveal?: { runId: string; id: string; n: number }; onRevealed: () => void; onChat: (step?: string) => void;
   dockOpen: boolean; onDockOpen(o: boolean): void; dismissed?: string; onDismiss(runId?: string): void;
 }) {
@@ -170,7 +170,7 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
       if (file === null || !prev?.workflow) return false;
       if (busy.current || prev.for !== text) { setMsg(WAIT); return false; }
       if (prev.reformats && !confirmed.current.has(file)) {
-        if (!window.confirm('Editing in Blocks reformats this workflow file. Comments, unknown lines, frontmatter comments and unknown keys, and custom order are not kept. Continue?')) return false;
+        if (!window.confirm('Editing with Blocks or the Budget form reformats this workflow file. Comments, unknown lines, frontmatter comments and unknown keys, and custom order are not kept. Continue?')) return false;
         confirmed.current.add(file);
       }
       const next = fn(prev.workflow);
@@ -342,6 +342,11 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
   const known = !prev?.workflow || flatSteps(prev.workflow.steps).every((s) => s.kind in KINDS);
   const sel = stepId && prev?.workflow ? flatSteps(prev.workflow.steps).find((s) => s.id === stepId) : undefined;
 
+  // The run panel's handle sits in the editor bar (Blocks only, as the dock did); its body floats over the canvas, so nothing moves when it opens.
+  const dock = view === 'blocks' && showDock ? <RunDock run={run} sess={sess} act={act} budget={prev?.workflow?.budget} surface="blocks"
+    pos={showStatus && prev?.workflow ? stepPos(prev.workflow, run.current) : undefined} match={!ours || match}
+    open={dockOpen} onOpen={onDockOpen} starting={startWords} following={following} onFollow={showStatus ? (on) => { setFollowing(on); if (on) setMsg((m) => (m === STOPPED ? '' : m)); } : undefined} onJump={() => onChat()} onDismiss={() => { setStarting(undefined); onDismiss(run.runId); }} /> : null;
+
   // The slot is checked before edit(): a declined rewrite confirm or a busy editor must not show this note.
   const cond = (t: string) => {
     if (!sel || !KINDS[sel.kind].line.includes('cond')) return setMsg('Select a wait until, repeat until or if block first.');
@@ -369,18 +374,16 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
         {view === 'blocks' && prev?.workflow && known && <Palette onAdd={add} onCond={cond} press={press} />}
       </aside>
       <section className="editor">
-        {view === 'blocks' && (showDock ? <RunDock run={run} sess={sess} act={act} budget={prev?.workflow?.budget}
-          pos={showStatus && prev?.workflow ? stepPos(prev.workflow, run.current) : undefined} match={!ours || match}
-          open={dockOpen} onOpen={onDockOpen} starting={startWords} following={following} onFollow={showStatus ? (on) => { setFollowing(on); if (on) setMsg((m) => (m === STOPPED ? '' : m)); } : undefined} onChat={() => onChat()} onDismiss={() => { setStarting(undefined); onDismiss(run.runId); }} />
-          : sess.status === 'waiting' ? <p className="sx-dockline">The agent is waiting for you in Chat. <button onClick={() => onChat()}>Chat</button></p>
+        {view === 'blocks' && !showDock && (sess.status === 'waiting' ? <p className="sx-dockline">The agent is waiting for you in Chat. <button onClick={() => onChat()}>Chat</button></p>
           : run.live ? <p className="sx-dockline">A run of `{run.workflow}` is going. <button onClick={() => {
             const entry = list.find((w) => w.name === run.workflow);
             if (entry) void open(entry.path); else setMsg(`Open \`${run.workflow}\` from the list.`);
           }}>Open it</button></p> : null)}
-        {file === null ? <p className="hint">Pick a workflow, or make a new one.</p> : (
+        {file === null ? <>{dock && <div className="ebar">{dock}</div>}<p className="hint">Pick a workflow, or make a new one.</p></> : (
           <>
             <div className="ebar">
               <b className="sx-wfname" title={file.split(/[\\/]/).at(-1)}>{file.split(/[\\/]/).at(-1)}</b>{dirty && <span className="dirty" title="Unsaved changes" role="img" aria-label="unsaved changes"> ●</span>}
+              {dock}
               <span className="grow" />
               <button onClick={() => void save()} disabled={!dirty}>Save</button>
               {view === 'text' && run.phase === 'waiting' && <><span role="status">Waiting for you. Answer in Blocks or Chat.</span><button onClick={() => onView('blocks')}>Blocks</button></>}
@@ -393,8 +396,8 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
                 onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveWithDraft(); } }}>
                 <StatusCtx.Provider value={{ status: run.steps, show: showStatus, ended, ...(run.thinking !== undefined ? { thinking: run.thinking } : {}) }}>
                   <Workspace key={file} w={prev.workflow} steps={prev.steps} diags={prev.diagnostics} text={prev.for ?? text} sel={sels} primary={stepId}
-                    rev={prev} press={press} cam={canvas.current?.[file]?.cam} lay={lay}
-                    onEdit={edit} onSel={(keys, primary) => { setSels(keys); setStepId(primary); }} onNote={setMsg} onEditInText={(line) => { pendingLine.current = line; onView('text'); }} onDelete={del} onLayout={setLayout} onUndo={() => step(undo)} onRedo={() => step(redo)} reveal={go} ran={ran} onShowInChat={onChat} follow={following ? now : undefined} followTick={run.thinking} went={went} onUserCam={onUserCam} onCam={(cam) => { if (restored) setView(file, { cam }); }} />
+                    rev={prev} models={models} efforts={efforts} sessionModel={sessionModel} sessionEffort={sessionEffort} press={press} cam={canvas.current?.[file]?.cam} lay={lay}
+                    onEdit={edit} onSel={(keys, primary) => { setSels(keys); setStepId(primary); }} onNote={setMsg} onEditInText={(line) => { pendingLine.current = line; onView('text'); }} onDelete={del} onLayout={setLayout} onUndo={() => step(undo)} onRedo={() => step(redo)} reveal={go} ran={ran} onShowInChat={onChat} onMenu={() => onDockOpen(false)} follow={following ? now : undefined} followTick={run.thinking} went={went} onUserCam={onUserCam} onCam={(cam) => { if (restored) setView(file, { cam }); }} />
                 </StatusCtx.Provider>
                 {sels.size > 1 ? (
                   <aside className="bpanel" aria-label="Selection panel">
@@ -402,7 +405,7 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
                     <button className="danger" onClick={() => del([...withoutNested(prev.workflow!, sels)], toWorkspace)}>Delete</button>
                   </aside>
                 ) : sel ? <BlockPanel key={sel.id} step={sel} all={flatSteps(prev.workflow.steps)} cond={prev.steps.find((s) => s.id === sel.id)?.cond}
-                  turn={prev.turn} rev={prev} onEdit={edit} onShowInChat={ran(sel.id) ? () => onChat(sel.id) : undefined} onDelete={() => del([stepKey(sel.id)], toWorkspace)} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />
+                  turn={prev.turn} rev={prev} models={models} efforts={efforts} sessionModel={sessionModel} sessionEffort={sessionEffort} onEdit={edit} onShowInChat={ran(sel.id) ? () => onChat(sel.id) : undefined} onDelete={() => del([stepKey(sel.id)], toWorkspace)} onEditInText={() => { pendingLine.current = sel.pos?.line ?? 1; onView('text'); }} />
                   : [...sels].some((k) => k.startsWith('l:')) ? <aside className="bpanel" aria-label="Loose block"><p className="hint">Loose block: not part of the workflow, never runs. Drag it into the script to use it.</p></aside>
                   : <WorkflowPanel w={prev.workflow} rev={prev} onEdit={edit} />}
               </div>
@@ -429,6 +432,7 @@ export function TextTab({ view, onView, sess, run, act, restore, onState, onDirt
               ))}
               {prev && prev.diagnostics.length === 0 && <li className="ok">No problems.</li>}
             </ul>
+            {view === 'text' && prev?.workflow && !prev.workflow.block && <BudgetFields w={prev.workflow} rev={prev} onEdit={edit} />}
             {view === 'text' && <div className="receives">
               <h3>What the agent receives</h3>
               <ol>

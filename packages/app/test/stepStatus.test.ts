@@ -49,6 +49,30 @@ describe('stepStatus', () => {
     expect(stepStatus([...rows, row('run_resumed')]).b).toEqual(info({ state: 'active' }));
   });
 
+  it('a model step waits on its switch question and is done once it is answered', () => {
+    const rows = [row('step_started', { step: 'model-1' }), row('question', { id: 'q', kind: 'switch' })];
+    expect(stepStatus(rows)['model-1']!.state).toBe('waiting');
+    expect(stepStatus([...rows, row('model_switched', { step: 'model-1', model: 'o', how: 'switched', label: 'Opus 5.5' })])['model-1']).toMatchObject({ state: 'done', why: 'now Opus 5.5' });
+  });
+
+  it('model_switched words by how; the reply names the model it really ran on', () => {
+    const sw = (how: string, label?: string) => row('model_switched', { step: 'model-1', model: 'o', how, ...(label ? { label } : {}) });
+    const after = (how: string, label?: string) => stepStatus([row('step_started', { step: 'model-1' }), sw(how, label)])['model-1']!;
+    expect(after('same', 'Opus 5.5').why).toBe('already on Opus 5.5');
+    expect(after('kept', 'Sonnet 5.5').why).toBe('kept Sonnet 5.5');
+    expect(after('unsupported').why).toBeUndefined();
+    const m = stepStatus([
+      row('step_started', { step: 'model-1' }), sw('switched', 'Opus 5.5'),
+      row('step_started', { step: 'build' }), row('turn_ended', { step: 'build', model: 'o', cost: 0.01 }),
+    ]);
+    expect(m['model-1']!.why).toBe('now Opus 5.5');
+    expect(m.build).toMatchObject({ state: 'done', model: 'Opus 5.5' });
+    // a P14 undo or another run's switch: the reply ran on a model the block did not name
+    const undo = stepStatus([sw('switched', 'Opus 5.5'), row('turn_ended', { step: 'build', model: 's' })]);
+    expect(undo.build!.model).toBe('s');
+    expect(stepStatus([row('turn_ended', { step: 'build' })]).build).not.toHaveProperty('model');
+  });
+
   it('run_resumed keeps the gate step waiting', () => {
     const m = stepStatus([row('gate_paused', { step: 'g' }), row('turn_started', { step: 'x' }), row('question', { kind: 'resume' }), row('run_resumed')]);
     expect(m.g!.state).toBe('waiting');
@@ -192,5 +216,18 @@ describe('runRows', () => {
   it('9f. the workflow name comes from run_started, and is undefined for a resumed run without one', () => {
     expect(runRows([row('run_started', { workflow: 'w' })]).workflow).toBe('w');
     expect(runRows([row('run_resumed')]).workflow).toBeUndefined();
+  });
+});
+
+describe('stepStatus: a subagent', () => {
+  it('its start gives the chip its model at once, and a later reply keeps that label and adds the cost', () => {
+    const start = row('subagent_started', { step: 's', model: 'h', label: 'Haiku 5.5' });
+    expect(stepStatus([row('step_started', { step: 's' }), start]).s!.model).toBe('Haiku 5.5');
+    const m = stepStatus([row('step_started', { step: 's' }), start, row('turn_ended', { step: 's', model: 'h', cost: 0.06 })]);
+    expect(m.s!.model).toBe('Haiku 5.5');
+    expect(m.s!.cost).toBe(0.06);
+    expect(stepStatus([row('subagent_started', { step: 's', model: 'raw' })]).s!.model).toBe('raw');
+    expect(stepStatus([row('subagent_started', { title: 'x' })])).toEqual({});
+    expect(stepStatus([row('subagent_started', { model: 'raw', label: 'Raw' })])).toEqual({});   // no step: no entry to hang the model on
   });
 });

@@ -94,9 +94,9 @@
     "autos": [
       {
         "card": {
-          "kind": "nudge",
+          "kind": "now",
           "pos": {
-            "col": 7,
+            "col": 5,
             "line": 12
           },
           "text": "deep"
@@ -414,26 +414,18 @@
     "autos": [],
     "diags": [
       {
-        "message": "verify against target \"ghost\" not found",
+        "message": "Unknown attribute \"retry\"",
         "pos": {
           "col": 1,
-          "line": 10
+          "line": 15
         },
         "severity": "error"
       },
       {
-        "message": "`retry` has no effect; use a backward `next` with `max`",
+        "message": "verify against target \"ghost\" not found",
         "pos": {
-          "col": 7,
-          "line": 15
-        },
-        "severity": "warning"
-      },
-      {
-        "message": "Backward link to \"a\" requires max",
-        "pos": {
-          "col": 7,
-          "line": 15
+          "col": 1,
+          "line": 10
         },
         "severity": "error"
       }
@@ -475,16 +467,7 @@
         "cards": [],
         "id": "c",
         "kind": "phase",
-        "links": [
-          {
-            "kind": "retry",
-            "pos": {
-              "col": 7,
-              "line": 15
-            },
-            "to": "a"
-          }
-        ],
+        "links": [],
         "pos": {
           "col": 1,
           "line": 13
@@ -790,9 +773,9 @@
     "autos": [
       {
         "card": {
-          "kind": "nudge",
+          "kind": "now",
           "pos": {
-            "col": 7,
+            "col": 5,
             "line": 11
           },
           "text": "n"
@@ -926,6 +909,14 @@
     "autos": [],
     "diags": [
       {
+        "message": "Unknown attribute \"retry\"",
+        "pos": {
+          "col": 1,
+          "line": 16
+        },
+        "severity": "error"
+      },
+      {
         "message": "verify against target \"ghost\" not found",
         "pos": {
           "col": 1,
@@ -938,22 +929,6 @@
         "pos": {
           "col": 9,
           "line": 12
-        },
-        "severity": "error"
-      },
-      {
-        "message": "`retry` has no effect; use a backward `next` with `max`",
-        "pos": {
-          "col": 7,
-          "line": 16
-        },
-        "severity": "warning"
-      },
-      {
-        "message": "Backward link to \"a\" requires max",
-        "pos": {
-          "col": 7,
-          "line": 16
         },
         "severity": "error"
       }
@@ -1004,16 +979,7 @@
         "cards": [],
         "id": "c",
         "kind": "phase",
-        "links": [
-          {
-            "kind": "retry",
-            "pos": {
-              "col": 7,
-              "line": 16
-            },
-            "to": "a"
-          }
-        ],
+        "links": [],
         "pos": {
           "col": 1,
           "line": 14

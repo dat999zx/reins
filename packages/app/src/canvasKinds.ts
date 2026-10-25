@@ -1,12 +1,21 @@
 import type { CardKind, Step, StepKind } from '@reins/core';
 
-export type FieldKey = 'title' | 'prompt' | 'mode' | 'cmd' | 'max' | 'against' | 'knowl' | 'to' | 'focus';
-export type Field = { key: FieldKey; label: string; input: 'text' | 'mono' | 'textarea' | 'number' | 'mode' | 'step' };
+import type { WireKind } from './canvas.js';
+import { BUDGET_ERRORS } from './panelEdit.js';
+
+export type FieldKey = 'title' | 'prompt' | 'mode' | 'cmd' | 'max' | 'against' | 'knowl' | 'model' | 'reasoning' | 'usd';
+// `error` is what the panel says when applyField refuses the value; `inherits`: an empty model is the session's model; `ph` overrides the
+// empty pill's placeholder; `required`: the validator warns while it is empty, so the face says so.
+export type Field = {
+  key: FieldKey; label: string; input: 'text' | 'mono' | 'textarea' | 'number' | 'mode' | 'step' | 'model' | 'effort';
+  error?: string; inherits?: true; ph?: string; required?: true;
+};
 export type Token = string | 'cond' | 'sub' | { field: FieldKey };
 export type KindView = {
   group?: 'kids' | 'kids+else';
   fails?: true;
   stops?: true; // ends the workflow: no links out, drawn as a cap
+  against?: true; // has a third wire: the step whose work it compares
   cards?: true;
   fields: Field[];
   line: Token[];
@@ -18,9 +27,12 @@ export type KindView = {
 const title: Field = { key: 'title', label: 'Title', input: 'text' };
 const prompt: Field = { key: 'prompt', label: 'Prompt', input: 'textarea' };
 const mode: Field = { key: 'mode', label: 'Mode', input: 'mode' };
+const mustPrompt: Field = { ...prompt, required: true }; // phase and subagent: core warns "has no prompt"
+const reasoning: Field = { key: 'reasoning', label: 'Reasoning', input: 'effort', inherits: true };
+const usd: Field = { key: 'usd', label: 'Budget (USD)', input: 'text', error: BUDGET_ERRORS.usd, ph: 'optional' };
 
 export const KINDS: Record<StepKind, KindView> = {
-  phase: { fields: [title, prompt, mode], line: [{ field: 'title' }, { field: 'prompt' }], cards: true, card: { label: 'phase', section: 'Flow' }, fresh: () => ({}) },
+  phase: { fields: [title, mustPrompt, mode], line: [{ field: 'title' }, { field: 'prompt' }], cards: true, card: { label: 'phase', section: 'Flow' }, fresh: () => ({}) },
   say: { fields: [prompt, mode], line: ['say', { field: 'prompt' }], cards: true, card: { label: 'custom prompt', section: 'Flow' }, fresh: () => ({}) },
   run: { fields: [{ key: 'cmd', label: 'Command', input: 'mono' }], line: ['run', { field: 'cmd' }], fails: true, card: { label: 'run command', section: 'Flow' }, fresh: () => ({ attrs: { cmd: 'npm test' } }) },
   gate: { fields: [], line: ['wait until', 'cond'], card: { label: 'wait until', section: 'Flow' }, fresh: () => ({ cond: { t: 'approve' } }) },
@@ -36,18 +48,36 @@ export const KINDS: Record<StepKind, KindView> = {
     line: ['verify against', { field: 'against' }],
     cards: true,
     fails: true,
+    against: true,
     card: { label: 'verify against', section: 'Flow' }, fresh: () => ({}),
   },
   recall: { fields: [{ key: 'knowl', label: 'Knowl', input: 'text' }], line: ['recall from Knowl', { field: 'knowl' }], card: { label: 'recall', section: 'Memory' }, fresh: () => ({}) },
   store: { fields: [{ key: 'knowl', label: 'Knowl', input: 'text' }], line: ['store to Knowl', { field: 'knowl' }], card: { label: 'store', section: 'Memory' }, fresh: () => ({}) },
-  handoff: {
-    fields: [{ key: 'to', label: 'To', input: 'text' }, { key: 'focus', label: 'Focus', input: 'text' }],
-    line: ['hand off to', { field: 'to' }],
-    card: { label: 'hand off', section: 'Flow' }, fresh: () => ({}),
+  model: {
+    fields: [{ key: 'model', label: 'Model', input: 'model' }, reasoning, usd],
+    line: ['switch model to', { field: 'model' }, { field: 'reasoning' }, 'USD', { field: 'usd' }],
+    card: { label: 'switch model', section: 'Flow' }, fresh: () => ({}),
+  },
+  subagent: {
+    fields: [title, mustPrompt, mode, { key: 'model', label: 'Model', input: 'model', inherits: true }, reasoning, usd],
+    line: ['subagent', { field: 'title' }, 'on', { field: 'model' }, { field: 'reasoning' }, { field: 'mode' }, 'USD', { field: 'usd' }, { field: 'prompt' }],
+    cards: true,
+    card: { label: 'subagent', section: 'Flow' }, fresh: () => ({}),
   },
   end: { stops: true, fields: [], line: ['end'], card: { label: 'end', section: 'Flow' }, fresh: () => ({}) },
   use: { fields: [], line: ['use', 'sub'], sub: (s) => s.title || s.attrs.use || s.id },
 };
 
-// whenever-only kinds (now, stop) are left out
-export const CARD_KINDS: CardKind[] = ['guard', 'note', 'nudge', 'role', 'checkpoint', 'budget', 'undo'];
+// The handles on a block, top to bottom.
+export const wiresOf = (kind: StepKind): WireKind[] => {
+  const k = KINDS[kind];
+  return k.stops ? [] : ['next', ...(k.fails ? ['on-fail' as const] : []), ...(k.against ? ['against' as const] : [])];
+};
+
+// The card kinds a block holds; whenever-only kinds (now, stop) are left out.
+// guard is enforced in core/src/policy.ts: the tool-approval hook blocks edits to a matching path and shell commands naming one.
+export const CARD_KINDS = ['guard'] as const satisfies readonly CardKind[];
+// The words the panel uses for a kind: a second kind is one entry here.
+export const CARD_LABEL: Record<(typeof CARD_KINDS)[number], { section: string; add: string }> = {
+  guard: { section: 'Guards', add: 'Add guard' },
+};

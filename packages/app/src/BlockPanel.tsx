@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState, type JSX, type KeyboardEvent } from 'react';
-import type { CardKind, Step, Workflow } from '@reins/core';
-import { CARD_KINDS, KINDS, type Field } from './canvasKinds.js';
-import { setAlways } from './blocks.js';
-import { editStep, removeLinks, setLink } from './canvas.js';
-import { applyField, applyLinkMax, fieldValue } from './panelEdit.js';
+import type { Step, Workflow } from '@reins/core';
+import { CARD_KINDS, CARD_LABEL, KINDS, type Field } from './canvasKinds.js';
+import { commitBudget, setAlways } from './blocks.js';
+import { editStep, removeLinks } from './canvas.js';
+import { applyField, applyLinkMax, budgetCount, BUDGET_HINT, fieldValue, MODES, type BudgetKey } from './panelEdit.js';
+import { OptionPicker } from './OptionPicker.js';
 
-type InputProps = { label: string; value: string; ids: string[]; rev: unknown; commit: (v: string) => void };
+// The same rule as usdText in packages/core/src/format/print.ts (the app imports only core's types): two decimals when that loses nothing.
+export const usdText = (usd: number) => (Number(usd.toFixed(2)) === usd ? usd.toFixed(2) : String(usd));
+
+type Models = Array<{ id: string; label: string }>;
+export type SessionModel = { id: string; label: string }; // what a field that inherits the session's model (or reasoning level) runs on
+// `alert` is the id of the words under a refused value: the input says it is invalid and points at them.
+type InputProps = { label: string; value: string; ids: string[]; models: Models; rev: unknown; commit: (v: string) => void; alert?: string; blank?: string };
 
 // A field shows a draft while typing and commits on blur / Enter. It re-syncs from the model after every
 // preview (`rev`), so a commit the editor dropped never leaves a value the model does not have.
@@ -28,15 +35,22 @@ export function StepOptions({ value, ids }: { value: string; ids: string[] }) {
   return <>{[...new Set(['', value, ...ids])].map((id) => <option key={id} value={id}>{id || '(none)'}</option>)}</>;
 }
 
-const line = (type: 'text' | 'number', mono?: boolean) => function LineInput({ label, value, rev, commit }: InputProps) {
+const line = (type: 'text' | 'number', mono?: boolean) => function LineInput({ label, value, rev, commit, alert }: InputProps) {
   const { v, setV, done, onKeyDown } = useLine(value, rev, commit);
   return (
     <label className="bfield">{label}
       <input type={type} min={type === 'number' ? 1 : undefined} className={mono ? 'mono' : undefined} value={v}
-        onChange={(e) => setV(e.target.value)} onBlur={done} onKeyDown={onKeyDown} />
+        onChange={(e) => setV(e.target.value)} onBlur={done} onKeyDown={onKeyDown}
+        aria-invalid={alert ? true : undefined} aria-describedby={alert} />
     </label>
   );
 };
+
+const picker = ({ label, value, models, commit, blank }: InputProps) => (
+  <label className="bfield">{label}
+    <OptionPicker label={label} options={models} value={value} blank={blank} onChange={commit} />
+  </label>
+);
 
 const INPUTS: Record<Field['input'], (p: InputProps) => JSX.Element> = {
   text: line('text'),
@@ -53,7 +67,7 @@ const INPUTS: Record<Field['input'], (p: InputProps) => JSX.Element> = {
   mode: ({ label, value, commit }) => (
     <label className="bfield">{label}
       <select value={value} onChange={(e) => commit(e.target.value)}>
-        <option value="">default</option><option value="write">write</option><option value="read-only">read-only</option>
+        {MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
       </select>
     </label>
   ),
@@ -64,10 +78,40 @@ const INPUTS: Record<Field['input'], (p: InputProps) => JSX.Element> = {
       </select>
     </label>
   ),
+  // the session's own catalog; a model the catalog does not list (typed in Text) stays selectable. A reasoning field is the same picker fed the levels.
+  model: picker,
+  effort: picker,
 };
 
-export function BlockPanel({ step, all, cond, turn, rev, onEdit, onEditInText, onShowInChat, onDelete }: {
-  step: Step; all: Step[]; cond?: string; turn?: string; rev: unknown;
+// What a field that picks from a provider list reads: the list (the models or the levels) and, when it inherits, the session's own label.
+export const pickFor = (f: Field, p: { models: Models; efforts: Models; sessionModel?: SessionModel; sessionEffort?: SessionModel }) => {
+  const level = f.input === 'effort';
+  return { options: level ? p.efforts : p.models, blank: f.inherits ? (level ? p.sessionEffort : p.sessionModel)?.label : undefined };
+};
+
+// One panel field; a value applyField refuses is said in words under it (the file is left as it was).
+export function PanelField({ f, step, ids, models, efforts, sessionModel, sessionEffort, rev, onCommit }: {
+  f: Field; step: Step; ids: string[]; models: Models; efforts: Models; sessionModel?: SessionModel; sessionEffort?: SessionModel; rev: unknown; onCommit: (v: string) => void;
+}) {
+  const [bad, setBad] = useState('');
+  const Input = INPUTS[f.input];
+  const alertId = `${step.id}-${f.key}-bad`;
+  const pick = pickFor(f, { models, efforts, sessionModel, sessionEffort });
+  return (
+    <>
+      <Input label={f.label} value={fieldValue(step, f.key)} ids={ids} models={pick.options} rev={rev} blank={pick.blank} alert={bad ? alertId : undefined}
+        commit={(v) => {
+          const ok = applyField(structuredClone(step), f.key, v);
+          setBad(ok ? '' : f.error ?? '');
+          if (ok) onCommit(v);
+        }} />
+      {bad && <div id={alertId} className="bad" role="alert">{bad}</div>}
+    </>
+  );
+}
+
+export function BlockPanel({ step, all, cond, turn, rev, models, efforts, sessionModel, sessionEffort, onEdit, onEditInText, onShowInChat, onDelete }: {
+  step: Step; all: Step[]; cond?: string; turn?: string; rev: unknown; models: Models; efforts: Models; sessionModel?: SessionModel; sessionEffort?: SessionModel;
   onEdit: (fn: (w: Workflow) => Workflow) => void; onEditInText: () => void; onShowInChat?: () => void; onDelete: () => void;
 }) {
   const k = KINDS[step.kind];
@@ -75,9 +119,7 @@ export function BlockPanel({ step, all, cond, turn, rev, onEdit, onEditInText, o
   const others = all.filter((s) => s.id !== id).map((s) => s.id);
   const change = (fn: (s: Step) => void | boolean) => onEdit((w) => editStep(w, id, fn));
   const incoming = all.flatMap((s) => s.links.filter((l) => l.to === id).map((l) => ({ from: s.id, kind: l.kind })));
-  const [kind, setKind] = useState<'next' | 'on-fail'>('next');
-  const [target, setTarget] = useState('');
-  const [cardKind, setCardKind] = useState<CardKind>(CARD_KINDS[0]!);
+  const card = CARD_LABEL[CARD_KINDS[0]];
 
   return (
     <aside className="bpanel" aria-label="Block panel">
@@ -85,11 +127,10 @@ export function BlockPanel({ step, all, cond, turn, rev, onEdit, onEditInText, o
       <button className="danger" onClick={onDelete}>Delete</button>
       {onShowInChat && <button onClick={onShowInChat}>Show in Chat</button>}
 
-      {k.fields.map((f) => {
-        const Input = INPUTS[f.input];
-        return <Input key={`${id}/${f.key}`} label={f.label} value={fieldValue(step, f.key)} ids={others} rev={rev}
-          commit={(v) => change((s) => applyField(s, f.key, v))} />;
-      })}
+      {k.fields.map((f) => (
+        <PanelField key={`${id}/${f.key}`} f={f} step={step} ids={others} models={models} efforts={efforts} sessionModel={sessionModel} sessionEffort={sessionEffort} rev={rev}
+          onCommit={(v) => change((s) => applyField(s, f.key, v))} />
+      ))}
 
       {cond !== undefined && (
         <div className="bfield">Condition
@@ -99,49 +140,28 @@ export function BlockPanel({ step, all, cond, turn, rev, onEdit, onEditInText, o
       )}
 
       {k.cards && (
-        <section aria-label="Cards">
-          <h4>Cards</h4>
+        <section aria-label={card.section}>
+          <h4>{card.section}</h4>
           {step.cards.map((c, i) => (
             <CardRow key={`${id}/${i}`} kind={c.kind} text={c.text} rev={rev}
               commit={(v) => change((s) => { s.cards[i]!.text = v; })}
               remove={() => change((s) => { s.cards.splice(i, 1); })} />
           ))}
-          <div className="brow">
-            <label>Card kind
-              <select value={cardKind} onChange={(e) => setCardKind(e.target.value as CardKind)}>
-                {CARD_KINDS.map((c) => <option key={c}>{c}</option>)}
-              </select>
-            </label>
-            <button onClick={() => change((s) => { s.cards.push({ kind: cardKind, text: '' }); })}>Add card</button>
-          </div>
+          <button onClick={() => change((s) => { s.cards.push({ kind: CARD_KINDS[0], text: '' }); })}>{card.add}</button>
         </section>
       )}
 
-      <section aria-label="Links">
+      {(step.links.length > 0 || incoming.length > 0) && <section aria-label="Links">
         <h4>Links</h4>
         {step.links.map((l, i) => (
           <div className="brow" key={`${id}/${i}/${l.kind}/${l.to}`}>
-            <span>{l.kind} → {l.to}{l.kind !== 'next' && l.kind !== 'on-fail' && <span className="faint"> (no effect)</span>}</span>
+            <span>{l.kind} → {l.to}</span>
             <MaxInput value={l.max === undefined ? '' : String(l.max)} rev={rev} commit={(v) => change((s) => applyLinkMax(s.links[i]!, v))} />
             <button aria-label={`Remove link ${l.kind} to ${l.to}`} onClick={() => onEdit((w) => removeLinks(w, [{ from: id, index: i }]))}>×</button>
           </div>
         ))}
         {incoming.map((l) => <div className="brow faint" key={`${l.from}/${l.kind}`}>{l.from} → {l.kind} (incoming)</div>)}
-        <div className="brow">
-          <label>Link kind
-            <select value={kind} onChange={(e) => setKind(e.target.value as 'next' | 'on-fail')}>
-              <option>next</option>{k.fails && <option>on-fail</option>}
-            </select>
-          </label>
-          <label>Link target
-            <select value={target} onChange={(e) => setTarget(e.target.value)}>
-              <option value="">(pick a step)</option>
-              {others.map((o) => <option key={o}>{o}</option>)}
-            </select>
-          </label>
-          <button disabled={!target} onClick={() => onEdit((w) => setLink(w, id, kind, target))}>Add link</button>
-        </div>
-      </section>
+      </section>}
 
       <section aria-label="What the agent receives">
         <h4>What the agent receives</h4>
@@ -156,8 +176,40 @@ export function WorkflowPanel({ w, rev, onEdit }: { w: Workflow; rev: unknown; o
     <aside className="bpanel" aria-label="Workflow panel">
       <h3>{w.name}</h3>
       {w.task && <div className="bfield">Task<span className="sx-faint">{w.task}</span></div>}
+      {!w.block && <BudgetFields w={w} rev={rev} onEdit={onEdit} />}
       <Always w={w} rev={rev} onEdit={onEdit} />
     </aside>
+  );
+}
+
+// ponytail: the budget form edits through the model, so the file is reprinted as in Blocks (comments and custom order go,
+// after the existing confirm); a line edit of the front-matter would keep them in Text.
+export function BudgetFields({ w, rev, onEdit }: { w: Workflow; rev: unknown; onEdit: (fn: (w: Workflow) => Workflow) => void }) {
+  const b = w.budget;
+  const [bad, setBad] = useState('');
+  const commit = (key: BudgetKey, raw: string) => {
+    const r = commitBudget(w, key, raw, drafts, onEdit);
+    setBad(typeof r === 'string' ? r : '');
+  };
+  const turns = useLine(budgetCount(b.turns), rev, (v) => commit('turns', v));
+  const minutes = useLine(budgetCount(b.minutes), rev, (v) => commit('minutes', v));
+  const usd = useLine(b.usd === undefined ? '' : usdText(b.usd), rev, (v) => commit('usd', v));
+  const drafts = { turns: turns.v, minutes: minutes.v };
+  const field = (label: string, l: ReturnType<typeof useLine>, number: boolean) => (
+    <label className="bfield">{label}
+      <input type={number ? 'number' : 'text'} {...(number ? { min: 1, step: 1 } : { inputMode: 'decimal' as const })}
+        value={l.v} onChange={(e) => l.setV(e.target.value)} onBlur={l.done} onKeyDown={l.onKeyDown} />
+    </label>
+  );
+  return (
+    <section className="sx-budget" aria-label="Budget">
+      <h4>Budget</h4>
+      {field('Turns', turns, true)}
+      {field('Minutes', minutes, true)}
+      {field('USD', usd, false)}
+      {bad && <div className="bad" role="alert">{bad}</div>}
+      <p className="hint">{BUDGET_HINT}</p>
+    </section>
   );
 }
 

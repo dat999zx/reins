@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CARDS, NODES, parseWorkflow, printWorkflow, validate, type Step, type StepKind } from '@reins/core';
-import { CARD_KINDS, KINDS } from '../src/canvasKinds.js';
+import { CARD_KINDS, CARD_LABEL, KINDS } from '../src/canvasKinds.js';
+import { BUDGET_ERRORS, applyField } from '../src/panelEdit.js';
 
 const step = (kind: string, over: Partial<Step> = {}): Step =>
   ({ id: 'x', kind, attrs: {}, cards: [], links: [], ...over }) as Step;
@@ -62,6 +63,21 @@ describe('card', () => {
   });
 });
 
+describe('field hints', () => {
+  it('the budget of a model and a subagent says optional', () => {
+    for (const k of ['model', 'subagent'] as const) expect(KINDS[k].fields.find((f) => f.key === 'usd')!.ph, k).toBe('optional');
+  });
+  it('a prompt is required exactly where the validator warns about a missing one', () => {
+    const base = '---\nreins: 1\nname: t\nbudget: { turns: 10, minutes: 30 }\nalways: []\n---\n\n## phase plan\n> Plan it.\n';
+    for (const k of (Object.keys(KINDS) as StepKind[]).filter((x) => KINDS[x].fields.some((f) => f.key === 'prompt'))) {
+      const w = parseWorkflow(base).workflow!;
+      w.steps.push({ id: `${k}-1`, kind: k, attrs: {}, cards: [], links: [], ...KINDS[k].fresh!() });
+      const warns = validate(w).some((d) => d.severity === 'warning' && d.message.includes('has no prompt'));
+      expect(!!KINDS[k].fields.find((f) => f.key === 'prompt')!.required, k).toBe(warns);
+    }
+  });
+});
+
 describe('fresh', () => {
   const withFresh = [...NODES.keys()].filter((k) => k !== 'use').sort();
   it('exists for every kind but use', () => {
@@ -81,6 +97,50 @@ describe('fresh', () => {
       expect(text).not.toContain('\nid:');
     });
   }
+  it('model: a fresh step prints `## model`, and one with a model and a slice prints both', () => {
+    expect(KINDS.model.fields.map((f) => f.key)).toEqual(['model', 'reasoning', 'usd']);
+    const base = '---\nreins: 1\nname: t\nbudget: { turns: 10, minutes: 30, usd: 2.00 }\nalways: []\n---\n\n## phase plan\n> Plan it.\n';
+    const w = parseWorkflow(base).workflow!;
+    w.steps.push({ id: 'model-1', kind: 'model', attrs: { model: 'x', usd: '0.50' }, cards: [], links: [] });
+    expect(printWorkflow(w)).toContain('## model x\nusd: 0.50\n');
+  });
+  // the generic loops above (`fresh`, `line`, `card`, `fields only name keys the kind owns`, nodes-registry) iterate KINDS, so this kind is covered by them once the entry exists
+  it('subagent: its fields are in tab order, and a title, a model and a slice print and read back', () => {
+    expect(KINDS.subagent.fields.map((f) => f.key)).toEqual(['title', 'prompt', 'mode', 'model', 'reasoning', 'usd']);
+    expect(KINDS.subagent.fields.find((f) => f.key === 'model')!.inherits).toBe(true);
+    expect(KINDS.model.fields.find((f) => f.key === 'model')!.inherits).toBeUndefined();
+    for (const k of ['subagent', 'model'] as const) {
+      expect(KINDS[k].fields.find((f) => f.key === 'reasoning'), k).toMatchObject({ label: 'Reasoning', input: 'effort', inherits: true });
+    }
+    const base = '---\nreins: 1\nname: t\nbudget: { turns: 10, minutes: 30, usd: 2.00 }\nalways: []\n---\n\n## phase plan\n> Plan it.\n';
+    const w = parseWorkflow(base).workflow!;
+    w.steps.push({ id: 'subagent-1', kind: 'subagent', title: 'research', attrs: { model: 'x', usd: '0.50' }, prompt: 'Look.', cards: [], links: [] });
+    const text = printWorkflow(w);
+    expect(text).toContain('## subagent research\nmodel: x\nusd: 0.50\n> Look.');
+    const back = parseWorkflow(text);
+    expect(back.diagnostics).toEqual([]);
+    expect(back.workflow!.steps[1]).toMatchObject({ kind: 'subagent', title: 'research', attrs: { model: 'x', usd: '0.50' }, prompt: 'Look.' });
+    expect(KINDS.subagent.cards).toBe(true);
+  });
+
+  it('subagent: the panel labels, the Budget (USD) refusal words, the face line and the palette card are exactly the plan\'s', () => {
+    expect(KINDS.subagent.fields.map((f) => f.label)).toEqual(['Title', 'Prompt', 'Mode', 'Model', 'Reasoning', 'Budget (USD)']);
+    expect(KINDS.subagent.fields.find((f) => f.key === 'usd')!.error).toBe(BUDGET_ERRORS.usd);
+    expect(KINDS.subagent.line).toEqual(['subagent', { field: 'title' }, 'on', { field: 'model' }, { field: 'reasoning' }, { field: 'mode' }, 'USD', { field: 'usd' }, { field: 'prompt' }]);
+    expect(KINDS.subagent.card).toEqual({ label: 'subagent', section: 'Flow' });
+    const s = { id: 'subagent-1', kind: 'subagent', attrs: { usd: '0.50' }, cards: [], links: [] } as unknown as Step;
+    expect(applyField(s, 'usd', 'abc')).toBe(false);
+    expect(s.attrs.usd).toBe('0.50');
+  });
+  it('the model block is shown as switch model; the hand-off block is gone', () => {
+    expect(KINDS.model.card).toEqual({ label: 'switch model', section: 'Flow' });
+    expect(KINDS.model.line).toEqual(['switch model to', { field: 'model' }, { field: 'reasoning' }, 'USD', { field: 'usd' }]);
+    expect('handoff' in KINDS).toBe(false);
+  });
+  it('guard is the one card kind, and the panel words come from its label', () => {
+    expect(CARD_KINDS).toEqual(['guard']);
+    expect(CARD_LABEL.guard).toEqual({ section: 'Guards', add: 'Add guard' });
+  });
   it('gives a new attrs object per call', () => {
     expect(KINDS.repeat.fresh!().attrs).not.toBe(KINDS.repeat.fresh!().attrs);
   });

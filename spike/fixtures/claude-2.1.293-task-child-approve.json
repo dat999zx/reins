@@ -1,0 +1,24 @@
+[
+ {
+  "path": "/approve/<n>",
+  "body": {
+   "tool_name": "PowerShell",
+   "input": {
+    "command": "node -e \"require('fs').writeFileSync('c.txt','control')\"",
+    "description": "Run the node command that writes c.txt"
+   },
+   "tool_use_id": "toolu_01FZapCrLaz5DEt6fixYy8jT"
+  }
+ },
+ {
+  "path": "/approve/<n>",
+  "body": {
+   "tool_name": "PowerShell",
+   "input": {
+    "command": "node -e \"require('fs').writeFileSync('p.txt','child')\"",
+    "description": "Run the node one-liner that writes p.txt"
+   },
+   "tool_use_id": "toolu_01XxTapXhzAcjre733F5ZqH9"
+  }
+ }
+]

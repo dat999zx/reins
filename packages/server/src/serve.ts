@@ -1,5 +1,6 @@
 import path from 'node:path';
 import type { EngineProbe } from '@reins/core';
+import { createCatalog } from './catalog.js';
 import type { LockInfo } from './lock.js';
 import { startServer } from './server.js';
 import type { MakeEngine } from './session.js';
@@ -16,6 +17,8 @@ export interface ServeOptions {
   appDir?: string;
   pickFolder?: (signal: AbortSignal) => Promise<string | null>;
   open?: (url: string) => void;
+  /** The network fetch for the model catalog; none = the cached copy only, no network call. */
+  fetch?: typeof fetch;
 }
 
 /** `reins serve`: one server per machine (serve.lock), until `stop`. Returns the exit code. */
@@ -25,6 +28,7 @@ export async function runServe(o: ServeOptions): Promise<number> {
   try {
     const server = await startServer({
       store, dir, makeEngine: o.makeEngine, probe: o.probe, lockFile: path.join(dir, 'serve.lock'),
+      catalog: createCatalog({ file: path.join(dir, 'models-dev-cache.json'), ...(o.fetch ? { fetch: o.fetch } : {}) }),
       ...(o.port !== undefined ? { port: o.port } : {}),
       ...(o.appDir ? { appDir: o.appDir } : {}), ...(o.pickFolder ? { pickFolder: o.pickFolder } : {}),
     });

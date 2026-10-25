@@ -1,14 +1,15 @@
 // The HTTP API and the SSE stream (plan 15d 3b.6 lines 1500-1552, 3b.7 line 1553, 3b.8 HTTP tests).
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { createCatalog } from '../src/catalog.js';
 import { startServer } from '../src/server.js';
 import { openStore } from '../src/store.js';
 import { takeLock } from '../src/lock.js';
 import { tagCatalogue } from '../src/tags.js';
-import { until } from './helpers.js';
+import { fakeSetup, until } from './helpers.js';
 import { askedQuestion, boot, cleanup, openStream, PROBE, request, tmpDir } from './http-helpers.js';
 
 afterEach(cleanup);
@@ -190,6 +191,176 @@ describe('state, probing and sessions (3b.6 1526-1528, 1543)', () => {
     const p = await w.api('POST', '/api/state/probe');
     expect(w.probes()).toBe(2);
     expect(p.json).toEqual({ engines: [{ id: 'claude', ...PROBE }] });
+  });
+
+  it('/api/state lists the providers with their models and nothing else of them', async () => {
+    const w = await boot();
+    const s = await w.api('GET', '/api/state');
+    expect(s.json.providers).toEqual([{
+      id: 'claude', label: 'Claude', defaultModel: 'claude-sonnet-5-5', defaultEffort: 'medium',
+      efforts: [
+        { id: 'low', label: 'Low' }, { id: 'medium', label: 'Medium' }, { id: 'high', label: 'High' },
+        { id: 'xhigh', label: 'Extra high' }, { id: 'max', label: 'Max' },
+      ],
+      models: [
+        { id: 'claude-opus-5-5', label: 'Opus 5.5' }, { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' },
+        { id: 'claude-haiku-5-5', label: 'Haiku 5.5' }, { id: 'claude-fable-5-1', label: 'Fable 5.1' },
+      ],
+    }]);
+  });
+
+  it('a new session with no model gets its provider default model; a given model is kept', async () => {
+    const w = await boot();
+    const plain = await w.session();
+    expect(w.store.getSession(plain)!.model).toBe('claude-sonnet-5-5');
+    const given = await w.session({ model: 'claude-opus-5-5' });
+    expect(w.store.getSession(given)!.model).toBe('claude-opus-5-5');
+  });
+
+  it('the model setting: a string, "" for the default, the current value or a listed id; anything else is 400', async () => {
+    const w = await boot();
+    const id = await w.session({ model: 'sonnet' });
+    const stateModel = async () => (await w.api('GET', '/api/state')).json.sessions[0].model;
+    const bad = await w.post(id, 'settings', { model: 5 });
+    expect([bad.status, bad.json.error]).toEqual([400, 'model must be a string.']);
+    const unknown = await w.post(id, 'settings', { model: 'nope' });
+    expect([unknown.status, unknown.json.error]).toEqual([400, "Unknown model for this session's provider."]);
+    expect((await w.post(id, 'settings', { model: 'sonnet' })).status).toBe(200);
+    expect(await stateModel()).toBe('sonnet');
+    expect((await w.post(id, 'settings', { model: 'claude-opus-5-5' })).status).toBe(200);
+    expect(await stateModel()).toBe('claude-opus-5-5');
+    expect((await w.post(id, 'settings', { model: 'sonnet' })).status).toBe(400);
+    expect((await w.post(id, 'settings', { model: '' })).status).toBe(200);
+    expect(await stateModel()).toBeUndefined();
+    expect(w.store.getSession(id)).not.toHaveProperty('model');
+  });
+
+  it('a new session with no reasoning gets its provider default level; a given level is kept', async () => {
+    const w = await boot();
+    expect(w.store.getSession(await w.session())!.effort).toBe('medium');
+    expect(w.store.getSession(await w.session({ effort: 'high' }))!.effort).toBe('high');
+  });
+
+  it('the reasoning setting: a listed level is stored; anything else is 400', async () => {
+    const w = await boot();
+    const id = await w.session();
+    const bad = await w.post(id, 'settings', { effort: 5 });
+    expect([bad.status, bad.json.error]).toEqual([400, 'effort must be a string.']);
+    const unknown = await w.post(id, 'settings', { effort: 'nope' });
+    expect([unknown.status, unknown.json.error]).toEqual([400, 'Unknown reasoning level.']);
+    expect((await w.post(id, 'settings', { effort: 'xhigh' })).status).toBe(200);
+    expect((await w.api('GET', '/api/state')).json.sessions[0].effort).toBe('xhigh');
+  });
+
+  it('a switch over a limit is 200 and a question card with its words; nothing is stored until Switch', async () => {
+    const w = await boot([TURN]);
+    const id = await w.session();
+    await w.say(id, 'hello');
+    await w.settled(id, 1);
+    w.store.putSetting('switchApprovalUsd', 0.1);
+    const r = await w.post(id, 'settings', { model: 'claude-fable-5-1' });
+    expect(r.status).toBe(200);
+    const q = w.store.readLog(id).filter((x) => x.type === 'question').at(-1)!;
+    expect((q.data as { detail: string }).detail).toMatch(/^The whole conversation, 30,550 tokens, goes to Fable 5\.1 as input\. Estimate: about \$0\.61 \(an estimate from the provider's price table\)\.\nAsked because the estimate is at or over the \$0\.10 switch limit\.$/);
+    expect(w.store.getSession(id)!.model).toBe('claude-sonnet-5-5');
+    const a = await w.post(id, 'answer', { questionId: (q.data as { id: string }).id, answer: 'switch' });
+    expect(a.status).toBe(200);
+    expect(w.store.getSession(id)!.model).toBe('claude-fable-5-1');
+  });
+
+  it('a run file whose model block names a model outside the provider list is 400 with the step named, and nothing is logged', async () => {
+    const w = await boot();
+    const id = await w.session();
+    const file = path.join(w.cwd, 'm.reins.md');
+    fs.writeFileSync(file, GOOD.replace('## phase go', '## model nope\n\n## phase go'));
+    const before = w.store.readLog(id).length;
+    const r = await w.post(id, 'run', { path: file });
+    expect([r.status, r.json.error]).toEqual([400, "Unknown model nope in step `model-1`: it is not in this session's provider list."]);
+    expect(w.store.readLog(id)).toHaveLength(before);
+  });
+
+  it('POST compress: 409 before a message; then 200 and a compacted row, costing the compaction only; the next reply costs its own', async () => {
+    const fake = fakeSetup([TURN, TURN], 10, { compact: 'claude-2.1.293-compact.jsonl' });
+    const w = await boot([], { fake });
+    try {
+      const id = await w.session();
+      const early = await w.post(id, 'compress');
+      expect(early.status).toBe(409);
+      expect(early.json.error).toBe('Nothing to compress yet: send a message first.');
+      await w.say(id, 'hello');
+      await w.settled(id, 1);
+      expect((await w.post(id, 'compress')).status).toBe(200);
+      await w.settled(id, 2);
+      expect(w.rows(id, 'engine').map((r) => r.data)).toContainEqual({ type: 'compacted', trigger: 'manual', before: 34469, after: 4795 });
+      await w.say(id, 'again');
+      await w.settled(id, 3);
+      const cost = w.rows(id, 'turn_ended').map((r) => (r.data as { cost: number }).cost);
+      expect(cost[1]).toBeCloseTo(0.00962756 - 0.0068948, 6); // the fixture's /compact total less its turn 0 total
+      expect(cost[2]).toBeCloseTo(cost[0]!, 6); // the same recorded turn: only its own cost
+    } finally {
+      await w.srv.close();
+      fs.rmSync(fake.dir, { recursive: true, force: true });
+    }
+  });
+
+  describe('the model catalog (4b)', () => {
+    const catalogFile = () => {
+      const file = path.join(tmpDir(), 'cache.json');
+      const m = (name: string, date: string, context: number) => ({ name, release_date: date, tool_call: true, limit: { context }, cost: { input: 1, output: 5 } });
+      fs.writeFileSync(file, JSON.stringify({ anthropic: { models: {
+        'claude-fable-5-1': m('Claude Fable 5.1', '2026-09-01', 1_000_000), 'claude-extra-9': m('Extra 9', '2026-10-01', 500_000),
+      } } }));
+      return file;
+    };
+
+    it('the state carries each model\'s window and the catalog extras', async () => {
+      const w = await boot([], { catalog: createCatalog({ file: catalogFile() }) });
+      const models = (await w.api('GET', '/api/state')).json.providers[0].models;
+      expect(models).toEqual([
+        { id: 'claude-opus-5-5', label: 'Opus 5.5' }, { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' }, { id: 'claude-haiku-5-5', label: 'Haiku 5.5' },
+        { id: 'claude-fable-5-1', label: 'Fable 5.1', window: 1_000_000 }, { id: 'claude-extra-9', label: 'Extra 9', window: 500_000 },
+      ]);
+    });
+
+    it('a catalog-only id is accepted by settings; a made-up one is still 400', async () => {
+      const w = await boot([], { catalog: createCatalog({ file: catalogFile() }) });
+      const id = await w.session();
+      expect((await w.post(id, 'settings', { model: 'claude-extra-9' })).status).toBe(200);
+      expect((await w.post(id, 'settings', { model: 'made-up' })).status).toBe(400);
+    });
+
+    it('a catalog price drives the estimate and says so', async () => {
+      const w = await boot([TURN], { catalog: createCatalog({ file: catalogFile() }) });
+      const id = await w.session();
+      await w.say(id, 'hello');
+      await w.settled(id, 1);
+      w.store.putSetting('switchApprovalUsd', 0.05);
+      const r = await w.post(id, 'settings', { model: 'claude-extra-9' });
+      expect(r.status).toBe(200);
+      const q = w.store.readLog(id).filter((x) => x.type === 'question').at(-1)!;
+      expect((q.data as { detail: string }).detail).toMatch(/30,550 tokens, goes to Extra 9 as input\. Estimate: about \$0\.06 \(an estimate from catalog prices, 1-hour cache write\)/);
+    });
+
+    it('the server refreshes the catalog at start and closes it with itself', async () => {
+      const calls: string[] = [];
+      const catalog = { models: () => [], refresh: async () => { calls.push('refresh'); }, close: () => { calls.push('close'); } };
+      const w = await boot([], { catalog });
+      expect(calls).toEqual(['refresh']);
+      await w.srv.close();
+      expect(calls).toEqual(['refresh', 'close']);
+    });
+
+    it('a server booted without a catalog never calls fetch', async () => {
+      const spy = vi.fn();
+      vi.stubGlobal('fetch', spy);
+      try {
+        const w = await boot();
+        expect((await w.api('GET', '/api/state')).status).toBe(200);
+        expect(spy).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
   });
 
   it('a probe that throws becomes an installed:false entry instead of stopping the server', async () => {

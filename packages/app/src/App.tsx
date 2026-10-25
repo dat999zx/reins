@@ -3,7 +3,7 @@ import type { EngineProbe } from '@reins/core';
 import type { LogRow } from '@reins/server/store.js';
 import type { TagEntry } from '@reins/server/tags.js';
 import { ApiError, get, initToken, post, stream } from './api.js';
-import { Chat } from './Chat.js';
+import { Chat, type Provider } from './Chat.js';
 import { loadEditorState, makeSaver, type EditorState, type Tab } from './editorState.js';
 import { Rail } from './Rail.js';
 import { afterOf, finishReplay, initial, loadSessions, pageTitle, reduceAll, takeRefill, type SessionView, type State } from './state.js';
@@ -23,6 +23,7 @@ export function App() {
   const [st, setSt] = useState<State>(initial);
   const stRef = useRef<State>(st);
   const [engines, setEngines] = useState<Engines>([]);
+  const [providers, setProviders] = useState<Provider[]>([]);
   const [catalogue, setCatalogue] = useState<TagEntry[]>([]);
   const [ready, setReady] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
@@ -49,10 +50,11 @@ export function App() {
 
     async function connect() {
       try {
-        const r = await get<{ sessions: SessionView[]; engines: Engines }>('/api/state');
+        const r = await get<{ sessions: SessionView[]; engines: Engines; providers?: Provider[] }>('/api/state');
         if (stopped) return;
         commit(loadSessions(stRef.current, r.sessions));
         setEngines(r.engines);
+        setProviders(r.providers ?? []);
         setReady(true);
       } catch (e) {
         if (stopped) return;
@@ -197,7 +199,7 @@ export function App() {
         />
         {sess ? (
           <Chat
-            key={sess.id} sess={sess} catalogue={catalogue} tab={tab}
+            key={sess.id} sess={sess} catalogue={catalogue} providers={providers} tab={tab}
             onTab={(t) => { if (t === tab || t !== 'chat' || leave()) { setTab(t); if (t !== tab) onState(sess.cwd, { tab: t }); } }}
             restore={editor[sess.cwd]} onState={(p) => onState(sess.cwd, p)}
             onDirty={(d) => { dirty.current = d; }} onError={flash}
@@ -208,7 +210,7 @@ export function App() {
             }}
           />
         ) : (
-          <main className="chat empty"><p className="hint">{Object.keys(st.sessions).length ? 'Select a session.' : 'No sessions yet — New session, or Ctrl+O'}</p></main>
+          <main className="chat empty"><p className="hint">{Object.keys(st.sessions).length ? 'Select a session.' : 'No sessions yet. New session, or Ctrl+O'}</p></main>
         )}
       </div>
     </div>

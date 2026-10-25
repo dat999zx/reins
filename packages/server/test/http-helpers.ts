@@ -4,6 +4,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import type { EngineProbe } from '@reins/core';
+import type { Catalog } from '../src/catalog.js';
 import { claudeEngine } from '../src/claude/engine.js';
 import type { Question } from '../src/drive.js';
 import { startServer, type Server } from '../src/server.js';
@@ -113,6 +114,7 @@ export interface BootOptions {
   store?: Store;                                  // a restart test passes a file store, and the fake it already has
   dir?: string;
   fake?: Fake;
+  catalog?: Catalog;                              // the model catalog; none = the provider file's list only, no network
 }
 
 /** A server on a free port. Sessions run in `cwd` (the fake's temp folder), so the fake log sits beside them. */
@@ -127,6 +129,7 @@ export async function boot(turns: FakeTurn[] = [], o: BootOptions = {}) {
     store, dir,
     probe: o.probe ?? (async () => { probes++; return PROBE; }),
     ...(o.heartbeatMs ? { heartbeatMs: o.heartbeatMs } : {}),
+    ...(o.catalog ? { catalog: o.catalog } : {}),
     makeEngine: ({ model, effort, onApprove, onLive }) =>
       claudeEngine({ bin: FAKE_CLAUDE, ...(model ? { model } : {}), ...(effort ? { effort } : {}), onApprove, onLive }),
   });

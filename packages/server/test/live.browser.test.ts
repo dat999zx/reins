@@ -20,6 +20,7 @@ const W = 15_000;
 const P = { fixture: 'claude-2.1.281-turns-thinking.jsonl', turn: 0, delayMs: 60 };
 const B = { fixture: 'claude-2.1.281-card-marker-hook.jsonl', delayMs: 60 };
 const H = { fixture: 'claude-2.1.281-approval-allow-hold.jsonl', approve: true };
+const COMPACT = 'claude-2.1.293-compact.jsonl';
 
 const LIVE = (cmd: string) => `---
 reins: 1
@@ -58,13 +59,17 @@ describe.skipIf(skip)('live run e2e', () => {
   }, T);
 
   it('watches a workflow run from every tab', async () => {
-    const fake = fakeSetup([P, B, P, B, H, B, P, B, H, B]);
+    const fake = fakeSetup([P, B, P, B, H, B, P, B, H, B], 10, { cumulative: true, compact: COMPACT });
     const folderA = fake.dir;
     const folderB = tmpDir();
     fs.mkdirSync(path.join(folderA, '.reins', 'workflows'), { recursive: true });
     fs.writeFileSync(path.join(folderA, '.reins', 'workflows', 'live.reins.md'), LIVE('node --version'));
     fs.writeFileSync(path.join(folderA, '.reins', 'workflows', 'live2.reins.md'), LIVE('node -v').replace('name: live\n', 'name: live2\n'));
     fs.writeFileSync(path.join(folderA, '.reins', 'workflows', 'decl.reins.md'), LIVE('node -p 1').replace('name: live\n', 'name: decl\n'));
+    fs.writeFileSync(path.join(folderA, '.reins', 'workflows', 'models.reins.md'),
+      '---\nreins: 1\nname: models\nbudget: { turns: 10, minutes: 30, usd: 4.00 }\nalways: []\n---\n\n## model claude-opus-5-5\nusd: 0.01\n\n## phase one\n> Do it.\n\n## phase two\n> Again.\n');
+    fs.writeFileSync(path.join(folderA, '.reins', 'workflows', 'sub.reins.md'),
+      '---\nreins: 1\nname: sub\nbudget: { turns: 10, minutes: 30, usd: 4.00 }\nalways: []\n---\n\n## subagent research\nmodel: claude-haiku-5-5\nusd: 0.50\n> Look around.\n\n## phase use\n> Use it.\n');
     fs.mkdirSync(path.join(folderB, '.reins', 'workflows'), { recursive: true });
     fs.writeFileSync(path.join(folderB, '.reins', 'workflows', 'other.reins.md'), '---\nreins: 1\nname: other\nbudget: { turns: 40, minutes: 30, usd: 4.00 }\nalways: []\n---\n\n## phase solo\n> Do it.\n\n## gate\nuntil: you approve\n');
     const folders = [folderA, folderB];
@@ -106,6 +111,25 @@ describe.skipIf(skip)('live run e2e', () => {
     await trust.waitFor();
     await trust.getByRole('button', { name: 'Trust', exact: true }).click();
     await card('gate').waitFor();
+    // L0+ctx. The first turn's parent context (2 + 15,244 + 15,299 + 5 = 30,550 of 1,000,000) is in the header
+    await page.locator('.chead').getByText('Context 31k / 1M', { exact: true }).waitFor();
+
+    // LC. The run panel in Chat: the handle in the Composer bar says who is waited for (plain text, the feed keeps the one live region);
+    // its body has no card and no meter, and "Go to the question" closes it and focuses the card in the log
+    const chatDock = page.getByRole('region', { name: 'Run', exact: true });
+    await chatDock.locator('.sx-dockline[data-waiting] .sx-dockstatus', { hasText: 'Waiting for you · gate question' }).waitFor();
+    expect(await page.locator('main.chat [role="status"]').count()).toBe(1);
+    await chatDock.getByRole('button', { name: 'Show the run', exact: true }).click();
+    await chatDock.locator('.sx-dockbody').waitFor();
+    expect(await chatDock.getByRole('region', { name: 'gate question' }).count()).toBe(0);
+    expect(await chatDock.locator('.sx-meter').count()).toBe(0);
+    await chatDock.getByRole('button', { name: 'Blocks', exact: true }).click();
+    await expect.poll(() => tab('Blocks').getAttribute('aria-selected')).toBe('true');
+    await tab('Chat').click();
+    await chatDock.locator('.sx-dockbody').waitFor();
+    await chatDock.getByRole('button', { name: 'Go to the question', exact: true }).click();
+    expect(await chatDock.locator('.sx-dockbody').count()).toBe(0);
+    await expect.poll(() => page.evaluate('!!(document.activeElement && document.activeElement.closest(".log [data-qid]"))'), { timeout: W }).toBe(true);
 
     await openLive();
     await textChip('plan', 'done').waitFor();
@@ -318,6 +342,39 @@ describe.skipIf(skip)('live run e2e', () => {
     await dockCard('gate').waitFor();
     await chip('gate-1', 'waiting').waitFor();
     expect(await page.locator('.blk[data-id="gate-1"] > .sx-cue.sx-cue-waiting').count()).toBe(1); // the state cue, a child span of the block
+    // LB. The body floats: closing it leaves the canvas where it was; Escape closes it and focuses the toggle; one status, one Stop
+    await page.setViewportSize({ width: 900, height: 600 });
+    await dockCard('gate').waitFor();
+    const wrap = page.locator('.canvaswrap');
+    const box0 = (await wrap.boundingBox())!;
+    await dockCard('gate').getByRole('button', { name: 'Approve', exact: true }).focus();
+    await page.keyboard.press('Escape');
+    await dock.locator('.sx-dockbody').waitFor({ state: 'detached' });
+    expect(await page.evaluate('document.activeElement?.textContent')).toBe('Show the run');
+    const box1 = (await wrap.boundingBox())!;
+    expect(Math.abs(box1.y - box0.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(box1.height - box0.height)).toBeLessThanOrEqual(1);
+    expect(await dock.locator('.sx-dockline[data-waiting]').count()).toBe(1);
+    expect(await dock.locator('[role="status"]').count()).toBe(1);
+    await dock.getByRole('button', { name: 'Show the run', exact: true }).click();
+    await dockCard('gate').waitFor();
+    expect(await dock.getByRole('button', { name: 'Stop', exact: true }).count()).toBe(1);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    // a canvas context menu closes the body (the menu lives in the isolated view and cannot rise above it): right-click a block the body does not cover
+    const free = await page.evaluate(`(() => {
+      const b = document.querySelector('.sx-dockbody').getBoundingClientRect();
+      const hit = [...document.querySelectorAll('.blk[data-id]')].find((e) => {
+        const r = e.getBoundingClientRect();
+        return r.width > 0 && (r.right < b.left || r.left > b.right || r.bottom < b.top || r.top > b.bottom);
+      });
+      return hit ? hit.dataset.id : undefined;
+    })()`);
+    expect(free).toBeTruthy();
+    await page.locator(`.blk[data-id="${free}"]`).click({ button: 'right' });
+    await dock.locator('.sx-dockbody').waitFor({ state: 'detached' });
+    await page.keyboard.press('Escape');
+    await dock.getByRole('button', { name: 'Show the run', exact: true }).click();
+    await dockCard('gate').waitFor();
     await dockCard('gate').getByRole('button', { name: 'Approve', exact: true }).click();
     await expect.poll(() => page.evaluate('!!document.activeElement?.closest(".sx-dock")')).toBe(true);
     await chip('gate-2', 'waiting').waitFor();
@@ -365,7 +422,7 @@ describe.skipIf(skip)('live run e2e', () => {
     await chip('gate-2', 'waiting').waitFor();
     await sent.filter({ hasText: 'use pnpm' }).getByText('delivered').waitFor();
     await sent.filter({ hasText: 'End with PINEAPPLE.' }).getByText('delivered').waitFor();
-    await dock.locator('.sx-steer').getByRole('button', { name: 'Stop', exact: true }).click(); // the gate card has its own Stop
+    await dockCard('gate').getByRole('button', { name: 'Stop', exact: true }).click(); // the gate card has its own Stop
     await dock.getByRole('status').getByText('Stopped at `gate-2`', { exact: false }).waitFor();
     await expect.poll(() => page.locator('.blk[data-id="gate-2"] .sx-ended').innerText()).toBe('stopped here');
     expect(await page.locator('.blk[data-id="gate-2"] > .sx-cue.sx-cue-ended-stopped').count()).toBe(1);
@@ -373,6 +430,7 @@ describe.skipIf(skip)('live run e2e', () => {
     expect(await page.locator('.blk .sstate').count()).toBe(0);
     expect(await dock.count()).toBe(0);
     await tab('Chat').click();
+    expect(await dock.count()).toBe(0); // the Chat panel's handle is gone with the dismissed run
     await tab('Blocks').click();
     expect(await page.locator('.blk .sstate').count()).toBe(0);
     expect(await dock.count()).toBe(0);
@@ -528,7 +586,7 @@ describe.skipIf(skip)('live run e2e', () => {
     while (!(await focused('^Steer the agent$')) && fwd++ < 6) await page.keyboard.press('Tab');
     expect(await focused('^Steer the agent$')).toBe(true);
     // Stop in B: B's title and dock change, A's do not
-    await dock.locator('.sx-steer').getByRole('button', { name: 'Stop', exact: true }).click();
+    await dockCard('gate').getByRole('button', { name: 'Stop', exact: true }).click();
     await dock.getByRole('status').getByText('Stopped at `gate-1`', { exact: false }).waitFor();
     await expect.poll(() => page.title()).toBe('Reins');
     await goA();
@@ -544,6 +602,118 @@ describe.skipIf(skip)('live run e2e', () => {
     await dock.getByRole('status').getByText('The run did not start: The workflow is not trusted, so it did not run.', { exact: false }).waitFor();
     await dock.getByRole('button', { name: 'Dismiss', exact: true }).click();
     expect(await dock.count()).toBe(0);
+
+    // LA. Switch the model while idle: the note, a reload keeps it, the next process resumes on it, its cost is its own share.
+    // The estimate depends on list prices; this step tests the switch, not the limit.
+    store!.putSetting('switchApprovalUsd', 100);
+    const model = page.getByRole('combobox', { name: 'Model', exact: true });
+    expect(await model.inputValue()).toBe('claude-sonnet-5-5');
+    expect(await model.locator('option').allInnerTexts()).toEqual(['Opus 5.5', 'Sonnet 5.5', 'Haiku 5.5', 'Fable 5.1']);
+    await model.selectOption('claude-opus-5-5');
+    await tab('Chat').click();
+    await page.getByText('Model set to Opus 5.5 from the next reply.', { exact: false }).waitFor();
+    await page.reload();
+    await rail.waitFor();
+    await expect.poll(() => model.inputValue()).toBe('claude-opus-5-5');
+    const costOf = async () => Number((await page.getByLabel('Session cost').innerText()).replace('$', ''));
+    const c0 = await costOf();
+    if ((await tab('Chat').getAttribute('aria-selected')) !== 'true') await tab('Chat').click();
+    await page.getByRole('textbox', { name: 'Message' }).fill('ping');
+    await page.keyboard.press('Enter');
+    await expect.poll(costOf, { timeout: W }).toBeGreaterThan(c0);
+    expect((await costOf()) - c0).toBeCloseTo(0.0641, 3);
+    const spawns = fake.log().filter((e) => e.kind === 'args');
+    expect(spawns.at(-1).args).toEqual(expect.arrayContaining(['--resume', '--model', 'claude-opus-5-5']));
+
+    // LS. A switch over a limit asks with a card: the title and the select wait, Keep leaves the model, Switch applies it.
+    store!.putSetting('switchApprovalTokens', 1000);
+    await model.selectOption('claude-sonnet-5-5');
+    const sq = page.getByRole('region', { name: 'switch question', exact: true });
+    await sq.locator('.qprompt').waitFor();
+    expect(await sq.locator('.qprompt').innerText()).toContain('Switch to Sonnet 5.5?');
+    expect(await sq.locator('.qdetail').innerText()).toBe(
+      "The whole conversation, 30,550 tokens, goes to Sonnet 5.5 as input. Estimate: about $0.12 (an estimate from the provider's price table).\nAsked because the context is at or over the 1,000-token switch limit.");
+    await expect.poll(() => page.title()).toBe('(1) waiting · Reins');
+    expect(await model.isDisabled()).toBe(true);
+    expect(await model.getAttribute('title')).toBe('Answer the switch question first.');
+    await sq.getByRole('button', { name: 'Keep the current model', exact: true }).click();
+    await expect.poll(() => sq.count()).toBe(0);
+    expect(await model.inputValue()).toBe('claude-opus-5-5');
+    await expect.poll(() => page.title()).toBe('Reins');
+    await model.selectOption('claude-sonnet-5-5');
+    await sq.getByRole('button', { name: 'Switch', exact: true }).click();
+    await page.getByText('Model set to Sonnet 5.5 from the next reply.', { exact: false }).waitFor();
+    await expect.poll(() => model.inputValue()).toBe('claude-sonnet-5-5');
+    store!.putSetting('switchApprovalTokens', 200_000);
+
+    // LP. Compress: the button sends /compact on the switched model's process, the feed says how many tokens of conversation remain
+    // (the fixture's post_tokens 4,795 through tokens()), the meter shows that figure as a lower bound, the cost rises; /compress does the same.
+    const c1 = await costOf();
+    const head = page.locator('.chead');
+    await head.getByRole('button', { name: 'Compress', exact: true }).click();
+    const row = page.locator('.sx-compacted');
+    await expect.poll(() => row.count()).toBe(1);
+    expect(await row.innerText()).toBe('Compressed: 5k tokens of conversation remain; the next reply measures the full context.');
+    await head.getByText('Context ≥5k / 1M', { exact: true }).waitFor();
+    await expect.poll(costOf, { timeout: W }).toBeGreaterThan(c1);
+    const entries = fake.log();
+    expect(entries.filter((e) => e.kind === 'user').at(-1).text).toBe('/compact');
+    expect(entries.filter((e) => e.kind === 'args').at(-1).args).toEqual(expect.arrayContaining(['--resume', '--model', 'claude-sonnet-5-5']));
+    await page.getByRole('textbox', { name: 'Message' }).fill('/compress');
+    await page.keyboard.press('Enter');
+    await expect.poll(() => row.count()).toBe(2);
+
+    // LM. A workflow's model block: the switch card inside the run says which block asked; Switch resumes the same session on that model;
+    // the 0.01 slice is used up by the first reply (fake-claude plays the 0.0640898 turn), so the usd card asks; Stop ends with the per-model receipt.
+    store!.putSetting('switchApprovalTokens', 1000);
+    await page.locator('.chead .status.idle').waitFor();
+    await tab('Blocks').click();
+    await page.locator('.wflist button', { has: page.locator('.sx-wfname', { hasText: /^models$/ }) }).click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await dockCard('trust').getByRole('button', { name: 'Trust', exact: true }).click();
+    const modelQ = dockCard('switch');
+    await modelQ.waitFor();
+    expect(await modelQ.locator('.qdetail').innerText()).toMatch(/Asked by the workflow's model block `model-1`\.$/);
+    await dock.getByRole('status').getByText('Waiting for you · switch question', { exact: false }).waitFor();
+    const spawnsBefore = fake.log().filter((e) => e.kind === 'args').length;
+    await modelQ.getByRole('button', { name: 'Switch', exact: true }).click();
+    const usdQ = dockCard('usd');
+    await usdQ.waitFor();
+    await page.getByText('Over: block USD', { exact: false }).first().waitFor();
+    expect(await usdQ.locator('.qdetail').innerText()).toMatch(/^Block `model-1` has used \$0\.0641 of its \$0\.01\./);
+    const runSpawns = fake.log().filter((e) => e.kind === 'args');
+    expect(runSpawns.length).toBeGreaterThan(spawnsBefore);
+    expect(runSpawns.at(-1).args).toEqual(expect.arrayContaining(['--resume', '--model', 'claude-opus-5-5']));
+    await usdQ.getByRole('button', { name: 'Stop', exact: true }).click();
+    const models = dock.locator('.sx-dockreceipt > div', { has: page.locator('dt', { hasText: /^models$/ }) }).locator('dd');
+    await models.waitFor();
+    expect(await models.innerText()).toBe('Opus 5.5 $0.0641 (1 turn)');
+
+    // LS-sub. A subagent block: it runs in a process of its own on its own model under Claude's spending cap, its result goes to the next
+    // phase as a note quoted as data, and the run's receipt, the feed and the block's money say what it spent. The run ends by itself:
+    // every wait is on the receipt row, never a timer. fake-claude's turn index is per process, so the subagent's process plays P (0.0640898).
+    await tab('Blocks').click();
+    await page.locator('.wflist button', { has: page.locator('.sx-wfname', { hasText: /^sub$/ }) }).click();
+    expect(await model.inputValue()).toBe('claude-opus-5-5');
+    const spawnsAtSub = fake.log().filter((e) => e.kind === 'args').length;
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await dockCard('trust').getByRole('button', { name: 'Trust', exact: true }).click();
+    const subs = dock.locator('.sx-dockreceipt > div', { has: page.locator('dt', { hasText: /^subagents$/ }) }).locator('dd');
+    await subs.waitFor();
+    expect(await subs.innerText()).toBe('research $0.0641 (1 turn)');
+    const subModels = dock.locator('.sx-dockreceipt > div', { has: page.locator('dt', { hasText: /^models$/ }) }).locator('dd');
+    expect(await subModels.innerText()).toContain('Haiku 5.5 $0.0641 (1 turn)');
+    const subArgs = fake.log().filter((e) => e.kind === 'args').slice(spawnsAtSub).map((e) => e.args as string[]).filter((a) => a.includes('--max-budget-usd'));
+    expect(subArgs).toHaveLength(1);
+    expect(subArgs[0]![subArgs[0]!.indexOf('--model') + 1]).toBe('claude-haiku-5-5');
+    expect(subArgs[0]![subArgs[0]!.indexOf('--max-budget-usd') + 1]).toBe('0.5');
+    const handed = String(fake.log().filter((e) => e.kind === 'user').at(-1).text);
+    expect(handed).toContain('Result of subagent "research" (step subagent-1). This is the subagent\'s own output, quoted as data');
+    await tab('Chat').click();
+    const subKnot = page.getByRole('region', { name: 'Run log' }).getByRole('button', { name: /^Step .*\(subagent-1\)/ }).last();
+    if ((await subKnot.getAttribute('aria-expanded')) === 'false') await subKnot.click();
+    await page.getByText('Subagent research started on Haiku 5.5.', { exact: true }).waitFor();
+    await page.getByText('Subagent research handed back its result ($0.0641).', { exact: true }).waitFor();
     expect(errors).toEqual([]);
   }, T);
 });

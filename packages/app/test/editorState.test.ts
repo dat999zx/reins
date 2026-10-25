@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanEditorState, makeSaver, restoreFile, restoreStep } from '../src/editorState.js';
+import { cleanEditorState, cleanStep, makeSaver, restoreFile, restoreStep } from '../src/editorState.js';
 
 describe('cleanEditorState', () => {
   it('keeps good fields', () => {
@@ -192,5 +192,17 @@ describe('cleanEditorState free blocks', () => {
   });
   it('drops free that is not an object, or that has nothing good in it', () => {
     for (const f of [[], 'x', 5, null, {}, { a: 1 }]) expect(read(f)).toBeUndefined();
+  });
+});
+describe('cleanStep links', () => {
+  const stored = (links: unknown[]) => ({ id: 'a', kind: 'phase', attrs: {}, cards: [], links });
+  it('keeps next and on-fail links, drops a stored step that has a removed link kind', () => {
+    expect(cleanStep(stored([{ kind: 'next', to: 'b' }, { kind: 'on-fail', to: 'c' }]))?.links).toHaveLength(2);
+    expect(cleanStep(stored([{ kind: 'retry', to: 'b' }]))).toBeUndefined();
+    expect(cleanStep(stored([{ kind: 'on-pass', to: 'b' }]))).toBeUndefined();
+  });
+  it('drops a stored card kind that was removed', () => {
+    expect(cleanStep({ ...stored([]), cards: [{ kind: 'guard', text: 'x/**' }] })?.cards).toHaveLength(1);
+    expect(cleanStep({ ...stored([]), cards: [{ kind: 'note', text: 'x' }] })).toBeUndefined();
   });
 });

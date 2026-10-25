@@ -25,6 +25,7 @@ $ echo tests-ok
 
 ── Receipt ──
 workflow golden-yes · done · 2 turns · <N> s · $<COST>
+models claude-sonnet-5 $0.0802 (2 turns)
 gates held 1 · refusals 0 (guard 0, read-only 0) · loop attempts 0
 cards: live delivered 0, auto fired 0 · verify 0 pass / 0 fail · Knowl 0 recalls, 0 stores
 run id <ID>

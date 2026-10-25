@@ -5,10 +5,10 @@ Always:
 - Keep functions under 40 lines.
 
 Implement the approved plan. Do not deviate; if you must, stop and say why.
+Explain each change in one line.
 
 For this step:
 - Do not touch migrations/**. (Enforced: edits there are blocked.)
-- Explain each change in one line.
 
 When you finish this step, end your reply with exactly one line:
 REINS: done | blocked: <reason>

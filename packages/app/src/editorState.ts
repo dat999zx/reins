@@ -19,7 +19,7 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object
 const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
 export const LOOSE_MAX = 100;
-const LINKS: readonly string[] = ['next', 'on-pass', 'on-fail', 'retry', 'verify-against', 'hand-off'] satisfies LinkKind[];
+const LINKS: readonly string[] = ['next', 'on-fail'] satisfies LinkKind[];
 const str = (v: unknown): v is string => typeof v === 'string';
 
 function cleanCond(c: unknown): c is Cond {

@@ -3,7 +3,11 @@ import type { EngineEvent } from '@reins/core';
 export interface StreamOut {
   events: EngineEvent[];
   /** Set on the `result` line that ends a turn. `totalCostUsd` is cumulative for the session. */
-  result?: { text: string; totalCostUsd: number; isError: boolean };
+  result?: {
+    text: string; totalCostUsd: number; isError: boolean; usage?: { model: string; used: number; window?: number };
+    /** `modelUsage[model].costUSD`: the provider's running total per model; absent unless every figure is a number >= 0. */
+    byModel?: Record<string, number>;
+  };
   /** Set once, from the first `system/init`. */
   sessionId?: string;
 }
@@ -11,22 +15,40 @@ export interface StreamOut {
 /**
  * Turns claude `stream-json` lines into EngineEvents (plan 15b 2.3). Shapes come from the
  * recorded streams in spike/fixtures; everything else (hook lifecycle, rate limits, control
- * responses, later `system/init`s) is ignored. Thinking text is empty in 2.1.281 (only a
- * signature), so `system/thinking_tokens` estimates are used for a count, never the text.
+ * responses, later `system/init`s) is ignored. Thinking text is empty unless the CLI is run with
+ * `--thinking-display summarized`; `system/thinking_tokens` estimates are the count, the assistant
+ * message's thinking block (once, whole) is the text.
  */
-export function createStreamParser() {
+export function createStreamParser(o: { windows?: Record<string, number> } = {}) {
   const toolNames = new Map<string, string>();
+  // tool_use id -> the task call it ran under (its parent_tool_use_id), and task call id -> its title.
+  // ponytail: kept for the parser's life (one session, a few ids per task call); prune on result lines if a very long session ever shows it.
+  const parentOf = new Map<string, string>();
+  const taskTitle = new Map<string, string>();
   let sawInit = false;
   // ponytail: a row at a burst start and each further 1,000 tokens: the last burst of a turn shows its start figure; emit at the burst end too if that reads wrong.
   // tokens of this turn's finished bursts, the open burst's latest estimate, whether one is open, the last total emitted
   let done = 0, cur = 0, open = false, shown = 0;
   const closeBurst = () => { if (open) { done += cur; cur = 0; open = false; } };
+  // the model named by the last init, and the model and usage of the last parent (not sidechain) assistant line of this turn
+  let initModel: string | undefined, model: string | undefined, usage: any;
 
-  return (m: any): StreamOut => {
+  const parse = (m: any): StreamOut => {
     const out: StreamOut = { events: [] };
     if (m?.type === 'system' && m.subtype === 'init') {
       if (!sawInit && typeof m.session_id === 'string') out.sessionId = m.session_id;
       sawInit = true;
+      if (typeof m.model === 'string') initModel = m.model;
+    } else if (m?.type === 'system' && m.subtype === 'compact_boundary') {
+      // ponytail: after a compact_boundary the turn's earlier usage is dropped; post_tokens is the CLI's figure (it leaves out the system prompt), so it is reported, never used as the measured context.
+      const c = m.compact_metadata;
+      out.events.push({
+        type: 'compacted',
+        trigger: typeof c?.trigger === 'string' ? c.trigger : 'unknown',
+        ...(count(c?.pre_tokens) ? { before: c.pre_tokens } : {}),
+        ...(count(c?.post_tokens) ? { after: c.post_tokens } : {}),
+      });
+      usage = undefined;
     } else if (m?.type === 'system' && m.subtype === 'thinking_tokens' && Number.isFinite(m.estimated_tokens)) {
       const e = Number(m.estimated_tokens);
       const start = !open || e < cur;
@@ -35,11 +57,22 @@ export function createStreamParser() {
       cur = e;
       if (start || done + cur >= shown + 1000) out.events.push({ type: 'thinking', tokens: shown = done + cur });
     } else if (m?.type === 'assistant') {
+      // ponytail: context used = the last parent assistant message's input + cache + output tokens (F3, inferred); one usage per successful turn.
+      if (m.parent_tool_use_id == null && m.message?.usage && typeof m.message.usage === 'object') {
+        usage = m.message.usage;
+        if (typeof m.message.model === 'string') model = m.message.model;
+      }
       for (const b of blocks(m)) {
         if (b.type === 'text' || b.type === 'tool_use') closeBurst();
         if (b.type === 'text' && b.text) out.events.push({ type: 'text', text: b.text });
+        if (b.type === 'thinking' && typeof b.thinking === 'string' && b.thinking) {
+          out.events.push({ type: 'thinking', tokens: done + cur || shown, text: b.thinking });
+          closeBurst();   // the text is the end of its burst
+        }
         if (b.type === 'tool_use') {
           toolNames.set(b.id, b.name);
+          if (typeof m.parent_tool_use_id === 'string') parentOf.set(b.id, m.parent_tool_use_id);
+          if (TASK_TOOLS.has(b.name)) taskTitle.set(b.id, taskTitleOf(b.input));
           out.events.push({ type: 'tool_call', tool: b.name, input: b.input });
         }
       }
@@ -55,14 +88,57 @@ export function createStreamParser() {
     } else if (m?.type === 'result') {
       done = cur = shown = 0;
       open = false;
+      const isError = m.is_error === true;
       out.result = {
         text: typeof m.result === 'string' ? m.result : '',
         totalCostUsd: Number(m.total_cost_usd ?? 0),
-        isError: m.is_error === true,
+        isError,
       };
+      const u = isError ? undefined : usageOf(model ?? initModel, usage, m.modelUsage, o.windows);
+      if (u) out.result.usage = u;
+      const by = byModelOf(m.modelUsage);
+      if (by) out.result.byModel = by;
+      model = usage = undefined;
     }
     return out;
   };
+  /** The title of the task a tool call ran under, or undefined for the model's own call (or an id not seen yet). */
+  const via = (id: string): string | undefined => {
+    const parent = parentOf.get(id);
+    return parent === undefined ? undefined : taskTitle.get(parent);
+  };
+  return Object.assign(parse, { via });
+}
+
+/** The CLI's task tool: `Agent` in 2.1.293, `Task` before. A small set, to extend when the CLI renames it again. */
+const TASK_TOOLS = new Set(['Agent', 'Task']);
+
+/** The task's description; empty or missing falls back to its subagent type, then to 'task', so a title is never ''. */
+function taskTitleOf(input: any): string {
+  for (const k of ['description', 'subagent_type']) {
+    const v = input?.[k];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return 'task';
+}
+
+const count = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0;
+
+/** One bad figure drops the whole split: a partial one would put its dollars on the wrong models. */
+function byModelOf(modelUsage: unknown): Record<string, number> | undefined {
+  if (!modelUsage || typeof modelUsage !== 'object') return undefined;
+  const entries = Object.entries(modelUsage as Record<string, any>).map(([k, v]) => [k, v?.costUSD] as const);
+  if (!entries.length || !entries.every(([, c]) => typeof c === 'number' && Number.isFinite(c) && c >= 0)) return undefined;
+  return Object.fromEntries(entries) as Record<string, number>;
+}
+
+function usageOf(model: string | undefined, u: any, modelUsage: any, windows?: Record<string, number>) {
+  if (!model || !u) return undefined;
+  const parts = [u.input_tokens, u.cache_creation_input_tokens, u.cache_read_input_tokens, u.output_tokens];
+  if (!parts.every(count)) return undefined;
+  const used = (parts as number[]).reduce((a, b) => a + b, 0);
+  const w = [modelUsage?.[model]?.contextWindow, windows?.[model]].find((x) => count(x) && x > 0);
+  return { model, used, ...(w ? { window: w as number } : {}) };
 }
 
 function blocks(m: any): any[] {

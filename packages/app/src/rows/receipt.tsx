@@ -14,7 +14,12 @@ export function receiptFields(r: Receipt): Array<[string, string]> {
     ['cards delivered', r.liveCardsDelivered], ['auto cards fired', r.autoCardsFired],
     ['Knowl recalls', r.knowlRecalls], ['Knowl stores', r.knowlStores], ['Knowl skipped', r.knowlSkipped],
   ];
-  return [...always, ...sometimes.filter(([, n]) => n !== 0).map(([k, n]): [string, string] => [k, String(n)])];
+  const money = (x: number) => `$${x.toFixed(4)}`; // the cost row's 4 decimals, so the parts visibly add up
+  const split = (r.models ?? []).map((m) => `${m.label ?? m.model} ${money(m.usd)} (${m.turns} turn${m.turns === 1 ? '' : 's'})`).join(' · ');
+  const models: Array<[string, string]> = split ? [['models', split + (r.unsplitUsd ? ` · not split by model ${money(r.unsplitUsd)}` : '')]] : [];
+  const subs = (r.subagents ?? []).map((s) => `${s.title} ${money(s.usd)} (${s.turns} turn${s.turns === 1 ? '' : 's'})`).join(' · ');
+  const subagents: Array<[string, string]> = subs ? [['subagents', subs]] : [];
+  return [...always, ...models, ...subagents, ...sometimes.filter(([, n]) => n !== 0).map(([k, n]): [string, string] => [k, String(n)])];
 }
 
 export const render = (row: LogRow) => {

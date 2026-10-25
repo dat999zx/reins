@@ -109,8 +109,8 @@ describe('reins run against fake-claude', () => {
     // steer card delivered mid-turn in plan, inside this session's nonce marker
     const steer = evs.findIndex((e) => e.type === 'card_delivered' && e.data.channel === 'mid-turn' && /PINEAPPLE/.test(e.data.card));
     expect(stepOf(evs, steer)).toBe('plan');
-    const nonce = /\[REINS CARD ([0-9a-f]{32}) /.exec(f.log().find((l) => l.kind === 'args').note)![1];
-    expect(f.log().some((l) => l.kind === 'hook' && String(l.response.hookSpecificOutput?.additionalContext).includes(`[REINS CARD ${nonce} `))).toBe(true);
+    const nonce = /\[REINS CARD ([0-9a-f]{32}): /.exec(f.log().find((l) => l.kind === 'args').note)![1];
+    expect(f.log().some((l) => l.kind === 'hook' && String(l.response.hookSpecificOutput?.additionalContext).includes(`[REINS CARD ${nonce}: `))).toBe(true);
     // the gate held: no turn between gate_paused and the changes request, and none of implement before approval
     const gp = evs.findIndex((e) => e.type === 'gate_paused');
     const ga = evs.findIndex((e) => e.type === 'gate_approved');
@@ -175,6 +175,54 @@ describe('reins run against fake-claude', () => {
     expect(of(store.loadRun(res.runId)!.snapshot.events, 'card_queued')).toEqual([]);
     store.close();
   }, 30_000);
+
+  it('a model step says the terminal cannot switch models; the receipt names the model with its dollars and turns', async () => {
+    const f = fakeSetup([]);
+    const file = path.join(f.dir, 'w.reins.md');
+    fs.writeFileSync(file, '---\nreins: 1\nname: m\nbudget: { turns: 9, minutes: 9 }\nalways: []\n---\n\n## model claude-opus-5-5\n\n## phase one\n> a\n');
+    const store = openStore(':memory:');
+    const d = drive({ file, cwd: f.dir, store });
+    const res = await d.h.done;
+    expect(res.status).toBe('done');
+    expect(d.text()).toContain("· model-1: this runner cannot switch models; the steps run on the CLI's model");
+    const r = res.receipt!;
+    expect(r.models).toHaveLength(1);
+    const [m] = r.models!;
+    expect(m!.turns).toBe(1);
+    expect(m!.usd + (r.unsplitUsd ?? 0)).toBeCloseTo(r.totalCostUsd, 4);
+    expect(d.text()).toContain(`models ${m!.model} $${m!.usd.toFixed(4)} (1 turn)`);
+    store.close();
+  }, 60_000);
+
+  it('a subagent step prints when it starts and when it hands back, with its cost to 4 decimals', async () => {
+    const f = fakeSetup([]);
+    const file = path.join(f.dir, 'w.reins.md');
+    fs.writeFileSync(file, '---\nreins: 1\nname: s\nbudget: { turns: 9, minutes: 9, usd: 2.00 }\nalways: []\n---\n\n## subagent research\nmodel: m1\nusd: 0.50\n> Look.\n\n## phase one\n> a\n');
+    const store = openStore(':memory:');
+    const d = drive({ file, cwd: f.dir, store });
+    const res = await d.h.done;
+    expect(res.status).toBe('done');
+    const evs = store.loadRun(res.runId)!.snapshot.events;
+    const result = of(evs, 'subagent_result')[0]!;
+    expect(result.data.step).toBe('subagent-1');
+    expect(d.text()).toContain('· subagent-1: subagent research started on m1');
+    expect(d.text()).toContain(`· subagent-1: handed back its result ($${Number(result.data.cost ?? 0).toFixed(4)})`);
+    expect(d.text().indexOf('started on m1')).toBeLessThan(d.text().indexOf('handed back its result'));
+    store.close();
+  }, 60_000);
+
+  it('a subagent over its slice prints the budget warning line', async () => {
+    const f = fakeSetup([]);
+    const file = path.join(f.dir, 'w.reins.md');
+    fs.writeFileSync(file, '---\nreins: 1\nname: s\nbudget: { turns: 9, minutes: 9, usd: 2.00 }\nalways: []\n---\n\n## subagent research\nmodel: m1\nusd: 0.01\n> Look.\n\n## phase one\n> a\n');
+    const store = openStore(':memory:');
+    const d = drive({ file, cwd: f.dir, store });
+    const res = await d.h.done;
+    const warn = of(store.loadRun(res.runId)!.snapshot.events, 'budget_warning')[0]!;
+    expect(warn).toBeDefined();
+    expect(d.text()).toContain(`· ${String(warn.data.text)}`);
+    store.close();
+  }, 60_000);
 
   it('check errors stop the run before claude starts', async () => {
     const f = fakeSetup([]);

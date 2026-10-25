@@ -11,6 +11,7 @@ import { startHookServer } from '../hooks.js';
 import { killTree } from '../proc.js';
 import { newNonce, trustNote } from './cards.js';
 import { claudeCommand } from './find.js';
+import { provider } from './provider.js';
 import { createStreamParser } from './stream.js';
 
 export interface ClaudeConfig {
@@ -32,6 +33,14 @@ const GUARDED_TOOLS = [...WRITE_TOOLS, ...SHELL_TOOLS].join('|');
 // Run mcp.ts from source under tests and mcp.js from dist; Node runs either directly.
 const MCP_SCRIPT = fileURLToPath(new URL(import.meta.url.endsWith('.ts') ? '../mcp.ts' : '../mcp.js', import.meta.url));
 
+/** One turn's share of a running total; a total that went down means a new count. */
+export const turnCost = (total: number, last: number) => (total >= last ? total - last : total);
+
+/** Each model's share of a reply: its running total minus the one last counted. A model with no new spend is left out. */
+// ponytail: the CLI's own helper calls on other models land in their model's dollars with no turn.
+export const modelCosts = (totals: Record<string, number>, base: Record<string, number>): Record<string, number> =>
+  Object.fromEntries(Object.entries(totals).map(([m, t]) => [m, turnCost(t, base[m] ?? 0)] as const).filter(([, c]) => c > 0));
+
 export function claudeEngine(cfg: ClaudeConfig): Engine {
   return {
     id: 'claude',
@@ -51,12 +60,18 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
     turnEvents.push(ev);
     cfg.onLive?.(ev);
   };
+  // Made before the hook server: an approval names the tool call that asked, and the parser knows which task ran it.
+  const parse = createStreamParser({ windows: provider.windows });
   const hooks = await startHookServer({
     cwd,
     policy: opts.policy,
     pendingCards: opts.pendingCards ?? (() => []),
     nonce,
-    onApprove: opts.onApprove ?? cfg.onApprove,
+    // A request whose id is not a task child's (or not seen yet) has no via: asked as the parent's own.
+    onApprove: (r) => {
+      const via = r.id === undefined ? undefined : parse.via(r.id);
+      return (opts.onApprove ?? cfg.onApprove)(via === undefined ? r : { ...r, via });
+    },
     onEvent: emit,
   });
 
@@ -86,7 +101,11 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
     '--settings', settingsFile,
     '--append-system-prompt-file', noteFile,
     ...(opts.model ?? cfg.model ? ['--model', (opts.model ?? cfg.model)!] : []),
-    ...(cfg.effort ? ['--effort', cfg.effort] : []),
+    ...(opts.effort ?? cfg.effort ? ['--effort', (opts.effort ?? cfg.effort)!] : []),
+    // The provider's own spending cap on this process (a subagent's room); 0 is a value.
+    ...(opts.maxUsd !== undefined ? ['--max-budget-usd', String(opts.maxUsd)] : []),
+    // Without it the stream's thinking blocks are empty (CLI 2.1.293: hidden flag).
+    '--thinking-display', 'summarized',
   ];
   const [cmd, cmdArgs] = claudeCommand(cfg.bin, args);
   // shell: false, always: through a shell or the npm shim an interrupt orphans claude.exe.
@@ -98,7 +117,12 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
   child.stderr.setEncoding('utf8');
   child.stderr.on('data', (d: string) => (stderr = (stderr + d).slice(-4000)));
   let dead: string | undefined;
-  let lastTotal = 0;
+  // The raw running total Reins last counted; undefined = unknown (a resumed session from before Reins kept it).
+  let base: number | undefined = provider.costAcrossResume === 'cumulative' && opts.sessionId ? opts.costBase : 0;
+  // The same, per model; a reply with no per-model figures leaves it unknown, so the next reply has no split rather than a wrong one.
+  let baseBy: Record<string, number> | undefined = provider.costAcrossResume === 'cumulative' && opts.sessionId ? opts.costBaseByModel : {};
+  // Set by interrupt(), cleared when the next turn starts: an error result that asked for is not a failed turn.
+  let interrupted = false;
   let current: { resolve: (r: TurnResult) => void; reject: (e: Error) => void } | undefined;
   let exited = false;
   const exit = new Promise<void>((resolve) => child.on('close', () => { exited = true; resolve(); }));
@@ -119,7 +143,6 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
   child.on('close', (code) => failTurn(dead ?? `claude exited (code ${code}). ${stderr.trim().split('\n').slice(-3).join(' ')}`));
   child.stdin.on('error', () => {}); // a write after exit is reported through 'close'
 
-  const parse = createStreamParser();
   readline.createInterface({ input: child.stdout }).on('line', (line) => {
     let m: unknown;
     try {
@@ -130,31 +153,46 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
     const out = parse(m);
     for (const ev of out.events) emit(ev);
     if (out.result) {
-      const cost = Math.max(0, out.result.totalCostUsd - lastTotal);
-      lastTotal = out.result.totalCostUsd;
+      const { text, totalCostUsd: total, isError, usage, byModel } = out.result;
+      if (usage) emit({ type: 'usage', ...usage });
+      const cost = base === undefined ? undefined : turnCost(total, base);
+      base = total;
+      // A split that does not add up to the reply's cost (a model dropped out and came back) is no split.
+      const split = baseBy && byModel ? modelCosts(byModel, baseBy) : undefined;
+      const models = split && cost !== undefined && Math.abs(Object.values(split).reduce((a, b) => a + b, 0) - cost) < 1e-6 ? split : undefined;
+      baseBy = byModel;
       const events = turnEvents;
       turnEvents = [];
-      endTurn({ text: out.result.text, cost, events });
+      endTurn({
+        text, cost, total, isError: isError && !interrupted, events,
+        ...(byModel ? { totals: byModel } : {}),
+        ...(models ? { models } : {}),
+      });
     }
   });
 
   const send = (o: unknown) => child.stdin.write(JSON.stringify(o) + '\n');
   let interrupts = 0;
 
-  return {
+  const session: EngineSession = {
     sessionId,
     turn(text) {
       if (dead) return Promise.reject(new Error(`the claude session is dead: ${dead}`));
       if (current) return Promise.reject(new Error('a turn is already running'));
+      interrupted = false;
       return new Promise<TurnResult>((resolve, reject) => {
         current = { resolve, reject };
         send({ type: 'user', message: { role: 'user', content: text } });
       });
     },
 
+    // The CLI's own command, sent as a user line (verified over stream-json input: spike/fixtures/claude-2.1.293-compact.jsonl).
+    compact: () => session.turn('/compact'),
+
     async interrupt() {
       if (!current || dead) return;
       const pending = current;
+      interrupted = true;
       send({ type: 'control_request', request_id: `reins-int-${++interrupts}`, request: { subtype: 'interrupt' } });
       const ended = new Promise<boolean>((resolve) => {
         const t = setTimeout(() => resolve(false), cfg.interruptTimeoutMs ?? 10_000);
@@ -169,7 +207,8 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
       turnEvents = [];
       dead = 'claude did not stop after an interrupt, so Reins killed it';
       events.push({ type: 'error', message: dead });
-      endTurn({ text: '', cost: 0, events });
+      // ponytail: a turn with no provider total (an interrupt kill, a crash) logs no cost; its spend lands, once, in the next counted turn.
+      endTurn({ text: '', events });
       killTree(child.pid);
     },
 
@@ -188,6 +227,7 @@ async function openSession(cfg: ClaudeConfig, opts: OpenOptions): Promise<Engine
       fs.rmSync(dir, { recursive: true, force: true });
     },
   };
+  return session;
 }
 
 /** `claude --version`, then a one-turn call; login state comes only from the CLI's own output (plan D4). */

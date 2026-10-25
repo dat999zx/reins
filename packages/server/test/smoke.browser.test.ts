@@ -151,7 +151,7 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await editor.fill(`${good}\n`);
     await editor.press('ControlOrMeta+S');
     await page.getByRole('status').getByText('Saved.').waitFor();
-    await page.getByRole('button', { name: 'Run' }).click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
     const trust = page.getByRole('region', { name: 'trust question' });
     await trust.waitFor();
     expect(await trust.locator('.qdetail').innerText()).toBe('npm test');
@@ -179,15 +179,17 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     const textTab = page.getByRole('tab', { name: 'Text' });
     const row = (id: string) => page.locator(`.blk[data-id="${id}"]`);
     // the first point on a 24 px grid where the pointer is over the bare surface: not a block, an arrow, the toolbar or a menu
-    const empty = async () => {
+    const empty = async (last = false) => {
+      // The first free spot (top-left), or with `last` the final one (bottom-right): a block put at the first one can cover rows that sit near it.
       const p = await page.evaluate(`(() => {
         const v = document.querySelector('[aria-label="Workspace"]');
         const r = v.getBoundingClientRect();
+        let found = null;
         for (let y = r.top + 24; y < r.bottom - 24; y += 24) for (let x = r.left + 24; x < r.right - 24; x += 24) {
           const e = document.elementFromPoint(x, y);
-          if (e === v || (e && e.classList.contains('sx-world'))) return { x, y };
+          if (e === v || (e && e.classList.contains('sx-world'))) { found = { x, y }; if (!${last}) return found; }
         }
-        return null;
+        return found;
       })()`) as { x: number; y: number } | null;
       expect(p, 'no empty surface in the workspace').not.toBeNull();
       return p!;
@@ -204,19 +206,17 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     expect(await editor.inputValue()).toMatch(/x$/);
     await editor.fill(clean);
 
-    // 8c.2. the inspector adds a `next` link to a new step ship; Ctrl+S in Blocks saves
+    // 8c.2. `next` links written in Text to a new step ship show in the inspector's list, which has no add controls; Ctrl+S in Blocks saves
     await textTab.click();
-    await editor.fill(`${clean}\n## phase ship\n> Ship it.\n`);
+    await editor.fill(`${clean.replace('## phase plan\n', '## phase plan\nnext: ship\n').replace('## phase build\n', '## phase build\nnext: ship\n').trimEnd()}\n\n## phase ship\n> Ship it.\n`);
     await blocksTab.click();
     await row('ship').waitFor();
     const panel = page.locator('aside[aria-label="Block panel"]');
     for (const id of ['plan', 'build']) {
       await row(id).locator('.sx-row').first().click();
-      await panel.getByLabel('Link kind').selectOption('next');
-      await panel.getByLabel('Link target').selectOption('ship');
-      await panel.getByRole('button', { name: 'Add link' }).click();
-      // an edit made while another is in flight is dropped, so wait for the link before the next one
       await panel.getByText('next → ship').waitFor();
+      expect(await panel.getByLabel('Link kind').count()).toBe(0);
+      expect(await panel.getByRole('button', { name: 'Add link' }).count()).toBe(0);
     }
     await textTab.click();
     await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('## phase plan\nnext: ship\n');
@@ -341,6 +341,134 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await blocksTab.click();
     await expect.poll(() => always.inputValue(), { timeout: W }).toBe('Never: touch prod');
 
+    // 8d.3b. the budget form: USD lands in the front-matter, a wrong value is refused in words and commits nothing
+    const budget = page.getByRole('region', { name: 'Budget', exact: true });
+    const usd = budget.getByRole('textbox', { name: 'USD' });
+    const u0 = await usd.inputValue();
+    await expect.poll(async () => {
+      await blocksTab.click();
+      const spot = await empty();
+      await page.mouse.click(spot.x, spot.y);
+      await usd.fill('2.5');
+      await usd.blur();
+      await textTab.click();
+      return editor.inputValue();
+    }, { timeout: W }).toContain('usd: 2.50 }');
+    await expect.poll(() => budget.count(), { timeout: W }).toBe(1); // the Text view carries the same form
+    await usd.fill('abc');
+    await usd.blur();
+    await expect.poll(() => budget.getByRole('alert').textContent(), { timeout: W }).toBe('USD must be an amount above 0, like 2.50. Leave it empty for no USD limit.');
+    expect(await editor.inputValue()).toContain('usd: 2.50 }');
+    const turns = budget.getByRole('spinbutton', { name: 'Turns' });
+    await turns.fill('0');
+    await turns.blur();
+    await expect.poll(() => budget.getByRole('alert').textContent(), { timeout: W }).toBe('Turns must be a whole number, 1 or more.');
+    expect(await editor.inputValue()).toContain('usd: 2.50 }');
+    // back to what later steps expect (retried: a preview landing between fill and blur resets the draft)
+    await expect.poll(async () => {
+      await usd.fill(u0);
+      await usd.blur();
+      return (await editor.inputValue()).includes('usd:');
+    }, { timeout: W }).toBe(u0 !== '');
+    await blocksTab.click();
+
+    // 8d.3c. the model block: the palette adds it, the panel's Model select lists the session's catalog, a wrong Budget (USD) is refused in words
+    // (`tidy` is not the file here: 8d.3 added an Always rule, so the file is compared with itself from before the block)
+    await textTab.click();
+    const beforeModel = await editor.inputValue();
+    await blocksTab.click();
+    await card('switch model').click();
+    await row('model-1').waitFor();
+    await panel.locator('h3', { hasText: 'model-1' }).waitFor();
+    const pick = panel.getByRole('combobox', { name: 'Model', exact: true });
+    expect(await pick.locator('option').first().textContent()).toBe('Pick a model');
+    await pick.selectOption('claude-opus-5-5');
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('## model claude-opus-5-5');
+    await blocksTab.click();
+    const slice = panel.getByRole('textbox', { name: 'Budget (USD)' });
+    await slice.fill('abc');
+    await slice.blur();
+    await expect.poll(() => panel.getByRole('alert').textContent(), { timeout: W }).toBe('USD must be an amount above 0, like 2.50. Leave it empty for no USD limit.');
+    // the words are tied to the input that was refused
+    expect(await slice.getAttribute('aria-invalid')).toBe('true');
+    expect(await slice.getAttribute('aria-describedby')).toBe(await panel.getByRole('alert').getAttribute('id'));
+    await textTab.click();
+    expect(await editor.inputValue()).not.toContain('usd: abc');
+    await blocksTab.click();
+    // retried inside the poll: a preview landing between fill and blur resets the draft
+    await expect.poll(async () => {
+      await blocksTab.click();
+      await slice.fill('0.50');
+      await slice.blur();
+      await textTab.click();
+      return editor.inputValue();
+    }, { timeout: W }).toContain('usd: 0.50');
+    await expect.poll(() => diags.textContent(), { timeout: W }).not.toContain("Set the workflow's USD budget first");
+    await blocksTab.click();
+    // the face shows both pills, the id and the USD
+    await expect.poll(() => row('model-1').getByRole('combobox', { name: 'Model of model-1', exact: true }).inputValue(), { timeout: W }).toBe('claude-opus-5-5');
+    await expect.poll(() => row('model-1').locator('input').nth(0).inputValue(), { timeout: W }).toBe('0.50');
+    // the words under Budget (USD) go away as soon as a good value is committed (no tab switch in between)
+    await expect.poll(async () => {
+      await slice.fill('abc');
+      await slice.blur();
+      return panel.getByRole('alert').count();
+    }, { timeout: W }).toBe(1);
+    await expect.poll(async () => {
+      await slice.fill('1.25');
+      await slice.blur();
+      return panel.getByRole('alert').count();
+    }, { timeout: W }).toBe(0);
+    // a model typed in Text that the catalog does not list stays the select's value
+    await textTab.click();
+    await editor.fill((await editor.inputValue()).replace('## model claude-opus-5-5', '## model claude-unlisted-9'));
+    await blocksTab.click();
+    await row('model-1').click();
+    await expect.poll(() => pick.inputValue(), { timeout: W }).toBe('claude-unlisted-9');
+    await panel.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect.poll(() => row('model-1').count(), { timeout: W }).toBe(0);
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toBe(beforeModel);
+    await blocksTab.click();
+
+    // 8d.3d. the subagent block: the Model select starts with the session's model, a model and a title land in the file (print keeps the `model:` line), the face shows the model
+    await textTab.click();
+    const beforeSub = await editor.inputValue();
+    await blocksTab.click();
+    await card('subagent').click();
+    await row('subagent-1').waitFor();
+    await panel.locator('h3', { hasText: 'subagent-1' }).waitFor();
+    const subPick = panel.getByRole('combobox', { name: 'Model', exact: true });
+    expect(await subPick.locator('option').first().textContent()).toBe('Sonnet 5.5 (session)');
+    await subPick.selectOption('claude-haiku-5-5');
+    const subTitle = panel.getByRole('textbox', { name: 'Title' });
+    await subTitle.fill('research');
+    await subTitle.blur();
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('## subagent research');
+    expect(await editor.inputValue()).toContain('model: claude-haiku-5-5');
+    await blocksTab.click();
+    const facePick = row('subagent-1').getByRole('combobox', { name: 'Model of subagent-1', exact: true });
+    await expect.poll(() => facePick.inputValue(), { timeout: W }).toBe('claude-haiku-5-5');
+    // the face's own picker writes the same file line
+    await facePick.selectOption('claude-opus-5-5');
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('model: claude-opus-5-5');
+    await blocksTab.click();
+    // reasoning: the panel's Reasoning select starts on the session's level, and a level lands as a `reasoning:` line
+    const levelPick = panel.getByRole('combobox', { name: 'Reasoning', exact: true });
+    expect(await levelPick.locator('option').first().textContent()).toBe('Medium (session)');
+    await levelPick.selectOption('high');
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('reasoning: high');
+    await blocksTab.click();
+    await panel.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect.poll(() => row('subagent-1').count(), { timeout: W }).toBe(0);
+    await textTab.click();
+    await expect.poll(() => editor.inputValue(), { timeout: W }).toBe(beforeSub);
+    await blocksTab.click();
+
     // 8d.4. a block's grip dragged onto the top half of another block moves it before that block
     await blocksTab.click();
     await row('build').locator('.sx-grip').first().dragTo(row('plan').locator('.sx-row').first(), { targetPosition: { x: 30, y: 3 } });
@@ -438,7 +566,16 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
 
     // 8d.7. a grip dragged into an empty C body nests the block; a click on the nested block selects it, not the C block around it
     await blocksTab.click();
-    await row('run-1').locator('.sx-grip').first().dragTo(page.locator('[data-body="repeat-1/kids"]'));
+    // the condition drop above may still be settling the canvas: measure the grip and the body once they hold still, then move in steps
+    await page.getByRole('button', { name: 'Fit' }).click();   // the empty body sits at the canvas edge: fit the stack so it is fully in view
+    const gripEl = row('run-1').locator('.sx-grip').first(), bodyEl = page.locator('[data-body="repeat-1/kids"]');
+    const stillBoxes = async () => JSON.stringify([await gripEl.boundingBox(), await bodyEl.boundingBox()]);
+    await expect.poll(async () => { const a = await stillBoxes(); await page.waitForTimeout(150); return a === await stillBoxes(); }, { timeout: W }).toBe(true);
+    const gripBox = (await gripEl.boundingBox())!, bodyBox = (await bodyEl.boundingBox())!;
+    await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + gripBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(bodyBox.x + bodyBox.width / 2, bodyBox.y + bodyBox.height / 2, { steps: 8 });
+    await page.mouse.up();
     await textTab.click();
     await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('## repeat\nuntil: tests pass\nmax: 3\n\n### run `npm run lint`\n');
     await blocksTab.click();
@@ -489,22 +626,31 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     // 8e.0c. a plain drag on bare surface pans; the wheel zooms toward the cursor
     await blocksTab.click();
     const hatBox = async () => (await page.locator('.sx-hat').boundingBox())!;
+    // The canvas may still be settling after the tab switch (on a slower machine the hat moved after it was measured): measure once a box holds still.
+    const holds = (box: () => Promise<unknown>) => expect.poll(async () => { const a = JSON.stringify(await box()); await page.waitForTimeout(150); return a === JSON.stringify(await box()); }, { timeout: W }).toBe(true);
+    await holds(hatBox);
     const hat0 = await hatBox();
     const from = await empty();
     await page.mouse.move(from.x, from.y);
     await page.mouse.down();
     await page.mouse.move(from.x + 80, from.y + 40, { steps: 8 });
     await page.mouse.up();
+    await holds(hatBox);
     const hat1 = await hatBox();
     expect(Math.abs(hat1.x - hat0.x - 80)).toBeLessThanOrEqual(2);
     expect(Math.abs(hat1.y - hat0.y - 40)).toBeLessThanOrEqual(2);
-    const mid = { x: hat1.x + hat1.width / 2, y: hat1.y + hat1.height / 2 };
+    // The pivot is the hat's title text. The middle of the whole hat is not stable: the hat holds the budget inputs, and over an input the wheel is left to the input (no zoom), so
+    // where the middle falls depends on the font (it landed on an input on macOS).
+    const nameBox = async () => (await page.locator('.sx-hat > b').first().boundingBox())!;
+    const name1 = await nameBox();
+    const mid = { x: name1.x + name1.width / 2, y: name1.y + name1.height / 2 };
     await page.mouse.move(mid.x, mid.y);
     await page.mouse.wheel(0, -240);
     await expect.poll(async () => parseInt(await zoomLabel.innerText(), 10), { timeout: W }).toBeGreaterThan(100);
-    const hat2 = await hatBox();
-    expect(Math.abs(hat2.x + hat2.width / 2 - mid.x)).toBeLessThanOrEqual(3);
-    expect(Math.abs(hat2.y + hat2.height / 2 - mid.y)).toBeLessThanOrEqual(3);
+    await holds(nameBox);
+    const name2 = await nameBox();
+    expect(Math.abs(name2.x + name2.width / 2 - mid.x)).toBeLessThanOrEqual(3);
+    expect(Math.abs(name2.y + name2.height / 2 - mid.y)).toBeLessThanOrEqual(3);
     await page.getByRole('button', { name: 'Reset zoom' }).click();
     await expect.poll(() => zoomLabel.innerText(), { timeout: W }).toBe('100%');
 
@@ -521,7 +667,10 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await textTab.click();
     const textBeforeHat = await editor.inputValue();
     await blocksTab.click();
-    await drag({ x: hat3.x + hat3.width / 2, y: hat3.y + hat3.height / 2 }, { x: hat3.x + hat3.width / 2 + 120, y: hat3.y + hat3.height / 2 + 60 });
+    // Grab the hat by its title text: the middle of the whole hat can be a budget input (it was one on macOS), and a press on an input does not drag the script.
+    const title3 = (await page.locator('.sx-hat > b').first().boundingBox())!;
+    const grip = { x: title3.x + title3.width / 2, y: title3.y + title3.height / 2 };
+    await drag(grip, { x: grip.x + 120, y: grip.y + 60 });
     const hat4 = await hatBox();
     expect(Math.abs(hat4.x - hat3.x - 120)).toBeLessThanOrEqual(2);
     expect(Math.abs(hat4.y - hat3.y - 60)).toBeLessThanOrEqual(2);
@@ -552,7 +701,9 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await workspace.focus();
     await page.keyboard.press('Escape');
     await expect.poll(() => selected.count(), { timeout: W }).toBe(0);
-    // build sits above plan here (8c.2 swapped them)
+    // build sits above plan here (8c.2 swapped them). The undo above may still be settling the canvas: measure once both rows hold still.
+    const still = async () => JSON.stringify([await row('build').boundingBox(), await row('plan').boundingBox()]);
+    await expect.poll(async () => { const a = await still(); await page.waitForTimeout(150); return a === await still(); }, { timeout: W }).toBe(true);
     const upper = (await row('build').boundingBox())!, lower = (await row('plan').boundingBox())!;
     await page.keyboard.down('Shift');
     await drag({ x: upper.x - 20, y: upper.y - 6 }, { x: lower.x + lower.width + 20, y: lower.y + lower.height + 6 });
@@ -731,6 +882,42 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await textTab.click();
     expect(await editor.inputValue()).toBe(textBeforeHat);
     await blocksTab.click();
+    // 8e.5b. S-against: a verify block's blue handle, dragged onto a block, writes `against:`; select the arrow and press Delete: the line is gone
+    await card('verify against').click();
+    await row('verify-1').waitFor();
+    // The new block is the last one, low on the canvas, and the zoom buttons float at the foot of it: on a runner with a taller layout they sat over the block's handles (the press hit
+    // "Zoom out"). Pan the script up while the wire is drawn, and back after, so the camera is where the later steps expect it.
+    const lift = 90;
+    const clear = await empty();
+    await drag(clear, { x: clear.x, y: clear.y - lift });
+    await holds(async () => ({ v: await row('verify-1').boundingBox(), p: await row('plan').boundingBox() }));
+    await row('verify-1').locator('.sx-row').first().hover();
+    const vb = (await row('verify-1').locator('.sx-handle[data-lk="against"]').boundingBox())!;
+    await drag(centre(vb), centre((await row('plan').locator('.sx-row').first().boundingBox())!));
+    const against = page.locator('[data-link="verify-1/-1"]');
+    await against.waitFor({ state: 'attached', timeout: W });
+    await textTab.click();
+    expect(await editor.inputValue()).toContain('against: plan\n');
+    await blocksTab.click();
+    const againstAt = (await page.evaluate(`(() => {
+      const p = document.querySelector('[data-link="verify-1/-1"] .sx-hit'), q = p.getPointAtLength(p.getTotalLength() / 2), m = p.getScreenCTM();
+      return { x: m.a * q.x + m.c * q.y + m.e, y: m.b * q.x + m.d * q.y + m.f };
+    })()`)) as { x: number; y: number };
+    await page.mouse.click(againstAt.x, againstAt.y);
+    await expect.poll(() => page.locator('[data-link="verify-1/-1"].sx-lsel').count(), { timeout: W }).toBe(1);
+    await page.keyboard.press('Delete');
+    await expect.poll(() => against.count(), { timeout: W }).toBe(0);
+    await textTab.click();
+    expect(await editor.inputValue()).not.toContain('against:');
+    await blocksTab.click();
+    await row('verify-1').locator('.sx-row').first().click();
+    await page.keyboard.press('Delete');
+    await expect.poll(() => row('verify-1').count(), { timeout: W }).toBe(0);
+    await textTab.click();
+    expect(await editor.inputValue()).toBe(textBeforeHat);
+    await blocksTab.click();
+    const back = await empty();
+    await drag(back, { x: back.x, y: back.y + lift });
     // 8e.6. detach `plan` from its menu: it moves behind an `end`, no new error, a note names the capped link; Ctrl+Z restores the text
     const errs = () => page.locator('.diags .bad').count();
     await textTab.click();
@@ -881,9 +1068,12 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await page.mouse.down();
     await page.mouse.move(sg.x + 30, sg.y + 30, { steps: 4 });
     await page.waitForTimeout(300);
-    const zb = centre((await page.getByRole('button', { name: 'Fit' }).boundingBox())!);
+    const fitBox = () => page.getByRole('button', { name: 'Fit' }).boundingBox();
+    await holds(fitBox); // a note fading away moves the toolbar: aim once it holds still (on a slower machine it moved after it was measured, and the drop landed on the canvas)
+    const zb = centre((await fitBox())!);
     await page.mouse.move(zb.x, zb.y, { steps: 8 });
-    const zb2 = centre((await page.getByRole('button', { name: 'Fit' }).boundingBox())!); // a note fading away can move the toolbar mid-drag
+    await holds(fitBox);
+    const zb2 = centre((await fitBox())!); // a note fading away can move the toolbar mid-drag
     await page.mouse.move(zb2.x, zb2.y, { steps: 3 });
     await page.mouse.up();
     await page.waitForTimeout(300);
@@ -894,7 +1084,7 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await page.waitForTimeout(600);
     await row('plan').locator('.sx-row').first().click();
     await page.keyboard.press('ControlOrMeta+C');
-    const spot10 = await empty();
+    const spot10 = await empty(true);
     await page.mouse.move(spot10.x, spot10.y);
     await page.keyboard.press('ControlOrMeta+V');
     await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(1);

@@ -77,10 +77,6 @@ describe('Task 1.9: End-to-End Workflow Runs against FakeEngine', () => {
       {
         text: 'Decided: max 3 retries with backoff\nREINS: done',
       },
-      // 8. handoff
-      {
-        text: 'Handoff: upload retry implemented and tested\nREINS: done',
-      },
     ];
 
     const engine = new FakeEngine(script);
@@ -123,8 +119,7 @@ describe('Task 1.9: End-to-End Workflow Runs against FakeEngine', () => {
     // Turn 5: review (inlined review-pass)
     // Turn 6: fix (inlined review-pass)
     // Turn 7: store (defect 6: decision summary turn)
-    // Turn 8: handoff (defect 8: handoff summary turn)
-    expect(r.totalTurns).toBe(8);
+    expect(r.totalTurns).toBe(7);
   });
 
   it('runs bug-fix end to end and produces expected receipt', async () => {
@@ -161,7 +156,7 @@ describe('Task 1.9: End-to-End Workflow Runs against FakeEngine', () => {
     const r = receipt(run.getEvents());
     expect(r.workflow).toBe('bug-fix');
     expect(r.status).toBe('done');
-    expect(r.totalTurns).toBe(4); // reproduce, fix, say, handoff
+    expect(r.totalTurns).toBe(3); // reproduce, fix, say
   });
 
   it('runs tdd-loop end to end and produces expected receipt', async () => {
@@ -223,7 +218,7 @@ describe('Task 1.9: End-to-End Workflow Runs against FakeEngine', () => {
     expect(r.status).toBe('done');
     expect(r.knowlRecalls).toBe(0);
     expect(r.knowlSkipped).toBe(1);
-    expect(r.totalTurns).toBe(5); // red, green, review, fix, handoff
+    expect(r.totalTurns).toBe(4); // red, green, review, fix
   });
 
   it('runs safe-refactor end to end and produces expected receipt', async () => {
@@ -268,6 +263,6 @@ describe('Task 1.9: End-to-End Workflow Runs against FakeEngine', () => {
     expect(r.status).toBe('done');
     expect(r.gatesHeld).toBe(1);
     expect(r.verifyResults.passed).toBe(1);
-    expect(r.totalTurns).toBe(4); // plan, refactor, verify, handoff
+    expect(r.totalTurns).toBe(3); // plan, refactor, verify
   });
 });
