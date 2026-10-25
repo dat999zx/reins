@@ -179,15 +179,17 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     const textTab = page.getByRole('tab', { name: 'Text' });
     const row = (id: string) => page.locator(`.blk[data-id="${id}"]`);
     // the first point on a 24 px grid where the pointer is over the bare surface: not a block, an arrow, the toolbar or a menu
-    const empty = async () => {
+    const empty = async (last = false) => {
+      // The first free spot (top-left), or with `last` the final one (bottom-right): a block put at the first one can cover rows that sit near it.
       const p = await page.evaluate(`(() => {
         const v = document.querySelector('[aria-label="Workspace"]');
         const r = v.getBoundingClientRect();
+        let found = null;
         for (let y = r.top + 24; y < r.bottom - 24; y += 24) for (let x = r.left + 24; x < r.right - 24; x += 24) {
           const e = document.elementFromPoint(x, y);
-          if (e === v || (e && e.classList.contains('sx-world'))) return { x, y };
+          if (e === v || (e && e.classList.contains('sx-world'))) { found = { x, y }; if (!${last}) return found; }
         }
-        return null;
+        return found;
       })()`) as { x: number; y: number } | null;
       expect(p, 'no empty surface in the workspace').not.toBeNull();
       return p!;
@@ -1107,7 +1109,7 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await page.waitForTimeout(600);
     await row('plan').locator('.sx-row').first().click();
     await page.keyboard.press('ControlOrMeta+C');
-    const spot10 = await empty();
+    const spot10 = await empty(true);
     await page.mouse.move(spot10.x, spot10.y);
     await page.keyboard.press('ControlOrMeta+V');
     await expect.poll(() => looseBlocks.count(), { timeout: W }).toBe(1);
