@@ -604,8 +604,19 @@ describe.skipIf(skip)('Phase 3c smoke test (spec 3c.12)', () => {
     await card('custom prompt').dragTo(page.locator('[data-body="repeat-2/kids"]'));
     // one edit at a time: wait for the first drop to land before the second
     await expect.poll(() => row('repeat-2').locator('.blk[data-id="say-1"]').count(), { timeout: W }).toBe(1);
-    await card('phase').dragTo(page.locator('[data-body="if-1/else"]'));
+    // The else body sits below the workspace edge (its middle was outside the canvas, where a release cancels): fit the stack, then wait until the body is inside the canvas and holds still.
+    await page.getByRole('button', { name: 'Fit' }).click();
+    const elseBody = page.locator('[data-body="if-1/else"]'), view = page.getByRole('region', { name: 'Workspace' });
+    await expect.poll(async () => {
+      const a = await elseBody.boundingBox(), v = (await view.boundingBox())!;
+      await page.waitForTimeout(150);
+      const b = await elseBody.boundingBox();
+      return !!a && !!b && a.y === b.y && a.x === b.x && a.y + a.height / 2 < v.y + v.height - 40 && a.y > v.y;
+    }, { timeout: W }).toBe(true);
+    await card('phase').dragTo(elseBody);
     await expect.poll(() => row('if-1').locator('.blk[data-id="phase-2"]').count(), { timeout: W }).toBe(1);
+    await page.getByRole('button', { name: 'Reset zoom' }).click();   // Fit zoomed out; the pan and zoom steps below start from 100%
+    await expect.poll(() => zoomLabel.innerText(), { timeout: W }).toBe('100%');
     await textTab.click();
     await expect.poll(() => editor.inputValue(), { timeout: W }).toContain('## repeat\nid: repeat-2\nuntil: you approve\nmax: 3\n\n### say\n');
     expect(await editor.inputValue()).toContain('## if you approve\n\n### else\n\n### phase\n');
