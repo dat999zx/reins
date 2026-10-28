@@ -13,7 +13,8 @@
     "build": "npm run build -w @reins/core && npm run build -w packages/server && npm run build -w @reins/app",
     "typecheck": "tsc --noEmit && tsc --noEmit -p packages/app",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:affected": "node scripts/test-affected.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.20.0",

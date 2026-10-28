@@ -1,0 +1,38 @@
+// node scripts/test-affected.selfcheck.mjs: the selection logic of test-affected.mjs on a throwaway tree. Exits non-zero on a wrong answer.
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fingerprint, makeCtx, testFiles } from './test-affected.mjs';
+
+const root = mkdtempSync(join(tmpdir(), 'ta-'));
+const put = (p, s) => { mkdirSync(join(root, p, '..'), { recursive: true }); writeFileSync(join(root, p), s); };
+put('package.json', '{}');
+put('packages/core/src/index.ts', 'export * from "./a.js";');
+put('packages/core/src/a.ts', 'import { b } from "./b.js"; export const a = b;');
+put('packages/core/src/b.ts', 'export const b = 1;');
+put('packages/core/src/c.ts', 'export const c = 1;');
+put('packages/core/test/x.test.ts', 'import { a } from "../src/a.js"; import { it } from "vitest";');
+put('packages/core/test/y.test.ts', 'import { c } from "../src/c.js";');
+put('packages/core/test/live.real.test.ts', '');
+put('vitest.config.ts', "export default { test: { projects: [{ test: { include: ['packages/core/test/**/*.test.ts'], setupFiles: ['packages/core/test/setup.ts'] } }] } };");
+put('packages/core/test/setup.ts', 'export const s = 1;');
+
+const fps = () => { const ctx = makeCtx(root); return Object.fromEntries(testFiles(root).run.map((t) => [t.split(/[\\/]/).pop(), fingerprint(root, t, ctx)])); };
+try {
+  const base = fps();
+  assert.deepEqual(Object.keys(base).sort(), ['x.test.ts', 'y.test.ts'], 'live tests are left out');
+  put('packages/core/src/b.ts', 'export const b = 2;');                  // two imports deep from x.test.ts
+  const afterB = fps();
+  assert.notEqual(afterB['x.test.ts'], base['x.test.ts'], 'a change two imports away changes the test');
+  assert.equal(afterB['y.test.ts'], base['y.test.ts'], 'an unrelated test keeps its fingerprint');
+  put('packages/core/test/setup.ts', 'export const s = 2;');               // a setup file no test imports
+  const afterSetup = fps();
+  assert.notEqual(afterSetup['y.test.ts'], afterB['y.test.ts'], 'a setup file changes the tests of its project');
+  put('package-lock.json', '{"x":1}');                                    // a global file
+  const afterLock = fps();
+  assert.notEqual(afterLock['y.test.ts'], afterSetup['y.test.ts'], 'a global file changes every test');
+  console.log('test-affected selfcheck: ok');
+} finally {
+  rmSync(root, { recursive: true, force: true });
+}
