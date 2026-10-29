@@ -108,11 +108,18 @@ function runBatch(root, files, extra, tmp) {
   if (!existsSync(out)) return null; // vitest died before it wrote a summary
   const j = JSON.parse(readFileSync(out, 'utf8'));
   rmSync(out);
+  return parseResults(root, j);
+}
+
+// vitest's json reporter has no retry count: a test that failed and then passed on a retry is `passed` with the failed attempts' messages kept in `failureMessages`.
+export function parseResults(root, j) {
   const res = new Map();
   for (const r of j.testResults ?? []) {
     const k = rel(root, r.name);
-    const o = res.get(k) ?? { passed: 0, failed: 0 };
-    for (const a of r.assertionResults ?? []) { if (a.status === 'passed') o.passed++; else if (a.status === 'failed') o.failed++; }
+    const o = res.get(k) ?? { passed: 0, failed: 0, flaky: false };
+    for (const a of r.assertionResults ?? []) {
+      if (a.status === 'passed') { o.passed++; if (a.failureMessages?.length) o.flaky = true; } else if (a.status === 'failed') o.failed++;
+    }
     if (r.status === 'failed' && !o.failed) o.failed++;
     res.set(k, o);
   }
@@ -152,12 +159,13 @@ function main() {
   }
 
   const save = () => writeFileSync(stateFile, JSON.stringify(state));
-  const failed = [], crashed = [];
+  const failed = [], crashed = [], flaky = [];
   let passed = 0;
   const record = (res, files) => {
     for (const f of files) {
       const k = rel(root, f), o = res.get(k);
-      if (o && o.failed === 0 && o.passed > 0) { state[k] = fp.get(k); passed++; }
+      if (o && o.failed === 0 && o.passed > 0 && o.flaky) flaky.push(k); // green only after a retry: not stored, so it re-runs next time
+      else if (o && o.failed === 0 && o.passed > 0) { state[k] = fp.get(k); passed++; }
       else if (o && o.failed > 0) failed.push(k);
       else failed.push(`${k} (no test ran)`);
     }
@@ -174,7 +182,8 @@ function main() {
       if (one) record(one, [f]); else crashed.push(rel(root, f));
     }
   }
-  console.log(`\ntest-affected: ${passed} passed and stored, ${failed.length} failed, ${crashed.length} crashed, ${((Date.now() - started) / 1000).toFixed(0)}s`);
+  console.log(`\ntest-affected: ${passed} passed and stored, ${failed.length} failed, ${crashed.length} crashed, ${flaky.length} flaky (passed only after a retry, not stored), ${((Date.now() - started) / 1000).toFixed(0)}s`);
+  for (const f of flaky) console.log(`  FLAKY   ${f}`);
   for (const f of failed) console.log(`  FAILED  ${f}`);
   for (const f of crashed) console.log(`  CRASHED ${f}`);
   return failed.length || crashed.length || (stale && browser.length) ? 1 : 0;
