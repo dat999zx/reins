@@ -147,8 +147,8 @@ async function merge(file) {
   console.log(`merged: ${r.merged.join(', ') || 'none'}`);
   if (r.conflict) { console.log(`CONFLICT in ${r.conflict.task}: ${r.conflict.files.join(', ') || r.conflict.why}\nThe merge was aborted; resolve by hand, then run merge again.`); process.exitCode = 2; return; }
   await sh('npm run build', s.repo, true);
-  console.log('gate: node scripts/test-affected.mjs --all');
-  await sh('node scripts/test-affected.mjs --all', s.repo, true); // shown: a failed gate must say which file failed
+  console.log('gate: node scripts/test-affected.mjs --all --jobs 4');
+  await sh('node scripts/test-affected.mjs --all --jobs 4', s.repo, true); // shown: a failed gate must say which file failed
 }
 
 function clean(file) {
