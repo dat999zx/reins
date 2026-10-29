@@ -4,9 +4,9 @@
 //   node scripts/parallel.mjs status <state.json>
 //   node scripts/parallel.mjs merge  <state.json>      commits every finished task, merges in order, stops on the first conflict, then builds and runs the tests
 //   node scripts/parallel.mjs clean  <state.json>      removes worktrees and branches once every task is merged
-// tasks.json: { "tasks": [{ "name": "login", "playbook": "plans/login.reins.md" }], "copy": ["docs/spec.md"] }
+// tasks.json: { "title": "login work", "capUsd": 5, "tasks": [{ "name": "login", "playbook": "plans/login.reins.md" }], "copy": ["docs/spec.md"] }
+//   title and capUsd are optional. start registers the tasks as one run: the app shows them as one group with Stop all, Resume all and the cap. clean forgets the group.
 // Needs a running `reins serve` (its port and token are read from ~/.reins/serve.lock). Each session asks its own trust questions in the app: answer them there.
-// ponytail: the session API is driven over HTTP and polled; no server change, no UI. A group-per-run view, a total USD cap and resume after a server restart are not built.
 import { execFileSync, spawn } from 'node:child_process';
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -70,6 +70,11 @@ export function mergeInOrder(repo, tasks, recorded) {
   return { merged };
 }
 
+/** The POST /api/parallel body: one run for all tasks. capUsd only when the spec gives one. */
+export function registerBody(spec, repo, runId, tasks) {
+  return { title: spec.title ?? `parallel ${runId}`, repo, ...(spec.capUsd === undefined ? {} : { capUsd: spec.capUsd }), tasks: tasks.map((t) => ({ name: t.name, dir: t.dir })) };
+}
+
 function server() {
   const lock = join(homedir(), '.reins', 'serve.lock');
   if (!existsSync(lock)) throw new Error('No running `reins serve` (no ~/.reins/serve.lock).');
@@ -108,14 +113,17 @@ async function start(file, dir) {
   const root = resolve(dir ?? join(repo, '..', '.reins-par'));
   const tasks = addWorktrees(repo, runId, root, spec.tasks, spec.copy);
   const state = join(root, runId, 'state.json');
-  const save = () => writeFileSync(state, JSON.stringify({ repo, ...base, runId, tasks }, null, 2));
+  let parallelId;
+  const save = () => writeFileSync(state, JSON.stringify({ repo, ...base, runId, parallelId, tasks }, null, 2));
   save();
   console.log(`parallel: ${tasks.length} worktrees under ${join(root, runId)}; installing (npm ci + build) in parallel`);
   // A worktree must NOT share node_modules with the main checkout: @reins/core would resolve to main's copy for typecheck, server build and app bundle.
   await Promise.all(tasks.map((t) => sh('npm ci && npm run build', t.dir)));
   const api = server();
+  const reg = await api('POST', '/api/parallel', registerBody(spec, repo, runId, tasks));
+  parallelId = reg.id;
   for (const t of tasks) {
-    t.sessionId = (await api('POST', '/api/sessions', { cwd: t.dir, title: `parallel: ${t.name}` })).id;
+    t.sessionId = reg.tasks.find((r) => r.name === t.name).sessionId;
     if (t.playbook) await api('POST', `/api/sessions/${t.sessionId}/run`, { path: t.playbook });
     else await api('POST', `/api/sessions/${t.sessionId}/message`, { text: t.prompt });
     save();
@@ -151,7 +159,7 @@ async function merge(file) {
   await sh('node scripts/test-affected.mjs --all --jobs 4', s.repo, true); // shown: a failed gate must say which file failed
 }
 
-function clean(file) {
+async function clean(file) {
   const s = JSON.parse(readFileSync(file, 'utf8'));
   for (const t of s.tasks) {
     if (git(s.repo, 'branch', '--merged', 'HEAD', '--list', t.branch) === '') { console.log(`keep ${t.name}: ${t.branch} is not merged`); continue; }
@@ -159,13 +167,18 @@ function clean(file) {
     git(s.repo, 'branch', '-d', t.branch);
     console.log(`removed ${t.name}`);
   }
+  if (s.parallelId) {
+    try { await server()('POST', `/api/parallel/${s.parallelId}/forget`); } catch (e) {
+      if (!/ 404 /.test(e.message)) { console.log('The group stays in the app until you run clean again with Reins running.'); return; }
+    }
+  }
   rmSync(file, { force: true });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [cmd, arg] = process.argv.slice(2);
   const di = process.argv.indexOf('--dir');
-  const run = { start: () => start(arg, di > 0 ? process.argv[di + 1] : undefined), status: () => status(arg), merge: () => merge(arg), clean: async () => clean(arg) }[cmd];
+  const run = { start: () => start(arg, di > 0 ? process.argv[di + 1] : undefined), status: () => status(arg), merge: () => merge(arg), clean: () => clean(arg) }[cmd];
   if (!run) { console.error('usage: parallel.mjs start|status|merge|clean <tasks.json|state.json>'); process.exit(1); }
   run().catch((e) => { console.error(`parallel: ${e.message}`); process.exit(1); });
 }
