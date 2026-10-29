@@ -84,10 +84,20 @@ function server() {
 
 const sh = (cmd, cwd) => new Promise((ok, no) => spawn(cmd, { cwd, shell: true, stdio: 'ignore' }).on('exit', (c) => (c === 0 ? ok() : no(new Error(`${cmd} failed (${c}) in ${cwd}`)))));
 
+/** Start/end (ms timestamps), end type and duration from a session log: the first row starts it, the first run_finished or run_stopped row ends it. Unset while running. */
+export function timing(rows) {
+  const r = rows.find((x) => x.type === 'run_finished' || x.type === 'run_stopped');
+  const start = rows[0]?.ts;
+  return { start, end: r?.ts, type: r?.type, ms: r && start !== undefined ? r.ts - start : undefined };
+}
+
+const clock = (ts) => (ts === undefined ? '-' : new Date(ts).toISOString().replace('T', ' ').slice(0, 19));
+const took = (ms) => (ms === undefined ? '-' : `${Math.floor(ms / 60000)}m${String(Math.round((ms % 60000) / 1000)).padStart(2, '0')}s`);
+const span = (t) => `started ${clock(t.start)}, ended ${clock(t.end)}, took ${took(t.ms)}`;
+
 async function ended(api, t) {
   const { rows } = await api('GET', `/api/sessions/${t.sessionId}/log?after=0`);
-  const r = rows.find((x) => x.type === 'run_finished' || x.type === 'run_stopped');
-  return r ? r.type : undefined;
+  return timing(rows);
 }
 
 async function start(file, dir) {
@@ -116,7 +126,10 @@ async function start(file, dir) {
 
 async function status(file) {
   const s = JSON.parse(readFileSync(file, 'utf8')), api = server();
-  for (const t of s.tasks) console.log(`${t.name.padEnd(24)} ${(await ended(api, t)) ?? 'running'}`);
+  for (const t of s.tasks) {
+    const e = await ended(api, t);
+    console.log(`${t.name.padEnd(24)} ${e.type ?? 'running'}\n  ${span(e)}`);
+  }
 }
 
 async function merge(file) {
@@ -124,7 +137,8 @@ async function merge(file) {
   const ready = [];
   for (const t of s.tasks) {
     const e = await ended(api, t);
-    if (e !== 'run_finished') { console.log(`skip ${t.name}: ${e ?? 'still running'}`); continue; }
+    if (e.type !== 'run_finished') { console.log(`skip ${t.name}: ${e.type ?? 'still running'}\n  ${span(e)}`); continue; }
+    console.log(`time ${t.name}: ${span(e)}`);
     const files = commitAll(t);
     console.log(`commit ${t.name}: ${files.length} file(s)${files.length ? `\n  ${files.join('\n  ')}` : ''}`);
     if (files.length) ready.push(t);

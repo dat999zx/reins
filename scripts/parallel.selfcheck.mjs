@@ -4,7 +4,11 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { addWorktrees, commitAll, mergeInOrder, preflight } from './parallel.mjs';
+import { addWorktrees, commitAll, mergeInOrder, preflight, timing } from './parallel.mjs';
+
+const rows = [{ type: 'user', ts: 1000 }, { type: 'tool', ts: 2000 }, { type: 'run_finished', ts: 91000 }, { type: 'run_stopped', ts: 99000 }];
+assert.deepEqual(timing(rows), { start: 1000, end: 91000, type: 'run_finished', ms: 90000 }, 'the first end row wins');
+assert.deepEqual(timing(rows.slice(0, 2)), { start: 1000, end: undefined, type: undefined, ms: undefined }, 'a running task has no end');
 
 const base = mkdtempSync(join(tmpdir(), 'par-'));
 const repo = join(base, 'repo'), wt = join(base, 'wt');
