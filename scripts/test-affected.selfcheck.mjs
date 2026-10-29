@@ -32,6 +32,19 @@ try {
   put('package-lock.json', '{"x":1}');                                    // a global file
   const afterLock = fps();
   assert.notEqual(afterLock['y.test.ts'], afterSetup['y.test.ts'], 'a global file changes every test');
+  put('packages/server/src/mods/m/index.ts', 'export default 1;');       // a mod: loaded by path by the core setup, never imported
+  put('packages/core/test/scan.test.ts', 'import { readdirSync } from "node:fs"; readdirSync(".");');
+  put('examples/e.reins.md', 'one');
+  const m0 = fps();
+  put('packages/server/src/mods/m/index.ts', 'export default 2;');
+  put('examples/e.reins.md', 'two');
+  const m1 = fps();
+  assert.notEqual(m1['y.test.ts'], m0['y.test.ts'], 'a server mod changes core tests (the setup loads every mod)');
+  assert.notEqual(m1['scan.test.ts'], m0['scan.test.ts'], 'a test that walks directories sees an example change');
+  put('packages/server/test/fake-claude.mjs', 'a');
+  const m2 = fps();
+  put('packages/server/test/fake-claude.mjs', 'b');
+  assert.notEqual(fps()['y.test.ts'], m2['y.test.ts'], 'a helper script referenced by URL counts');
   console.log('test-affected selfcheck: ok');
 } finally {
   rmSync(root, { recursive: true, force: true });

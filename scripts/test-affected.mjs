@@ -6,8 +6,10 @@
 // stored in node_modules/.cache, so the next run skips it until something it depends on changes. A failed or crashed file
 // is simply not stored, so the next run re-runs just those. Files run in small batches: a crashed batch (the vitest
 // ERR_IPC_CHANNEL_CLOSED crash) is retried file by file and loses nothing already stored.
-// ponytail: static imports only. Files a test reads at run time are covered by the coarse groups in makeCtx (every server mod
-// and fixture for server tests, all app and server source for browser tests); any other runtime-read file is not seen.
+// ponytail: static imports only. Files a test reads at run time are covered by the coarse groups in makeCtx: `mods` (every server
+// mod, fixture and helper script: the core and app setups load them by path) for every test; `scan` (all package source and the
+// examples) for tests that walk directories; the built app for browser tests (a stale build is refused). Any other runtime-read
+// file is not seen.
 // Use --all when in doubt. Live tests (*.real.test.ts) need real keys and are never run here.
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -72,7 +74,9 @@ export function makeCtx(root) {
   return {
     read, hash, imports, setups,
     global: group(cfgFiles),
-    mods: group([...walk(join(root, 'packages/server/src/mods')), ...walk(join(root, 'packages/server/test/fixtures'))]),
+    mods: group([...walk(join(root, 'packages/server/src/mods')), ...walk(join(root, 'packages/server/test/fixtures')),
+      ...walk(join(root, 'packages/server/test'), (f) => /\.mjs$/.test(f))]), // fake-claude.mjs is referenced by URL, never imported
+    scan: group([...pkgs.flatMap((d) => walk(join(d, 'src'))), ...walk(join(root, 'examples'))]),
     appAndServerSrc: group([...walk(join(root, 'packages/app/src')), ...walk(join(root, 'packages/server/src'))]),
   };
 }
@@ -91,7 +95,8 @@ export function fingerprint(root, test, ctx) {
   }
   parts.sort();
   parts.push(`global:${ctx.global}`);
-  if (t.startsWith('packages/server/')) parts.push(`mods:${ctx.mods}`); // mods and fixtures are loaded by path at run time
+  parts.push(`mods:${ctx.mods}`); // mods are loaded by path at run time: the core and app setups do it too
+  if (/readdirSync|examples/.test(ctx.read(test).toString('utf8'))) parts.push(`scan:${ctx.scan}`); // tests that walk source or example files
   if (/\.browser\./.test(t)) parts.push(`src:${ctx.appAndServerSrc}`); // browser tests drive the built app
   return sha(parts.join('\n'));
 }
@@ -136,6 +141,16 @@ function main() {
   console.log(`test-affected: ${tests.length} test files, ${tests.length - todo.length} up to date, ${todo.length} to run${live.length ? ` (${live.length} live tests are never run here)` : ''}`);
   if (dry || !todo.length) { if (dry) for (const t of todo) console.log(`  ${rel(root, t)}`); return 0; }
 
+  // A browser test drives the BUILT app: against an old build it would pass and be stored for the new source.
+  const newest = (d) => walk(d).reduce((m, f) => Math.max(m, statSync(f).mtimeMs), 0);
+  const built = join(root, 'packages/app/dist/index.html');
+  const stale = !existsSync(built) || statSync(built).mtimeMs < Math.max(newest(join(root, 'packages/app/src')), newest(join(root, 'packages/core/src')));
+  const browser = todo.filter((t) => /\.browser\./.test(rel(root, t)));
+  if (stale && browser.length) {
+    console.log(`test-affected: packages/app/dist is missing or older than the source, so ${browser.length} browser test file(s) are not run: run \`npm run build\` first`);
+    for (const t of browser) todo.splice(todo.indexOf(t), 1);
+  }
+
   const save = () => writeFileSync(stateFile, JSON.stringify(state));
   const failed = [], crashed = [];
   let passed = 0;
@@ -162,7 +177,7 @@ function main() {
   console.log(`\ntest-affected: ${passed} passed and stored, ${failed.length} failed, ${crashed.length} crashed, ${((Date.now() - started) / 1000).toFixed(0)}s`);
   for (const f of failed) console.log(`  FAILED  ${f}`);
   for (const f of crashed) console.log(`  CRASHED ${f}`);
-  return failed.length || crashed.length ? 1 : 0;
+  return failed.length || crashed.length || (stale && browser.length) ? 1 : 0;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) process.exit(main());
