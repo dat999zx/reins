@@ -15,6 +15,14 @@ export interface SessionRow {
   autoApprove: boolean; engineSessionId?: string; createdAt: number; updatedAt: number;
 }
 export interface LogRow { sessionId: string; seq: number; ts: number; runId?: string; type: string; data: unknown }
+export interface ParallelTask { name: string; sessionId: string }
+export interface ParallelRow { id: string; title: string; capUsd?: number; createdAt: number; tasks: ParallelTask[] }
+
+const toParallel = (r: any): ParallelRow => {
+  let tasks: ParallelTask[] = [];
+  try { const v = JSON.parse(r.tasks); if (Array.isArray(v)) tasks = v; } catch { /* a value that does not parse reads as no tasks */ }
+  return { id: r.id, title: r.title, ...(r.cap_usd != null ? { capUsd: r.cap_usd } : {}), createdAt: r.created_at, tasks };
+};
 
 const toSession = (r: any): SessionRow => ({
   id: r.id, cwd: r.cwd, engine: r.engine,
@@ -64,6 +72,7 @@ export function redactingStore(store: Store, redactor: Pick<Redactor, 'redactJso
   const holds = (...v: unknown[]) => v.some((x) => typeof x === 'string' && has(x));
   const refuse = (...v: unknown[]) => { if (holds(...v)) throw new KeyInIdentity(); };
   const session = (row: SessionRow | undefined) => (row && !holds(row.id, row.cwd, row.engine, row.engineSessionId) ? r(row) : undefined);
+  const parallel = (row: ParallelRow) => (!holds(row.id, ...row.tasks.map((t) => t.sessionId)) ? r(row) : undefined);
   return {
     ...store,
     createRun: (run) => { refuse(run.id, run.workflowPath, run.cwd); store.createRun(run); },
@@ -108,6 +117,13 @@ export function redactingStore(store: Store, redactor: Pick<Redactor, 'redactJso
     getEngineTotal: (id) => store.getEngineTotal(id),
     putEngineTotal: (id, total, byModel) => { refuse(id, ...Object.keys(byModel ?? {})); store.putEngineTotal(id, total, byModel); },
     getEngineModels: (id) => r(store.getEngineModels(id)),
+    createParallel: (p) => {
+      refuse(p.id, ...p.tasks.map((t) => t.sessionId));
+      return parallel(store.createParallel({ ...p, title: r(p.title), tasks: p.tasks.map((t) => ({ ...t, name: r(t.name) })) }))!;
+    },
+    listParallel: () => store.listParallel().flatMap((row) => { const p = parallel(row); return p ? [p] : []; }),
+    setParallelCap: (id, usd) => store.setParallelCap(id, usd),
+    deleteParallel: (id) => store.deleteParallel(id),
   };
 }
 
@@ -151,6 +167,7 @@ export function openStore(file: string) {
     create table if not exists settings (key text primary key, json text not null);
     create table if not exists engine_costs (engine_session_id text primary key, total real not null, ts integer not null);
     create index if not exists session_log_run on session_log(run_id);
+    create table if not exists parallel_runs (id text primary key, title text not null, cap_usd real, tasks text not null, created_at integer not null);
   `);
   // C: the per-model running totals beside the total (a database made before C has no column).
   if (!(db.prepare('pragma table_info(engine_costs)').all() as Array<{ name: string }>).some((c) => c.name === 'by_model')) {
@@ -191,6 +208,11 @@ export function openStore(file: string) {
   const getTotal = db.prepare('select total from engine_costs where engine_session_id = ?');
   const putTotal = db.prepare('insert or replace into engine_costs (engine_session_id, total, ts, by_model) values (?, ?, ?, ?)');
   const getModels = db.prepare('select by_model from engine_costs where engine_session_id = ?');
+  const insParallel = db.prepare('insert into parallel_runs (id, title, cap_usd, tasks, created_at) values (?, ?, ?, ?, ?)');
+  const getParallel = db.prepare('select * from parallel_runs where id = ?');
+  const listParallel = db.prepare('select * from parallel_runs order by created_at desc, rowid desc');
+  const setCap = db.prepare('update parallel_runs set cap_usd = ? where id = ?');
+  const delParallel = db.prepare('delete from parallel_runs where id = ?');
   const seqs = new Map<string, number>();
 
   return {
@@ -295,6 +317,20 @@ export function openStore(file: string) {
         const v = JSON.parse(j);
         return v && typeof v === 'object' && !Array.isArray(v) ? v : undefined;
       } catch { return undefined; }
+    },
+    /** M5: a parallel run (the tasks' sessions, an optional USD cap). A session is parallel while a row lists it. */
+    createParallel(r: Omit<ParallelRow, 'createdAt'>): ParallelRow {
+      insParallel.run(r.id, r.title, r.capUsd ?? null, JSON.stringify(r.tasks), Date.now());
+      return toParallel(getParallel.get(r.id));
+    },
+    listParallel(): ParallelRow[] {
+      return listParallel.all().map(toParallel);
+    },
+    setParallelCap(id: string, usd: number | null) {
+      setCap.run(usd, id);
+    },
+    deleteParallel(id: string) {
+      delParallel.run(id);
     },
     close() {
       db.close();
