@@ -155,7 +155,7 @@ function clean(file) {
   const s = JSON.parse(readFileSync(file, 'utf8'));
   for (const t of s.tasks) {
     if (git(s.repo, 'branch', '--merged', 'HEAD', '--list', t.branch) === '') { console.log(`keep ${t.name}: ${t.branch} is not merged`); continue; }
-    git(s.repo, 'worktree', 'remove', '--force', t.dir);
+    try { git(s.repo, 'worktree', 'remove', '--force', t.dir); } catch (e) { if (!/not a working tree/.test(String(e.stderr))) throw e; } // already gone: still drop the branch
     git(s.repo, 'branch', '-d', t.branch);
     console.log(`removed ${t.name}`);
   }
