@@ -15,11 +15,12 @@ import { ID_SHAPE, listModels, parseModel, type PickerModel } from './models.js'
 import { servedKinds } from './mods/kinds-view.js';
 import type { Mods, SendWithKey } from './mods/types.js';
 import type { ProviderStatus } from './run-checks.js';
+import { capWords, checkBody, folderGone, parallelSeam, usdOf } from './parallel.js';
 import { recover } from './recover.js';
 import { loadWorkflow } from './run-cli.js';
 import { kindVersions } from './drive.js';
 import { openSession, projectFolderWords, rootFolderWords, under, type Ack, type DescribeEffort, type DescribeModel, type MakeEngine, type Session, type SessionDeps } from './session.js';
-import { contextSize, priceFor, readSetting, switchEstimate } from './settings.js';
+import { contextSize, detachedRuns, priceFor, readSetting, switchEstimate } from './settings.js';
 import { KEY_IN_IDENTITY, KeyInIdentity, type LogRow, type Store } from './store.js';
 import { tagCatalogue, type Tag } from './tags.js';
 import { previewWorkflow, readWorkflow, writeWorkflow } from './workflow-files.js';
@@ -237,7 +238,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
   });
   // The one env of workflow commands and helpers, worked out at each start: it reads the providers and keys as they are THEN.
   const children = shellEnvFrom(mods, o.env ?? process.env, (t) => !!sender.holdsSecret?.(t) || !!o.redactor?.has(t));
-  const deps: SessionDeps = { kinds: () => kindVersions(mods), store: o.store, makeEngine: (a) => o.makeEngine({ ...a, settings }), dir: o.dir, env: children, ...(o.redactor ? { redactor: o.redactor } : {}), describeModel, describeEffort, folderTrust: folderTrustFrom(mods), providers: checkEnvFrom(mods, { env: o.env ?? process.env, home: o.dir }), consent: asks, origin: (provider) => providerOrigin(mods, provider), generation: (provider) => providerGeneration(mods, provider), onRow: (row) => { for (const f of subs) f(row); } };
+  const deps: SessionDeps = { kinds: () => kindVersions(mods), store: o.store, makeEngine: (a) => o.makeEngine({ ...a, settings }), dir: o.dir, env: children, ...(o.redactor ? { redactor: o.redactor } : {}), describeModel, describeEffort, folderTrust: folderTrustFrom(mods), providers: checkEnvFrom(mods, { env: o.env ?? process.env, home: o.dir }), consent: asks, origin: (provider) => providerOrigin(mods, provider), generation: (provider) => providerGeneration(mods, provider), onRow: (row) => { for (const f of subs) f(row); }, parallel: parallelSeam(o.store) };
   let engines: Array<{ id: string } & EngineProbe> = [];
   let host = '';
   let origin = '';
@@ -305,6 +306,52 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     const s = openSession(deps, row, true);
     sessions.set(row.id, s);
     return ok(view(s));
+  }
+
+  /** The folder rules of `create`, for one parallel task's dir: the refusal words, or undefined. */
+  function folderWords(dir: string): string | undefined {
+    const root = rootFolderWords(dir);
+    if (root) return root;
+    if (dir.includes('\0') || !fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory()) return 'dir is not a folder.';
+    return projectFolderWords(dir, o.dir, o.userHome);
+  }
+
+  function createParallelRun(b: unknown): Reply {
+    const checked = checkBody(b);
+    if ('error' in checked) return fail(400, checked.error);
+    const { title, capUsd, tasks } = checked.value;
+    // Every task is checked before anything is made: one refusal and nothing exists.
+    if ([title, ...tasks.flatMap((t) => [t.name, t.dir])].some((t) => o.redactor?.has(t))) return fail(400, KEY_IN_IDENTITY);
+    for (const t of tasks) {
+      const words = folderWords(t.dir);
+      if (words) return fail(400, `task ${t.name}: ${words}`);
+    }
+    const made: Array<{ name: string; sessionId: string }> = [];
+    for (const t of tasks) {
+      const r = create({ cwd: fs.realpathSync.native(t.dir), title: `parallel: ${t.name}` });
+      if (r.status !== 200) return r;
+      made.push({ name: t.name, sessionId: (r.body as { id: string }).id });
+    }
+    const id = randomBytes(6).toString('hex');
+    o.store.createParallel({ id, title, ...(capUsd !== undefined ? { capUsd } : {}), tasks: made });
+    return ok({ id, tasks: made });
+  }
+
+  function resumeParallel(run: ReturnType<Store['listParallel']>[number]): Reply {
+    const words = capWords(o.store, run.tasks[0]!.sessionId);
+    if (words) return fail(409, words);
+    const results = run.tasks.map((t): { name: string; result: string; words?: string } => {
+      const s = sessions.get(t.sessionId);
+      if (!s) return { name: t.name, result: 'nothing' };
+      const cwd = s.info().cwd;
+      if (folderGone(cwd)) return { name: t.name, result: 'gone', words: `The worktree ${cwd} is gone.` };
+      if (s.status() === 'waiting') return { name: t.name, result: 'waiting' };
+      const rid = s.status() === 'idle' ? detachedRuns(o.store.readLog(t.sessionId)).at(-1) : undefined;
+      if (!rid) return { name: t.name, result: 'nothing' };
+      const a = s.resume(rid);
+      return a.ok ? { name: t.name, result: 'resumed' } : { name: t.name, result: 'refused', words: a.error };
+    });
+    return ok({ results });
   }
 
   function workflows(cwd: string | null): Reply {
@@ -417,6 +464,38 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     if (req.method === 'POST' && p === '/api/sessions') {
       const r = await parse(req);
       return 'fail' in r ? r.fail : create(r.b);
+    }
+    const pm = /^\/api\/parallel(?:\/([0-9a-f]+)\/([a-z]+))?$/.exec(p);
+    if (pm) {
+      if (!pm[1]) {
+        if (req.method === 'GET') return ok({ runs: o.store.listParallel() });
+        if (req.method === 'POST') {
+          const r = await parse(req);
+          return 'fail' in r ? r.fail : createParallelRun(r.b);
+        }
+      } else if (req.method === 'POST') {
+        const run = o.store.listParallel().find((x) => x.id === pm[1]);
+        if (!run) return fail(404, 'No such parallel run.');
+        if (pm[2] === 'stop') {
+          const stopped: string[] = [];
+          const idle: string[] = [];
+          for (const t of run.tasks) {
+            const s = sessions.get(t.sessionId);
+            if (s?.status() === 'running' || s?.status() === 'waiting') { s.card('', 'stop'); stopped.push(t.sessionId); } else idle.push(t.sessionId);
+          }
+          return ok({ stopped, idle });
+        }
+        if (pm[2] === 'resume') return resumeParallel(run);
+        if (pm[2] === 'forget') { o.store.deleteParallel(run.id); return ok(); }
+        if (pm[2] === 'cap') {
+          const r = await parse(req);
+          if ('fail' in r) return r.fail;
+          const usd = usdOf((r.b as { usd?: unknown }).usd);
+          if (typeof usd === 'string') return fail(400, usd);
+          o.store.setParallelCap(run.id, usd);
+          return ok();
+        }
+      }
     }
     const m = /^\/api\/sessions\/([^/]+)\/([a-z]+)$/.exec(p);
     if (m) {
