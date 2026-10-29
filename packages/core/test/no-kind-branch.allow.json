@@ -81,7 +81,7 @@
     }
   },
   "done": {
-    "reason": "a status word: run, step or receipt state 'done', a `done?:` flag, an API stop reason. Not the done condition.",
+    "reason": "a status word: run, step or receipt state 'done', a `done?:` flag, an API stop reason. Not the done condition. Also the parallel task state 'done' in the rail.",
     "files": {
       "packages/app/src/feed.ts": [
         "export type KnotState = 'running' | 'waiting' | 'done' | 'failed' | 'stuck' | 'stopped' | 'paused';",
@@ -165,6 +165,11 @@
       ],
       "packages/server/src/session.ts": [
         "if (r.status === 'done' && !stopping && all.length) return all.join('\\n\\n');"
+      ],
+      "packages/app/src/parallel.ts": [
+        "export type TaskState = 'running' | 'waiting' | 'paused' | 'done';",
+        "s.status === 'running' ? 'running' : s.status === 'waiting' ? 'waiting' : s.status === 'idle' && s.detached.length ? 'paused' : 'done';",
+        "const counts: Record<TaskState, number> = { running: 0, waiting: 0, paused: 0, done: 0 };"
       ]
     }
   },
@@ -587,7 +592,7 @@
     }
   },
   "run": {
-    "reason": "the word run: the feed piece type 'run', a `run:` thunk or tool field, the run command. Not the run block.",
+    "reason": "the word run: the feed piece type 'run', a `run:` thunk or tool field, the run command. Not the run block. Also a variable holding a parallel run record.",
     "files": {
       "packages/app/src/Chat.tsx": [
         "const strand = f.pieces.find((p) => p.type === 'run' && p.newest);",
@@ -631,7 +636,8 @@
         "run: (input, ctx) => (name === shellToolName(ctx.platform) ? runShell(input as { command: string; timeout?: number }, ctx) : fail(noTool(name, ctx.platform, true))),"
       ],
       "packages/server/src/server.ts": [
-        "run: (s, b) => (str(b.path) && b.path ? fromAck(s.runFile(b.path)) : fail(400, 'path must be a non-empty string.')),"
+        "run: (s, b) => (str(b.path) && b.path ? fromAck(s.runFile(b.path)) : fail(400, 'path must be a non-empty string.')),",
+        "function resumeParallel(run: ReturnType<Store['listParallel']>[number]): Reply {"
       ]
     }
   },
@@ -686,7 +692,7 @@
     }
   },
   "stop": {
-    "reason": "the live-card and pause word `stop`: run.stop(), PauseReason 'stop', the stop button and /stop, the answer word of a question. Core's control vocabulary, not a lookup of the card mod.",
+    "reason": "the live-card and pause word `stop`: run.stop(), PauseReason 'stop', the stop button and /stop, the answer word of a question. Core's control vocabulary, not a lookup of the card mod. Also the parallel run's Stop all route and the stop card it sends.",
     "files": {
       "packages/app/src/api.ts": [
         "export const sendCard = (id: string, kind: 'steer' | 'now' | 'stop', text = '') => post(`/api/sessions/${id}/card`, { kind, text });"
@@ -786,7 +792,9 @@
       ],
       "packages/server/src/server.ts": [
         "if (b.kind !== 'steer' && b.kind !== 'now' && b.kind !== 'stop') return fail(400, \"kind must be 'steer', 'now' or 'stop'.\");",
-        "if (!str(b.text) || (!b.text.trim() && b.kind !== 'stop')) return fail(400, 'text must be a non-empty string.');"
+        "if (!str(b.text) || (!b.text.trim() && b.kind !== 'stop')) return fail(400, 'text must be a non-empty string.');",
+        "if (pm[2] === 'stop') {",
+        "if (s?.status() === 'running' || s?.status() === 'waiting') { s.card('', 'stop'); stopped.push(t.sessionId); } else idle.push(t.sessionId);"
       ],
       "packages/server/src/session.ts": [
         "let intent: { kind: 'now'; text: string } | { kind: 'stop' } | undefined;",
@@ -809,7 +817,7 @@
     }
   },
   "store": {
-    "reason": "the conversation and settings store objects (`store:` options) and the Knowl `store` service. Not the store block.",
+    "reason": "the conversation and settings store objects (`store:` options) and the Knowl `store` service. Not the store block. Also a `Store` parameter of a function.",
     "files": {
       "packages/core/src/nodes/index.ts": [
         "readonly services: { recall?: (topics: string[]) => Promise<string[]>; store?: (what: string, summary: string) => Promise<void> };"
@@ -831,8 +839,8 @@
       "packages/server/src/server.ts": [
         "store: Store;",
         "interface Ctx { store: Store; describe: DescribeModel; describeEffort: DescribeEffort; installed: (provider: string) => boolean }",
-        "const deps: SessionDeps = { kinds: () => kindVersions(mods), store: o.store, makeEngine: (a) => o.makeEngine({ ...a, settings }), dir: o.dir, env: children, ...(o.redactor ? { redactor: o.redactor } : {}), describeModel, describeEffort, folderTrust: folderTrustFrom(mods), providers: checkEnvFrom(mods, { env: o.env ?? process.env, home: o.dir }), consent: asks, origin: (provider) => providerOrigin(mods, provider), generation: (provider) => providerGeneration(mods, provider), onRow: (row) => { for (const f of subs) f(row); } };",
-        "return 'fail' in r ? r.fail : actions[m[2]!]!(s, r.b, { store: o.store, describe: describeModel, describeEffort, installed: deps.providers!.installed });"
+        "return 'fail' in r ? r.fail : actions[m[2]!]!(s, r.b, { store: o.store, describe: describeModel, describeEffort, installed: deps.providers!.installed });",
+        "const deps: SessionDeps = { kinds: () => kindVersions(mods), store: o.store, makeEngine: (a) => o.makeEngine({ ...a, settings }), dir: o.dir, env: children, ...(o.redactor ? { redactor: o.redactor } : {}), describeModel, describeEffort, folderTrust: folderTrustFrom(mods), providers: checkEnvFrom(mods, { env: o.env ?? process.env, home: o.dir }), consent: asks, origin: (provider) => providerOrigin(mods, provider), generation: (provider) => providerGeneration(mods, provider), onRow: (row) => { for (const f of subs) f(row); }, parallel: parallelSeam(o.store) };"
       ],
       "packages/server/src/session.ts": [
         "store: Store; makeEngine: MakeEngine; dir: string; onRow?: (row: LogRow) => void; describeModel?: DescribeModel; describeEffort?: DescribeEffort;"
@@ -842,6 +850,11 @@
       ],
       "packages/server/src/store.ts": [
         "export function redactingStore(store: Store, redactor: Pick<Redactor, 'redactJson' | 'has'>): Store {"
+      ],
+      "packages/server/src/parallel.ts": [
+        "export function runOfSession(store: Store, sessionId: string): ParallelRow | undefined {",
+        "export function capWords(store: Store, sessionId: string): string | undefined {",
+        "export function parallelSeam(store: Store): { fenced(sessionId: string): boolean; capWords(sessionId: string): string | undefined } {"
       ]
     }
   },
