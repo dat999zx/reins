@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Runs only the test files whose inputs changed since they last passed, committed or not.
-//   node scripts/test-affected.mjs [--all] [--dry] [--batch N] [-- <extra vitest args>]
+//   node scripts/test-affected.mjs [--all] [--dry] [--batch N] [--jobs N] [-- <extra vitest args>]
+// --jobs N runs N batches (N vitest processes) at the same time; the default is 1. ponytail: batches run in directory order, so the heavy files can land in one batch; longest-first needs recorded durations.
 // A test file's fingerprint is its own bytes plus every file it imports (relative paths, '@reins/core', '@reins/server/*')
 // plus the config and lock files. A file passes when none of its tests failed and at least one ran; its fingerprint is then
 // stored in node_modules/.cache, so the next run skips it until something it depends on changes. A failed or crashed file
@@ -13,7 +14,7 @@
 // Use --all when in doubt. Live tests (*.real.test.ts) need real keys and are never run here.
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -101,14 +102,22 @@ export function fingerprint(root, test, ctx) {
   return sha(parts.join('\n'));
 }
 
-function runBatch(root, files, extra, tmp) {
-  const out = join(tmp, `run-${process.pid}-${Date.now()}.json`);
-  spawnSync(process.execPath, [join(root, 'node_modules/vitest/vitest.mjs'), 'run', ...files.map((f) => rel(root, f)),
-    '--retry=2', '--reporter=default', '--reporter=json', `--outputFile.json=${out}`, ...extra], { cwd: root, stdio: 'inherit' });
+let batchNo = 0;
+async function runBatch(root, files, extra, tmp, quiet) {
+  const out = join(tmp, `run-${process.pid}-${batchNo++}.json`);
+  let text = '';
+  await new Promise((done) => {
+    const c = spawn(process.execPath, [join(root, 'node_modules/vitest/vitest.mjs'), 'run', ...files.map((f) => rel(root, f)),
+      '--retry=2', '--reporter=default', '--reporter=json', `--outputFile.json=${out}`, ...extra], { cwd: root, stdio: quiet ? ['ignore', 'pipe', 'pipe'] : 'inherit' });
+    if (quiet) for (const s of [c.stdout, c.stderr]) s.on('data', (d) => (text += d));
+    c.on('exit', done);
+  });
   if (!existsSync(out)) return null; // vitest died before it wrote a summary
   const j = JSON.parse(readFileSync(out, 'utf8'));
   rmSync(out);
-  return parseResults(root, j);
+  const res = parseResults(root, j);
+  res.text = text; // what a quiet batch printed, for the caller to show when it failed
+  return res;
 }
 
 // vitest's json reporter has no retry count: a test that failed and then passed on a retry is `passed` with the failed attempts' messages kept in `failureMessages`.
@@ -126,7 +135,7 @@ export function parseResults(root, j) {
   return res;
 }
 
-function main() {
+async function main() {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
   const argv = process.argv.slice(2);
   const dd = argv.indexOf('--');
@@ -135,6 +144,8 @@ function main() {
   const all = flags.includes('--all'), dry = flags.includes('--dry');
   const bi = flags.indexOf('--batch');
   const size = bi >= 0 ? Math.max(1, Number(flags[bi + 1]) || 6) : 6;
+  const ji = flags.indexOf('--jobs');
+  const jobs = ji >= 0 ? Math.max(1, Number(flags[ji + 1]) || 1) : 1;
 
   const tmp = join(root, 'node_modules/.cache');
   const stateFile = join(tmp, 'reins-test-green.json');
@@ -172,16 +183,32 @@ function main() {
     save();
   };
   const started = Date.now();
-  for (let i = 0; i < todo.length; i += size) {
-    const files = todo.slice(i, i + size);
-    const res = runBatch(root, files, extra, tmp);
-    if (res) { record(res, files); continue; }
-    console.log(`test-affected: vitest died on a batch of ${files.length}; retrying file by file`);
-    for (const f of files) {
-      const one = runBatch(root, [f], extra, tmp);
-      if (one) record(one, [f]); else crashed.push(rel(root, f));
+  const batches = [];
+  for (let i = 0; i < todo.length; i += size) batches.push(todo.slice(i, i + size));
+  let next = 0, done = 0;
+  const quiet = jobs > 1; // parallel output would interleave: a quiet batch prints one line, and its full output only when it did not pass
+  const worker = async () => {
+    while (next < batches.length) {
+      const files = batches[next++];
+      const res = await runBatch(root, files, extra, tmp, quiet);
+      done++;
+      if (res) {
+        const before = failed.length;
+        record(res, files);
+        if (quiet) {
+          console.log(`test-affected: batch ${done}/${batches.length} ${failed.length > before ? 'FAILED' : 'ok'} (${files.length} files)`);
+          if (failed.length > before) console.log(res.text);
+        }
+        continue;
+      }
+      console.log(`test-affected: vitest died on a batch of ${files.length}; retrying file by file`);
+      for (const f of files) {
+        const one = await runBatch(root, [f], extra, tmp, quiet);
+        if (one) record(one, [f]); else crashed.push(rel(root, f));
+      }
     }
-  }
+  };
+  await Promise.all(Array.from({ length: Math.min(jobs, batches.length) }, worker));
   console.log(`\ntest-affected: ${passed} passed and stored, ${failed.length} failed, ${crashed.length} crashed, ${flaky.length} flaky (passed only after a retry, not stored), ${((Date.now() - started) / 1000).toFixed(0)}s`);
   for (const f of flaky) console.log(`  FLAKY   ${f}`);
   for (const f of failed) console.log(`  FAILED  ${f}`);
@@ -189,4 +216,4 @@ function main() {
   return failed.length || crashed.length || (stale && browser.length) ? 1 : 0;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) process.exit(main());
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main().then((code) => process.exit(code));
