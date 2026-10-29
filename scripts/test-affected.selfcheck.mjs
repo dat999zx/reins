@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fingerprint, makeCtx, testFiles } from './test-affected.mjs';
+import { fingerprint, makeCtx, parseResults, testFiles } from './test-affected.mjs';
 
 const root = mkdtempSync(join(tmpdir(), 'ta-'));
 const put = (p, s) => { mkdirSync(join(root, p, '..'), { recursive: true }); writeFileSync(join(root, p), s); };
@@ -45,6 +45,12 @@ try {
   const m2 = fps();
   put('packages/server/test/fake-claude.mjs', 'b');
   assert.notEqual(fps()['y.test.ts'], m2['y.test.ts'], 'a helper script referenced by URL counts');
+  // vitest json: a retried-then-passed test is `passed` with failureMessages from the failed attempts
+  const t = (name, status, failureMessages = []) => ({ name: join(root, name), status, assertionResults: [{ status, failureMessages }] });
+  const pr = parseResults(root, { testResults: [t('a.test.ts', 'passed'), t('b.test.ts', 'passed', ['Error: x']), t('c.test.ts', 'failed', ['Error: y'])] });
+  assert.deepEqual(pr.get('a.test.ts'), { passed: 1, failed: 0, flaky: false }, 'a clean pass is not flaky');
+  assert.deepEqual(pr.get('b.test.ts'), { passed: 1, failed: 0, flaky: true }, 'a pass with failure messages needed a retry');
+  assert.equal(pr.get('c.test.ts').failed, 1, 'a failure stays a failure');
   console.log('test-affected selfcheck: ok');
 } finally {
   rmSync(root, { recursive: true, force: true });
