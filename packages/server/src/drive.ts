@@ -255,7 +255,8 @@ export function runOptions(io: DriveIo, o: {
       let r: Awaited<ReturnType<typeof runCommand>>;
       try {
         // The host may raise the 10-minute default with REINS_COMMAND_TIMEOUT_MIN (minutes); a missing, zero, negative or non-numeric value keeps it.
-        const min = Number((o.env?.() ?? process.env).REINS_COMMAND_TIMEOUT_MIN);
+        // Read from the host's own environment: `o.env` is what the COMMAND gets, and that one has every REINS_* name removed (secrets.ts childEnv).
+        const min = Number(process.env.REINS_COMMAND_TIMEOUT_MIN);
         r = await runCommand(cmd, { cwd, ...(o.env ? { env: o.env } : {}), ...(min > 0 && Number.isFinite(min) ? { timeoutMs: min * 60_000 } : {}), onOutput: (s) => io.write(s) });
       } finally {
         io.endOutput?.();                  // even when the command fails: what was held back is written under this run
