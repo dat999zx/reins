@@ -1,10 +1,18 @@
 // drive.ts: the answer parser, the pause loop, the two ask helpers, and runOptions (plan 15d 3b.2).
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { FakeEngine, Run, parseWorkflow, register, validate, type Cond, type ScriptedTurn, type Step, type Workflow } from '@reins/core';
 import { askJudge, askTool, driveRun, parseAnswer, runOptions, type DriveIo, type Question } from '../src/drive.js';
 import { m2harness } from '../../core/test/m2-harness.js';
 import { split } from '../../core/test/fixtures/split.js';
 import { usePack } from './pack-helper.js';
+
+// runCommand still runs for real; the spy only records the options drive.ts passes it.
+const runCommandSpy = vi.hoisted(() => vi.fn());
+vi.mock('../src/commands.js', async (orig) => {
+  const actual = await orig<typeof import('../src/commands.js')>();
+  runCommandSpy.mockImplementation(actual.runCommand);
+  return { ...actual, runCommand: runCommandSpy };
+});
 
 usePack(); // M3 Task 3: the built-in kinds are the default pack's mods; this file loads the pack once
 
@@ -289,6 +297,31 @@ describe('runOptions', () => {
     await driveRun(run, t.io, () => {});
     expect(t.lines).toEqual(expect.arrayContaining(['$ echo hello', '✓ passed']));
     expect(t.chunks.join('')).toContain('hello');
+  });
+
+  describe('REINS_COMMAND_TIMEOUT_MIN', () => {
+    const timeoutFor = async (env?: Record<string, string>) => {
+      runCommandSpy.mockClear();
+      const base = { workflow: wf([]), engine: new FakeEngine(), cwd: process.cwd(), resolveBlock: () => undefined, onEvent: () => {} };
+      const o = runOptions(testIo().io, { ...base, ...(env ? { env: () => ({ PATH: process.env.PATH, ...env }) } : {}) });
+      await o.commandRunner!('echo hi');
+      return runCommandSpy.mock.calls[0]![1].timeoutMs;
+    };
+    it('passes the minutes from the command environment as timeoutMs', async () => {
+      expect(await timeoutFor({ REINS_COMMAND_TIMEOUT_MIN: '25' })).toBe(25 * 60_000);
+      expect(await timeoutFor({ REINS_COMMAND_TIMEOUT_MIN: '0.5' })).toBe(30_000);
+    });
+    it('reads o.env, not process.env, when o.env is given', async () => {
+      process.env.REINS_COMMAND_TIMEOUT_MIN = '99';
+      try {
+        expect(await timeoutFor({})).toBeUndefined();
+        expect(await timeoutFor()).toBe(99 * 60_000);
+      } finally { delete process.env.REINS_COMMAND_TIMEOUT_MIN; }
+    });
+    it('ignores a missing, zero, negative or non-numeric value', async () => {
+      expect(await timeoutFor()).toBeUndefined();
+      for (const v of ['', '0', '-5', 'abc', 'Infinity', 'NaN']) expect(await timeoutFor({ REINS_COMMAND_TIMEOUT_MIN: v }), v).toBeUndefined();
+    });
   });
 });
 
