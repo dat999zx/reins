@@ -69,6 +69,8 @@ Format: [Keep a Changelog](https://keepachangelog.com). Versions: [SemVer](https
 - Blocks is now one pan and zoom workspace: drag the background to pan, wheel to zoom, Shift+drag to box-select. Scratch-style blocks snap into a stack; steps after an `end` are free blocks joined by drawn links. Loose blocks park ideas outside the file. Undo and redo, copy and paste, right-click menus and keyboard routes for every action.
 - The Map tab is gone; tabs are Chat, Blocks and Text.
 - `reins --version` (and `-v`) prints the version.
+- A command a playbook runs is still stopped after 10 minutes, but you can raise that: start Reins with `REINS_COMMAND_TIMEOUT_MIN=<minutes>` in its environment. A missing, zero, negative or non-numeric value keeps 10 minutes. A long test gate can now pass through a `run` block or a `tests pass` condition.
+- For contributors: `npm run test:affected` runs only the test files whose inputs changed since they last passed (committed or not), re-runs only the files that failed, and takes `--jobs N` to run N vitest processes at once (the full suite took 393 s with 4 jobs against 1262 s with 1 on a 12-CPU machine). `node scripts/parallel.mjs` runs several tasks at the same time, each in its own git worktree and its own Reins session, then merges them in order and stops on the first conflict. Neither is part of the shipped package.
 
 ## 0.1.2
 

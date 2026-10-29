@@ -1,10 +1,18 @@
 // drive.ts: the answer parser, the pause loop, the two ask helpers, and runOptions (plan 15d 3b.2).
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { FakeEngine, Run, parseWorkflow, register, validate, type Cond, type ScriptedTurn, type Step, type Workflow } from '@reins/core';
 import { askJudge, askTool, driveRun, parseAnswer, runOptions, type DriveIo, type Question } from '../src/drive.js';
 import { m2harness } from '../../core/test/m2-harness.js';
 import { split } from '../../core/test/fixtures/split.js';
 import { usePack } from './pack-helper.js';
+
+// runCommand still runs for real; the spy only records the options drive.ts passes it.
+const runCommandSpy = vi.hoisted(() => vi.fn());
+vi.mock('../src/commands.js', async (orig) => {
+  const actual = await orig<typeof import('../src/commands.js')>();
+  runCommandSpy.mockImplementation(actual.runCommand);
+  return { ...actual, runCommand: runCommandSpy };
+});
 
 usePack(); // M3 Task 3: the built-in kinds are the default pack's mods; this file loads the pack once
 
@@ -289,6 +297,37 @@ describe('runOptions', () => {
     await driveRun(run, t.io, () => {});
     expect(t.lines).toEqual(expect.arrayContaining(['$ echo hello', '✓ passed']));
     expect(t.chunks.join('')).toContain('hello');
+  });
+
+  describe('REINS_COMMAND_TIMEOUT_MIN', () => {
+    // The variable is host configuration: it is read from the host's process.env. `o.env` is the COMMAND's environment, which has every REINS_* name removed.
+    const timeoutFor = async (hostValue?: string, commandEnv?: Record<string, string>) => {
+      runCommandSpy.mockClear();
+      const was = process.env.REINS_COMMAND_TIMEOUT_MIN;
+      if (hostValue === undefined) delete process.env.REINS_COMMAND_TIMEOUT_MIN; else process.env.REINS_COMMAND_TIMEOUT_MIN = hostValue;
+      try {
+        const base = { workflow: wf([]), engine: new FakeEngine(), cwd: process.cwd(), resolveBlock: () => undefined, onEvent: () => {} };
+        const o = runOptions(testIo().io, { ...base, ...(commandEnv ? { env: () => ({ PATH: process.env.PATH, ...commandEnv }) } : {}) });
+        await o.commandRunner!('echo hi');
+        return runCommandSpy.mock.calls[0]![1].timeoutMs;
+      } finally {
+        if (was === undefined) delete process.env.REINS_COMMAND_TIMEOUT_MIN; else process.env.REINS_COMMAND_TIMEOUT_MIN = was;
+      }
+    };
+    it('passes the minutes from the host environment as timeoutMs', async () => {
+      expect(await timeoutFor('25')).toBe(25 * 60_000);
+      expect(await timeoutFor('0.5')).toBe(30_000);
+    });
+    it('still works when the command gets its own env without any REINS_ name (what the app does)', async () => {
+      expect(await timeoutFor('25', {})).toBe(25 * 60_000);
+    });
+    it('does not take the value from the command environment', async () => {
+      expect(await timeoutFor(undefined, { REINS_COMMAND_TIMEOUT_MIN: '99' })).toBeUndefined();
+    });
+    it('ignores a missing, zero, negative or non-numeric value', async () => {
+      expect(await timeoutFor()).toBeUndefined();
+      for (const v of ['', '0', '-5', 'abc', 'Infinity', 'NaN']) expect(await timeoutFor(v), v).toBeUndefined();
+    });
   });
 });
 
