@@ -161,12 +161,12 @@ export const pageTitle = (st: State) => {
   return n ? `(${n}) waiting · Reins` : 'Reins';
 };
 
-export function railGroups(st: State) {
+export function railGroups(st: State, grouped: ReadonlySet<string> = new Set()) {
   const all = Object.values(st.sessions);
   const byNew = (a: Sess, b: Sess) => b.lastTs - a.lastTs;
   const waiting = all.filter((s) => s.status === 'waiting').sort(byNew);
   const map = new Map<string, Sess[]>();
-  for (const s of all.filter((s) => s.status !== 'waiting')) map.set(s.cwd, [...(map.get(s.cwd) ?? []), s]);
+  for (const s of all.filter((s) => s.status !== 'waiting' && !grouped.has(s.id))) map.set(s.cwd, [...(map.get(s.cwd) ?? []), s]);
   const groups = [...map].map(([cwd, list]) => ({ cwd, name: folderName(cwd), sessions: list.sort(byNew) }))
     .sort((a, b) => b.sessions[0]!.lastTs - a.sessions[0]!.lastTs);
   return { waiting, groups };

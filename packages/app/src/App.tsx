@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { LogRow } from '@reins/server/store.js';
 import type { TagEntry } from '@reins/server/tags.js';
-import { ApiError, get, initToken, post, stream } from './api.js';
+import { ApiError, get, initToken, parallelRuns, post, resumeAll, setCap, stopAll, stream } from './api.js';
+import type { ParallelView } from './parallel.js';
 import { setCards, setKinds } from './canvasKinds.js';
 import { setConds } from './condKinds.js';
 import { setQuestions } from './questions.js';
@@ -95,6 +96,7 @@ export function App() {
         setTimeout(() => void connect(), 1000);
         return;
       }
+      void refreshParallel();
       flush();
       es = stream(afterOf(stRef.current));
       es.onopen = () => setReconnecting(false);
@@ -174,6 +176,17 @@ export function App() {
   };
 
   const flash = (m: string) => { setNotice(m); setTimeout(() => setNotice(''), 4000); };
+  // The parallel runs (spec 5B): read at connect, after each group action, and when the number of sessions changes. A failed read only flashes.
+  const [parallel, setParallel] = useState<ParallelView[]>([]);
+  const refreshParallel = () => parallelRuns().then(setParallel).catch((e) => flash(`Could not read the parallel runs: ${(e as Error).message}`));
+  const sessionCount = Object.keys(st.sessions).length;
+  useEffect(() => { if (ready) void refreshParallel(); }, [sessionCount]);
+  const groupAction = (act: () => Promise<unknown>) => act().catch((e) => flash((e as Error).message)).then(() => refreshParallel());
+  const resumeAllFlash = (id: string) => groupAction(async () => {
+    const r = await resumeAll(id);
+    const list = Array.isArray(r.results) ? (r.results as Array<{ name?: string; result?: string; words?: string }>) : [];
+    if (list.length) flash(list.map((t) => `${t.name ?? '?'}: ${t.result ?? '?'}${t.words ? ` (${t.words})` : ''}`).join('; '));
+  });
   const leave = () => !dirty.current || window.confirm('Discard unsaved changes?');
   const select = (id: string) => {
     if (id !== selected && !leave()) return;
@@ -233,6 +246,8 @@ export function App() {
           state={st} selected={selected} onSelect={select} onNew={() => void newSession()} onPlus={(cwd) => void start(cwd)}
           onRename={(id, title) => { post(`/api/sessions/${id}/settings`, { title }).catch((e) => flash(e.message)); }}
           onSettings={() => { if (leave()) setSettings(true); }}
+          parallel={parallel} onStopAll={(id) => void groupAction(() => stopAll(id))} onResumeAll={(id) => void resumeAllFlash(id)}
+          onCap={(id, usd) => void groupAction(() => setCap(id, usd))}
           pathBox={pathBox && (
             <form className="pathbox" onSubmit={(e) => { e.preventDefault(); void start(path.trim()).then(() => setPath('')); }}>
               <label>No folder picker here. Absolute folder path

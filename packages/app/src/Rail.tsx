@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { groupedIds, parallelGroups, type ParallelView } from './parallel.js';
 import { railGroups, title, type Sess, type State } from './state.js';
 
 const ago = (ts: number) => {
@@ -28,18 +29,37 @@ function Item({ s, selected, badge, onSelect, onRename }: { s: Sess; selected: b
   );
 }
 
-export function Rail({ state, selected, onSelect, onNew, onPlus, onRename, onSettings, pathBox }: {
+const usd = (n: number) => `$${n.toFixed(2)}`;
+
+export function Rail({ state, selected, onSelect, onNew, onPlus, onRename, onSettings, pathBox, parallel = [], onStopAll = () => {}, onResumeAll = () => {}, onCap = () => {} }: {
   state: State; selected: string | null; onSelect: (id: string) => void; onNew: () => void; onPlus: (cwd: string) => void;
   onRename: (id: string, title: string) => void; onSettings: () => void; pathBox: ReactNode;
+  parallel?: ParallelView[]; onStopAll?: (id: string) => void; onResumeAll?: (id: string) => void; onCap?: (id: string, usd: number | null) => void;
 }) {
-  const { waiting, groups } = railGroups(state);
+  const { waiting, groups } = railGroups(state, groupedIds(parallel));
   const item = (s: Sess) => <Item key={s.id} s={s} selected={s.id === selected} badge={s.status === 'waiting'} onSelect={() => onSelect(s.id)} onRename={(t) => onRename(s.id, t)} />;
   return (
     <nav className="rail" aria-label="Sessions">
       <button className="primary new" onClick={onNew}>New session <kbd>Ctrl+O</kbd></button>
       {pathBox}
-      {waiting.length === 0 && groups.length === 0 && <p className="hint">No sessions yet. New session, or Ctrl+O</p>}
+      {waiting.length === 0 && groups.length === 0 && parallel.length === 0 && <p className="hint">No sessions yet. New session, or Ctrl+O</p>}
       {waiting.length > 0 && <ul className="waiting" aria-label="Waiting for you">{waiting.map(item)}</ul>}
+      {parallelGroups(state, parallel).map((g) => (
+        <section key={g.run.id} className="group parallel">
+          <header title={g.run.title}><span>{g.run.title}</span></header>
+          <p className="counts">{`${g.counts.running} running · ${g.counts.waiting} waiting · ${g.counts.paused} paused · ${g.counts.done} done`}</p>
+          <p className={g.over ? 'cost over' : 'cost'}>{`${g.costUnknown ? 'at least ' : ''}${usd(g.cost)}${g.cap !== undefined ? ` of ${usd(g.cap)}` : ''}`}</p>
+          <div className="actions">
+            <button onClick={() => { if (window.confirm(`Stop all ${g.sessions.length} tasks? Their worktrees are kept.`)) onStopAll(g.run.id); }}>Stop all</button>
+            <button onClick={() => onResumeAll(g.run.id)}>Resume all</button>
+            <label>Cap USD
+              <input type="number" min="0" step="any" aria-label="Cap in USD" defaultValue={g.cap ?? ''} placeholder="no cap"
+                onBlur={(e) => { const v = e.target.value.trim(); const n = Number(v); if (v === '' ? g.cap !== undefined : n > 0 && n !== g.cap) onCap(g.run.id, v === '' ? null : n); }} />
+            </label>
+          </div>
+          <ul>{g.sessions.map(item)}</ul>
+        </section>
+      ))}
       {groups.map((g) => (
         <section key={g.cwd} className="group">
           <header title={g.cwd}><span>{g.name}</span><button className="plus" aria-label={`New session in ${g.name}`} onClick={() => onPlus(g.cwd)}>+</button></header>
