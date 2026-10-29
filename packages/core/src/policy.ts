@@ -29,6 +29,20 @@ function guardHit(policy: Policy, path: string, cwd: string): string | undefined
   return policy.guards.find((g) => picomatch(g, { dot: true, nocase: true })(rel));
 }
 
+/** Does `p` lie outside `cwd`? The rule behind `Policy.inside` (M5 plan T1); `~` and variables are not expanded. */
+function outside(p: string, cwd: string): boolean {
+  const rel = relPath(p, cwd);
+  const win = /^([a-z]:[\\/]|[\\/]{2})/i.test(cwd);
+  const root = cwd.replace(/\\/g, '/').replace(/\/+$/, '');
+  const bare = rel.replace(/\/+$/, '');
+  if (win ? bare.toLowerCase() === root.toLowerCase() : bare === root) return false;
+  if (rel === '..' || rel.startsWith('../')) return true;
+  if (rel === '~' || rel.startsWith('~/')) return true;
+  if (rel === '/dev/null') return false;
+  if (win) return /^[a-z]:\//i.test(rel) || (rel.startsWith('/') && rel.indexOf('/', 1) > 0);
+  return rel.startsWith('/');
+}
+
 /**
  * The one policy check (plan 6.4): the refusal reason written for the agent, or null to pass.
  * Reasons say "read-only" or "guarded" so the receipt can count them.
@@ -54,6 +68,9 @@ export function checkTool(policy: Policy, tool: string, input: any, cwd: string)
 
   if (isWrite) {
     const p = input?.file_path ?? input?.path ?? input?.notebook_path;
+    if (policy.inside && typeof p === 'string' && outside(p, cwd)) {
+      return `Blocked by Reins: ${p} is outside this task's folder, which a parallel run guards. Write only inside ${cwd}.`;
+    }
     const g = typeof p === 'string' ? guardHit(policy, p, cwd) : undefined;
     return g ? `Blocked by Reins: ${relPath(p, cwd)} is guarded (${g}). Do not touch it.` : null;
   }
@@ -61,6 +78,10 @@ export function checkTool(policy: Policy, tool: string, input: any, cwd: string)
   // ponytail: a shell command is refused when any word in it names a guarded path, reads
   // included. Conservative on purpose; it misses paths built at runtime (variables, globs).
   const words = String(input?.command ?? '').split(/[\s"'`;|&<>()]+/).filter(Boolean);
+  if (policy.inside) {
+    const hit = words.flatMap((w) => w.split('=')).find((w) => (/[\\/]/.test(w) || w.startsWith('~') || w === '..') && outside(w, cwd));
+    if (hit) return `Blocked by Reins: this command names ${hit}, outside this task's folder, which a parallel run guards.`;
+  }
   for (const w of words) {
     const g = guardHit(policy, w, cwd);
     if (g) return `Blocked by Reins: this command touches ${relPath(w, cwd)}, which is guarded (${g}).`;
