@@ -82,7 +82,7 @@ function server() {
   };
 }
 
-const sh = (cmd, cwd) => new Promise((ok, no) => spawn(cmd, { cwd, shell: true, stdio: 'ignore' }).on('exit', (c) => (c === 0 ? ok() : no(new Error(`${cmd} failed (${c}) in ${cwd}`)))));
+const sh = (cmd, cwd, show = false) => new Promise((ok, no) => spawn(cmd, { cwd, shell: true, stdio: show ? 'inherit' : 'ignore' }).on('exit', (c) => (c === 0 ? ok() : no(new Error(`${cmd} failed (${c}) in ${cwd}`)))));
 
 /** Start/end (ms timestamps), end type and duration from a session log: the first row starts it, the first run_finished or run_stopped row ends it. Unset while running. */
 export function timing(rows) {
@@ -146,9 +146,9 @@ async function merge(file) {
   const r = mergeInOrder(s.repo, ready, s);
   console.log(`merged: ${r.merged.join(', ') || 'none'}`);
   if (r.conflict) { console.log(`CONFLICT in ${r.conflict.task}: ${r.conflict.files.join(', ') || r.conflict.why}\nThe merge was aborted; resolve by hand, then run merge again.`); process.exitCode = 2; return; }
-  await sh('npm run build', s.repo);
+  await sh('npm run build', s.repo, true);
   console.log('gate: node scripts/test-affected.mjs --all');
-  await sh('node scripts/test-affected.mjs --all', s.repo);
+  await sh('node scripts/test-affected.mjs --all', s.repo, true); // shown: a failed gate must say which file failed
 }
 
 function clean(file) {
