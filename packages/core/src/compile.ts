@@ -10,6 +10,8 @@ export interface Policy {
   guards: string[];
   allowShell: boolean;
   pendingGate?: string;
+  /** A parallel run's session: writes stay inside cwd. */
+  inside?: true;
 }
 
 // The instruction shapes, keyed by op. A kind adds its own by merging into this interface.
