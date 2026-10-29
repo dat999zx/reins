@@ -4,7 +4,13 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { addWorktrees, commitAll, mergeInOrder, preflight, timing } from './parallel.mjs';
+import { addWorktrees, commitAll, mergeInOrder, preflight, registerBody, timing } from './parallel.mjs';
+
+const rt = [{ name: 'A', dir: 'D:/w/a', branch: 'b', playbook: 'p.md' }, { name: 'B', dir: 'D:/w/b' }];
+assert.deepEqual(registerBody({ title: 'T', capUsd: 5 }, 'D:/repo', 'r1', rt), { title: 'T', repo: 'D:/repo', capUsd: 5, tasks: [{ name: 'A', dir: 'D:/w/a' }, { name: 'B', dir: 'D:/w/b' }] }, 'title, cap and tasks');
+const nb = registerBody({}, 'D:/repo', 'r1', rt);
+assert.deepEqual(nb, { title: 'parallel r1', repo: 'D:/repo', tasks: [{ name: 'A', dir: 'D:/w/a' }, { name: 'B', dir: 'D:/w/b' }] }, 'default title');
+assert.ok(!('capUsd' in nb), 'no capUsd key when absent');
 
 const rows = [{ type: 'user', ts: 1000 }, { type: 'tool', ts: 2000 }, { type: 'run_finished', ts: 91000 }, { type: 'run_stopped', ts: 99000 }];
 assert.deepEqual(timing(rows), { start: 1000, end: 91000, type: 'run_finished', ms: 90000 }, 'the first end row wins');

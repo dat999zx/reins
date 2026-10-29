@@ -4,6 +4,10 @@ Format: [Keep a Changelog](https://keepachangelog.com). Versions: [SemVer](https
 
 ## Unreleased
 
+- Parallel runs (M5): the tasks of one `scripts/parallel.mjs` run are one group at the top of the rail, with the total cost, a USD cap, Stop all and Resume all.
+- The cap is a backstop, not a budget: once the total reaches it no new model call starts, and calls already running finish. A refused task shows the cap words, and Resume carries on after you raise the cap.
+- A parallel task cannot write outside its own worktree. For a shell command, Reins checks the paths the command names.
+- After a restart the group is back, and Resume all names any worktree that is gone. `parallel.mjs clean` forgets the group.
 - The rename (M4): what Reins called a workflow is now called a **playbook**, in the app, in messages and errors, in `reins` output and help, in the import and export summaries and in the docs. The block that runs one playbook inside another keeps its name, `playbook`. Nothing else changed: the `.reins.md` file extension, the `.reins/workflows/` folder, the API routes, the file format and the share file keep their names, so every file you have still opens. In older notes, "workflow" means playbook.
 - Mods can add blocks, conditions and cards (Milestone M2). A mod lists everything it adds in its `mod.json`, and Reins refuses anything it does not list. Its code runs only after you trust it, and a changed file asks again. `packages/server/src/mods/README.md` is the guide.
 - A block mod can have no code. Its prompt is a template in `mod.json`, filled from the step's attributes. The step's mode still applies. The toy-ask example is in the guide.
