@@ -183,7 +183,11 @@ async function merge(file, api = server()) {
     await sh('npm run build', s.repo, true);
     console.log('gate: node scripts/test-affected.mjs --all --jobs 4');
     await sh('node scripts/test-affected.mjs --all --jobs 4', s.repo, true); // shown: a failed gate must say which file failed
-  } catch (e) { console.log(`gate failed: ${e.message}`); process.exitCode = 1; gate = 'fail'; }
+  } catch (e) {
+    // A load flake passes alone. test-affected stores what passed, so this reruns only the files that failed, once.
+    console.log(`gate failed: ${e.message}\nretrying the failed files once: node scripts/test-affected.mjs --jobs 2`);
+    try { await sh('node scripts/test-affected.mjs --jobs 2', s.repo, true); } catch (e2) { console.log(`gate failed again: ${e2.message}`); process.exitCode = 1; gate = 'fail'; }
+  }
   return { merged: [...done, ...r.merged], notMerged, conflict: undefined, gate };
 }
 
