@@ -25,7 +25,8 @@
         "if (o.yes && q.kind === 'gate') { say('  approved (--yes)'); return Promise.resolve('approve'); }"
       ],
       "packages/app/src/parallel.ts": [
-        "export interface ParallelView { id: string; title: string; capUsd?: number; approve?: 'fence'; createdAt: number; tasks: Array<{ name: string; sessionId: string }> }"
+        "id: string; title: string; capUsd?: number; approve?: 'fence'; createdAt: number; tasks: Array<{ name: string; sessionId: string }>;",
+        "export interface RunSpec { title: string; capUsd?: number; approve?: 'fence'; install?: string; gate?: string; gateRetry?: string; reports?: string; copy: string[]; tasks: Array<{ name: string; slug: string; playbook: string; model?: string; effort?: string }> }"
       ],
       "packages/app/src/Rail.tsx": [
         "{g.run.approve === 'fence' && <p className=\"approve\">auto-approve: fence</p>}"
@@ -41,6 +42,9 @@
         "if (!(db.prepare('pragma table_info(parallel_runs)').all() as Array<{ name: string }>).some((c) => c.name === 'approve')) {",
         "export interface ParallelRow { id: string; title: string; capUsd?: number; approve?: 'fence'; createdAt: number; tasks: ParallelTask[]; phase?: ParallelPhase; job?: ParallelJob }",
         "id: r.id, title: r.title, ...(r.cap_usd != null ? { capUsd: r.cap_usd } : {}), ...(r.approve === 'fence' ? { approve: 'fence' as const } : {}), createdAt: r.created_at, tasks,"
+      ],
+      "packages/server/src/server.ts": [
+        "id, title: spec.title, ...(spec.capUsd !== undefined ? { capUsd: spec.capUsd } : {}), ...(spec.approve ? { approve: spec.approve } : {}), tasks: [], phase: 'setup',"
       ]
     }
   },
@@ -189,7 +193,9 @@
         "return { runId, status: active.status, exitCode: active.status === 'done' ? 0 : 1, receipt: r };"
       ],
       "packages/server/src/server.ts": [
-        "if (req.method === 'POST' && id === 'first-run' && action === 'done') reply = await firstRunDone(env);"
+        "if (req.method === 'POST' && id === 'first-run' && action === 'done') reply = await firstRunDone(env);",
+        "if (run.phase === 'done') return fail(409, 'This run is already merged.');",
+        "if (run.phase !== 'done' && run.phase !== 'failed' && run.phase !== 'interrupted') return fail(409, 'Clean needs a finished run. Merge first, or stop the tasks and merge.');"
       ],
       "packages/server/src/session.ts": [
         "if (r.status === 'done' && !stopping && all.length) return all.join('\\n\\n');"
@@ -197,10 +203,13 @@
       "packages/app/src/parallel.ts": [
         "export type TaskState = 'running' | 'waiting' | 'paused' | 'done';",
         "s.status === 'running' ? 'running' : s.status === 'waiting' ? 'waiting' : s.status === 'idle' && s.detached.length ? 'paused' : 'done';",
-        "const counts: Record<TaskState, number> = { running: 0, waiting: 0, paused: 0, done: 0 };"
+        "const counts: Record<TaskState, number> = { running: 0, waiting: 0, paused: 0, done: 0 };",
+        "export type ParallelPhase = 'setup' | 'running' | 'merging' | 'gating' | 'done' | 'failed' | 'interrupted';",
+        "if (run.phase === 'done') return 'Already merged.';",
+        "const n = sessions.filter((s) => taskState(s) !== 'done').length;",
+        "const never = sessions.filter((s) => taskState(s) === 'done' && !s.rows.some((r) => r.type === 'run_finished' || r.type === 'run_stopped')).length;"
       ],
       "packages/server/src/parallel-run.ts": [
-        "export type ParallelPhase = 'setup' | 'running' | 'merging' | 'gating' | 'done' | 'failed' | 'interrupted';",
         "const ready: ParallelJobTask[] = [], notMerged: Array<{ name: string; why: string }> = [], done: string[] = [];",
         "d.save({ phase: 'done', job: { merged, notMerged, gateResult: 'not run' } });",
         "if (g.exitCode === 0) d.save({ phase: 'done', job: { gateResult: 'pass' } });"
@@ -318,9 +327,7 @@
       "packages/server/src/session.ts": [
         "const detaches = open.length > 0 && open.every((p) => ['gate', 'budget', 'resume', 'switch', 'usd'].includes(p.q.kind))"
       ],
-      "packages/server/src/parallel-run.ts": [
-        "install?: string; gate?: string; gateRetry?: string; reports?: string;"
-      ],
+      "packages/server/src/parallel-run.ts": [],
       "packages/server/src/parallel.ts": [
         "export interface RunSpec { title: string; capUsd?: number; approve?: 'fence'; install?: string; gate?: string; gateRetry?: string; reports?: string; copy: string[]; tasks: Array<{ name: string; slug: string; playbook: string; model?: string; effort?: string }> }",
         "for (const k of ['install', 'gate', 'gateRetry'] as const) if (o[k] !== undefined && !text(o[k])) return { error: `${k} must be a non-empty string.` };",
@@ -328,6 +335,13 @@
       ],
       "packages/server/src/store.ts": [
         "install?: string; gate?: string; gateRetry?: string; reports?: string;"
+      ],
+      "packages/app/src/parallel.ts": [
+        "install?: string; gate?: string; gateRetry?: string; reports?: string;",
+        "export interface RunSpec { title: string; capUsd?: number; approve?: 'fence'; install?: string; gate?: string; gateRetry?: string; reports?: string; copy: string[]; tasks: Array<{ name: string; slug: string; playbook: string; model?: string; effort?: string }> }"
+      ],
+      "packages/server/src/server.ts": [
+        "...(spec.install ? { install: spec.install } : {}), ...(spec.gate ? { gate: spec.gate } : {}), ...(spec.gateRetry ? { gateRetry: spec.gateRetry } : {}), ...(spec.reports ? { reports: spec.reports } : {}),"
       ]
     }
   },
@@ -475,7 +489,10 @@
         "model: str(b.model) ? b.model : provider.defaultModel,",
         "const picked = new Map<string, { provider: string; model: string }>();",
         "let p: { provider: string; model: string } | undefined;",
-        "const r = create({ cwd: fs.realpathSync.native(t.dir), title: `parallel: ${t.name}`, ...(p ? { engine: p.provider, model: p.model } : {}), ...(t.effort ? { effort: t.effort } : {}) });"
+        "const r = create({ cwd: fs.realpathSync.native(t.dir), title: `parallel: ${t.name}`, ...(p ? { engine: p.provider, model: p.model } : {}), ...(t.effort ? { effort: t.effort } : {}) });",
+        "function refuseModels(tasks: Array<{ name: string; model?: string; effort?: string }>): { reply: Reply } | { picked: Map<string, { provider: string; model: string }> } {",
+        "function makeSessions(tasks: Array<{ name: string; dir: string; effort?: string }>, picked: Map<string, { provider: string; model: string }>): Array<{ name: string; sessionId: string }> {",
+        "async function setupRun(id: string, repo: string, folder: string, spec: RunSpec, picked: Map<string, { provider: string; model: string }>) {"
       ],
       "packages/server/src/session.ts": [
         "interface Chose { model: string; label?: string }",
@@ -522,9 +539,12 @@
         "tasks.push({ name, slug: s, playbook: playbook as string, ...(model !== undefined ? { model: model as string } : {}), ...(effort !== undefined ? { effort: effort as string } : {}) });"
       ],
       "packages/server/src/parallel-run.ts": [
-        "export interface ParallelJobTask { name: string; branch: string; dir: string; playbook: string; model?: string; effort?: string }",
         "export async function addWorktrees(repo: string, folder: string, id: string, tasks: Array<{ name: string; slug: string; playbook: string; model?: string; effort?: string }>, copy: string[], d: RunDeps): Promise<ParallelJobTask[]> {",
         "soFar.push({ name: t.name, branch, dir, playbook: t.playbook, ...(t.model === undefined ? {} : { model: t.model }), ...(t.effort === undefined ? {} : { effort: t.effort }) });"
+      ],
+      "packages/app/src/parallel.ts": [
+        "tasks: Array<{ name: string; branch: string; dir: string; playbook: string; model?: string; effort?: string }>;",
+        "export interface RunSpec { title: string; capUsd?: number; approve?: 'fence'; install?: string; gate?: string; gateRetry?: string; reports?: string; copy: string[]; tasks: Array<{ name: string; slug: string; playbook: string; model?: string; effort?: string }> }"
       ]
     }
   },
@@ -628,7 +648,6 @@
         "const ended = showStatus && run.endedAt && endedPhase ? { id: run.endedAt, phase: endedPhase } : undefined;"
       ],
       "packages/server/src/parallel-run.ts": [
-        "export type ParallelPatch = { phase?: ParallelPhase; tasks?: ParallelTask[]; job?: Partial<ParallelJob> };",
         "d.save({ phase: 'merging', job: { words: '', conflict: undefined, gateResult: 'not run' } });",
         "d.save({ phase: 'failed', job: { merged, notMerged, conflict: r.conflict, gateResult: 'not run', words: `Conflict in ${r.conflict.task}: ${r.conflict.files.join(', ') || r.conflict.why}. The merge was aborted.` } });",
         "d.save({ phase: 'done', job: { merged, notMerged, gateResult: 'not run' } });",
@@ -644,6 +663,21 @@
         "export interface ParallelRow { id: string; title: string; capUsd?: number; approve?: 'fence'; createdAt: number; tasks: ParallelTask[]; phase?: ParallelPhase; job?: ParallelJob }",
         "...(r.phase != null ? { phase: r.phase } : {}), ...(job ? { job } : {}),",
         "for (const col of ['phase', 'job']) {"
+      ],
+      "packages/app/src/api.ts": [
+        "export const mergeRun = (id: string) => post<{ phase: 'merging' }>(`/api/parallel/${id}/merge`, {});"
+      ],
+      "packages/app/src/parallel.ts": [
+        "phase?: ParallelPhase;"
+      ],
+      "packages/app/src/Rail.tsx": [
+        "{g.run.job && <p className=\"phase\">{g.run.phase}</p>}"
+      ],
+      "packages/server/src/server.ts": [
+        "runDeps(id).save({ phase: 'failed', job: { words: e instanceof Error ? e.message : String(e) } });",
+        "id, title: spec.title, ...(spec.capUsd !== undefined ? { capUsd: spec.capUsd } : {}), ...(spec.approve ? { approve: spec.approve } : {}), tasks: [], phase: 'setup',",
+        "d.save({ phase: 'running' });",
+        "return ok({ phase: 'merging' });"
       ]
     }
   },
@@ -719,7 +753,9 @@
       ],
       "packages/server/src/server.ts": [
         "run: (s, b) => (str(b.path) && b.path ? fromAck(s.runFile(b.path)) : fail(400, 'path must be a non-empty string.')),",
-        "function resumeParallel(run: ReturnType<Store['listParallel']>[number]): Reply {"
+        "function resumeParallel(run: ReturnType<Store['listParallel']>[number]): Reply {",
+        "function mergeRoute(run: Run): Reply {",
+        "async function cleanRoute(run: Run): Promise<Reply> {"
       ],
       "packages/server/src/approve-fence.ts": [
         "{ words: ['node', 'node_modules/vitest/vitest.mjs', 'run'], paths: true, min: 1, flags: [] },",
@@ -727,6 +763,12 @@
         "{ words: ['npm', 'run', 'lint'], paths: false, flags: [] },",
         "{ words: ['npm', 'run', 'selfcheck'], paths: false, flags: [] },",
         "{ words: ['npx', 'vitest', 'run'], paths: true, min: 1, flags: [] },"
+      ],
+      "packages/app/src/parallel.ts": [
+        "export const busyPhase = (run: ParallelView): boolean => run.phase === 'setup' || run.phase === 'merging' || run.phase === 'gating';",
+        "export const mergeBlock = (run: ParallelView, sessions: Sess[]): string | undefined => {",
+        "export const cleanBlock = (run: ParallelView): string | undefined =>",
+        "export const mergeWords = (run: ParallelView, sessions: Sess[]): string => {"
       ]
     }
   },
@@ -973,7 +1015,6 @@
     "reason": "M8: the field of a parallel run task that holds the path of its playbook file (a data field of the run row and the tasks file), not a lookup of the playbook block kind",
     "files": {
       "packages/server/src/parallel-run.ts": [
-        "export interface ParallelJobTask { name: string; branch: string; dir: string; playbook: string; model?: string; effort?: string }",
         "export async function addWorktrees(repo: string, folder: string, id: string, tasks: Array<{ name: string; slug: string; playbook: string; model?: string; effort?: string }>, copy: string[], d: RunDeps): Promise<ParallelJobTask[]> {",
         "soFar.push({ name: t.name, branch, dir, playbook: t.playbook, ...(t.model === undefined ? {} : { model: t.model }), ...(t.effort === undefined ? {} : { effort: t.effort }) });"
       ],
@@ -983,6 +1024,10 @@
       ],
       "packages/server/src/store.ts": [
         "export interface ParallelJobTask { name: string; branch: string; dir: string; playbook: string; model?: string; effort?: string }"
+      ],
+      "packages/app/src/parallel.ts": [
+        "tasks: Array<{ name: string; branch: string; dir: string; playbook: string; model?: string; effort?: string }>;",
+        "export interface RunSpec { title: string; capUsd?: number; approve?: 'fence'; install?: string; gate?: string; gateRetry?: string; reports?: string; copy: string[]; tasks: Array<{ name: string; slug: string; playbook: string; model?: string; effort?: string }> }"
       ]
     }
   }
