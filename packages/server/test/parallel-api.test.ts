@@ -110,6 +110,40 @@ describe('parallel routes (M5 T7)', () => {
     await until(() => (w.store.readLog(a!).at(-1)?.data as { status?: string } | undefined)?.status === 'idle', 15_000);
   }, T);
 
+  it('resume all continues a task that Stop all paused with a resume question', async () => {
+    const w = await boot([{ ...TURNS, text: 'REINS: done', delayMs: 300 }]);
+    const f = folders('a');
+    const r = await make(w, f, ['a']);
+    const a = r.json.tasks[0].sessionId as string;
+    const wf = path.join(f.dirs[0]!, 'a.reins.md');
+    fs.writeFileSync(wf, `${FRONT}## phase go\n> do it\n`);
+    expect((await w.post(a, 'run', { path: wf })).status).toBe(200);
+    await w.answer(a, (await askedQuestion(w.store, a, 'trust')).id, 'y');
+    await until(() => w.fake.log().length > 0);
+    expect((await w.api('POST', `/api/parallel/${r.json.id}/stop`, { body: {} })).json.stopped).toEqual([a]);
+    const q = await askedQuestion(w.store, a, 'resume', 15_000);
+    const res = await w.api('POST', `/api/parallel/${r.json.id}/resume`, { body: {} });
+    expect(res.status).toBe(200);
+    expect(res.json.results).toEqual([{ name: 'a', result: 'resumed' }]);
+    expect(w.rows(a, 'answer').some((x) => (x.data as { questionId: string; answer: string }).questionId === q.id && (x.data as { answer: string }).answer === 'resume')).toBe(true);
+    await until(() => w.rows(a, 'run_finished').length > 0, 15_000);
+  }, 40_000);
+
+  it('resume all leaves a task waiting on a question that is not a resume', async () => {
+    const w = await boot([{ ...TURNS, text: 'REINS: done' }]);
+    const f = folders('a');
+    const r = await make(w, f, ['a']);
+    const a = r.json.tasks[0].sessionId as string;
+    const wf = path.join(f.dirs[0]!, 'a.reins.md');
+    fs.writeFileSync(wf, `${FRONT}## gate\nuntil: you approve\n\n## phase go\n> do it\n`);
+    expect((await w.post(a, 'run', { path: wf })).status).toBe(200);
+    await w.answer(a, (await askedQuestion(w.store, a, 'trust')).id, 'y');
+    await askedQuestion(w.store, a, 'gate');
+    const res = await w.api('POST', `/api/parallel/${r.json.id}/resume`, { body: {} });
+    expect(res.json.results).toEqual([{ name: 'a', result: 'waiting' }]);
+    expect(w.rows(a, 'answer').filter((x) => (x.data as { answer: string }).answer === 'resume')).toEqual([]);
+  }, T);
+
   it('after a restart with one worktree deleted, resume all says gone, nothing and resumed', async () => {
     const dir = tmpDir();
     const file = path.join(tmpDir(), 'reins.db');

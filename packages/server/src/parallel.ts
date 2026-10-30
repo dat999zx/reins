@@ -69,6 +69,17 @@ export function checkBody(b: unknown): { value: ParallelBody } | { error: string
   return { value: { title: o.title, repo: o.repo, ...(o.capUsd !== undefined ? { capUsd: o.capUsd } : {}), tasks } };
 }
 
+/** The id of the session's open `resume` question (a stopped run, or a failed track, waiting on its owner), if any. */
+export function openResume(rows: LogRow[]): string | undefined {
+  const settled = new Set(rows.filter((r) => r.type === 'answer' || r.type === 'question_closed').map((r) => (r.data as { questionId?: string }).questionId));
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i]!;
+    const q = r.data as { id?: string; kind?: string };
+    if (r.type === 'question' && q.kind === 'resume' && q.id !== undefined && !settled.has(q.id)) return q.id;
+  }
+  return undefined;
+}
+
 export const folderGone = (dir: string): boolean => !fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory();
 
 /** `null` clears the cap; a finite number above 0 sets it; anything else is an error string. */

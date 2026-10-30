@@ -15,7 +15,7 @@ import { ID_SHAPE, listModels, parseModel, type PickerModel } from './models.js'
 import { servedKinds } from './mods/kinds-view.js';
 import type { Mods, SendWithKey } from './mods/types.js';
 import type { ProviderStatus } from './run-checks.js';
-import { capWords, checkBody, folderGone, parallelSeam, usdOf } from './parallel.js';
+import { capWords, checkBody, folderGone, openResume, parallelSeam, usdOf } from './parallel.js';
 import { recover } from './recover.js';
 import { loadWorkflow } from './run-cli.js';
 import { kindVersions } from './drive.js';
@@ -359,7 +359,13 @@ export async function startServer(o: ServerOptions): Promise<Server> {
       if (!s) return { name: t.name, result: 'nothing' };
       const cwd = s.info().cwd;
       if (folderGone(cwd)) return { name: t.name, result: 'gone', words: `The worktree ${cwd} is gone.` };
-      if (s.status() === 'waiting') return { name: t.name, result: 'waiting' };
+      if (s.status() === 'waiting') {
+        // a stopped run (or a failed track) waits on a resume question: answering it is Resume; any other question needs its owner
+        const q = openResume(o.store.readLog(t.sessionId));
+        if (!q) return { name: t.name, result: 'waiting' };
+        const a = s.answer(q, 'resume');
+        return a.ok ? { name: t.name, result: 'resumed' } : { name: t.name, result: 'refused', words: a.error };
+      }
       const rid = s.status() === 'idle' ? detachedRuns(o.store.readLog(t.sessionId)).at(-1) : undefined;
       if (!rid) return { name: t.name, result: 'nothing' };
       const a = s.resume(rid);
