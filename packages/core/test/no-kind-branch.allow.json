@@ -23,6 +23,22 @@
       ],
       "packages/server/src/run-cli.ts": [
         "if (o.yes && q.kind === 'gate') { say('  approved (--yes)'); return Promise.resolve('approve'); }"
+      ],
+      "packages/app/src/parallel.ts": [
+        "export interface ParallelView { id: string; title: string; capUsd?: number; approve?: 'fence'; createdAt: number; tasks: Array<{ name: string; sessionId: string }> }"
+      ],
+      "packages/app/src/Rail.tsx": [
+        "{g.run.approve === 'fence' && <p className=\"approve\">auto-approve: fence</p>}"
+      ],
+      "packages/server/src/parallel.ts": [
+        "approve: (id) => runOfSession(store, id)?.approve,",
+        "export type ParallelBody = { title: string; repo: string; capUsd?: number; approve?: 'fence'; tasks: Array<{ name: string; dir: string; model?: string; effort?: string }> };",
+        "return { value: { title: o.title, repo: o.repo, ...(o.capUsd !== undefined ? { capUsd: o.capUsd } : {}), ...(o.approve !== undefined ? { approve: 'fence' as const } : {}), tasks } };"
+      ],
+      "packages/server/src/store.ts": [
+        "export interface ParallelRow { id: string; title: string; capUsd?: number; approve?: 'fence'; createdAt: number; tasks: ParallelTask[] }",
+        "return { id: r.id, title: r.title, ...(r.cap_usd != null ? { capUsd: r.cap_usd } : {}), ...(r.approve === 'fence' ? { approve: 'fence' as const } : {}), createdAt: r.created_at, tasks };",
+        "if (!(db.prepare('pragma table_info(parallel_runs)').all() as Array<{ name: string }>).some((c) => c.name === 'approve')) {"
       ]
     }
   },
@@ -77,6 +93,9 @@
     "files": {
       "packages/server/src/drive.ts": [
         "return git(cwd, ['diff', '--numstat', base], env).split('\\n').reduce((n, l) => {"
+      ],
+      "packages/server/src/approve-fence.ts": [
+        "{ words: ['git', 'diff'], paths: true, flags: ['--stat'] },"
       ]
     }
   },
@@ -466,8 +485,8 @@
         "out.push({ step: i.step, switches: NODES.get(i.kind)?.heading?.owns?.includes('model') === true, ...(model ? { model } : {}), ...(reasoning ? { reasoning } : {}), ...(usd !== undefined ? { usd } : {}) });"
       ],
       "packages/server/src/parallel.ts": [
-        "export type ParallelBody = { title: string; repo: string; capUsd?: number; tasks: Array<{ name: string; dir: string; model?: string; effort?: string }> };",
-        "tasks.push({ name, dir, ...(model !== undefined ? { model: model as string } : {}), ...(effort !== undefined ? { effort: effort as string } : {}) });"
+        "tasks.push({ name, dir, ...(model !== undefined ? { model: model as string } : {}), ...(effort !== undefined ? { effort: effort as string } : {}) });",
+        "export type ParallelBody = { title: string; repo: string; capUsd?: number; approve?: 'fence'; tasks: Array<{ name: string; dir: string; model?: string; effort?: string }> };"
       ]
     }
   },
@@ -645,6 +664,13 @@
       "packages/server/src/server.ts": [
         "run: (s, b) => (str(b.path) && b.path ? fromAck(s.runFile(b.path)) : fail(400, 'path must be a non-empty string.')),",
         "function resumeParallel(run: ReturnType<Store['listParallel']>[number]): Reply {"
+      ],
+      "packages/server/src/approve-fence.ts": [
+        "{ words: ['node', 'node_modules/vitest/vitest.mjs', 'run'], paths: true, min: 1, flags: [] },",
+        "{ words: ['npm', 'run', 'typecheck'], paths: false, flags: [] },",
+        "{ words: ['npm', 'run', 'lint'], paths: false, flags: [] },",
+        "{ words: ['npm', 'run', 'selfcheck'], paths: false, flags: [] },",
+        "{ words: ['npx', 'vitest', 'run'], paths: true, min: 1, flags: [] },"
       ]
     }
   },
@@ -861,7 +887,7 @@
       "packages/server/src/parallel.ts": [
         "export function runOfSession(store: Store, sessionId: string): ParallelRow | undefined {",
         "export function capWords(store: Store, sessionId: string): string | undefined {",
-        "export function parallelSeam(store: Store): { fenced(sessionId: string): boolean; capWords(sessionId: string): string | undefined } {"
+        "export function parallelSeam(store: Store): { fenced(sessionId: string): boolean; capWords(sessionId: string): string | undefined; approve?(sessionId: string): 'fence' | undefined } {"
       ]
     }
   },
