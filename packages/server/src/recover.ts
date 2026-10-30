@@ -1,6 +1,6 @@
 import type { LogRow, Store } from './store.js';
 
-const ENDED = new Set(['run_finished', 'run_stopped']);
+export const ENDED = new Set(['run_finished', 'run_stopped']);
 const data = (r: LogRow) => (r.data ?? {}) as Record<string, any>;
 
 // These rows empty the session's in-memory card queue (plan 15d 3b.7 lines 1558-1562).
@@ -44,5 +44,11 @@ export function recover(store: Store): void {
     const st = lastIndex((r) => r.type === 'status');
     const status = st >= 0 ? data(rows[st]!).status : 'idle';
     if (status !== 'idle' && status !== 'closed') add('status', { status: 'idle' });
+  }
+
+  for (const r of store.listParallel()) {
+    if (r.phase === 'setup' || r.phase === 'merging' || r.phase === 'gating') {
+      store.patchParallel(r.id, { phase: 'interrupted', job: { words: `The server stopped during ${r.phase}; anything it started may still be running.` } });
+    }
   }
 }
