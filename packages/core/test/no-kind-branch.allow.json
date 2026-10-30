@@ -424,7 +424,10 @@
         "...(model !== undefined ? { model: named ? named.model : model, ...(named ? { provider: named.provider } : {}), ...target } : {}),",
         "id: r.id, cwd: r.cwd, engine: r.engine, model: r.model, effort: r.effort, title: r.title,",
         "for (const k of ['model', 'effort', 'title'] as const) if (b[k] !== undefined && !str(b[k])) return fail(400, `${k} must be a string.`);",
-        "model: str(b.model) ? b.model : provider.defaultModel,"
+        "model: str(b.model) ? b.model : provider.defaultModel,",
+        "const picked = new Map<string, { provider: string; model: string }>();",
+        "let p: { provider: string; model: string } | undefined;",
+        "const r = create({ cwd: fs.realpathSync.native(t.dir), title: `parallel: ${t.name}`, ...(p ? { engine: p.provider, model: p.model } : {}), ...(t.effort ? { effort: t.effort } : {}) });"
       ],
       "packages/server/src/session.ts": [
         "interface Chose { model: string; label?: string }",
@@ -461,6 +464,10 @@
       "packages/server/src/trust.ts": [
         "export interface ModelStep { step: string; switches: boolean; model?: string; reasoning?: string; usd?: string }",
         "out.push({ step: i.step, switches: NODES.get(i.kind)?.heading?.owns?.includes('model') === true, ...(model ? { model } : {}), ...(reasoning ? { reasoning } : {}), ...(usd !== undefined ? { usd } : {}) });"
+      ],
+      "packages/server/src/parallel.ts": [
+        "export type ParallelBody = { title: string; repo: string; capUsd?: number; tasks: Array<{ name: string; dir: string; model?: string; effort?: string }> };",
+        "tasks.push({ name, dir, ...(model !== undefined ? { model: model as string } : {}), ...(effort !== undefined ? { effort: effort as string } : {}) });"
       ]
     }
   },

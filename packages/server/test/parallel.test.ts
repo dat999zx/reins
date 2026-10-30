@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { openStore } from '../src/store.js';
-import { capWords, checkBody, folderGone, parallelSeam, runOfSession, spentOf, usdOf } from '../src/parallel.js';
+import { capWords, checkBody, folderGone, openResume, parallelSeam, runOfSession, spentOf, usdOf } from '../src/parallel.js';
 
 const abs = (...p: string[]) => path.resolve(os.tmpdir(), 'reins-par-test', ...p);
 
@@ -82,5 +82,21 @@ describe('folderGone and usdOf', () => {
     expect(usdOf(null)).toBeNull();
     expect(usdOf(2.5)).toBe(2.5);
     for (const v of [0, -1, Number.NaN, Infinity, '5', undefined]) expect(typeof usdOf(v)).toBe('string');
+  });
+});
+
+describe('openResume', () => {
+  const store = openStore(':memory:');
+  const q = (id: string, kind: string) => store.appendLog('x', { type: 'question', data: { id, kind, prompt: 'p' } });
+  const a = (id: string) => store.appendLog('x', { type: 'answer', data: { questionId: id, answer: 'y' } });
+  const closed = (id: string) => store.appendLog('x', { type: 'question_closed', data: { questionId: id, why: 'x' } });
+  it('is the open resume question, else nothing', () => {
+    expect(openResume([])).toBeUndefined();
+    expect(openResume([q('a', 'resume')])).toBe('a');
+    expect(openResume([q('b', 'resume'), a('b')])).toBeUndefined();
+    expect(openResume([q('c', 'resume'), closed('c')])).toBeUndefined();
+    expect(openResume([q('d', 'gate')])).toBeUndefined();
+    expect(openResume([q('e', 'resume'), a('e'), q('f', 'resume')])).toBe('f');
+    expect(openResume([q('g', 'gate'), q('h', 'resume')])).toBe('h');
   });
 });

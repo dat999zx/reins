@@ -4,7 +4,8 @@
 //   node scripts/parallel.mjs status <state.json>
 //   node scripts/parallel.mjs merge  <state.json>      commits every finished task, merges in order, stops on the first conflict, then builds and runs the tests
 //   node scripts/parallel.mjs clean  <state.json>      removes worktrees and branches once every task is merged
-// tasks.json: { "title": "login work", "capUsd": 5, "tasks": [{ "name": "login", "playbook": "plans/login.reins.md" }], "copy": ["docs/spec.md"] }
+// tasks.json: { "title": "login work", "capUsd": 5, "tasks": [{ "name": "login", "playbook": "plans/login.reins.md", "model": "claude-haiku-5-5" }], "copy": ["docs/spec.md"] }
+//   model and effort are optional per task; omitted, the provider default. A name Reins does not list refuses the whole start, after the worktrees are made: clean removes them.
 //   title and capUsd are optional. start registers the tasks as one run: the app shows them as one group with Stop all, Resume all and the cap. clean forgets the group.
 // Needs a running `reins serve` (its port and token are read from ~/.reins/serve.lock). Each session asks its own trust questions in the app: answer them there.
 import { execFileSync, spawn } from 'node:child_process';
@@ -70,10 +71,13 @@ export function mergeInOrder(repo, tasks, recorded) {
   return { merged };
 }
 
-/** The POST /api/parallel body: one run for all tasks. capUsd only when the spec gives one. */
+/** The POST /api/parallel body: one run for all tasks. capUsd only when the spec gives one.
+ *  Each task item: { name: string; dir: string; model?: string; effort?: string }. model and effort only when the task names them. */
 export function registerBody(spec, repo, runId, tasks) {
-  return { title: spec.title ?? `parallel ${runId}`, repo, ...(spec.capUsd === undefined ? {} : { capUsd: spec.capUsd }), tasks: tasks.map((t) => ({ name: t.name, dir: t.dir })) };
+  return { title: spec.title ?? `parallel ${runId}`, repo, ...(spec.capUsd === undefined ? {} : { capUsd: spec.capUsd }), tasks: tasks.map((t) => ({ name: t.name, dir: t.dir, ...(t.model === undefined ? {} : { model: t.model }), ...(t.effort === undefined ? {} : { effort: t.effort }) })) };
 }
+
+const serverOrNone = () => { try { return server(); } catch { return undefined; } };
 
 function server() {
   const lock = join(homedir(), '.reins', 'serve.lock');
@@ -159,26 +163,39 @@ async function merge(file) {
   await sh('node scripts/test-affected.mjs --all --jobs 4', s.repo, true); // shown: a failed gate must say which file failed
 }
 
-async function clean(file) {
+/** Closes every session (a live agent holds its folder on Windows), forgets the group, then removes the merged worktrees. `api` is server(), or undefined when Reins is not running. */
+export async function clean(file, api) {
   const s = JSON.parse(readFileSync(file, 'utf8'));
+  let down = !api, forgot = !s.parallelId, unfinished = false;
+  const ok404 = (e) => / 404 /.test(e.message);
+  if (!down) {
+    for (const t of s.tasks.filter((x) => x.sessionId)) {
+      try { await api('POST', `/api/sessions/${t.sessionId}/close`, {}); } catch (e) { if (!ok404(e)) { down = true; break; } }
+    }
+  }
+  const isMerged = (t) => git(s.repo, 'branch', '--merged', 'HEAD', '--list', t.branch) !== '';
+  const dirtyOf = (t) => { try { return git(t.dir, 'status', '--porcelain'); } catch { return ''; } }; // folder already gone: nothing to lose
+  // a dirty task keeps the group in the app: the owner still has work to finish there
+  if (!down && s.parallelId && !s.tasks.some((t) => isMerged(t) && dirtyOf(t))) {
+    try { await api('POST', `/api/parallel/${s.parallelId}/forget`); forgot = true; } catch (e) { if (ok404(e)) forgot = true; else down = true; }
+  }
+  if (down && s.parallelId) console.log('The group stays in the app until you run clean again with Reins running.');
   for (const t of s.tasks) {
-    if (git(s.repo, 'branch', '--merged', 'HEAD', '--list', t.branch) === '') { console.log(`keep ${t.name}: ${t.branch} is not merged`); continue; }
-    try { git(s.repo, 'worktree', 'remove', '--force', t.dir); } catch (e) { if (!/not a working tree/.test(String(e.stderr))) throw e; } // already gone: still drop the branch
+    if (!isMerged(t)) { console.log(`keep ${t.name}: ${t.branch} is not merged`); continue; }
+    if (dirtyOf(t)) { console.log(`keep ${t.name}: ${t.dir} has uncommitted changes; finish or stop it, merge, then clean`); unfinished = true; continue; }
+    try { git(s.repo, 'worktree', 'remove', '--force', t.dir); } catch (e) {
+      if (!/not a working tree/.test(String(e.stderr))) { console.log(`keep ${t.name}: ${t.dir} is still in use; run clean again`); unfinished = true; continue; } // already gone: still drop the branch
+    }
     git(s.repo, 'branch', '-d', t.branch);
     console.log(`removed ${t.name}`);
   }
-  if (s.parallelId) {
-    try { await server()('POST', `/api/parallel/${s.parallelId}/forget`); } catch (e) {
-      if (!/ 404 /.test(e.message)) { console.log('The group stays in the app until you run clean again with Reins running.'); return; }
-    }
-  }
-  rmSync(file, { force: true });
+  if (forgot && !unfinished) rmSync(file, { force: true });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [cmd, arg] = process.argv.slice(2);
   const di = process.argv.indexOf('--dir');
-  const run = { start: () => start(arg, di > 0 ? process.argv[di + 1] : undefined), status: () => status(arg), merge: () => merge(arg), clean: () => clean(arg) }[cmd];
+  const run = { start: () => start(arg, di > 0 ? process.argv[di + 1] : undefined), status: () => status(arg), merge: () => merge(arg), clean: () => clean(arg, serverOrNone()) }[cmd];
   if (!run) { console.error('usage: parallel.mjs start|status|merge|clean <tasks.json|state.json>'); process.exit(1); }
   run().catch((e) => { console.error(`parallel: ${e.message}`); process.exit(1); });
 }

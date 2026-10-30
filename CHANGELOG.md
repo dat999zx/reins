@@ -4,6 +4,11 @@ Format: [Keep a Changelog](https://keepachangelog.com). Versions: [SemVer](https
 
 ## Unreleased
 
+- A task in a `parallel.mjs` tasks file may name `model` and `effort`; an unknown name refuses the whole run before any session starts.
+- `parallel.mjs clean` closes each task's session first, so on Windows it no longer needs a server restart to remove the worktrees; a folder still in use is named, and clean can run again.
+- `parallel.mjs clean` keeps a worktree that still has uncommitted changes and says so, instead of deleting the work.
+- Resume all now continues a task that Stop all paused, or whose step failed: it answers the task's resume question. A task waiting on any other question is left for you.
+- CI runs the script selfchecks (`npm run selfcheck`).
 - Parallel runs (M5): the tasks of one `scripts/parallel.mjs` run are one group at the top of the rail, with the total cost, a USD cap, Stop all and Resume all.
 - The cap is a backstop, not a budget: once the total reaches it no new model call starts, and calls already running finish. A refused task shows the cap words, and Resume carries on after you raise the cap.
 - A parallel task cannot write outside its own worktree. For a shell command, Reins checks the paths the command names.

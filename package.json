@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p packages/app",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:affected": "node scripts/test-affected.mjs"
+    "test:affected": "node scripts/test-affected.mjs",
+    "selfcheck": "node scripts/parallel.selfcheck.mjs && node scripts/test-affected.selfcheck.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.20.0",
