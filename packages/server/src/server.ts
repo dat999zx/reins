@@ -15,8 +15,9 @@ import { ID_SHAPE, listModels, parseModel, type PickerModel } from './models.js'
 import { servedKinds } from './mods/kinds-view.js';
 import type { Mods, SendWithKey } from './mods/types.js';
 import type { ProviderStatus } from './run-checks.js';
-import { capWords, checkBody, folderGone, openResume, parallelSeam, usdOf } from './parallel.js';
-import { recover } from './recover.js';
+import { capWords, checkBody, checkSpec, folderGone, norm, openResume, parallelSeam, usdOf, type RunSpec } from './parallel.js';
+import { addWorktrees, cleanRun, installAll, mergeRun, preflight, repoOf, type RunDeps } from './parallel-run.js';
+import { ENDED, recover } from './recover.js';
 import { loadWorkflow } from './run-cli.js';
 import { kindVersions } from './drive.js';
 import { openSession, projectFolderWords, rootFolderWords, under, type Ack, type DescribeEffort, type DescribeModel, type MakeEngine, type Session, type SessionDeps } from './session.js';
@@ -71,7 +72,7 @@ type Reply = { status: number; body: unknown; headers?: Record<string, string> }
 interface Body {
   text?: unknown; tags?: unknown; kind?: unknown; questionId?: unknown; answer?: unknown; autoApprove?: unknown;
   title?: unknown; path?: unknown; create?: unknown; stepId?: unknown; runId?: unknown; cwd?: unknown; engine?: unknown; model?: unknown; effort?: unknown;
-  state?: unknown; workflow?: unknown;
+  state?: unknown; workflow?: unknown; file?: unknown; spec?: unknown; dir?: unknown;
 }
 const MAX_EDITOR_STATE = 64 * 1024;
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -239,6 +240,26 @@ export async function startServer(o: ServerOptions): Promise<Server> {
   // The one env of workflow commands and helpers, worked out at each start: it reads the providers and keys as they are THEN.
   const children = shellEnvFrom(mods, o.env ?? process.env, (t) => !!sender.holdsSecret?.(t) || !!o.redactor?.has(t));
   const deps: SessionDeps = { kinds: () => kindVersions(mods), store: o.store, makeEngine: (a) => o.makeEngine({ ...a, settings }), dir: o.dir, env: children, ...(o.redactor ? { redactor: o.redactor } : {}), describeModel, describeEffort, folderTrust: folderTrustFrom(mods), providers: checkEnvFrom(mods, { env: o.env ?? process.env, home: o.dir }), consent: asks, origin: (provider) => providerOrigin(mods, provider), generation: (provider) => providerGeneration(mods, provider), onRow: (row) => { for (const f of subs) f(row); }, parallel: parallelSeam(o.store) };
+  // One job per repo (start, merge, clean). The key is claimed in the same tick as the busy check, so nothing awaits between the two.
+  const jobs = new Map<string, Promise<void>>();
+  const stopJobs = new AbortController();
+  const runDeps = (id: string): RunDeps => ({ env: children, signal: stopJobs.signal, save: (p) => o.store.patchParallel(id, p) });
+  /** Claims the repo in this tick, or undefined when it is taken. The returned function releases it; `close()` waits for the promise. */
+  const claim = (repo: string) => {
+    const k = norm(repo);
+    if (jobs.has(k)) return undefined;
+    let release!: () => void;
+    jobs.set(k, new Promise<void>((done) => { release = () => { jobs.delete(k); done(); }; }));
+    return release;
+  };
+  /** Runs a job in the background. An error ends the run as `failed` with its words; a server stop leaves the phase as it was. */
+  function startJob(id: string, release: () => void, work: () => Promise<void>) {
+    void work().catch((e) => {
+      if (stopJobs.signal.aborted) return;
+      runDeps(id).save({ phase: 'failed', job: { words: e instanceof Error ? e.message : String(e) } });
+    }).finally(release);
+  }
+  const busyWords = 'A job is already running in this repo.';
   let engines: Array<{ id: string } & EngineProbe> = [];
   let host = '';
   let origin = '';
@@ -326,32 +347,53 @@ export async function startServer(o: ServerOptions): Promise<Server> {
       const words = folderWords(t.dir);
       if (words) return fail(400, `task ${t.name}: ${words}`);
     }
-    const def = defaultProvider();
-    const picked = new Map<string, { provider: string; model: string }>();
-    for (const t of def ? tasks : []) {
-      let p: { provider: string; model: string } | undefined;
-      if (t.model) {
-        const parsed = parseModel(t.model, def!.id, deps.providers!.installed);
-        if ('error' in parsed) return fail(400, `task ${t.name}: ${parsed.error}`);
-        p = parsed;
-        if (p.model === t.model.trim() && !describeModel(p.provider, p.model, undefined).listed) return fail(400, `task ${t.name}: Unknown model for this session's provider.`);
-        picked.set(t.name, p);
-      }
-      if (t.effort && !describeEffort(p?.provider ?? def!.id, t.effort).listed) return fail(400, `task ${t.name}: Unknown reasoning level.`);
-    }
-    const made: Array<{ name: string; sessionId: string }> = [];
-    for (const t of tasks) {
-      const p = picked.get(t.name);
-      const r = create({ cwd: fs.realpathSync.native(t.dir), title: `parallel: ${t.name}`, ...(p ? { engine: p.provider, model: p.model } : {}), ...(t.effort ? { effort: t.effort } : {}) });
-      if (r.status !== 200) return r;
-      made.push({ name: t.name, sessionId: (r.body as { id: string }).id });
+    const refused = refuseModels(tasks);
+    if ('reply' in refused) return refused.reply;
+    let made: Array<{ name: string; sessionId: string }>;
+    try {
+      made = makeSessions(tasks, refused.picked);
+    } catch (e) {
+      const r = (e as { reply?: Reply }).reply;
+      if (r) return r;
+      throw e;
     }
     const id = randomBytes(6).toString('hex');
     o.store.createParallel({ id, title, ...(capUsd !== undefined ? { capUsd } : {}), ...(approve ? { approve } : {}), tasks: made });
     return ok({ id, tasks: made });
   }
 
+  /** The model and effort of every task, checked before anything is made: the refusal, or the models picked by task name. */
+  function refuseModels(tasks: Array<{ name: string; model?: string; effort?: string }>): { reply: Reply } | { picked: Map<string, { provider: string; model: string }> } {
+    const def = defaultProvider();
+    const picked = new Map<string, { provider: string; model: string }>();
+    for (const t of def ? tasks : []) {
+      let p: { provider: string; model: string } | undefined;
+      if (t.model) {
+        const parsed = parseModel(t.model, def!.id, deps.providers!.installed);
+        if ('error' in parsed) return { reply: fail(400, `task ${t.name}: ${parsed.error}`) };
+        p = parsed;
+        if (p.model === t.model.trim() && !describeModel(p.provider, p.model, undefined).listed) return { reply: fail(400, `task ${t.name}: Unknown model for this session's provider.`) };
+        picked.set(t.name, p);
+      }
+      if (t.effort && !describeEffort(p?.provider ?? def!.id, t.effort).listed) return { reply: fail(400, `task ${t.name}: Unknown reasoning level.`) };
+    }
+    return { picked };
+  }
+
+  /** One session per task. A refused `create` throws with its reply on the error. */
+  function makeSessions(tasks: Array<{ name: string; dir: string; effort?: string }>, picked: Map<string, { provider: string; model: string }>): Array<{ name: string; sessionId: string }> {
+    const made: Array<{ name: string; sessionId: string }> = [];
+    for (const t of tasks) {
+      const p = picked.get(t.name);
+      const r = create({ cwd: fs.realpathSync.native(t.dir), title: `parallel: ${t.name}`, ...(p ? { engine: p.provider, model: p.model } : {}), ...(t.effort ? { effort: t.effort } : {}) });
+      if (r.status !== 200) throw Object.assign(new Error((r.body as { error?: string }).error ?? 'Cannot make the session.'), { reply: r });
+      made.push({ name: t.name, sessionId: (r.body as { id: string }).id });
+    }
+    return made;
+  }
+
   function resumeParallel(run: ReturnType<Store['listParallel']>[number]): Reply {
+    if (!run.tasks.length) return ok({ results: [] });
     const words = capWords(o.store, run.tasks[0]!.sessionId);
     if (words) return fail(409, words);
     const results = run.tasks.map((t): { name: string; result: string; words?: string } => {
@@ -372,6 +414,141 @@ export async function startServer(o: ServerOptions): Promise<Server> {
       return a.ok ? { name: t.name, result: 'resumed' } : { name: t.name, result: 'refused', words: a.error };
     });
     return ok({ results });
+  }
+
+  type Run = ReturnType<Store['listParallel']>[number];
+  const canon = (p: string) => { try { return fs.realpathSync.native(p); } catch { return path.resolve(p); } };
+  const inReins = (p: string) => norm(canon(p)) === norm(canon(o.dir)) || under(norm(canon(p)), norm(canon(o.dir)));
+  const noSave: RunDeps = { env: children, signal: stopJobs.signal, save: () => {} };
+
+  /** The repo `cwd` is in, for preview and start: the refusal, or the repo folder. */
+  async function repoFor(cwd: unknown): Promise<{ reply: Reply } | { repo: string }> {
+    if (!str(cwd) || !path.isAbsolute(cwd)) return { reply: fail(400, 'cwd must be an absolute path.') };
+    let repo: string;
+    try { repo = await repoOf(cwd, noSave); } catch { return { reply: fail(400, 'This folder is not in a git repository.') }; }
+    if (inReins(repo)) return { reply: fail(400, 'A repo under the Reins folder cannot start a run.') };
+    return { repo };
+  }
+
+  async function previewRun(b: Body): Promise<Reply> {
+    const r = await repoFor(b.cwd);
+    if ('reply' in r) return r.reply;
+    let text: string;
+    try {
+      if (!str(b.file) || !b.file || b.file.includes('\0')) return fail(400, 'Cannot read the tasks file.');
+      const file = fs.realpathSync.native(path.resolve(r.repo, b.file));
+      if (!under(file, fs.realpathSync.native(r.repo))) return fail(400, 'The tasks file must be inside the repo.');
+      text = fs.readFileSync(file, 'utf8');
+    } catch { return fail(400, 'Cannot read the tasks file.'); }
+    let parsed: unknown;
+    try { parsed = JSON.parse(text); } catch { return fail(400, 'The tasks file is not valid JSON.'); }
+    const checked = checkSpec(parsed);
+    if ('error' in checked) return fail(400, checked.error);
+    if (o.redactor?.has(JSON.stringify(checked.value))) return fail(400, KEY_IN_IDENTITY);
+    return ok({ repo: r.repo, spec: checked.value });
+  }
+
+  const DIR_WORDS = 'dir must be an absolute folder outside the repo and the Reins folder.';
+  async function startRun(b: Body): Promise<Reply> {
+    const r = await repoFor(b.cwd);
+    if ('reply' in r) return r.reply;
+    const { repo } = r;
+    const wide = folderWords(repo);
+    if (wide) return fail(400, wide);
+    let dir = path.resolve(repo, '..', '.reins-par');
+    if (b.dir !== undefined) {
+      if (!str(b.dir) || !path.isAbsolute(b.dir) || b.dir.includes('\0') || rootFolderWords(b.dir)) return fail(400, DIR_WORDS);
+      dir = path.resolve(b.dir);
+      if (norm(canon(dir)) === norm(canon(repo)) || under(norm(canon(dir)), norm(canon(repo))) || inReins(dir)) return fail(400, DIR_WORDS);
+    }
+    const checked = checkSpec(b.spec);
+    if ('error' in checked) return fail(400, checked.error);
+    const spec = checked.value;
+    if (!defaultProvider()) return fail(400, 'No provider is installed.');
+    const refused = refuseModels(spec.tasks);
+    if ('reply' in refused) return refused.reply;
+    if (o.redactor?.has(JSON.stringify(spec))) return fail(400, KEY_IN_IDENTITY);
+    const release = claim(repo);
+    if (!release) return fail(409, busyWords);
+    let head: { branch: string; head: string };
+    try {
+      head = await preflight(repo, noSave);
+    } catch (e) {
+      release();
+      return fail(409, e instanceof Error ? e.message : String(e));
+    }
+    const id = randomBytes(6).toString('hex');
+    const folder = path.join(dir, id);
+    try {
+      o.store.createParallel({
+        id, title: spec.title, ...(spec.capUsd !== undefined ? { capUsd: spec.capUsd } : {}), ...(spec.approve ? { approve: spec.approve } : {}), tasks: [], phase: 'setup',
+        job: {
+          repo, branch: head.branch, head: head.head, folder,
+          ...(spec.install ? { install: spec.install } : {}), ...(spec.gate ? { gate: spec.gate } : {}), ...(spec.gateRetry ? { gateRetry: spec.gateRetry } : {}), ...(spec.reports ? { reports: spec.reports } : {}),
+          tasks: [], words: '', merged: [], notMerged: [], gateResult: 'not run',
+        },
+      });
+    } catch (e) {
+      release();
+      throw e;
+    }
+    startJob(id, release, () => setupRun(id, repo, folder, spec, refused.picked));
+    return ok({ id });
+  }
+
+  /** The setup job: worktrees, install, one session per task, every playbook started. */
+  async function setupRun(id: string, repo: string, folder: string, spec: RunSpec, picked: Map<string, { provider: string; model: string }>) {
+    const d = runDeps(id);
+    const tasks = await addWorktrees(repo, folder, id, spec.tasks, spec.copy, d);
+    await installAll({ ...o.store.listParallel().find((x) => x.id === id)!.job!, tasks }, d);
+    if (d.signal.aborted) return;
+    // The sessions are saved before any playbook starts, so the fence and the cap see the run from the first tool call.
+    const made = makeSessions(tasks, picked);
+    d.save({ tasks: made });
+    for (const t of tasks) {
+      const a = sessions.get(made.find((m) => m.name === t.name)!.sessionId)!.runFile(t.playbook);
+      if (!a.ok) throw new Error(`task ${t.name}: ${a.error}`);
+    }
+    d.save({ phase: 'running' });
+  }
+
+  /** A task has ended when its session is closed, or idle with no detached run. A session missing from the map counts as ended. */
+  const taskEnded = (sessionId: string) => {
+    const s = sessions.get(sessionId);
+    return !s || s.status() === 'closed' || (s.status() === 'idle' && detachedRuns(o.store.readLog(sessionId)).length === 0);
+  };
+
+  function mergeRoute(run: Run): Reply {
+    const job = run.job;
+    if (!job) return fail(409, 'This run was not started by Reins, so it has no merge or clean.');
+    if (jobs.has(norm(job.repo))) return fail(409, busyWords);
+    if (run.phase === 'done') return fail(409, 'This run is already merged.');
+    if (!run.tasks.length) return fail(409, 'Setup did not finish. Clean it and start again.');
+    const ends: Record<string, string | undefined> = {};
+    for (const t of run.tasks) {
+      if (!taskEnded(t.sessionId)) return fail(409, `Task ${t.name} has not ended.`);
+      ends[t.name] = o.store.readLog(t.sessionId).find((r) => ENDED.has(r.type))?.type;
+    }
+    const release = claim(job.repo)!; // nothing awaited since the busy check
+    startJob(run.id, release, () => mergeRun(job, ends, runDeps(run.id)));
+    return ok({ phase: 'merging' });
+  }
+
+  async function cleanRoute(run: Run): Promise<Reply> {
+    const job = run.job;
+    if (!job) return fail(409, 'This run was not started by Reins, so it has no merge or clean.');
+    const release = claim(job.repo);
+    if (!release) return fail(409, busyWords);
+    // Not through startJob: a throw here must not set `failed` on a `done` run.
+    try {
+      if (run.phase !== 'done' && run.phase !== 'failed' && run.phase !== 'interrupted') return fail(409, 'Clean needs a finished run. Merge first, or stop the tasks and merge.');
+      for (const t of run.tasks) await sessions.get(t.sessionId)?.close();
+      const { removed, kept, unfinished } = await cleanRun(job, runDeps(run.id));
+      if (!unfinished) o.store.deleteParallel(run.id);
+      return ok({ removed, kept, forgotten: !unfinished });
+    } finally {
+      release();
+    }
   }
 
   function workflows(cwd: string | null): Reply {
@@ -485,6 +662,12 @@ export async function startServer(o: ServerOptions): Promise<Server> {
       const r = await parse(req);
       return 'fail' in r ? r.fail : create(r.b);
     }
+    // One segment after /api/parallel: above `pm`, which wants a 12-digit id and an action.
+    if (req.method === 'POST' && (p === '/api/parallel/preview' || p === '/api/parallel/start')) {
+      const r = await parse(req);
+      if ('fail' in r) return r.fail;
+      return p.endsWith('preview') ? previewRun(r.b) : startRun(r.b);
+    }
     const pm = /^\/api\/parallel(?:\/([0-9a-f]+)\/([a-z]+))?$/.exec(p);
     if (pm) {
       if (!pm[1]) {
@@ -505,6 +688,8 @@ export async function startServer(o: ServerOptions): Promise<Server> {
           }
           return ok({ stopped, idle });
         }
+        if (pm[2] === 'merge') return mergeRoute(run);
+        if (pm[2] === 'clean') return cleanRoute(run);
         if (pm[2] === 'resume') return resumeParallel(run);
         if (pm[2] === 'forget') { o.store.deleteParallel(run.id); return ok(); }
         if (pm[2] === 'cap') {
@@ -633,6 +818,8 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     const stopped = new Promise<void>((resolve) => server.close(() => resolve()));
     server.closeAllConnections();
     await stopped;
+    stopJobs.abort();
+    await Promise.allSettled(jobs.values());
     await Promise.all([...sessions.values()].map((s) => s.shutdown()));
     ownMods?.dispose();
     if (locked && o.lockFile) releaseLock(o.lockFile, process.pid);
