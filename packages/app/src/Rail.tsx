@@ -47,6 +47,7 @@ export function Rail({ state, selected, onSelect, onNew, onPlus, onRename, onSet
       {parallelGroups(state, parallel).map((g) => (
         <section key={g.run.id} className="group parallel">
           <header title={g.run.title}><span>{g.run.title}</span></header>
+          {g.run.approve === 'fence' && <p className="approve">auto-approve: fence</p>}
           <p className="counts">{`${g.counts.running} running · ${g.counts.waiting} waiting · ${g.counts.paused} paused · ${g.counts.done} done`}</p>
           <p className={g.over ? 'cost over' : 'cost'}>{`${g.costUnknown ? 'at least ' : ''}${usd(g.cost)}${g.cap !== undefined ? ` of ${usd(g.cap)}` : ''}`}</p>
           <div className="actions">
