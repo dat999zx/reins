@@ -1,4 +1,4 @@
-import type { ParallelView } from './parallel.js';
+import type { ParallelView, RunSpec } from './parallel.js';
 
 const KEY = 'reins-token';
 let token: string | null = null;
@@ -43,4 +43,8 @@ export const parallelRuns = () => get<{ runs: ParallelView[] }>('/api/parallel')
 export const stopAll = (id: string) => post<{ stopped: string[]; idle: string[] }>(`/api/parallel/${id}/stop`);
 export const resumeAll = (id: string) => post<{ results: unknown }>(`/api/parallel/${id}/resume`);
 export const setCap = (id: string, usd: number | null) => post(`/api/parallel/${id}/cap`, { usd });
-export const stream = (after: string) => new EventSource(`/api/stream?token=${encodeURIComponent(token ?? '')}&after=${encodeURIComponent(after)}`);
+export const previewRun = (cwd: string, file: string) => post<{ repo: string; spec: RunSpec }>('/api/parallel/preview', { cwd, file });
+export const startRun = (cwd: string, spec: RunSpec) => post<{ id: string }>('/api/parallel/start', { cwd, spec });
+export const mergeRun = (id: string) => post<{ phase: 'merging' }>(`/api/parallel/${id}/merge`, {});
+export const cleanRun = (id: string) => post<{ removed: string[]; kept: Array<{ name: string; why: string }>; forgotten: boolean }>(`/api/parallel/${id}/clean`, {});
+export const stream =(after: string) => new EventSource(`/api/stream?token=${encodeURIComponent(token ?? '')}&after=${encodeURIComponent(after)}`);
