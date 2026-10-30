@@ -95,10 +95,13 @@ export async function mergeInOrder(repo: string, tasks: ParallelJobTask[], d: Ru
 export async function installAll(job: ParallelJob, d: RunDeps): Promise<void> {
   const cmd = job.install;
   if (!cmd) return;
-  await Promise.all(job.tasks.map(async (t) => {
+  // Every install settles before the first failure (in task order) is thrown: no install is left running under a Clean, and the words do not depend on timing.
+  const done = await Promise.allSettled(job.tasks.map(async (t) => {
     const r = await runCommand(cmd, { cwd: t.dir, env: d.env, timeoutMs: d.timeoutMs ?? JOB_MS, signal: d.signal });
     if (r.exitCode !== 0) throw new Error(`task ${t.name}: install failed:\n${last20(r.stdout)}`);
   }));
+  const bad = done.find((x): x is PromiseRejectedResult => x.status === 'rejected');
+  if (bad) throw bad.reason;
 }
 
 /**
