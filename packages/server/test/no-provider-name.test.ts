@@ -65,6 +65,16 @@ const ALLOW: Array<{ file: string; text: string; reason: string }> = [
     text: "const PROTECTED = new Set(['.claude', '.git', '.mcp.json']);",
     reason: 'M7: folder names the fence never auto-approves a path through (a CLI settings folder can grant permissions); a folder name, not a provider',
   },
+  {
+    file: 'packages/server/src/parallel-run.ts',
+    text: "// Instruction files that git ignores but an agent needs. Not .claude/ or .mcp.json: they would raise a folder-trust question per worktree.",
+    reason: 'M8: a comment naming the CLI settings folder that is deliberately not copied into a task worktree; a folder name, not a provider',
+  },
+  {
+    file: 'packages/server/src/parallel-run.ts',
+    text: "const IGNORED_BUT_NEEDED = ['AGENTS.md', 'CLAUDE.md', 'CONTEXT.md', 'KNOWL.md'];",
+    reason: 'M8: the instruction file names copied into every task worktree; file names, not a provider',
+  },
 ];
 
 describe('no provider name outside packages/server/src/mods', () => {
