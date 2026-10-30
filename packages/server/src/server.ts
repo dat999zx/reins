@@ -326,9 +326,23 @@ export async function startServer(o: ServerOptions): Promise<Server> {
       const words = folderWords(t.dir);
       if (words) return fail(400, `task ${t.name}: ${words}`);
     }
+    const def = defaultProvider();
+    const picked = new Map<string, { provider: string; model: string }>();
+    for (const t of def ? tasks : []) {
+      let p: { provider: string; model: string } | undefined;
+      if (t.model) {
+        const parsed = parseModel(t.model, def!.id, deps.providers!.installed);
+        if ('error' in parsed) return fail(400, `task ${t.name}: ${parsed.error}`);
+        p = parsed;
+        if (p.model === t.model.trim() && !describeModel(p.provider, p.model, undefined).listed) return fail(400, `task ${t.name}: Unknown model for this session's provider.`);
+        picked.set(t.name, p);
+      }
+      if (t.effort && !describeEffort(p?.provider ?? def!.id, t.effort).listed) return fail(400, `task ${t.name}: Unknown reasoning level.`);
+    }
     const made: Array<{ name: string; sessionId: string }> = [];
     for (const t of tasks) {
-      const r = create({ cwd: fs.realpathSync.native(t.dir), title: `parallel: ${t.name}` });
+      const p = picked.get(t.name);
+      const r = create({ cwd: fs.realpathSync.native(t.dir), title: `parallel: ${t.name}`, ...(p ? { engine: p.provider, model: p.model } : {}), ...(t.effort ? { effort: t.effort } : {}) });
       if (r.status !== 200) return r;
       made.push({ name: t.name, sessionId: (r.body as { id: string }).id });
     }
