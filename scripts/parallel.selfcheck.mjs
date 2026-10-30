@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { addWorktrees, clean, commitAll, mergeInOrder, preflight, registerBody, timing } from './parallel.mjs';
+import { addWorktrees, alreadyMerged, clean, commitAll, mergeInOrder, openQuestions, preflight, registerBody, reportLines, run, stuck, taskLine, timing } from './parallel.mjs';
 
 const rt = [{ name: 'A', dir: 'D:/w/a', branch: 'b', playbook: 'p.md' }, { name: 'B', dir: 'D:/w/b' }];
 assert.deepEqual(registerBody({ title: 'T', capUsd: 5 }, 'D:/repo', 'r1', rt), { title: 'T', repo: 'D:/repo', capUsd: 5, tasks: [{ name: 'A', dir: 'D:/w/a' }, { name: 'B', dir: 'D:/w/b' }] }, 'title, cap and tasks');
@@ -17,6 +17,64 @@ assert.deepEqual(registerBody({}, 'D:/repo', 'r1', mt).tasks, [{ name: 'A', dir:
 const rows = [{ type: 'user', ts: 1000 }, { type: 'tool', ts: 2000 }, { type: 'run_finished', ts: 91000 }, { type: 'run_stopped', ts: 99000 }];
 assert.deepEqual(timing(rows), { start: 1000, end: 91000, type: 'run_finished', ms: 90000 }, 'the first end row wins');
 assert.deepEqual(timing(rows.slice(0, 2)), { start: 1000, end: undefined, type: undefined, ms: undefined }, 'a running task has no end');
+
+assert.equal(registerBody({ approve: 'fence' }, 'D:/repo', 'r1', rt).approve, 'fence', 'approve is sent when the spec has it');
+assert.ok(!('approve' in nb), 'no approve key when absent');
+
+const qrow = (seq, id, ts = 0) => ({ seq, ts, type: 'question', data: { id, kind: 'tool', prompt: `p${id}`, detail: `d${id}` } });
+const arow = (seq, id, by) => ({ seq, ts: 0, type: 'answer', data: { questionId: id, answer: 'y', ...(by ? { by } : {}) } });
+const qs = [qrow(1, 'q1'), qrow(2, 'q2'), arow(3, 'q1'), qrow(4, 'q3'), { seq: 5, ts: 0, type: 'question_closed', data: { questionId: 'q3' } }];
+assert.deepEqual(openQuestions(qs).map((r) => r.data.id), ['q2'], 'answered and closed questions are not open');
+assert.equal(stuck([qrow(1, 'q1', 1000)], 60999).length, 0, 'a card under 60 s is not stuck');
+assert.equal(stuck([qrow(1, 'q1', 1000)], 61000).length, 1, 'a card of 60 s is stuck');
+
+const M = 60000;
+const fake = [
+  { seq: 1, ts: 0, type: 'session_created', data: { model: 'claude-sonnet-5-5' } },
+  { seq: 2, ts: M, type: 'turn_ended', data: { cost: 0.25 } },
+  { seq: 3, ts: 2 * M, type: 'turn_ended', data: { cost: 0.5 } },
+  arow(4, 'q1', 'fence'), arow(5, 'q2'),
+  { seq: 6, ts: 9 * M, type: 'run_finished', data: {} },
+];
+const line = taskLine('A', fake, true);
+for (const w of ['claude-sonnet-5-5', '$0.75', '9m', 'auto 1 other 1', ' merged']) assert.ok(line.includes(w), `task line has ${w}: ${line}`);
+const rep = reportLines({ tasks: [{ name: 'A' }] }, { A: fake }, undefined, 5 * M);
+assert.ok(rep.some((l) => l.includes('wall: -')), 'no startedAt: wall is -');
+assert.ok(rep.some((l) => /not a sandbox|executes code the agent wrote/.test(l)), 'the sandbox line is always printed');
+
+const cap = async (f) => { const out = [], o = console.log; console.log = (...a) => out.push(a.join(' ')); try { return [await f(), out.join('\n')]; } finally { console.log = o; } };
+const rdir = mkdtempSync(join(tmpdir(), 'par-run-'));
+const stateFile = join(rdir, 'state.json');
+const saveState = () => writeFileSync(stateFile, JSON.stringify({ repo: rdir, runId: 'r', parallelId: 'p', startedAt: 0, tasks: [{ name: 'A', sessionId: 'sa', dir: rdir }, { name: 'B', sessionId: 'sb', dir: rdir }] }));
+const mkApi = (logs, gets) => async (method, path) => {
+  const m = path.match(/sessions\/(s\w)\/log\?after=(\d+)/);
+  gets.push(`${m[1]} after=${m[2]}`);
+  return { rows: logs[m[1]].filter((r) => r.seq > Number(m[2])) };
+};
+try {
+  // a card 61 s old, no end row: exit 3, nothing cleaned
+  saveState();
+  let gets = [];
+  let clock = 100 * M;
+  let [code, text] = await cap(() => run(stateFile, { api: mkApi({ sa: [qrow(1, 'q1', clock - 61000)], sb: [] }, gets), now: () => clock, sleep: async () => {} }));
+  assert.equal(code, 3, 'a stuck card exits 3');
+  assert.ok(text.includes('A') && text.includes('pq1'), 'the card is named');
+  assert.ok(existsSync(stateFile), 'the state file is kept');
+  // two polls: the second asks after the highest seq of the first answer
+  gets = [];
+  clock = 100 * M;
+  [code] = await cap(() => run(stateFile, { api: mkApi({ sa: [{ seq: 1, ts: clock, type: 'session_created', data: {} }, qrow(7, 'q1', clock)], sb: [] }, gets), now: () => clock, sleep: async () => { clock += 61000; } }));
+  assert.equal(code, 3);
+  assert.deepEqual(gets.filter((g) => g.startsWith('sa')), ['sa after=0', 'sa after=7'], 'the second poll uses the last seq seen');
+  // no card, no end row: --max-minutes
+  gets = [];
+  clock = 0;
+  [code] = await cap(() => run(stateFile, { api: mkApi({ sa: [], sb: [] }, gets), maxMinutes: 0.001, now: () => (clock += M), sleep: async () => {} }));
+  assert.equal(code, 5, 'max minutes exits 5');
+  assert.ok(existsSync(stateFile), 'the state file is kept');
+} finally {
+  rmSync(rdir, { recursive: true, force: true });
+}
 
 const base = mkdtempSync(join(tmpdir(), 'par-'));
 const repo = join(base, 'repo'), wt = join(base, 'wt');
@@ -49,6 +107,10 @@ try {
   assert.deepEqual(ok.merged, ['Task A', 'Task B'], 'edits to different functions of one file both merge');
   const merged = readFileSync(join(repo, 'f.js'), 'utf8');
   assert.ok(merged.includes('return 1;') && merged.includes('return 2;'), 'nothing lost');
+  // after a gate failure a second run finds the tasks already merged: they count as merged, a task that changed nothing does not
+  assert.equal(alreadyMerged(repo, tasks[0], recorded.head), true, 'a task whose commits are in the merged branch is already merged');
+  assert.equal(alreadyMerged(repo, tasks[1], recorded.head), true);
+  assert.equal(alreadyMerged(repo, tasks[2], recorded.head), false, 'a task that changed nothing is not merged');
 
   // a conflict: both change function c
   const t2 = addWorktrees(repo, 'r3', wt, [{ name: 'one' }, { name: 'two' }]);

@@ -4,6 +4,9 @@ Format: [Keep a Changelog](https://keepachangelog.com). Versions: [SemVer](https
 
 ## Unreleased
 
+- A parallel run may be started with `"approve": "fence"`: reads and edits whose real path is inside the task's folder, and a short list of whole commands (tests, eslint, tsc, `npm run typecheck|lint|selfcheck`, read-only git) naming nothing outside it, are answered yes and marked `auto: fence`; everything else stays a card, and MCP calls are refused. It is not a sandbox: an approved test or lint run executes code the agent wrote.
+- `parallel.mjs run <tasks.json>`: start, wait, merge, gate and clean in one command, with a report. Exit 3: a card waits a minute; 4: the gate failed; 5: `--max-minutes` reached; 6: a task was not merged (nothing is cleaned then).
+- `parallel.mjs run` retries a failed gate once on the files that failed (a load flake passes alone), and a second `run` on the same state counts tasks that are already merged as merged, so it can finish after a failed gate.
 - A task in a `parallel.mjs` tasks file may name `model` and `effort`; an unknown name refuses the whole run before any session starts.
 - `parallel.mjs clean` closes each task's session first, so on Windows it no longer needs a server restart to remove the worktrees; a folder still in use is named, and clean can run again.
 - `parallel.mjs clean` keeps a worktree that still has uncommitted changes and says so, instead of deleting the work.

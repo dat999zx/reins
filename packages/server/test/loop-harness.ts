@@ -1,4 +1,8 @@
 // Shared setup of the loop tests: the fake provider, a manifest per wire, a host that sends through makeSend, and a session opener.
+import { randomBytes } from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import type { Engine, EngineEvent, EngineSession, OpenOptions } from '@reins/core';
 import { startMods } from '../src/engines.js';
 import { loopEngine, type LoopDeps } from '../src/loop/engine.js';
@@ -7,6 +11,13 @@ import { Redactor, StreamRedactor, readSecrets, redactCut, keyStatus, setKey } f
 import { makeSend } from '../src/send.js';
 import { startFakeProvider, type FakeReply } from './fake-provider.js';
 import { tempHome } from './mods-harness.js';
+
+/** A fresh folder for a loop test, real path. Its name is lowercase hex: the name is in the system prompt, and a random mixed-case suffix (`QOWQ1n`) can hold a marker such as `Q1` or `U1` that a test asserts is absent from the request (macOS CI failed twice on it). */
+export function loopTmp(prefix: string): string {
+  const d = path.join(os.tmpdir(), prefix + randomBytes(4).toString('hex'));
+  fs.mkdirSync(d);
+  return fs.realpathSync.native(d);
+}
 
 export const KEY = 'sk-test-0123456789abcdef';
 export type WireId = 'openai-chat' | 'anthropic-messages';

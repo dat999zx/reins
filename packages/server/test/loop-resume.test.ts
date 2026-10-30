@@ -16,7 +16,7 @@ import { openStore, type Store } from '../src/store.js';
 import { startServer } from '../src/server.js';
 import { until } from './helpers.js';
 import { cleanup, PROBE, request, rowsOf, tmpDir } from './http-helpers.js';
-import { COST_120, KEY, MISSING, PRICE, USAGE_120, WIRES, rig, toolReply, toolResults, types, type Rig, type WireId } from './loop-harness.js';
+import { COST_120, KEY, MISSING, PRICE, USAGE_120, WIRES, loopTmp, rig, toolReply, toolResults, types, type Rig, type WireId } from './loop-harness.js';
 
 const rigs: Rig[] = [];
 const dirs: string[] = [];
@@ -31,7 +31,7 @@ afterEach(async () => {
   await cleanup();
 });
 const tmp = () => {
-  const d = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-resume-')));
+  const d = loopTmp('reins-resume-');
   dirs.push(d);
   return d;
 };

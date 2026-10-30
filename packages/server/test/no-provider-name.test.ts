@@ -60,6 +60,11 @@ const ALLOW: Array<{ file: string; text: string; reason: string }> = [
     text: "export const BUILT_IN_LINE = 'Claude Code is built in and ready if it is installed.';",
     reason: 'the fixed sentence of spec 7.3 on the first-run screen names the built-in program; no card or id of it is in the app',
   },
+  {
+    file: 'packages/server/src/approve-fence.ts',
+    text: "const PROTECTED = new Set(['.claude', '.git', '.mcp.json']);",
+    reason: 'M7: folder names the fence never auto-approves a path through (a CLI settings folder can grant permissions); a folder name, not a provider',
+  },
 ];
 
 describe('no provider name outside packages/server/src/mods', () => {

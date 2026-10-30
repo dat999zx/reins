@@ -16,12 +16,12 @@ export interface SessionRow {
 }
 export interface LogRow { sessionId: string; seq: number; ts: number; runId?: string; type: string; data: unknown }
 export interface ParallelTask { name: string; sessionId: string }
-export interface ParallelRow { id: string; title: string; capUsd?: number; createdAt: number; tasks: ParallelTask[] }
+export interface ParallelRow { id: string; title: string; capUsd?: number; approve?: 'fence'; createdAt: number; tasks: ParallelTask[] }
 
 const toParallel = (r: any): ParallelRow => {
   let tasks: ParallelTask[] = [];
   try { const v = JSON.parse(r.tasks); if (Array.isArray(v)) tasks = v; } catch { /* a value that does not parse reads as no tasks */ }
-  return { id: r.id, title: r.title, ...(r.cap_usd != null ? { capUsd: r.cap_usd } : {}), createdAt: r.created_at, tasks };
+  return { id: r.id, title: r.title, ...(r.cap_usd != null ? { capUsd: r.cap_usd } : {}), ...(r.approve === 'fence' ? { approve: 'fence' as const } : {}), createdAt: r.created_at, tasks };
 };
 
 const toSession = (r: any): SessionRow => ({
@@ -173,6 +173,10 @@ export function openStore(file: string) {
   if (!(db.prepare('pragma table_info(engine_costs)').all() as Array<{ name: string }>).some((c) => c.name === 'by_model')) {
     db.exec('alter table engine_costs add column by_model text');
   }
+  // M7: the run's auto-approve mode (a database made before M7 has no column).
+  if (!(db.prepare('pragma table_info(parallel_runs)').all() as Array<{ name: string }>).some((c) => c.name === 'approve')) {
+    db.exec('alter table parallel_runs add column approve text');
+  }
   // P: a provider whose id changed keeps its sessions (their CLI session ids resume as before). `sessions.engine` is the only column that holds a
   // provider id. One transaction for all renames; a second open finds nothing to change.
   const rename = db.prepare('update sessions set engine = ? where engine = ?');
@@ -208,7 +212,7 @@ export function openStore(file: string) {
   const getTotal = db.prepare('select total from engine_costs where engine_session_id = ?');
   const putTotal = db.prepare('insert or replace into engine_costs (engine_session_id, total, ts, by_model) values (?, ?, ?, ?)');
   const getModels = db.prepare('select by_model from engine_costs where engine_session_id = ?');
-  const insParallel = db.prepare('insert into parallel_runs (id, title, cap_usd, tasks, created_at) values (?, ?, ?, ?, ?)');
+  const insParallel = db.prepare('insert into parallel_runs (id, title, cap_usd, tasks, created_at, approve) values (?, ?, ?, ?, ?, ?)');
   const getParallel = db.prepare('select * from parallel_runs where id = ?');
   const listParallel = db.prepare('select * from parallel_runs order by created_at desc, rowid desc');
   const setCap = db.prepare('update parallel_runs set cap_usd = ? where id = ?');
@@ -320,7 +324,7 @@ export function openStore(file: string) {
     },
     /** M5: a parallel run (the tasks' sessions, an optional USD cap). A session is parallel while a row lists it. */
     createParallel(r: Omit<ParallelRow, 'createdAt'>): ParallelRow {
-      insParallel.run(r.id, r.title, r.capUsd ?? null, JSON.stringify(r.tasks), Date.now());
+      insParallel.run(r.id, r.title, r.capUsd ?? null, JSON.stringify(r.tasks), Date.now(), r.approve ?? null);
       return toParallel(getParallel.get(r.id));
     },
     listParallel(): ParallelRow[] {

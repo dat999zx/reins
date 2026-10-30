@@ -16,6 +16,7 @@ import { taggedWorkflow, type Tag, type Tagged } from './tags.js';
 import { shownStep } from './trackKey.js';
 import { loadWorkflow } from './run-cli.js';
 import { isUnder } from './loop/paths.js';
+import { fenceAnswer, fenceTrusts } from './approve-fence.js';
 import type { FolderTrust } from './mods/types.js';
 import { parseModel } from './models.js';
 import { crossWords, missingProviderWords, noKeyWords, providerStatus, resolveSubagent, runChecks, type CheckEnv } from './run-checks.js';
@@ -64,8 +65,8 @@ export interface SessionDeps {
   origin?: (provider: string) => string | undefined;
   /** The generation of the provider's validated manifest as installed NOW (`generationOf`): an engine opened for another one is dropped, so a changed price, path, header or body is used from the next reply. */
   generation?: (provider: string) => string | undefined;
-  /** The session's parallel run, if any (M5): its writes stay in its folder, and no new model call starts once the run's USD cap is reached. */
-  parallel?: { fenced(sessionId: string): boolean; capWords(sessionId: string): string | undefined };
+  /** The session's parallel run, if any (M5): its writes stay in its folder, and no new model call starts once the run's USD cap is reached. approve: the run's auto-approve mode (M7); none = every question is a card. */
+  parallel?: { fenced(sessionId: string): boolean; capWords(sessionId: string): string | undefined; approve?(sessionId: string): 'fence' | undefined };
 }
 /** A provider's consent question: the words, and what a yes records. */
 export interface Consent {
@@ -229,7 +230,8 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     for (const [qid, p] of [...pending]) if ((!kind || p.q.kind === kind) && (owner === undefined || (p.q.owner ?? '') === owner)) settle(qid, null, why);
   };
 
-  const ask = (q: Question): Promise<string | null> => {
+  /** `auto`: the fence's answer (M7), logged with `by: 'fence'`; it comes before the session's own `autoApprove`. */
+  const ask = (q: Question, auto?: string): Promise<string | null> => {
     if (stopping) return Promise.resolve(null);
     if (q.kind === 'tool' && !turnsOpen.has(q.owner ?? '')) return Promise.resolve(null); // a late approval after its owner's turn ended: deny, never leave it open
     // The one place a question reaches the app (and the stream): its words are shown with control, direction and zero-width characters as <U+XXXX>.
@@ -237,6 +239,10 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     // Keys are hidden FIRST, on the original text; a hidden character inside a key would stop the redactor from finding it once escaped.
     const show = (s: string) => showText(deps.redactor ? deps.redactor.redact(s) : s, { lines: true });
     log('question', { ...q, prompt: show(q.prompt), ...(q.detail !== undefined ? { detail: show(q.detail) } : {}), ...(q.title !== undefined ? { title: show(q.title) } : {}) }, runId);
+    if (auto !== undefined) {
+      log('answer', { questionId: q.id, answer: auto, by: 'fence' }, runId);
+      return Promise.resolve(auto);
+    }
     if (q.kind === 'tool' && store.getSession(id)!.autoApprove) {
       log('answer', { questionId: q.id, answer: 'y' }, runId);
       return Promise.resolve('y');
@@ -260,6 +266,12 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     cancel: (why) => { if (runId !== undefined) for (const [qid, p] of [...pending]) if (p.rid === runId) settle(qid, null, why); },
   };
 
+  /** The io for one tool request: in a fenced run the rule table may answer it (M7); else the plain io, so the request is a card. */
+  const toolIo = (r: ToolRequest): DriveIo => {
+    const a = deps.parallel?.approve?.(id) === 'fence' ? fenceAnswer(r, cwd, dir) : undefined;
+    return a === undefined ? io : { ...io, ask: (q) => ask(q, a) };
+  };
+
   // The origin of the provider's address when `engine` was made. A reload that changes it (or removes the provider) retires the engine before its next use.
   let openedFor: string | undefined;
   // The same for the generation of its manifest: a change of the settings on the same address retires it as well.
@@ -274,7 +286,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       ...(cur.model ? { model: cur.model } : {}),
       ...(cur.effort ? { effort: cur.effort } : {}),
       // A request from the CLI's own task child is a card titled with the task, under the subagent approvals setting.
-      onApprove: (r) => (r.via !== undefined ? subagentApprove(`Task ${r.via.slice(0, 80).trim()}`, r) : askTool(io, r)),
+      onApprove: (r) => (r.via !== undefined ? subagentApprove(`Task ${r.via.slice(0, 80).trim()}`, r) : askTool(toolIo(r), r)),
       onLive: (e) => log('engine', e, runId),
     }));
   };
@@ -518,7 +530,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       log('note', { text: `Denied ${r.tool} for ${title}: subagent approvals are set to deny.` }, runId);
       return Promise.resolve({ behavior: 'deny', message: 'Denied by Reins: subagent approvals are set to deny. Carry on without this tool.' });
     }
-    return askTool(io, r, title, undefined, owner);
+    return askTool(toolIo(r), r, title, undefined, owner);
   }
 
   // ponytail: the subagent runs on its block's model, else the session's; its guard refusals count in the receipt but not on its chip (run `refusal` rows are not in the session log, :43).
@@ -538,7 +550,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       ...(model ? { model } : {}), ...(r.effort ? { effort: r.effort } : {}),
       // A track's own requests are asked like the main run's; a native child task inside it (`via`) keeps the subagent exception the main engine has.
       // Every question of this session belongs to its step (a track's key): it closes when this session's turn ends, not when another line's does.
-      onApprove: (x) => (o.asks && x.via === undefined ? askTool(io, x, o.asks, undefined, o.step) : subagentApprove(o.asks && x.via !== undefined ? `Task ${x.via.slice(0, 80).trim()}` : title, x, o.step)),
+      onApprove: (x) => (o.asks && x.via === undefined ? askTool(toolIo(x), x, o.asks, undefined, o.step) : subagentApprove(o.asks && x.via !== undefined ? `Task ${x.via.slice(0, 80).trim()}` : title, x, o.step)),
       // usage, cost, compacted and hook measure or note the parent's context, so they stay out; the rest is kept under the step
       onLive: (ev) => { if (KEPT.has(ev.type)) log('engine', { ...ev, step: o.step }, runId); },
     });
@@ -869,7 +881,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     const a = await ask({
       id: questionId(), kind: 'trust', detail: cmds.join('\n'),
       prompt: 'This playbook runs the commands below on your machine. Trust it? [y / n]',
-    });
+    }, deps.parallel?.approve?.(id) === 'fence' && fenceTrusts(cmds, cwd, dir) ? 'y' : undefined);
     if (a === null || !/^(y|yes)$/i.test(a)) {
       log('note', { text: stopping ? 'The session was stopped before the playbook started.' : 'The playbook is not trusted, so it did not run.' });
       unsent();
