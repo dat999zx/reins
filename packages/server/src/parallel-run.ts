@@ -6,18 +6,8 @@ import { promisify } from 'node:util';
 import { runCommand } from './commands.js';
 import { under } from './session.js';
 
-// Pinned copy of the store's shapes (M8 plan P1 to P3); S3 replaces it with an import.
-export type ParallelPhase = 'setup' | 'running' | 'merging' | 'gating' | 'done' | 'failed' | 'interrupted';
-export interface ParallelJobTask { name: string; branch: string; dir: string; playbook: string; model?: string; effort?: string }
-export interface ParallelJob {
-  repo: string; branch: string; head: string; folder: string;
-  install?: string; gate?: string; gateRetry?: string; reports?: string;
-  tasks: ParallelJobTask[];
-  words: string; merged: string[]; notMerged: Array<{ name: string; why: string }>;
-  conflict?: { task: string; files: string[]; why: string }; gateResult: 'pass' | 'fail' | 'not run';
-}
-type ParallelTask = { name: string; sessionId: string };
-export type ParallelPatch = { phase?: ParallelPhase; tasks?: ParallelTask[]; job?: Partial<ParallelJob> };
+import type { ParallelJob, ParallelJobTask, ParallelPatch } from './store.js';
+export type { ParallelJob, ParallelJobTask, ParallelPatch, ParallelPhase } from './store.js';
 
 export interface RunDeps { env: () => NodeJS.ProcessEnv; signal: AbortSignal; save(patch: ParallelPatch): void; timeoutMs?: number }
 
