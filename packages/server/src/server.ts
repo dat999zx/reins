@@ -319,7 +319,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
   function createParallelRun(b: unknown): Reply {
     const checked = checkBody(b);
     if ('error' in checked) return fail(400, checked.error);
-    const { title, capUsd, tasks } = checked.value;
+    const { title, capUsd, approve, tasks } = checked.value;
     // Every task is checked before anything is made: one refusal and nothing exists.
     if ([title, ...tasks.flatMap((t) => [t.name, t.dir])].some((t) => o.redactor?.has(t))) return fail(400, KEY_IN_IDENTITY);
     for (const t of tasks) {
@@ -347,7 +347,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
       made.push({ name: t.name, sessionId: (r.body as { id: string }).id });
     }
     const id = randomBytes(6).toString('hex');
-    o.store.createParallel({ id, title, ...(capUsd !== undefined ? { capUsd } : {}), tasks: made });
+    o.store.createParallel({ id, title, ...(capUsd !== undefined ? { capUsd } : {}), ...(approve ? { approve } : {}), tasks: made });
     return ok({ id, tasks: made });
   }
 
