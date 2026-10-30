@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { addWorktrees, clean, commitAll, mergeInOrder, openQuestions, preflight, registerBody, reportLines, run, stuck, taskLine, timing } from './parallel.mjs';
+import { addWorktrees, alreadyMerged, clean, commitAll, mergeInOrder, openQuestions, preflight, registerBody, reportLines, run, stuck, taskLine, timing } from './parallel.mjs';
 
 const rt = [{ name: 'A', dir: 'D:/w/a', branch: 'b', playbook: 'p.md' }, { name: 'B', dir: 'D:/w/b' }];
 assert.deepEqual(registerBody({ title: 'T', capUsd: 5 }, 'D:/repo', 'r1', rt), { title: 'T', repo: 'D:/repo', capUsd: 5, tasks: [{ name: 'A', dir: 'D:/w/a' }, { name: 'B', dir: 'D:/w/b' }] }, 'title, cap and tasks');
@@ -107,6 +107,10 @@ try {
   assert.deepEqual(ok.merged, ['Task A', 'Task B'], 'edits to different functions of one file both merge');
   const merged = readFileSync(join(repo, 'f.js'), 'utf8');
   assert.ok(merged.includes('return 1;') && merged.includes('return 2;'), 'nothing lost');
+  // after a gate failure a second run finds the tasks already merged: they count as merged, a task that changed nothing does not
+  assert.equal(alreadyMerged(repo, tasks[0], recorded.head), true, 'a task whose commits are in the merged branch is already merged');
+  assert.equal(alreadyMerged(repo, tasks[1], recorded.head), true);
+  assert.equal(alreadyMerged(repo, tasks[2], recorded.head), false, 'a task that changed nothing is not merged');
 
   // a conflict: both change function c
   const t2 = addWorktrees(repo, 'r3', wt, [{ name: 'one' }, { name: 'two' }]);

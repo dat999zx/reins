@@ -56,6 +56,15 @@ export function commitAll(task) {
   return files;
 }
 
+/** True when the task has commits (its branch moved past the start commit) and they are already inside the main folder's branch: a second `run` after a failed gate finds its tasks like this. A task that changed nothing is not merged. */
+export function alreadyMerged(repo, task, startHead) {
+  try {
+    if (git(repo, 'rev-parse', task.branch) === startHead) return false;
+    git(repo, 'merge-base', '--is-ancestor', task.branch, 'HEAD');
+    return true;
+  } catch { return false; }
+}
+
 /** Merges the task branches into the main folder one at a time, in order. On the first conflict: abort, name the files, stop. */
 export function mergeInOrder(repo, tasks, recorded) {
   const merged = [];
@@ -156,26 +165,26 @@ async function status(file) {
 /** Returns { merged, notMerged: [{ name, why }], conflict, gate: 'pass' | 'fail' | 'not run' }. why: run_stopped, still running, no changes, conflict, after conflict. */
 async function merge(file, api = server()) {
   const s = JSON.parse(readFileSync(file, 'utf8'));
-  const ready = [], notMerged = [];
+  const ready = [], notMerged = [], done = [];
   for (const t of s.tasks) {
     const e = await ended(api, t);
     if (e.type !== 'run_finished') { console.log(`skip ${t.name}: ${e.type ?? 'still running'}\n  ${span(e)}`); notMerged.push({ name: t.name, why: e.type ?? 'still running' }); continue; }
     console.log(`time ${t.name}: ${span(e)}`);
     const files = commitAll(t);
     console.log(`commit ${t.name}: ${files.length} file(s)${files.length ? `\n  ${files.join('\n  ')}` : ''}`);
-    if (files.length) ready.push(t); else notMerged.push({ name: t.name, why: 'no changes' });
+    if (files.length) ready.push(t); else if (alreadyMerged(s.repo, t, s.head)) done.push(t.name); else notMerged.push({ name: t.name, why: 'no changes' });
   }
   const r = mergeInOrder(s.repo, ready, s);
   console.log(`merged: ${r.merged.join(', ') || 'none'}`);
   for (const t of ready) if (!r.merged.includes(t.name)) notMerged.push({ name: t.name, why: t.name === r.conflict?.task ? 'conflict' : 'after conflict' });
-  if (r.conflict) { console.log(`CONFLICT in ${r.conflict.task}: ${r.conflict.files.join(', ') || r.conflict.why}\nThe merge was aborted; resolve by hand, then run merge again.`); process.exitCode = 2; return { merged: r.merged, notMerged, conflict: r.conflict, gate: 'not run' }; }
+  if (r.conflict) { console.log(`CONFLICT in ${r.conflict.task}: ${r.conflict.files.join(', ') || r.conflict.why}\nThe merge was aborted; resolve by hand, then run merge again.`); process.exitCode = 2; return { merged: [...done, ...r.merged], notMerged, conflict: r.conflict, gate: 'not run' }; }
   let gate = 'pass';
   try {
     await sh('npm run build', s.repo, true);
     console.log('gate: node scripts/test-affected.mjs --all --jobs 4');
     await sh('node scripts/test-affected.mjs --all --jobs 4', s.repo, true); // shown: a failed gate must say which file failed
   } catch (e) { console.log(`gate failed: ${e.message}`); process.exitCode = 1; gate = 'fail'; }
-  return { merged: r.merged, notMerged, conflict: undefined, gate };
+  return { merged: [...done, ...r.merged], notMerged, conflict: undefined, gate };
 }
 
 /** Question rows with no later answer or question_closed of their id. */
