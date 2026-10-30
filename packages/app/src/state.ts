@@ -85,7 +85,7 @@ function apply(s: Sess, row: LogRow, loadedAt: number): Sess {
     case 'question': n.open = [...s.open, x.id]; break;
     case 'answer':
       n.open = s.open.filter((q) => q !== x.questionId);
-      n.answers = { ...s.answers, [x.questionId]: x.answer };
+      n.answers = { ...s.answers, [x.questionId]: x.by === 'fence' ? `${x.answer} (auto: fence)` : x.answer };
       break;
     case 'question_closed':
       n.open = s.open.filter((q) => q !== x.questionId);

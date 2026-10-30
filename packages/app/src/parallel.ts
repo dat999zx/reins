@@ -1,7 +1,7 @@
 import type { Sess, State } from './state.js';
 
 /** A row of GET /api/parallel. */
-export interface ParallelView { id: string; title: string; capUsd?: number; createdAt: number; tasks: Array<{ name: string; sessionId: string }> }
+export interface ParallelView { id: string; title: string; capUsd?: number; approve?: 'fence'; createdAt: number; tasks: Array<{ name: string; sessionId: string }> }
 
 export type TaskState = 'running' | 'waiting' | 'paused' | 'done';
 
