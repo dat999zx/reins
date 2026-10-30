@@ -4,6 +4,10 @@ Format: [Keep a Changelog](https://keepachangelog.com). Versions: [SemVer](https
 
 ## Unreleased
 
+- A parallel run can be started from the rail: name a tasks file, read what it will run, press Start. The group shows its phase; Merge runs the merge and the gate on the server, and Clean closes the sessions and removes the worktrees and branches.
+- A tasks file names its own commands: `install`, `gate`, `gateRetry` and `reports`. Absent means skip.
+- After a server restart, a run caught in setup, merging or gating reads `interrupted`, and Merge or Clean go on from there.
+- `parallel.mjs` is now a client of the server: `start` prints a run id, `status`, `merge`, `clean` and `run` take it, and there is no `state.json`. A task needs a playbook. `clean` needs a running server. `start` shows the commands and asks first, unless `--yes`.
 - A parallel run may be started with `"approve": "fence"`: reads and edits whose real path is inside the task's folder, and a short list of whole commands (tests, eslint, tsc, `npm run typecheck|lint|selfcheck`, read-only git) naming nothing outside it, are answered yes and marked `auto: fence`; everything else stays a card, and MCP calls are refused. It is not a sandbox: an approved test or lint run executes code the agent wrote.
 - `parallel.mjs run <tasks.json>`: start, wait, merge, gate and clean in one command, with a report. Exit 3: a card waits a minute; 4: the gate failed; 5: `--max-minutes` reached; 6: a task was not merged (nothing is cleaned then).
 - `parallel.mjs run` retries a failed gate once on the files that failed (a load flake passes alone), and a second `run` on the same state counts tasks that are already merged as merged, so it can finish after a failed gate.

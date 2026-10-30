@@ -8,6 +8,8 @@ export interface CommandOptions {
   onOutput?: (chunk: string) => void;
   /** The child's environment, worked out when it starts (callers pass `shellEnvFrom(...)`); none = this process's. */
   env?: () => NodeJS.ProcessEnv;
+  /** Ends the command's whole process tree. Already aborted: nothing starts and the result is exit 1. */
+  signal?: AbortSignal;
 }
 
 const KEEP_LINES = 200;
@@ -21,6 +23,8 @@ const KEEP_CHARS = 256 * 1024;
 export function runCommand(cmd: string, o: CommandOptions): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const timeoutMs = o.timeoutMs ?? 10 * 60_000;
   return new Promise((resolve) => {
+    // An abort listener never fires for a signal that is already aborted, and close() would wait for a child nobody can stop.
+    if (o.signal?.aborted) return resolve({ exitCode: 1, stdout: '', stderr: '' });
     // Asked here, at the start of THIS command: a provider installed or switched off since the workflow began is seen.
     const env = o.env?.();
     const child = spawn(cmd, {
@@ -49,8 +53,12 @@ export function runCommand(cmd: string, o: CommandOptions): Promise<{ exitCode: 
       killTree(child.pid, o.env?.() ?? env); // the kill helper is a new process: its env is worked out now, not when the command started
     }, timeoutMs);
 
+    const onAbort = () => killTree(child.pid, o.env?.() ?? env);
+    o.signal?.addEventListener('abort', onAbort, { once: true });
+
     const finish = (code: number) => {
       clearTimeout(timer);
+      o.signal?.removeEventListener('abort', onAbort);
       for (const d of decoders) take(d.end());
       if (timedOut) out += `\n[Reins: timed out after ${Math.round(timeoutMs / 1000)} s and was killed]\n`;
       const lines = out.split(/\r?\n/);

@@ -38,7 +38,15 @@ export function parallelSeam(store: Store): { fenced(sessionId: string): boolean
   };
 }
 
-const norm = (p: string) => (process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p));
+export const norm = (p: string) => (process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p));
+
+/** The words for a bad model or effort, or undefined. Both body checkers call it. */
+function modelWords(name: string, model: unknown, effort: unknown): string | undefined {
+  if (model !== undefined && (typeof model !== 'string' || !model)) return `task ${name}: model must be a string.`;
+  if (typeof model === 'string' && (model.length > 400 || [...model].some((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f))) return `task ${name}: model must be a short name with no control characters.`;
+  if (effort !== undefined && (typeof effort !== 'string' || !effort)) return `task ${name}: effort must be a string.`;
+  return undefined;
+}
 
 export type ParallelBody = { title: string; repo: string; capUsd?: number; approve?: 'fence'; tasks: Array<{ name: string; dir: string; model?: string; effort?: string }> };
 
@@ -61,14 +69,60 @@ export function checkBody(b: unknown): { value: ParallelBody } | { error: string
     const d = norm(dir);
     if (dirs.has(d)) return { error: `task ${name}: dir is used by another task.` };
     if (d === repo || repo.startsWith(d + path.sep)) return { error: `task ${name}: dir must not be the repo or contain it.` };
-    if (model !== undefined && (typeof model !== 'string' || !model)) return { error: `task ${name}: model must be a string.` };
-    if (typeof model === 'string' && (model.length > 400 || [...model].some((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f))) return { error: `task ${name}: model must be a short name with no control characters.` };
-    if (effort !== undefined && (typeof effort !== 'string' || !effort)) return { error: `task ${name}: effort must be a string.` };
+    const bad = modelWords(name, model, effort);
+    if (bad) return { error: bad };
     names.add(name);
     dirs.add(d);
     tasks.push({ name, dir, ...(model !== undefined ? { model: model as string } : {}), ...(effort !== undefined ? { effort: effort as string } : {}) });
   }
   return { value: { title: o.title, repo: o.repo, ...(o.capUsd !== undefined ? { capUsd: o.capUsd } : {}), ...(o.approve !== undefined ? { approve: 'fence' as const } : {}), tasks } };
+}
+
+export interface RunSpec { title: string; capUsd?: number; approve?: 'fence'; install?: string; gate?: string; gateRetry?: string; reports?: string; copy: string[]; tasks: Array<{ name: string; slug: string; playbook: string; model?: string; effort?: string }> }
+
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30);
+const inside = (p: unknown) => typeof p === 'string' && !!p && !/[\0:]/.test(p) && !path.isAbsolute(p) && !path.win32.isAbsolute(p) && !p.split(/[\\/]/).some((s) => /^[. ]+$/.test(s));
+const text = (v: unknown) => typeof v === 'string' && !!v.trim();
+
+/** A tasks file, judged: the same checks for the preview and the start. Unknown keys are dropped; `slug` is computed, never read. */
+export function checkSpec(b: unknown): { value: RunSpec } | { error: string } {
+  if (!b || typeof b !== 'object' || Array.isArray(b)) return { error: 'The tasks file must be a JSON object.' };
+  const o = b as Record<string, unknown>;
+  if (o.title !== undefined && !text(o.title)) return { error: 'title must be a non-empty string.' };
+  if (o.capUsd !== undefined && (typeof o.capUsd !== 'number' || !Number.isFinite(o.capUsd) || o.capUsd <= 0)) return { error: 'capUsd must be a number above 0.' };
+  if (o.approve !== undefined && o.approve !== 'fence') return { error: 'approve must be "fence".' };
+  for (const k of ['install', 'gate', 'gateRetry'] as const) if (o[k] !== undefined && !text(o[k])) return { error: `${k} must be a non-empty string.` };
+  if (o.gateRetry !== undefined && o.gate === undefined) return { error: 'gateRetry needs gate.' };
+  if (o.reports !== undefined && !inside(o.reports)) return { error: 'reports must be a path inside the repo.' };
+  if (o.copy !== undefined && (!Array.isArray(o.copy) || !o.copy.every(inside))) return { error: 'copy must be a list of paths inside the repo.' };
+  if (!Array.isArray(o.tasks) || o.tasks.length === 0) return { error: 'tasks must be a non-empty array.' };
+  const slugs = new Set<string>();
+  const tasks: RunSpec['tasks'] = [];
+  for (const t of o.tasks as unknown[]) {
+    const { name, playbook, model, effort } = (t && typeof t === 'object' ? t : {}) as Record<string, unknown>;
+    if (typeof name !== 'string' || !name.trim()) return { error: 'each task needs a non-empty name.' };
+    if (playbook === undefined || playbook === '') return { error: `Task "${name}" has no playbook.` };
+    if (!inside(playbook)) return { error: `task ${name}: playbook must be a path inside the repo.` };
+    const s = slug(name);
+    if (!s || slugs.has(s)) return { error: `Task name "${name}" is empty or repeats another once lower-cased.` };
+    const bad = modelWords(name, model, effort);
+    if (bad) return { error: bad };
+    slugs.add(s);
+    tasks.push({ name, slug: s, playbook: playbook as string, ...(model !== undefined ? { model: model as string } : {}), ...(effort !== undefined ? { effort: effort as string } : {}) });
+  }
+  return {
+    value: {
+      title: (o.title as string | undefined) ?? 'parallel run',
+      ...(o.capUsd !== undefined ? { capUsd: o.capUsd as number } : {}),
+      ...(o.approve !== undefined ? { approve: 'fence' as const } : {}),
+      ...(o.install !== undefined ? { install: o.install as string } : {}),
+      ...(o.gate !== undefined ? { gate: o.gate as string } : {}),
+      ...(o.gateRetry !== undefined ? { gateRetry: o.gateRetry as string } : {}),
+      ...(o.reports !== undefined ? { reports: o.reports as string } : {}),
+      copy: (o.copy as string[] | undefined) ?? [],
+      tasks,
+    },
+  };
 }
 
 /** The id of the session's open `resume` question (a stopped run, or a failed track, waiting on its owner), if any. */
