@@ -30,22 +30,24 @@ export function capWords(store: Store, sessionId: string): string | undefined {
   return `The parallel run "${run.title}" has spent $${spent.toFixed(2)} of its $${run.capUsd.toFixed(2)} cap, so no new model call starts. Raise the cap in the rail, then Resume.`;
 }
 
-export function parallelSeam(store: Store): { fenced(sessionId: string): boolean; capWords(sessionId: string): string | undefined } {
+export function parallelSeam(store: Store): { fenced(sessionId: string): boolean; capWords(sessionId: string): string | undefined; approve?(sessionId: string): 'fence' | undefined } {
   return {
     fenced: (id) => runOfSession(store, id) !== undefined,
     capWords: (id) => capWords(store, id),
+    approve: (id) => runOfSession(store, id)?.approve,
   };
 }
 
 const norm = (p: string) => (process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p));
 
-export type ParallelBody = { title: string; repo: string; capUsd?: number; tasks: Array<{ name: string; dir: string; model?: string; effort?: string }> };
+export type ParallelBody = { title: string; repo: string; capUsd?: number; approve?: 'fence'; tasks: Array<{ name: string; dir: string; model?: string; effort?: string }> };
 
 export function checkBody(b: unknown): { value: ParallelBody } | { error: string } {
   const o = (b && typeof b === 'object' ? b : {}) as Record<string, unknown>;
   if (typeof o.title !== 'string' || !o.title.trim()) return { error: 'title must be a non-empty string.' };
   if (typeof o.repo !== 'string' || !path.isAbsolute(o.repo)) return { error: 'repo must be an absolute path.' };
   if (o.capUsd !== undefined && (typeof o.capUsd !== 'number' || !Number.isFinite(o.capUsd) || o.capUsd <= 0)) return { error: 'capUsd must be a number above 0.' };
+  if (o.approve !== undefined && o.approve !== 'fence') return { error: 'approve must be "fence".' };
   if (!Array.isArray(o.tasks) || o.tasks.length === 0) return { error: 'tasks must be a non-empty array.' };
   const repo = norm(o.repo);
   const names = new Set<string>();
@@ -66,7 +68,7 @@ export function checkBody(b: unknown): { value: ParallelBody } | { error: string
     dirs.add(d);
     tasks.push({ name, dir, ...(model !== undefined ? { model: model as string } : {}), ...(effort !== undefined ? { effort: effort as string } : {}) });
   }
-  return { value: { title: o.title, repo: o.repo, ...(o.capUsd !== undefined ? { capUsd: o.capUsd } : {}), tasks } };
+  return { value: { title: o.title, repo: o.repo, ...(o.capUsd !== undefined ? { capUsd: o.capUsd } : {}), ...(o.approve !== undefined ? { approve: 'fence' as const } : {}), tasks } };
 }
 
 /** The id of the session's open `resume` question (a stopped run, or a failed track, waiting on its owner), if any. */
