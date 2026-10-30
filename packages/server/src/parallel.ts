@@ -39,7 +39,7 @@ export function parallelSeam(store: Store): { fenced(sessionId: string): boolean
 
 const norm = (p: string) => (process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p));
 
-export type ParallelBody = { title: string; repo: string; capUsd?: number; tasks: Array<{ name: string; dir: string }> };
+export type ParallelBody = { title: string; repo: string; capUsd?: number; tasks: Array<{ name: string; dir: string; model?: string; effort?: string }> };
 
 export function checkBody(b: unknown): { value: ParallelBody } | { error: string } {
   const o = (b && typeof b === 'object' ? b : {}) as Record<string, unknown>;
@@ -50,18 +50,21 @@ export function checkBody(b: unknown): { value: ParallelBody } | { error: string
   const repo = norm(o.repo);
   const names = new Set<string>();
   const dirs = new Set<string>();
-  const tasks: Array<{ name: string; dir: string }> = [];
+  const tasks: ParallelBody['tasks'] = [];
   for (const t of o.tasks as unknown[]) {
-    const { name, dir } = (t && typeof t === 'object' ? t : {}) as Record<string, unknown>;
+    const { name, dir, model, effort } = (t && typeof t === 'object' ? t : {}) as Record<string, unknown>;
     if (typeof name !== 'string' || !name.trim()) return { error: 'each task needs a non-empty name.' };
     if (typeof dir !== 'string' || !path.isAbsolute(dir)) return { error: `task ${name}: dir must be an absolute path.` };
     if (names.has(name)) return { error: `task name ${name} is used twice.` };
     const d = norm(dir);
     if (dirs.has(d)) return { error: `task ${name}: dir is used by another task.` };
     if (d === repo || repo.startsWith(d + path.sep)) return { error: `task ${name}: dir must not be the repo or contain it.` };
+    if (model !== undefined && (typeof model !== 'string' || !model)) return { error: `task ${name}: model must be a string.` };
+    if (typeof model === 'string' && (model.length > 400 || [...model].some((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f))) return { error: `task ${name}: model must be a short name with no control characters.` };
+    if (effort !== undefined && (typeof effort !== 'string' || !effort)) return { error: `task ${name}: effort must be a string.` };
     names.add(name);
     dirs.add(d);
-    tasks.push({ name, dir });
+    tasks.push({ name, dir, ...(model !== undefined ? { model: model as string } : {}), ...(effort !== undefined ? { effort: effort as string } : {}) });
   }
   return { value: { title: o.title, repo: o.repo, ...(o.capUsd !== undefined ? { capUsd: o.capUsd } : {}), tasks } };
 }
