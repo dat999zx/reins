@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { LogRow } from '@reins/server/store.js';
 import type { TagEntry } from '@reins/server/tags.js';
-import { ApiError, get, initToken, parallelRuns, post, resumeAll, setCap, stopAll, stream } from './api.js';
-import type { ParallelView } from './parallel.js';
+import { ApiError, cleanRun, get, initToken, mergeRun, parallelRuns, post, resumeAll, setCap, stopAll, stream } from './api.js';
+import { busyPhase, type ParallelView } from './parallel.js';
+import { ParallelStart } from './ParallelStart.js';
 import { setCards, setKinds } from './canvasKinds.js';
 import { setConds } from './condKinds.js';
 import { setQuestions } from './questions.js';
@@ -181,6 +182,8 @@ export function App() {
   const refreshParallel = () => parallelRuns().then(setParallel).catch((e) => flash(`Could not read the parallel runs: ${(e as Error).message}`));
   const sessionCount = Object.keys(st.sessions).length;
   useEffect(() => { if (ready) void refreshParallel(); }, [sessionCount]);
+  const busy = parallel.some(busyPhase);
+  useEffect(() => { if (!busy) return; const t = setInterval(() => void refreshParallel(), 3000); return () => clearInterval(t); }, [busy]);
   const groupAction = (act: () => Promise<unknown>) => act().catch((e) => flash((e as Error).message)).then(() => refreshParallel());
   const resumeAllFlash = (id: string) => groupAction(async () => {
     const r = await resumeAll(id);
@@ -248,6 +251,12 @@ export function App() {
           onSettings={() => { if (leave()) setSettings(true); }}
           parallel={parallel} onStopAll={(id) => void groupAction(() => stopAll(id))} onResumeAll={(id) => void resumeAllFlash(id)}
           onCap={(id, usd) => void groupAction(() => setCap(id, usd))}
+          onMerge={(id) => void groupAction(() => mergeRun(id))}
+          onClean={(id) => void groupAction(async () => {
+            const r = await cleanRun(id);
+            flash(`Removed: ${r.removed.join(', ') || 'none'}. Kept: ${r.kept.map((k) => `${k.name} (${k.why})`).join(', ') || 'none'}.`);
+          })}
+          parallelStart={<ParallelStart cwd={cwd} onStarted={() => void refreshParallel()} onError={flash} />}
           pathBox={pathBox && (
             <form className="pathbox" onSubmit={(e) => { e.preventDefault(); void start(path.trim()).then(() => setPath('')); }}>
               <label>No folder picker here. Absolute folder path
