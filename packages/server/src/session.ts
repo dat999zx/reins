@@ -64,6 +64,8 @@ export interface SessionDeps {
   origin?: (provider: string) => string | undefined;
   /** The generation of the provider's validated manifest as installed NOW (`generationOf`): an engine opened for another one is dropped, so a changed price, path, header or body is used from the next reply. */
   generation?: (provider: string) => string | undefined;
+  /** The session's parallel run, if any (M5): its writes stay in its folder, and no new model call starts once the run's USD cap is reached. */
+  parallel?: { fenced(sessionId: string): boolean; capWords(sessionId: string): string | undefined };
 }
 /** A provider's consent question: the words, and what a yes records. */
 export interface Consent {
@@ -480,7 +482,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
       cwd, ...(sid ? { sessionId: sid } : {}),
       ...(base !== undefined ? { costBase: base } : {}),
       ...(models ? { costBaseByModel: models } : {}),
-      policy: () => run?.policy() ?? PLAIN,
+      policy: () => fence(run?.policy() ?? PLAIN),
       pendingCards: () => (run ? run.takeCards() : queue.splice(0)),
       // The run borrows this session, so its USD room is read here live; with no run (plain chat) there is no limit.
       usdRoom: () => {
@@ -498,6 +500,13 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     const provider = store.getSession(id)!.engine;
     if ((deps.origin && deps.origin(provider) !== openedFor) || (deps.generation && deps.generation(provider) !== openedGen)) dropEngine();
   }
+  /** A parallel run's session writes only inside its folder; any other session keeps its policy object as it is. */
+  const fence = (p: Policy): Policy => (deps.parallel?.fenced(id) ? { ...p, inside: true } : p);
+  /** Refuses a new model call once the parallel run's cap is reached (not in `call()`: a refusal after a compaction would drop its cost from the turn's sum). */
+  const capCheck = () => {
+    const w = deps.parallel?.capWords(id);
+    if (w) throw new Error(w);
+  };
   const ensureEngine = (): Promise<EngineSession | undefined> => {
     dropIfStale();
     return live ? Promise.resolve(live) : (opening ??= openEngine().finally(() => { opening = undefined; }));
@@ -515,6 +524,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   // ponytail: the subagent runs on its block's model, else the session's; its guard refusals count in the receipt but not on its chip (run `refusal` rows are not in the session log, :43).
   /** A subagent's own engine (D): its model, its own hook server, and its text, reasoning and tools kept as engine rows with its `step` (never usage or cost: they measure the parent's context). */
   async function openSubagent(o: SubagentOpen): Promise<SubagentOpened> {
+    capCheck();
     const cur = store.getSession(id)!;
     // The step's `provider:model`, on its own provider; a provider that is gone, has no key or cannot take the step pauses the step with the words.
     const r = resolveSubagent(checkEnv(), { provider: cur.engine, model: cur.model ?? undefined, effort: cur.effort ?? undefined }, o);
@@ -536,10 +546,11 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     // A track on Reins' own loop reads its room before every call (`usdRoom`), so a re-share reopens nothing and it takes no cap for its process; any other engine keeps `maxUsd`.
     const live = o.usdRoom !== undefined && deps.providers?.facts(provider)?.conversation === 'reins';
     const { maxUsd: _c, ...noCap } = rest;
-    const s = await e.open({ ...(live ? noCap : rest), ...(o.model && model ? { model } : {}), cwd, pendingCards: () => [] });
+    const s = await e.open({ ...(live ? noCap : rest), ...(o.model && model ? { model } : {}), cwd, pendingCards: () => [], policy: () => fence(o.policy()) });
     const session: EngineSession = {
       sessionId: s.sessionId,
       async turn(text) {
+        capCheck(); // a track keeps this session across turns
         turnBegan(o.step); // ask() takes this owner's tool questions only while its turn is open
         try { return await s.turn(text); } finally { turnEnded(o.step); }
       },
@@ -595,6 +606,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
   /** Compresses first when the known context is at or over autoCompressAt of the window; the reply's cost then includes the compaction's. */
   // ponytail: the window is the stream's (the usage row's); a model whose window is only in the catalog never auto-compresses; the compaction's cost is added to the reply it preceded.
   async function turnWithAutoCompress(text: string): Promise<TurnResult> {
+    capCheck();
     const s = await ensureEngine(); // the check needs s.compact
     if (!s) { notSent = true; return { text: '', events: [] }; } // a Stop landed while the engine opened
     let pre: TurnResult | undefined;
@@ -687,6 +699,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     get sessionId() { return live?.sessionId ?? store.getSession(id)?.engineSessionId ?? ''; },
     turn: turnWithAutoCompress,
     async compact() {
+      capCheck();
       const s = await ensureEngine();
       if (s && !s.compact) throw new Error('This provider cannot compress.'); // a healthy process: no markDead, no undoSwitch
       return call(compactCall);
@@ -900,6 +913,7 @@ export function openSession(deps: SessionDeps, row: SessionRow, fresh = false) {
     if (busy) return conflict('The session is busy.');
     const gone = providerGone();
     if (gone) return gone;
+    if (deps.parallel?.fenced(id) && !fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) return conflict(`The worktree ${cwd} is gone, so run ${rid} cannot resume here.`);
     if (store.sessionOfRun(rid) !== id) return conflict(`Run ${rid} does not belong to this session.`);
     if (ended(rid)) return conflict(`Run ${rid} has already ended.`);
     const saved = store.loadRun(rid);

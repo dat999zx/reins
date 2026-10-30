@@ -1,3 +1,5 @@
+import type { ParallelView } from './parallel.js';
+
 const KEY = 'reins-token';
 let token: string | null = null;
 
@@ -37,4 +39,8 @@ export const post = <T = unknown>(path: string, body: unknown = {}) => call<T>('
 export const put = <T = unknown>(path: string, body: unknown, init?: RequestInit) => call<T>('PUT', path, body, init);
 export const del = <T = unknown>(path: string) => call<T>('DELETE', path);
 export const sendCard = (id: string, kind: 'steer' | 'now' | 'stop', text = '') => post(`/api/sessions/${id}/card`, { kind, text });
+export const parallelRuns = () => get<{ runs: ParallelView[] }>('/api/parallel').then((r) => r.runs);
+export const stopAll = (id: string) => post<{ stopped: string[]; idle: string[] }>(`/api/parallel/${id}/stop`);
+export const resumeAll = (id: string) => post<{ results: unknown }>(`/api/parallel/${id}/resume`);
+export const setCap = (id: string, usd: number | null) => post(`/api/parallel/${id}/cap`, { usd });
 export const stream = (after: string) => new EventSource(`/api/stream?token=${encodeURIComponent(token ?? '')}&after=${encodeURIComponent(after)}`);
