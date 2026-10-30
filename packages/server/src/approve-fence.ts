@@ -76,9 +76,10 @@ const SHAPES: Shape[] = [
   { words: ['git', 'rev-parse', '--short', 'HEAD'], paths: false, flags: [] },
 ];
 
-/** A path token of a shell command: the file tools' `inside`, and no bare `..`, no leading `/`, `~` or `\\`, a `:` only as `X:\` or `X:/`. */
+/** A path token of a shell command: the file tools' `inside`, no `..` part (`\` counts as `/` on every platform), no leading `~` or `\\`, no leading `/` on Windows (MSYS and UNC spellings; elsewhere an absolute path goes through `inside`), a `:` only as `X:\` or `X:/`. */
 function pathToken(t: string, cwd: string, home: string): boolean {
-  if (t === '..' || /^[/~]/.test(t) || t.startsWith('\\\\')) return false;
+  if (t.replace(/\\/g, '/').split('/').includes('..') || t.startsWith('~') || t.startsWith('\\\\')) return false;
+  if (process.platform === 'win32' && t.startsWith('/')) return false;
   if (t.includes(':') && !/^[A-Za-z]:[\\/]/.test(t)) return false;
   return inside(t, cwd, home);
 }
