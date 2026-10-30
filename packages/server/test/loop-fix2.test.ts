@@ -1,6 +1,5 @@
 // Task 11 fix round 2: a regression test for each item of the second security review (docs/plan/p-task-11-codex2-review.md).
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EngineEvent, Policy } from '@reins/core';
@@ -8,7 +7,7 @@ import { HOME_UNKNOWN_WORDS, replaceFile } from '../src/loop/fileio.js';
 import { HOME_WORDS, confine } from '../src/loop/paths.js';
 import type { Wire } from '../src/mods/types.js';
 import { MAX_FILE, findTool, type ToolCtx, type ToolOut } from '../src/loop/tools.js';
-import { KEY, rig, type Rig } from './loop-harness.js';
+import { KEY, loopTmp, rig, type Rig } from './loop-harness.js';
 
 const WRITE_MODE: Policy = { mode: 'write', guards: [], allowShell: true };
 const win = process.platform === 'win32';
@@ -16,7 +15,7 @@ const win = process.platform === 'win32';
 let tmp = '';
 let cwd = '';
 beforeEach(() => {
-  tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-fix2-')));
+  tmp = loopTmp('reins-fix2-');
   cwd = path.join(tmp, 'proj');
   fs.mkdirSync(cwd);
 });

@@ -1,7 +1,6 @@
 // Task 16 (spec 4.8, 4.9 `context`, 4.12c): compaction. The cut and the stubs as pure functions, the summary call, the boundary in the conversation
 // file, the context-overflow 400, and the session's auto-compress with the loop engine.
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { EngineEvent } from '@reins/core';
@@ -14,7 +13,7 @@ import { openSession } from '../src/session.js';
 import { openStore } from '../src/store.js';
 import { until } from './helpers.js';
 import { cleanup, tmpDir } from './http-helpers.js';
-import { COST_120, KEY, PRICE, USAGE_120, WIRES, rig, type Rig, type WireId } from './loop-harness.js';
+import { COST_120, KEY, PRICE, USAGE_120, WIRES, loopTmp, rig, type Rig, type WireId } from './loop-harness.js';
 
 const rigs: Rig[] = [];
 const dirs: string[] = [];
@@ -29,7 +28,7 @@ afterEach(async () => {
   await cleanup();
 });
 const tmp = () => {
-  const d = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reins-compact-')));
+  const d = loopTmp('reins-compact-');
   dirs.push(d);
   return d;
 };
