@@ -48,7 +48,7 @@ export function recover(store: Store): void {
 
   for (const r of store.listParallel()) {
     if (r.phase === 'setup' || r.phase === 'merging' || r.phase === 'gating') {
-      store.patchParallel(r.id, { phase: 'interrupted', job: { words: `The server stopped during ${r.phase}; anything it started may still be running.` } });
+      store.patchParallel(r.id, { phase: 'interrupted', job: { words: `The server stopped during ${r.phase}.` } });
     }
   }
 }

@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
-import { killTree } from './proc.js';
+import { HOLDER, killTree } from './proc.js';
 
 export interface CommandOptions {
   cwd: string;
@@ -27,14 +27,14 @@ export function runCommand(cmd: string, o: CommandOptions): Promise<{ exitCode: 
     if (o.signal?.aborted) return resolve({ exitCode: 1, stdout: '', stderr: '' });
     // Asked here, at the start of THIS command: a provider installed or switched off since the workflow began is seen.
     const env = o.env?.();
-    const child = spawn(cmd, {
+    const child = spawn(process.execPath, ['-e', HOLDER, '--', cmd], {
       cwd: o.cwd,
       ...(env ? { env } : {}),
-      shell: true,
       windowsHide: true,
-      detached: process.platform !== 'win32',
-      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
+      stdio: ['pipe', 'pipe', 'pipe'],
     });
+    child.stdin.on('error', () => {}); // never written to: it only has to stay open while the server lives
     let out = '';
     const take = (s: string) => {
       if (!s) return;

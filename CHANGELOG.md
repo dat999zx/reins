@@ -4,6 +4,10 @@ Format: [Keep a Changelog](https://keepachangelog.com). Versions: [SemVer](https
 
 ## Unreleased
 
+- The rail shows a parallel run's phase as one badge, and only the buttons that apply to it. The tasks file preview is a short list that leaves out what the file does not set.
+- A closed or idle session whose folder is gone no longer shows in the rail, so Clean leaves no dead headings behind. Its log stays in the database. A worktree Clean keeps still shows.
+- A gate, install or workflow command no longer outlives a hard kill of the server: a small holder process ends its whole tree. After such a kill the run reads `interrupted`.
+- `parallel.mjs run` goes on to the merge when a task never ran, instead of waiting for `--max-minutes`: it exits 6 and names the task.
 - A parallel run can be started from the rail: name a tasks file, read what it will run, press Start. The group shows its phase; Merge runs the merge and the gate on the server, and Clean closes the sessions and removes the worktrees and branches.
 - A tasks file names its own commands: `install`, `gate`, `gateRetry` and `reports`. Absent means skip.
 - After a server restart, a run caught in setup, merging or gating reads `interrupted`, and Merge or Clean go on from there.
