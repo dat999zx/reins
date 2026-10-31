@@ -94,6 +94,9 @@
       ],
       "packages/server/src/parallel-run.ts": [
         "const gate = (cmd: string) => runCommand(cmd, { cwd: job.repo, env: d.env, timeoutMs: d.timeoutMs ?? JOB_MS, signal: d.signal });"
+      ],
+      "packages/app/src/ParallelStart.tsx": [
+        "<Fragment key={key}><dt>{label}</dt><dd className={cmd ? 'cmd' : undefined}>{cmd ? <code>{showText(value)}</code> : showText(value)}</dd></Fragment>"
       ]
     }
   },
@@ -205,9 +208,11 @@
         "s.status === 'running' ? 'running' : s.status === 'waiting' ? 'waiting' : s.status === 'idle' && s.detached.length ? 'paused' : 'done';",
         "const counts: Record<TaskState, number> = { running: 0, waiting: 0, paused: 0, done: 0 };",
         "export type ParallelPhase = 'setup' | 'running' | 'merging' | 'gating' | 'done' | 'failed' | 'interrupted';",
-        "if (run.phase === 'done') return 'Already merged.';",
-        "const n = sessions.filter((s) => taskState(s) !== 'done').length;",
-        "const never = sessions.filter((s) => taskState(s) === 'done' && !s.rows.some((r) => r.type === 'run_finished' || r.type === 'run_stopped')).length;"
+        "const never = sessions.filter((s) => taskState(s) === 'done' && !s.rows.some((r) => r.type === 'run_finished' || r.type === 'run_stopped')).length;",
+        "export const PHASE_BADGE: Record<ParallelPhase, string> = { setup: 'active', running: '', merging: 'active', gating: 'active', done: 'done', failed: 'failed', interrupted: 'stopped' };",
+        "!!run.job && (run.phase === 'running' || run.phase === 'failed' || run.phase === 'interrupted') && run.tasks.length > 0 && sessions.every((s) => taskState(s) === 'done');",
+        "export const canClean = (run: ParallelView): boolean => !!run.job && (run.phase === 'done' || run.phase === 'failed' || run.phase === 'interrupted');",
+        "(['running', 'waiting', 'paused', 'done'] as const).filter((k) => c[k] > 0).map((k) => `${c[k]} ${k}`).join(' · ');"
       ],
       "packages/server/src/parallel-run.ts": [
         "const ready: ParallelJobTask[] = [], notMerged: Array<{ name: string; why: string }> = [], done: string[] = [];",
@@ -278,6 +283,9 @@
       ],
       "packages/server/src/server.ts": [
         "req.on('end', () => resolve(size > MAX_BODY ? { tooBig: true } : { text: Buffer.concat(chunks).toString('utf8') }));"
+      ],
+      "packages/server/src/proc.ts": [
+        "process.stdin.on('end', end).on('error', end).resume();"
       ]
     }
   },
@@ -656,7 +664,7 @@
         "else d.save({ phase: 'failed', job: { gateResult: 'fail', words: `The gate failed twice.\\n${last20(g.stdout)}` } });"
       ],
       "packages/server/src/recover.ts": [
-        "store.patchParallel(r.id, { phase: 'interrupted', job: { words: `The server stopped during ${r.phase}; anything it started may still be running.` } });"
+        "store.patchParallel(r.id, { phase: 'interrupted', job: { words: `The server stopped during ${r.phase}.` } });"
       ],
       "packages/server/src/store.ts": [
         "export type ParallelPatch = { phase?: ParallelPhase; tasks?: ParallelTask[]; job?: Partial<ParallelJob> };",
@@ -670,9 +678,7 @@
       "packages/app/src/parallel.ts": [
         "phase?: ParallelPhase;"
       ],
-      "packages/app/src/Rail.tsx": [
-        "{g.run.job && <p className=\"phase\">{g.run.phase}</p>}"
-      ],
+      "packages/app/src/Rail.tsx": [],
       "packages/server/src/server.ts": [
         "runDeps(id).save({ phase: 'failed', job: { words: e instanceof Error ? e.message : String(e) } });",
         "id, title: spec.title, ...(spec.capUsd !== undefined ? { capUsd: spec.capUsd } : {}), ...(spec.approve ? { approve: spec.approve } : {}), tasks: [], phase: 'setup',",
@@ -766,9 +772,10 @@
       ],
       "packages/app/src/parallel.ts": [
         "export const busyPhase = (run: ParallelView): boolean => run.phase === 'setup' || run.phase === 'merging' || run.phase === 'gating';",
-        "export const mergeBlock = (run: ParallelView, sessions: Sess[]): string | undefined => {",
-        "export const cleanBlock = (run: ParallelView): string | undefined =>",
-        "export const mergeWords = (run: ParallelView, sessions: Sess[]): string => {"
+        "export const mergeWords = (run: ParallelView, sessions: Sess[]): string => {",
+        "export const canMerge = (run: ParallelView, sessions: Sess[]): boolean =>",
+        "export const canClean = (run: ParallelView): boolean => !!run.job && (run.phase === 'done' || run.phase === 'failed' || run.phase === 'interrupted');",
+        "export const groupControls = (run: ParallelView, sessions: Sess[], c: Record<TaskState, number>, over: boolean) => ({"
       ]
     }
   },
@@ -944,6 +951,9 @@
         "if (kind === 'stop' && oldest) {",
         "if (k === 'tool' || k === 'judge') route(text, 'stop');",
         "settle(oldest.q.id, 'stop');"
+      ],
+      "packages/app/src/parallel.ts": [
+        "stop: c.running + c.waiting > 0, resume: c.paused + c.waiting > 0, cap: !run.job || c.running + c.waiting + c.paused > 0 || over,"
       ]
     }
   },
