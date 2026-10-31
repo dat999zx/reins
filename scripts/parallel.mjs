@@ -192,12 +192,11 @@ export async function run(arg, o = {}) {
   for (;;) {
     for (const t of s.tasks) {
       const rows = rowsBy[t.name];
-      if (timing(rows).type) continue;
       const last = rows.reduce((n, r) => Math.max(n, r.seq), 0);
       rows.push(...(await api('GET', `/api/sessions/${t.sessionId}/log?after=${last}`)).rows);
     }
-    if (s.tasks.every((t) => timing(rowsBy[t.name]).type)) break;
-    const waiting = s.tasks.flatMap((t) => (timing(rowsBy[t.name]).type ? [] : stuck(rowsBy[t.name], now()).map((q) => [t, q])));
+    if ((await runOf(api, id)).ended) break;
+    const waiting = s.tasks.flatMap((t) => stuck(rowsBy[t.name], now()).map((q) => [t, q]));
     if (waiting.length) {
       const cut = (v, n) => (typeof v === 'string' ? v : JSON.stringify(v ?? '')).slice(0, n);
       for (const [t, q] of waiting) console.log(`${t.name}: ${q.data.kind}: ${cut(q.data.prompt, 300)}\n  ${cut(q.data.detail, 600)}`);

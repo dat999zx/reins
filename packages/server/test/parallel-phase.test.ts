@@ -103,7 +103,7 @@ describe('interrupted on restart (M8 T2)', () => {
     const by = (id: string) => s.listParallel().find((r) => r.id === id)!;
     for (const p of ['setup', 'merging', 'gating']) {
       expect(by(`r-${p}`).phase).toBe('interrupted');
-      expect(by(`r-${p}`).job!.words).toBe(`The server stopped during ${p}; anything it started may still be running.`);
+      expect(by(`r-${p}`).job!.words).toBe(`The server stopped during ${p}.`);
       expect(by(`r-${p}`).job!.gate).toBe('g');
     }
     for (const p of ['running', 'done', 'failed']) {
