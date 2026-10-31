@@ -29,12 +29,15 @@ const node = JSON.stringify(process.execPath);
 beforeEach(() => { killed.length = 0; spawned.length = 0; });
 
 describe('fix 5: helper processes ask for their env when they start', () => {
-  it('the kill after a workflow command times out gets a fresh env, not the one the command started with', async () => {
+  // M9: a timeout tells the holder to stop (its stdin closes) and the holder ends its own tree, so the server starts no kill helper and
+  // no env is handed to one. The server's own kill (with an env worked out at that moment) is only the fallback for a holder that hangs.
+  it('a timed-out workflow command is ended by its holder: the server starts no kill helper', async () => {
     let n = 0;
     const env = () => ({ ...process.env, STARTED: String(++n) });
-    await runCommand(`${node} -e "setTimeout(() => {}, 20000)"`, { cwd: process.cwd(), timeoutMs: 400, env });
-    expect(killed.length).toBeGreaterThanOrEqual(1);
-    expect(killed[0]!.STARTED).toBe('2'); // 1 was the command's own start
+    const r = await runCommand(`${node} -e "setTimeout(() => {}, 20000)"`, { cwd: process.cwd(), timeoutMs: 400, env });
+    expect(r.stdout).toContain('timed out');
+    expect(killed).toEqual([]);
+    expect(n).toBe(1); // only the command's own start asked for an env
   });
 
   it('the kill after an abort of the shell tool gets a fresh env', async () => {

@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, it, expect } from 'vitest';
 import { Rail } from '../src/Rail.js';
 import { ParallelStart, PreviewLines } from '../src/ParallelStart.js';
-import { busyPhase, cleanBlock, mergeBlock, mergeWords, type ParallelPhase, type ParallelView } from '../src/parallel.js';
+import { busyPhase, canClean, canMerge, mergeWords, type ParallelPhase, type ParallelView } from '../src/parallel.js';
 import type { Sess, State } from '../src/state.js';
 import type { LogRow } from '@reins/server/store.js';
 
@@ -23,50 +23,53 @@ const run = (phase: ParallelPhase, o: Partial<ParallelView> = {}): ParallelView 
 
 const ended = [sess('a'), sess('b', { status: 'closed' })];
 const live = [sess('a'), sess('b', { status: 'running' })];
-const WAIT = 'Waiting for 1 task(s) to end. One stopped mid-turn waits on a resume card: press Stop all again, or Resume all.';
 
-describe('mergeBlock', () => {
+describe('canMerge', () => {
   it.each([
-    ['setup', ended, 'Setup is running.'],
-    ['running', ended, undefined],
-    ['running', live, WAIT],
-    ['merging', ended, 'A merge is running.'],
-    ['gating', ended, 'A merge is running.'],
-    ['done', ended, 'Already merged.'],
-    ['failed', ended, undefined],
-    ['failed', live, WAIT],
-    ['interrupted', ended, undefined],
-    ['interrupted', live, WAIT],
-  ] as const)('%s', (phase, sessions, words) => {
-    expect(mergeBlock(run(phase), [...sessions])).toBe(words);
+    ['setup', ended, false],
+    ['running', ended, true],
+    ['running', live, false],
+    ['merging', ended, false],
+    ['gating', ended, false],
+    ['done', ended, false],
+    ['failed', ended, true],
+    ['failed', live, false],
+    ['interrupted', ended, true],
+    ['interrupted', live, false],
+  ] as const)('%s', (phase, sessions, yes) => {
+    expect(canMerge(run(phase), [...sessions])).toBe(yes);
   });
 
-  it('a failed or interrupted run with no tasks says setup did not finish', () => {
-    expect(mergeBlock(run('failed', { tasks: [] }), [])).toBe('Setup did not finish.');
-    expect(mergeBlock(run('interrupted', { tasks: [] }), [])).toBe('Setup did not finish.');
+  it('is false for no tasks and for no job', () => {
+    expect(canMerge(run('failed', { tasks: [] }), [])).toBe(false);
+    expect(canMerge(run('interrupted', { tasks: [] }), [])).toBe(false);
+    expect(canMerge(run('running', { job: undefined }), ended)).toBe(false);
   });
 
   it('counts who has ended', () => {
-    const m = (s: Sess) => mergeBlock(run('running'), [sess('a'), s]);
-    expect(m(sess('b'))).toBeUndefined();                                    // idle, no rows
-    expect(m(sess('b', { status: 'closed' }))).toBeUndefined();
-    expect(m(sess('b', { detached: [{} as never] }))).toBe(WAIT);           // paused
-    expect(m(sess('b', { status: 'waiting' }))).toBe(WAIT);
-    expect(m(sess('b', { status: 'running', rows: [row('run_stopped')] }))).toBe(WAIT);   // resumed
+    const m = (s: Sess) => canMerge(run('running'), [sess('a'), s]);
+    expect(m(sess('b'))).toBe(true);                                    // idle, no rows
+    expect(m(sess('b', { status: 'closed' }))).toBe(true);
+    expect(m(sess('b', { detached: [{} as never] }))).toBe(false);      // paused
+    expect(m(sess('b', { status: 'waiting' }))).toBe(false);
+    expect(m(sess('b', { status: 'running', rows: [row('run_stopped')] }))).toBe(false);   // resumed
   });
 });
 
-describe('cleanBlock', () => {
+describe('canClean', () => {
   it.each([
-    ['setup', 'Setup is running.'],
-    ['running', 'Merge first.'],
-    ['merging', 'A merge is running.'],
-    ['gating', 'A merge is running.'],
-    ['done', undefined],
-    ['failed', undefined],
-    ['interrupted', undefined],
-  ] as const)('%s', (phase, words) => {
-    expect(cleanBlock(run(phase))).toBe(words);
+    ['setup', false],
+    ['running', false],
+    ['merging', false],
+    ['gating', false],
+    ['done', true],
+    ['failed', true],
+    ['interrupted', true],
+  ] as const)('%s', (phase, yes) => {
+    expect(canClean(run(phase))).toBe(yes);
+  });
+  it('is false for no job', () => {
+    expect(canClean(run('done', { job: undefined }))).toBe(false);
   });
 });
 
@@ -90,10 +93,9 @@ describe('mergeWords', () => {
     expect(w).toBe('Merge into main, then run: npm test?\n1 task(s) never ran and will not be merged.');
     expect(mergeWords(run('running'), [sess('a', { rows: [row('run_stopped')] }), sess('b', { rows: [row('run_finished')] })])).not.toContain('never ran');
   });
-  it('adds job.words for interrupted only', () => {
-    const j = job({ words: 'The old gate may still be running.' });
-    expect(mergeWords(run('interrupted', { job: j }), ended)).toContain('The old gate may still be running.');
-    expect(mergeWords(run('failed', { job: j }), ended)).not.toContain('The old gate');
+  it('adds nothing for interrupted', () => {
+    const j = job({ words: 'The server stopped during gating.' });
+    expect(mergeWords(run('interrupted', { job: j }), ended)).not.toContain('The server stopped');
   });
   it('shows a hidden mark in the gate', () => {
     expect(mergeWords(run('running', { job: job({ gate: 'a‮b' }) }), ended)).toContain('<U+202E>');
@@ -102,12 +104,11 @@ describe('mergeWords', () => {
 
 describe('Rail phase and controls', () => {
   const st = (): State => ({ sessions: { a: sess('a'), b: sess('b', { status: 'closed' }) } });
-  it('a gating run shows the phase, a disabled Merge and Clean, and the why', () => {
+  it('a gating run shows the badge and no button at all', () => {
     const html = renderToStaticMarkup(createElement(Rail, { ...props, state: st(), parallel: [run('gating')] }));
     expect(html).toContain('gating');
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Merge<\/button>/);
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Clean<\/button>/);
-    expect(html).toContain('A merge is running.');
+    expect(html).not.toContain('>Merge<');
+    expect(html).not.toContain('>Clean<');
   });
   it('a failed run shows its words', () => {
     const html = renderToStaticMarkup(createElement(Rail, { ...props, state: st(), parallel: [run('failed', { job: job({ words: 'gate broke' }) })] }));
@@ -128,25 +129,27 @@ describe('PreviewLines', () => {
     tasks: [{ name: 'one', slug: 'one', playbook: 'p1.json' }, { name: 'two', slug: 'two', playbook: 'p2.json', model: 'm', effort: 'high' }],
   };
   const html = renderToStaticMarkup(createElement(PreviewLines, { repo: '/r', spec }));
-  it('shows both commands and the warning', () => {
-    expect(html).toContain('npm ci');
-    expect(html).toContain('npm test');
-    expect(html).toContain('Start runs these commands through the shell on this machine.');
-    expect(html).toContain('every request is a card');
-    expect(html).toContain('no cap');
+  it('shows both commands in code and the warning', () => {
+    expect(html).toContain('<code>npm ci</code>');
+    expect(html).toContain('<code>npm test');
+    expect(html).toContain('Start runs these commands in a shell.');
+    expect(html).not.toContain('every request');
+    expect(html).not.toContain('no cap');
   });
   it('escapes a right-to-left mark', () => {
     expect(html).toContain('&lt;U+202E&gt;');
     expect(html).not.toContain('‮');
   });
-  it('says none for a missing install and gate', () => {
+  it('leaves out a missing install and gate', () => {
     const h = renderToStaticMarkup(createElement(PreviewLines, { repo: '/r', spec: { title: 'T', copy: [], tasks: [] } }));
-    expect(h).toContain('Install: none');
-    expect(h).toContain('Gate: none');
+    expect(h).not.toContain('Install');
+    expect(h).not.toContain('Gate');
+    expect(h).not.toContain('Start runs');
   });
-  it('shows auto-approve and the cap', () => {
+  it('shows approve and the cap', () => {
     const h = renderToStaticMarkup(createElement(PreviewLines, { repo: '/r', spec: { ...spec, approve: 'fence' as const, capUsd: 5 } }));
-    expect(h).toContain('auto-approve: fence');
+    expect(h).toContain('Approve');
+    expect(h).toContain('fence');
     expect(h).toContain('$5');
   });
 });

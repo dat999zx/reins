@@ -518,6 +518,16 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     return !s || s.status() === 'closed' || (s.status() === 'idle' && detachedRuns(o.store.readLog(sessionId)).length === 0);
   };
 
+  /** Out of the map means out of the rail, the replay and the API: a closed or idle session whose folder is gone and that no run lists. It can do nothing there. Its rows stay in the store. */
+  const dropGone = (ids: string[] = [...sessions.keys()]) => {
+    const listed = new Set(o.store.listParallel().flatMap((r) => r.tasks.map((t) => t.sessionId)));
+    for (const id of ids) {
+      const s = sessions.get(id);
+      if (!s || listed.has(id) || (s.status() !== 'closed' && s.status() !== 'idle')) continue;
+      try { if (folderGone(s.info().cwd)) sessions.delete(id); } catch { /* denied or unreachable is not gone */ }
+    }
+  };
+
   function mergeRoute(run: Run): Reply {
     const job = run.job;
     if (!job) return fail(409, 'This run was not started by Reins, so it has no merge or clean.');
@@ -544,7 +554,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
       if (run.phase !== 'done' && run.phase !== 'failed' && run.phase !== 'interrupted') return fail(409, 'Clean needs a finished run. Merge first, or stop the tasks and merge.');
       for (const t of run.tasks) await sessions.get(t.sessionId)?.close();
       const { removed, kept, unfinished } = await cleanRun(job, runDeps(run.id));
-      if (!unfinished) o.store.deleteParallel(run.id);
+      if (!unfinished) { o.store.deleteParallel(run.id); dropGone(run.tasks.map((t) => t.sessionId)); }
       return ok({ removed, kept, forgotten: !unfinished });
     } finally {
       release();
@@ -671,7 +681,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
     const pm = /^\/api\/parallel(?:\/([0-9a-f]+)\/([a-z]+))?$/.exec(p);
     if (pm) {
       if (!pm[1]) {
-        if (req.method === 'GET') return ok({ runs: o.store.listParallel() });
+        if (req.method === 'GET') return ok({ runs: o.store.listParallel().map((r) => ({ ...r, ended: r.tasks.every((t) => taskEnded(t.sessionId)) })) });
         if (req.method === 'POST') {
           const r = await parse(req);
           return 'fail' in r ? r.fail : createParallelRun(r.b);
@@ -836,6 +846,7 @@ export async function startServer(o: ServerOptions): Promise<Server> {
   try {
     recover(o.store);
     for (const row of o.store.listSessions()) sessions.set(row.id, openSession(deps, row));
+    dropGone();
     engines = await probeNow();
   } catch (e) {
     await close();

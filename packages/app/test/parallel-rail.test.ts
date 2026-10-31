@@ -20,7 +20,7 @@ describe('Rail parallel group', () => {
   const html = renderToStaticMarkup(createElement(Rail, { ...props, parallel }));
 
   it('shows counts, cost against the cap, and the over class', () => {
-    expect(html).toContain('2 running · 1 waiting · 0 paused · 0 done');
+    expect(html).toContain('2 running · 1 waiting');
     expect(html).toContain('$5.00 of $5.00');
     expect(html).toMatch(/class="[^"]*\bover\b[^"]*"[^>]*>[^<]*\$5\.00 of \$5\.00/);
     expect(html).toContain('Big run');

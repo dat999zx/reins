@@ -37,7 +37,7 @@ const cap = async (f) => { const out = [], o = console.log; console.log = (...a)
 const RID = 'aaaaaaaaaaaa';
 const jobOf = (j = {}) => ({ repo: 'D:/repo', branch: 'main', head: 'h', folder: 'D:/par/x', tasks: [], words: '', merged: [], notMerged: [], gateResult: 'not run', ...j });
 const TASKS = [{ name: 'A', sessionId: 'sa' }, { name: 'B', sessionId: 'sb' }];
-const rowOf = (phase, j, tasks = TASKS) => ({ id: RID, title: 't', createdAt: 0, tasks, phase, job: jobOf(j) });
+const rowOf = (phase, j, tasks = TASKS) => ({ id: RID, title: 't', createdAt: 0, tasks, phase, job: jobOf(j), ended: true });
 const over = [{ seq: 1, ts: 0, type: 'session_created', data: {} }, { seq: 2, ts: M, type: 'run_finished', data: {} }];
 // GET /api/parallel returns `row`, then the next of `queue` each call; a merge POST moves the row to `afterMerge`.
 const mkApi = ({ row, queue = [], afterMerge, logs = { sa: over, sb: over } }) => {
@@ -59,23 +59,43 @@ try {
   let clock = 100 * M;
   const go = (st, o = {}) => cap(() => run(RID, { api: st.api, now: () => clock, sleep, ...o }));
   // a card 61 s old, no end row: exit 3, the run line names the id, nothing merged
-  let st = mkApi({ row: rowOf('running'), logs: { sa: [qrow(1, 'q1', clock - 61000)], sb: [] } });
+  let st = mkApi({ row: { ...rowOf('running'), ended: false }, logs: { sa: [qrow(1, 'q1', clock - 61000)], sb: [] } });
   let [code, text] = await go(st);
   assert.equal(code, 3, 'a stuck card exits 3');
   assert.ok(text.includes('A') && text.includes('pq1'), 'the card is named');
   assert.ok(text.includes(`node scripts/parallel.mjs run ${RID}`), 'the run line carries the id');
   assert.ok(!st.events.includes('POST merge'), 'no merge');
   // two polls: the second asks after the highest seq of the first answer
-  st = mkApi({ row: rowOf('running'), logs: { sa: [{ seq: 1, ts: clock, type: 'session_created', data: {} }, qrow(7, 'q1', clock)], sb: [] } });
+  st = mkApi({ row: { ...rowOf('running'), ended: false }, logs: { sa: [{ seq: 1, ts: clock, type: 'session_created', data: {} }, qrow(7, 'q1', clock)], sb: [] } });
   [code] = await go(st, { sleep: async () => { clock += 61000; } });
   assert.equal(code, 3);
   assert.deepEqual(st.gets.filter((g) => g.startsWith('sa')), ['sa after=0', 'sa after=7'], 'the second poll uses the last seq seen');
   // no card, no end row: --max-minutes
   clock = 0;
-  st = mkApi({ row: rowOf('running'), logs: { sa: [], sb: [] } });
+  st = mkApi({ row: { ...rowOf('running'), ended: false }, logs: { sa: [], sb: [] } });
   [code] = await cap(() => run(RID, { api: st.api, maxMinutes: 0.001, now: () => (clock += M), sleep }));
   assert.equal(code, 5, 'max minutes exits 5');
   clock = 100 * M;
+
+  // a task that never ran: the server says ended, so go on to the merge: exit 6 and the task is named, no waiting
+  let naps = 0;
+  st = mkApi({ row: rowOf('running'), logs: { sa: over, sb: [] }, afterMerge: rowOf('done', { merged: ['A'], notMerged: [{ name: 'B', why: 'never ran' }], gateResult: 'pass' }) });
+  [code, text] = await cap(() => run(RID, { api: st.api, maxMinutes: 0.001, now: () => (clock += M), sleep: async () => { naps++; } }));
+  assert.equal(code, 6, 'a task that never ran exits 6');
+  assert.ok(text.includes('not merged: B (never ran)'), `the task is named: ${text}`);
+  assert.equal(naps, 0, 'no wait');
+  clock = 100 * M;
+  // a task resumed after its end row: not ended, so keep waiting (exit 5), no merge
+  st = mkApi({ row: { ...rowOf('running'), ended: false }, logs: { sa: over, sb: over } });
+  [code] = await cap(() => run(RID, { api: st.api, maxMinutes: 0.001, now: () => (clock += M), sleep }));
+  assert.equal(code, 5, 'resumed after its end row: --max-minutes');
+  assert.ok(!st.events.includes('POST merge'), 'no merge');
+  clock = 100 * M;
+  // the same with a card on it: exit 3
+  st = mkApi({ row: { ...rowOf('running'), ended: false }, logs: { sa: [...over, qrow(3, 'q1', clock - 61000)], sb: over } });
+  [code] = await go(st);
+  assert.equal(code, 3, 'a card on a resumed task exits 3');
+  assert.ok(!st.events.includes('POST merge'), 'no merge');
 
   // done, gate passed: 0, clean after the merge, the report reads createdAt
   st = mkApi({ row: rowOf('running'), afterMerge: rowOf('done', { merged: ['A', 'B'], gateResult: 'pass' }) });

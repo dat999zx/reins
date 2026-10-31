@@ -27,24 +27,23 @@ export const taskState = (s: Sess): TaskState =>
 
 export const busyPhase = (run: ParallelView): boolean => run.phase === 'setup' || run.phase === 'merging' || run.phase === 'gating';
 
-// A session missing from the map is not in `sessions`, so it counts as ended (spec P8).
-export const mergeBlock = (run: ParallelView, sessions: Sess[]): string | undefined => {
-  if (run.phase === 'setup') return 'Setup is running.';
-  if (run.phase === 'merging' || run.phase === 'gating') return 'A merge is running.';
-  if (run.phase === 'done') return 'Already merged.';
-  if (run.tasks.length === 0) return 'Setup did not finish.';
-  const n = sessions.filter((s) => taskState(s) !== 'done').length;
-  return n ? `Waiting for ${n} task(s) to end. One stopped mid-turn waits on a resume card: press Stop all again, or Resume all.` : undefined;
-};
+export const PHASE_BADGE: Record<ParallelPhase, string> = { setup: 'active', running: '', merging: 'active', gating: 'active', done: 'done', failed: 'failed', interrupted: 'stopped' };
 
-export const cleanBlock = (run: ParallelView): string | undefined =>
-  run.phase === 'setup' ? 'Setup is running.' : run.phase === 'running' ? 'Merge first.' : busyPhase(run) ? 'A merge is running.' : undefined;
+// A session missing from the map is not in `sessions`, so it counts as ended (spec P8).
+export const canMerge = (run: ParallelView, sessions: Sess[]): boolean =>
+  !!run.job && (run.phase === 'running' || run.phase === 'failed' || run.phase === 'interrupted') && run.tasks.length > 0 && sessions.every((s) => taskState(s) === 'done');
+export const canClean = (run: ParallelView): boolean => !!run.job && (run.phase === 'done' || run.phase === 'failed' || run.phase === 'interrupted');
+export const groupControls = (run: ParallelView, sessions: Sess[], c: Record<TaskState, number>, over: boolean) => ({
+  stop: c.running + c.waiting > 0, resume: c.paused + c.waiting > 0, cap: !run.job || c.running + c.waiting + c.paused > 0 || over,
+  merge: canMerge(run, sessions), clean: canClean(run),
+});
+export const countWords = (c: Record<TaskState, number>): string =>
+  (['running', 'waiting', 'paused', 'done'] as const).filter((k) => c[k] > 0).map((k) => `${c[k]} ${k}`).join(' · ');
 
 export const mergeWords = (run: ParallelView, sessions: Sess[]): string => {
   const lines = [`Merge into ${run.job?.branch ?? ''}, then run: ${run.job?.gate !== undefined ? showText(run.job.gate) : 'no gate'}?`];
   const never = sessions.filter((s) => taskState(s) === 'done' && !s.rows.some((r) => r.type === 'run_finished' || r.type === 'run_stopped')).length;
   if (never) lines.push(`${never} task(s) never ran and will not be merged.`);
-  if (run.phase === 'interrupted' && run.job?.words) lines.push(showText(run.job.words, { lines: true }));
   return lines.join('\n');
 };
 
