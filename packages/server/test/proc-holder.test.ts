@@ -93,6 +93,18 @@ describe('the holder', () => {
     await until(() => !alive(pid), 10_000);
   }, 30_000);
 
+  // The CI race (M9): an abort that lands while the holder is still starting its shell. Killing the holder's tree from the server missed
+  // the shell, which then held the output pipe open, so runCommand (and a server stop) waited for ever. Seen locally 1 in 39 at 10 ms.
+  it('an abort right after the start always ends the call, at any moment', async () => {
+    for (const delay of [0, 2, 5, 10, 10, 15, 20, 30, 50, 80]) {
+      const ac = new AbortController();
+      const p = runCommand('node -e "setTimeout(()=>{},60000)"', { cwd: process.cwd(), signal: ac.signal });
+      setTimeout(() => ac.abort(), delay);
+      const r = await Promise.race([p.then(() => 'ended'), new Promise((res) => setTimeout(() => res('hung'), 8000))]);
+      expect(r, `abort after ${delay} ms`).toBe('ended');
+    }
+  }, 120_000);
+
   it('a command that starts with a dash reaches the shell, not node', async () => {
     const r = await runCommand('--version', { cwd: process.cwd() });
     expect(r.exitCode).not.toBe(0);
