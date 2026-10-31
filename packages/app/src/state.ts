@@ -131,6 +131,8 @@ export function reduceAll(state: State, rows: LogRow[], loadedAt: number): State
   return copied.size ? { ...state, sessions } : state;
 }
 
+export const dropSessions = (st: State, ids: string[]): State => ({ ...st, sessions: Object.fromEntries(Object.entries(st.sessions).filter(([id]) => !ids.includes(id))) });
+
 export function takeRefill(state: State, id: string, input: string): { state: State; text: string } {
   const s = state.sessions[id];
   if (!s?.refill || input !== '') return { state, text: input };

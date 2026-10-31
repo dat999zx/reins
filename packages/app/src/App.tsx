@@ -14,7 +14,7 @@ import { loadEditorState, makeSaver, type EditorState, type Tab } from './editor
 import { ProviderBanner, type Engines } from './ProviderBanner.js';
 import { Providers } from './Providers.js';
 import { Rail } from './Rail.js';
-import { afterOf, finishReplay, initial, loadSessions, pageTitle, reduceAll, takeRefill, type SessionView, type State } from './state.js';
+import { afterOf, dropSessions, finishReplay, initial, loadSessions, pageTitle, reduceAll, takeRefill, type SessionView, type State } from './state.js';
 
 const loadedAt = Date.now();
 
@@ -86,7 +86,7 @@ export function App() {
       try {
         const r = await get<{ sessions: SessionView[]; engines: Engines; providers?: Provider[] }>('/api/state');
         if (stopped) return;
-        commit(loadSessions(stRef.current, r.sessions));
+        commit(dropSessions(loadSessions(stRef.current, r.sessions), Object.keys(stRef.current.sessions).filter((id) => !r.sessions.some((v) => v.id === id))));
         setEngines(r.engines);
         setProviders(r.providers ?? []);
         setReady(true);
@@ -254,7 +254,9 @@ export function App() {
           onMerge={(id) => void groupAction(() => mergeRun(id))}
           onClean={(id) => void groupAction(async () => {
             const r = await cleanRun(id);
-            flash(`Removed: ${r.removed.join(', ') || 'none'}. Kept: ${r.kept.map((k) => `${k.name} (${k.why})`).join(', ') || 'none'}.`);
+            // A removed task's session is gone from the server too (loadSessions only adds).
+            if (r.forgotten) commit(dropSessions(stRef.current, (parallel.find((p) => p.id === id)?.tasks ?? []).filter((t) => r.removed.includes(t.name)).map((t) => t.sessionId)));
+            if (r.kept.length) flash(`Kept: ${r.kept.map((k) => `${k.name} (${k.why})`).join(', ')}.`);
           })}
           parallelStart={<ParallelStart cwd={cwd} onStarted={() => void refreshParallel()} onError={flash} />}
           pathBox={pathBox && (
